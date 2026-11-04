@@ -56,6 +56,11 @@ ssh root@139.180.131.21 'bash /opt/talpha/ops/talpha_reports/deploy_runtime.sh -
   `src/proxy.ts` (Next 16, chạy Node). **Thêm route API mới thì khai vào `API_RULES`** — không
   khai là chỉ giám đốc gọi được. Route gộp nhiều nước phải tự lọc theo `getAccess()`.
   Bot/việc nền gọi API bằng header `x-talpha-token` (chìa ở `data/.internal_token`).
+* **Khoá kết nối** (04/11/2026): token Meta, key POS từng shop, token Pancake, key 17TRACK nhập ở
+  `/admin` → Khoá kết nối — máy gọi thử khoá rồi mới lưu. Lưu ở `dashboard-ui/.env.khoa.local`
+  (ngoài git, `from-mac.sh` không đè), thắng khoá cùng tên trong `.env.local`. Dashboard đọc qua
+  `docKhoa()` (`lib/talpha/khoa.ts`) — **đừng đọc `process.env` thẳng cho khoá**; sync, Sheet,
+  danh mục SP nhận qua drop-in systemd `khoa.conf` do `vps-setup.sh` dựng.
 
 ## Nguyên tắc cứng — vi phạm là số sai hoặc mất dữ liệu
 

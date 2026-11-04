@@ -12,6 +12,7 @@
 import fs from "fs";
 import yaml from "js-yaml";
 import { TALPHA_YAML } from "@/lib/talpha/config-path";
+import { docKhoa } from "@/lib/talpha/khoa";
 import { SHOP2MKT } from "@/lib/talpha/rules";
 
 const YAML_PATH = TALPHA_YAML();
@@ -22,7 +23,7 @@ interface Shop { name: string; api_url: string; api_key: string; shop_id: string
 export function loadShops(): Shop[] {
     try {
         const raw = fs.readFileSync(YAML_PATH, "utf-8")
-            .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, n) => process.env[n] || "");
+            .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, n) => docKhoa(n));
         const cfg = yaml.load(raw) as { poscake?: { shops?: Shop[] } };
         return cfg?.poscake?.shops ?? [];
     } catch (e) {

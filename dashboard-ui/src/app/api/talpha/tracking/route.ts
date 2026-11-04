@@ -20,6 +20,7 @@ import { loadMarketShipments, syncWeshipMarket } from "@/lib/talpha/tracking-mar
 import { tinXacNhan, waLink } from "@/lib/talpha/whatsapp";
 import { getAccess } from "@/lib/talpha/access";
 import { canMarket } from "@/lib/talpha/access-rules";
+import { moiTruongKhoa } from "@/lib/talpha/khoa";
 
 export const dynamic = "force-dynamic";
 
@@ -295,7 +296,7 @@ export async function GET(req: NextRequest) {
             // Tên nguồn trạng thái cho màn hình và bot Zalo ("17TRACK" / "WeShip").
             provider: mk.provider,
             // WeShip không cần khoá — "có khoá" = tra được.
-            has_api_key: mk.provider === "weship" ? true : hasApiKey(),
+            has_api_key: mk.provider === "weship" ? true : hasApiKey(moiTruongKhoa()),
             last_sync: store.last_sync ?? null,
             last_import: lastImport,
             config: {
@@ -335,10 +336,10 @@ export async function POST(req: NextRequest) {
     const mk = trackMarket(req.nextUrl.searchParams.get("market"));
     if (mk.provider === "weship") return syncWeship(mk, from, to);
     const STORE = mk.store;
-    const keys = apiKeys();
+    const keys = apiKeys(moiTruongKhoa());
     if (!keys.length) {
         return NextResponse.json({
-            error: "Chưa có khoá 17TRACK. Lấy ở 17track.net/en/api rồi điền TRACK17_API_KEY vào dashboard-ui/.env.local.",
+            error: "Chưa có khoá 17TRACK. Lấy ở 17track.net/en/api rồi nhập ở Quản trị → Khoá kết nối.",
         }, { status: 428 });
     }
 

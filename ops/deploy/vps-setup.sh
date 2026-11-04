@@ -310,6 +310,24 @@ else
     warn "không bật được talpha-catalog.timer"
 fi
 
+# ─────────────────────────────────────────────────────────────────────────
+# Khoá nhập ở /admin → Khoá kết nối (04/11/2026) nằm ở dashboard-ui/.env.khoa.local, TÁCH khỏi
+# .env.local để from-mac.sh không đè. Sync, vòng ghi Sheet, danh mục SP đọc khoá qua
+# EnvironmentFile, nên nạp thêm file đó SAU .env.local: khoá cùng tên thì khoá trên trang thắng.
+# Dấu "-" = file chưa có (chưa ai nhập khoá trên trang) thì bỏ qua, không lỗi.
+# Dùng drop-in và dựng ở đây vì script này chạy MỖI lần deploy; vps-sync-setup.sh và
+# vps-reports-setup.sh chỉ chạy tay một lần lúc dựng máy.
+say "Khoá kết nối · sync, Sheet, danh mục SP đọc thêm .env.khoa.local"
+for u in talpha-sync talpha-report talpha-catalog; do
+    install -d "/etc/systemd/system/$u.service.d"
+    cat > "/etc/systemd/system/$u.service.d/khoa.conf" <<EOF
+[Service]
+EnvironmentFile=-$APP_DIR/dashboard-ui/.env.khoa.local
+EOF
+done
+systemctl daemon-reload
+echo "   xong — khoá mới có hiệu lực từ vòng chạy kế tiếp"
+
 say "XONG"
 echo "   Kiểm tra:  curl -I http://127.0.0.1:$PORT/login"
 echo "   Nhật ký :  pm2 logs talpha-dashboard"

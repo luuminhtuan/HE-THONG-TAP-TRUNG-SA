@@ -67,11 +67,20 @@ def get(path, **params):
 
 def main():
     env = load_env(ENV)
+    nguon = ENV
+    # Khoá nhập ở /admin → Khoá kết nối (04/11/2026) thắng khoá cùng tên trong .env.local —
+    # đúng thứ tự systemd nạp cho sync (drop-in khoa.conf trong vps-setup.sh).
+    khoa = os.path.join(_REPO, "dashboard-ui", ".env.khoa.local")
+    if os.path.isfile(khoa):
+        tren_trang = load_env(khoa)
+        env.update(tren_trang)
+        if tren_trang.get("TALPHA_META_ACCESS_TOKEN"):
+            nguon = khoa
     tok = env.get("TALPHA_META_ACCESS_TOKEN", "")
     if not tok:
         print("❌ .env không có TALPHA_META_ACCESS_TOKEN")
         return 1
-    print(f"token: dài {len(tok)} ký tự, đuôi ...{tok[-6:]}   (nguồn {ENV})\n")
+    print(f"token: dài {len(tok)} ký tự, đuôi ...{tok[-6:]}   (nguồn {nguon})\n")
 
     ok, me = get("me", access_token=tok, fields="id,name")
     if not ok:

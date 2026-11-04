@@ -36,6 +36,8 @@ say "2/4 · Kiểm tra key POS gọi được API thật"
 # Kiểm TRƯỚC khi hẹn giờ. Không kiểm thì hẹn giờ vẫn chạy đều mà chẳng kéo về
 # đơn nào, và phải mấy ngày sau mới có người nhận ra bảng trống.
 set -a; . "$APP_DIR/dashboard-ui/.env.local"; set +a
+# Khoá nhập ở /admin → Khoá kết nối thắng khoá cùng tên trong .env.local (xem vps-setup.sh).
+if [ -f "$APP_DIR/dashboard-ui/.env.khoa.local" ]; then set -a; . "$APP_DIR/dashboard-ui/.env.khoa.local"; set +a; fi
 if "$VENV/bin/python" "$APP_DIR/scripts/check_pos_shop.py"; then
     echo "   key POS và shop_id đều tốt"
 else

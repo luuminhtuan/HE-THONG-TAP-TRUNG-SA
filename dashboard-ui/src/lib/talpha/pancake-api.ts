@@ -9,6 +9,7 @@
 // hỏi cùng page cùng mốc trong 3 phút thì dùng chung một lần gọi (NHO_HT).
 // ═══════════════════════════════════════════════════════════════════
 import { campaignMarket, MESS_PANCAKE } from "./rules";
+import { docKhoa } from "./khoa";
 import {
     PANCAKE_API, chuanTenPage, chiaMessTheoCamp, demTrongKhoang, hanToken, hetLoTrongNgay, trangCuaCamp,
     type HoiThoai,
@@ -31,9 +32,9 @@ export async function goiPancake(url: string): Promise<any> {
 
 /** Token tài khoản Pancake + lỗi nếu thiếu / hết hạn. */
 export function tokenPancake(): { tok: string; het_han: string | null; loi: string } {
-    const tok = String(process.env.TALPHA_PANCAKE_API_TOKEN || "").trim();
+    const tok = docKhoa("TALPHA_PANCAKE_API_TOKEN");
     const het = hanToken(tok);
-    const loi = !tok ? "chưa khai TALPHA_PANCAKE_API_TOKEN"
+    const loi = !tok ? "chưa có token Pancake (Quản trị → Khoá kết nối)"
         : het && het < Date.now() ? `token Pancake đã hết hạn ${new Date(het).toISOString().slice(0, 10)}` : "";
     return { tok, het_han: het ? new Date(het).toISOString() : null, loi };
 }

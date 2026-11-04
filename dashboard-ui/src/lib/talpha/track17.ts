@@ -80,8 +80,8 @@ export function apiKeys(env: Record<string, string | undefined> = process.env): 
     return out;
 }
 
-export function hasApiKey(): boolean {
-    return apiKeys().length > 0;
+export function hasApiKey(env: Record<string, string | undefined> = process.env): boolean {
+    return apiKeys(env).length > 0;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

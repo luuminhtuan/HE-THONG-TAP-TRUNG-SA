@@ -309,9 +309,8 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                         <div className="font-medium">Chưa có khoá 17TRACK — đang chạy bằng bảng đối tác</div>
                         <p className="mt-1 text-amber-800/80 dark:text-amber-200/70">
                             Bảng đối tác miễn phí nhưng trễ khoảng 2 ngày. Lấy khoá ở{" "}
-                            <span className="font-mono">api.17track.net</span> → Settings → Security, điền
-                            <span className="font-mono"> TRACK17_API_KEY</span> vào <span className="font-mono">dashboard-ui/.env.local</span> trên
-                            máy Mac rồi deploy. Có khoá thì mỗi sáng hệ thống tự đăng ký đơn mới và cập nhật trạng thái.
+                            <span className="font-mono">api.17track.net</span> → Settings → Security, rồi nhập ở
+                            Quản trị → Khoá kết nối. Có khoá thì mỗi sáng hệ thống tự đăng ký đơn mới và cập nhật trạng thái.
                         </p>
                     </div>
                 </div>

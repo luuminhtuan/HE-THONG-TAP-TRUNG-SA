@@ -10,6 +10,7 @@ export const maxDuration = 90;
 // Danh sách TKQC Meta + shop POS: config/projects/talpha.yaml ở gốc repo.
 // Đường dẫn do config-path.ts giữ — MỘT chỗ duy nhất biết cấu hình nằm ở đâu.
 import { TALPHA_YAML } from "@/lib/talpha/config-path";
+import { docKhoa } from "@/lib/talpha/khoa";
 const YAML_PATH = TALPHA_YAML();
 
 // ═══ RULE CHUNG: import từ src/lib/talpha/rules.ts (data = config/talpha_rules.json).
@@ -104,11 +105,11 @@ interface YamlConfig {
     poscake: { shops: Array<{ name: string; api_url: string; api_key: string; shop_id: string }> };
 }
 
-// Resolve ${ENV_VAR} placeholders in the YAML against process.env so secrets
-// (Meta token, Poscake keys) stay in .env instead of being hard-coded in YAML.
+// Resolve ${ENV_VAR} placeholders in the YAML so secrets (Meta token, Poscake keys) stay out
+// of the YAML. docKhoa: khoá nhập ở /admin → Khoá kết nối trước, rồi .env.local.
 function resolveEnvPlaceholders(raw: string): string {
     return raw.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name) => {
-        const val = process.env[name];
+        const val = docKhoa(name);
         if (val === undefined || val === "") {
             console.warn(`talpha.yaml: env var ${name} is not set`);
             return "";
