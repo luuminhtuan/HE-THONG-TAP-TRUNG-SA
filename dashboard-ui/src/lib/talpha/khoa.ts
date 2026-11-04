@@ -19,7 +19,7 @@ import fs from "fs";
 import path from "path";
 import yaml from "js-yaml";
 import { REPO_ROOT, TALPHA_YAML } from "./config-path";
-import { MARKET_DA_TAT, MESS_PANCAKE, RULES, SHOP2MKT } from "./rules";
+import { MARKET_DA_TAT, MESS_PANCAKE, RULES, SHOP2MKT, SHOP_POS } from "./rules";
 import { cheKhoa, docEnv, docGhiChu, suaEnv } from "./khoa-file";
 import { PANCAKE_API, hanToken } from "./pancake";
 import { getQuota, keyId } from "./track17";
@@ -73,18 +73,18 @@ export type KhoaDef = {
 
 type YamlTho = {
     meta_ads?: { access_token?: string; ad_account_ids?: string[] };
-    poscake?: { shops?: { name: string; api_url: string; api_key: string; shop_id: string }[] };
 };
 
-/** talpha.yaml CHƯA thay ${…} — để biết shop nào dùng biến khoá nào. */
+/** talpha.yaml CHƯA thay ${…} — để biết token Meta nằm ở biến nào, và danh sách TKQC. */
 function yamlTho(): YamlTho {
     return (yaml.load(fs.readFileSync(TALPHA_YAML(), "utf8")) as YamlTho) || {};
 }
 
 const tenBien = (v: unknown) => /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(String(v ?? "").trim())?.[1] || null;
 
-/** Khoá nào cần nhập. Shop POS lấy từ talpha.yaml — thêm shop ở đó là có thêm ô ở đây.
- *  Nước đã tắt không gọi POS nữa nên không có ô (khoá cũ vẫn nằm trong file, bật lại là dùng). */
+/** Khoá nào cần nhập. Shop POS lấy từ markets (SHOP_POS) — thêm nước ở config hoặc /admin →
+ *  Thị trường là có thêm ô ở đây. Nước đã tắt không gọi POS nữa nên không có ô (khoá cũ vẫn
+ *  nằm trong file, bật lại là dùng). */
 export function danhSachKhoa(): KhoaDef[] {
     const cfg = yamlTho();
     const markets = RULES.markets as Record<string, { display?: string }>;
@@ -95,15 +95,14 @@ export function danhSachKhoa(): KhoaDef[] {
         dung_cho: "Chi tiêu quảng cáo mỗi giờ, Ads Command Center",
         loai: "meta",
     }];
-    for (const s of cfg.poscake?.shops || []) {
-        const ten = tenBien(s.api_key);
-        if (!ten || !conChay(s.name)) continue;
+    for (const s of SHOP_POS) {
+        if (!conChay(s.name)) continue;
         out.push({
-            ten,
+            ten: s.bien_key,
             nhan: `Key POS ${markets[s.name]?.display || s.name}`,
             dung_cho: "Đơn mỗi giờ, tab Kho, đơn hôm nay ở Ads Command Center",
             loai: "pos",
-            shop: { name: s.name, shop_id: String(s.shop_id), api_url: s.api_url },
+            shop: { name: s.name, shop_id: s.shop_id, api_url: s.api_url },
         });
     }
     // Nước nào dùng Pancake / 17TRACK đọc từ talpha_rules.json (markets.*.mess_source, tracking.markets).

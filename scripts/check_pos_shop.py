@@ -21,8 +21,10 @@ POS_API = "https://pos.pages.fm/api/v1"
 
 
 def load_markets():
-    with open(os.path.join(ROOT, "config", "talpha_rules.json"), encoding="utf-8") as fh:
-        return (json.load(fh).get("markets") or {})
+    # Đã phủ thị trường nhập ở /admin → Thị trường (04/11/2026) — kiểm đúng các shop sync sẽ kéo.
+    sys.path.insert(0, ROOT)
+    from sync.core.thi_truong import doc_luat
+    return doc_luat(repo=ROOT).get("markets") or {}
 
 
 def fetch(shop_id, key, page=1, size=100):

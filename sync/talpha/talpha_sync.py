@@ -28,6 +28,7 @@ from google.cloud import bigquery
 
 # ── sync/core imports ────────────────────────────────────────────
 from sync.core.business_rules import STATUS_CATEGORY_MAP, quy_doi_don_ngoai_te, shop_pos_tu_markets
+from sync.core.thi_truong import doc_luat, van_tay_view
 from sync.core.bq_writer import (
     load_truncate, load_append, ensure_dataset, get_last_sync_ts,
     append_and_rebuild_orders, append_and_rebuild_ads,
@@ -57,12 +58,10 @@ def _pos_shops():
     thống trước, key thật trả về "Cửa hàng không tồn tại". Ghi cứng ở hai nơi
     thì sớm muộn cũng lệch nhau — nay chỉ còn một chỗ khai là config.
 
-    Luật dựng danh sách (nước sắp chạy, nước đã tắt) ở shop_pos_tu_markets — có test.
+    Luật dựng danh sách (nước sắp chạy, nước đã tắt) ở shop_pos_tu_markets — có test. Luật đã
+    phủ thị trường nhập ở /admin → Thị trường (sync/core/thi_truong.py, 04/11/2026).
     """
-    path = os.path.join(PROJECT_DIR, "config", "talpha_rules.json")
-    with open(path, encoding="utf-8") as fh:
-        rules = json.load(fh)
-    return shop_pos_tu_markets(rules.get("markets") or {})
+    return shop_pos_tu_markets(doc_luat(repo=PROJECT_DIR).get("markets") or {})
 
 
 POS_SHOPS = _pos_shops()
@@ -780,6 +779,48 @@ def test_connections():
 # MAIN
 # ═══════════════════════════════════════════════════════════════════
 
+# Vân tay thị trường lúc view BigQuery được dựng lần gần nhất — xem dung_lai_view_neu_thi_truong_doi.
+VIEW_MOC_FILE = os.path.join(PROJECT_DIR, 'data', '.view_thi_truong')
+
+
+def dung_lai_view_neu_thi_truong_doi() -> bool:
+    """Dựng lại view BigQuery khi mã shop / tỷ giá / số chia / trạng thái của một nước đổi (04/11/2026).
+
+    View đúc tỷ giá và số chia vào câu SQL lúc dựng. Trước đây dựng tay sau mỗi lần sửa
+    talpha_rules.json; nay nước còn được thêm / sửa / tắt trên trang /admin → Thị trường, nên vòng
+    sync đầu giờ tự dựng lại khi thấy đổi — nếu không, các tab đọc BigQuery tính nước mới ra
+    doanh thu 0. Script dựng view chỉ chạy CREATE OR REPLACE VIEW, không đụng dữ liệu.
+
+    Chưa có mốc (lần đầu chạy bản này, hoặc mất thư mục data/) → CHỈ ghi mốc, không dựng: coi view
+    đang khớp luật. Dựng lỗi → không ghi mốc, vòng sau thử lại. Trả True nếu đã dựng lại.
+    """
+    moi = van_tay_view(doc_luat(repo=PROJECT_DIR))
+    try:
+        with open(VIEW_MOC_FILE, encoding='utf-8') as fh:
+            cu = fh.read().strip()
+    except FileNotFoundError:
+        cu = None
+    if cu == moi:
+        return False
+    if cu is not None:
+        log.info(f"  Thị trường đổi (vân tay {cu} → {moi}) — dựng lại view BigQuery...")
+        import subprocess
+        r = subprocess.run(
+            [sys.executable, os.path.join(PROJECT_DIR, 'sql', 'talpha', 'deploy_talpha_analytics.py'), '--execute'],
+            capture_output=True, text=True, timeout=900,
+        )
+        for dong in (r.stdout or '').splitlines()[-16:]:
+            log.info(f"    {dong}")
+        if r.returncode != 0:
+            raise RuntimeError(f"dựng lại view lỗi (rc={r.returncode}): {(r.stderr or r.stdout or '')[-300:]}")
+    else:
+        log.info(f"  Chưa có mốc vân tay thị trường — ghi mốc {moi}, không dựng lại view")
+    os.makedirs(os.path.dirname(VIEW_MOC_FILE), exist_ok=True)
+    with open(VIEW_MOC_FILE, 'w', encoding='utf-8') as fh:
+        fh.write(moi + '\n')
+    return cu is not None
+
+
 def main():
     parser = argparse.ArgumentParser(description='TALPHA Full Sync v3')
     parser.add_argument('--ads',    action='store_true', help='Ads only')
@@ -818,8 +859,17 @@ def main():
 
     ensure_dataset(client, P, DS)
 
+    # Thị trường đổi trên trang → view BigQuery phải dựng lại. Không chặn vòng chạy: dựng lỗi thì
+    # đơn và tiền ads vẫn kéo bình thường, lỗi báo ra và vòng sau thử lại. Shadow không đụng view.
+    if not args.shadow:
+        try:
+            results['view_dung_lai'] = dung_lai_view_neu_thi_truong_doi()
+        except Exception as e:
+            log.error(f"  Dựng lại view theo thị trường lỗi: {e}")
+            results['errors'].append(f"view: {e}")
+
     if run_all or args.orders:
-        log.info(f"\n[1/3] Orders (6 POS shops GCC)...")
+        log.info(f"\n[1/3] Orders (POS {len(POS_SHOPS)} shop)...")
         try:
             win = None if args.full else (
                 datetime.now() - timedelta(days=args.window_days)

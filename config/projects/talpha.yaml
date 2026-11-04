@@ -252,10 +252,10 @@ meta_ads:
 # ─── 4. POS / ORDER MANAGEMENT ───
 pos_system: poscake
 
-# Mỗi nước một shop. CHỈ khai shop ĐÃ có key — khai shop với api_key trống là mỗi lần mở
-# tab Kho hay Ads Command Center lại gọi POS rồi chờ timeout (đã dính với sáu shop GCC,
-# gỡ 11/09/2026). `name` phải là tên nước trong talpha_rules.json → markets.
-# Danh sách nước thật nằm ở config/talpha_rules.json → markets; file này phải khớp.
+# ⚠️ TỪ 04/11/2026 KHÔNG CÒN CODE NÀO ĐỌC MỤC NÀY. Shop POS sinh từ talpha_rules.json → markets
+# (shop_id, shop_label; key ở biến TALPHA_POSCAKE_<shop_label>_KEY) cộng thị trường nhập ở /admin →
+# Thị trường — dashboard: SHOP_POS trong lib/talpha/rules.ts; Python: shop_pos_tu_markets trong
+# sync/core/business_rules.py. Giữ lại để tra cứu; sửa ở đây không có tác dụng.
 poscake:
   shops:
     - name: "Taiwan"

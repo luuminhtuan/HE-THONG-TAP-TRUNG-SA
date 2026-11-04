@@ -1,0 +1,43 @@
+{
+  "_note": "Một bộ dữ liệu cho CẢ BA bản phủ thị trường lên talpha_rules.json: TypeScript (dashboard-ui/src/lib/talpha/thi-truong.ts), Python (sync/core/thi_truong.py), bot (ops/zalo-alerts/thi_truong.js). Ba bản phải ra CÙNG kết quả — sửa luật phủ ở một bản thì sửa cả ba và chạy cả ba bộ test.",
+  "luat": {
+    "markets": {
+      "_note": "ghi chú — không phải nước",
+      "Taiwan": { "shop_label": "TW", "shop_id": "1022091930", "currency": "TWD", "rate_vnd": 800, "pos_money_divisor": 1, "display": "Đài Loan", "status": "dang_ban" },
+      "Singapore": { "shop_label": "SG", "shop_id": "715135541", "currency": "SGD", "rate_vnd": 20000, "pos_money_divisor": 100, "display": "Singapore", "status": "dang_ban" }
+    },
+    "market_aliases": { "_note": "ghi chú", "TW": "Taiwan", "SG": "Singapore" },
+    "camp_market_tokens": ["TW", "SG"],
+    "access": {
+      "teams": {
+        "dong_a": { "name": "Đông Á", "markets": ["Taiwan"] },
+        "dong_nam_a": { "name": "Đông Nam Á", "markets": ["Singapore"] }
+      }
+    }
+  },
+  "phu": {
+    "markets": {
+      "_note": "ghi chú trong file phủ — bỏ qua",
+      "Taiwan": { "status": "da_tat" },
+      "Singapore": { "rate_vnd": 19500, "team": "dong_a" },
+      "Thailand": {
+        "shop_label": "TH", "shop_id": "123456", "currency": "THB", "rate_vnd": 700, "pos_money_divisor": 1,
+        "display": "Thái Lan", "status": "sap_chay",
+        "tokens": ["th", "THAI", "Thái", "SG"],
+        "team": "dong_nam_a"
+      },
+      "Hỏng": "không phải khối — bỏ qua"
+    }
+  },
+  "mong_doi": {
+    "markets": {
+      "Taiwan": { "shop_label": "TW", "shop_id": "1022091930", "currency": "TWD", "rate_vnd": 800, "pos_money_divisor": 1, "display": "Đài Loan", "status": "da_tat" },
+      "Singapore": { "shop_label": "SG", "shop_id": "715135541", "currency": "SGD", "rate_vnd": 19500, "pos_money_divisor": 100, "display": "Singapore", "status": "dang_ban" },
+      "Thailand": { "shop_label": "TH", "shop_id": "123456", "currency": "THB", "rate_vnd": 700, "pos_money_divisor": 1, "display": "Thái Lan", "status": "sap_chay" }
+    },
+    "_aliases_note": "SG đã thuộc Singapore → Thái Lan KHÔNG giành được; mã viết thường / có dấu được viết hoa.",
+    "market_aliases": { "TW": "Taiwan", "SG": "Singapore", "TH": "Thailand", "THAI": "Thailand", "THÁI": "Thailand" },
+    "camp_market_tokens": ["TW", "SG", "TH", "THAI", "THÁI"],
+    "teams": { "dong_a": ["Taiwan", "Singapore"], "dong_nam_a": ["Thailand"] }
+  }
+}

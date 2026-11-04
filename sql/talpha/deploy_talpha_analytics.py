@@ -39,6 +39,16 @@ DATASET = os.getenv('BQ_DATASET', 'TALPHA_Dataset')
 
 RULES_FILE = os.path.join(PROJECT_DIR, 'config', 'talpha_rules.json')
 
+
+def _luat() -> dict:
+    """talpha_rules.json ĐÃ phủ thị trường nhập ở /admin → Thị trường (04/11/2026, xem
+    sync/core/thi_truong.py) — tỷ giá, số chia của nước thêm trên trang phải vào view y như nước
+    khai trong file, nếu không doanh thu nước đó ra 0 (ELSE 0.0 của CASE tỷ giá)."""
+    if PROJECT_DIR not in sys.path:
+        sys.path.insert(0, PROJECT_DIR)
+    from sync.core.thi_truong import doc_luat
+    return doc_luat(RULES_FILE, PROJECT_DIR)
+
 # Thứ tự deploy = thứ tự phụ thuộc (adapter → fact → intel)
 VIEWS = [
     '00_vw_product_catalog_std.sql',
@@ -90,9 +100,7 @@ def fx_sql() -> tuple:
     giá ở rules file thì Sheet đổi còn dashboard đứng yên → lệch âm thầm (dự án đã dính
     đúng bẫy này 03/08). Nay chỉ còn MỘT nguồn.
     """
-    import json
-    with open(RULES_FILE, 'r', encoding='utf-8') as f:
-        markets = json.load(f)['markets']
+    markets = _luat()['markets']
     # Nước "sắp chạy" (rate_vnd null) chưa có đơn nào — không sinh dòng tỷ giá cho nó.
     pairs = [(v['shop_label'], float(v['rate_vnd'])) for v in markets.values()
              if isinstance(v, dict) and v.get('shop_label') and v.get('rate_vnd')]
@@ -120,9 +128,7 @@ def money_divisor_sql() -> str:
     ELSE 100: shop mới chưa khai thì giữ nguyên hành vi cũ (đa số shop là minor
     units) — nhưng `is_fx_known` sẽ FALSE cho shop đó, đó mới là tín hiệu cần soi.
     """
-    import json
-    with open(RULES_FILE, 'r', encoding='utf-8') as f:
-        markets = json.load(f)['markets']
+    markets = _luat()['markets']
     pairs = []
     for v in markets.values():
         if not isinstance(v, dict) or not v.get('shop_label'):
@@ -156,9 +162,7 @@ def marketer_group_sql(col: str = "_mk_name") -> str:
     họ mà KHÔNG được chép lại bảng tên vào SQL — sinh ra ở đây để rules file vẫn là
     nguồn duy nhất. Thứ tự: rule TEAM trước, ngoài team sau (người trong team ưu tiên).
     """
-    import json
-    with open(RULES_FILE, 'r', encoding='utf-8') as f:
-        r = json.load(f)
+    r = _luat()
 
     def like(rules, nhan):
         out = []
@@ -184,9 +188,7 @@ def product_costs_sql() -> str:
     "P&L theo SP" (/api/talpha/product-costs) cùng đọc từ đây, hết cảnh 2 định
     nghĩa COGS song song. Khai thêm SKU trong rules file → deploy lại view là xong.
     """
-    import json
-    with open(RULES_FILE, 'r', encoding='utf-8') as f:
-        rules = json.load(f)
+    rules = _luat()
     products = rules.get('products', {})
     # Từ 08/09/2026 giá vốn khai bằng TỆ. Bản cũ đọc cost_price_vnd — mục đó đã bỏ, nên từ
     # hôm ấy script dừng ở đây và view đứng nguyên bản 05/09 với 27 giá VND của hệ thống cũ.
@@ -223,9 +225,7 @@ def test_campaign_re2() -> str:
     Guard: nếu ai sửa pattern trong rules file mà quên cập nhật bản dịch,
     deploy DỪNG thay vì âm thầm lọc sai (đúng bài học "hai nguồn rule").
     """
-    import json
-    with open(RULES_FILE, 'r', encoding='utf-8') as f:
-        tc = json.load(f).get('test_campaign', {})
+    tc = _luat().get('test_campaign', {})
     pat = tc.get('pattern')
     expected = r"(?<![a-zA-Z])[Tt][Ee][Ss][Tt](?![a-zA-Z])"
     if pat != expected:
@@ -250,9 +250,7 @@ def thresholds() -> dict:
     View viết `{TH_ROAS_TARGET}`; hàm này thay bằng số. Token không khai
     trong rules file thì deploy DỪNG, thay vì render ra SQL lỗi cú pháp.
     """
-    import json
-    with open(RULES_FILE, 'r', encoding='utf-8') as f:
-        th = json.load(f).get('thresholds', {})
+    th = _luat().get('thresholds', {})
     if not th:
         raise SystemExit(
             "❌ config/talpha_rules.json thiếu mục `thresholds` — view SQL dùng "

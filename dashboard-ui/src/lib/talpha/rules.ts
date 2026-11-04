@@ -5,7 +5,8 @@
 // Golden-test 29/07: các hàm này ≡ format_all.py trên 502 campaign + 18 tên POS thật.
 // ═══════════════════════════════════════════════════════════════════
 import fs from "fs";
-import { RULES_JSON } from "./config-path";
+import { RULES_JSON, THI_TRUONG_JSON } from "./config-path";
+import { phuLuat, type FilePhu } from "./thi-truong";
 
 /** "da_tat" (04/11/2026): ngừng kéo số mới, GIỮ tỷ giá / số chia / đơn cũ — xem MARKET_DA_TAT. */
 type MarketStatus = "dang_ban" | "sap_chay" | "da_tat";
@@ -44,7 +45,22 @@ type Rules = {
 };
 type ProductCost = { name: string; cost_price_rmb?: number; cost_price_vnd: number };
 
-export const RULES: Rules = JSON.parse(fs.readFileSync(RULES_JSON(), "utf-8"));
+/** File thị trường nhập ở /admin (data/thi_truong.json). Chưa có = chưa ai nhập. Hỏng thì KÊU và
+ *  dùng bản gốc — một file phủ gõ hỏng không được làm sập cả dashboard. */
+function docFilePhu(): FilePhu | null {
+    const p = THI_TRUONG_JSON();
+    if (!fs.existsSync(p)) return null;
+    try {
+        return JSON.parse(fs.readFileSync(p, "utf-8"));
+    } catch (e) {
+        console.error(`rules: ${p} hỏng định dạng — bỏ qua thị trường nhập trên trang:`, e);
+        return null;
+    }
+}
+
+/** Luật gốc (talpha_rules.json) ĐÃ phủ thị trường nhập trên trang — mọi thứ bên dưới sinh từ đây.
+ *  Đọc một lần lúc khởi động: lưu thị trường trên trang xong thì dashboard tự khởi động lại. */
+export const RULES: Rules = phuLuat(JSON.parse(fs.readFileSync(RULES_JSON(), "utf-8")), docFilePhu());
 
 // ── Tỷ giá & thị trường ──
 // Nước sắp chạy có tỷ giá null → 0 ở đây: doanh thu của nó
@@ -66,6 +82,22 @@ export const SHOP2MKT: Record<string, string> = Object.fromEntries(
  */
 export const MARKET_DA_TAT: ReadonlySet<string> = new Set(
     MARKET_ENTRIES.filter(([, v]) => v.status === "da_tat").map(([k]) => k));
+
+/** Shop POS của mọi nước có shop_id (kể cả nước đã tắt — nơi gọi tự lọc MARKET_DA_TAT).
+ *  CÙNG luật với shop_pos_tu_markets bên Python: key nằm ở biến TALPHA_POSCAKE_<mã shop>_KEY.
+ *  Trước 04/11/2026 danh sách này đọc ở talpha.yaml → poscake.shops, trùng từng dòng với markets —
+ *  nước thêm trên trang không có trong yaml, nên nay chỉ còn một nguồn là markets. */
+export type ShopPos = { name: string; label: string; shop_id: string; api_url: string; bien_key: string };
+export const POS_API_URL = "https://pos.pages.fm/api/v1";
+export const SHOP_POS: ShopPos[] = MARKET_ENTRIES
+    .filter(([, v]) => v.shop_label && String(v.shop_id || "").trim())
+    .map(([name, v]) => ({
+        name,
+        label: v.shop_label,
+        shop_id: String(v.shop_id).trim(),
+        api_url: POS_API_URL,
+        bien_key: `TALPHA_POSCAKE_${v.shop_label}_KEY`,
+    }));
 
 // ── X13: số chia đưa tiền thô của POS về ĐƠN VỊ TIỀN THẬT của shop ──
 // 6 shop GCC nhập giá kiểu minor units (cod=9900 ⇒ 99,00 SAR) → 100; shop Đài nhập

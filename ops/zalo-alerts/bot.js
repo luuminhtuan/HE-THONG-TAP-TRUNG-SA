@@ -35,6 +35,7 @@ const { slotAction, toMin, canDinhChinh, hanDinhChinh } = require("./schedule");
 const { toZalo, chiaTin } = require("./zalo_text");
 const { MARKETERS, DISPLAY, NUOC, chonNhomTheoTen, trangCuaCamp, campaignMarket } = require("./rules");
 const { buildTinGio, messThayTuPancake } = require("./tin_gio");
+const { duongDanPhu } = require("./thi_truong");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -651,6 +652,19 @@ async function chayDichVu() {
     await vongMoc();
     setInterval(vongMoc, 5 * 60 * 1000);
     setInterval(giuPhien, 60 * 60 * 1000);
+
+    // Thị trường nhập ở /admin → Thị trường đổi (thêm, sửa, tắt nước): luật nạp lúc khởi động đã cũ.
+    // Thoát lúc KHÔNG đang gửi để pm2 dựng lại bot với luật mới (04/11/2026, xem thi_truong.js).
+    const mocThiTruong = mtimeThiTruong();
+    setInterval(() => {
+        if (dangRa || mtimeThiTruong() === mocThiTruong) return;
+        log("Thị trường nhập trên trang đã đổi — khởi động lại để nạp luật mới.");
+        process.exit(0);
+    }, 60 * 1000);
+}
+
+function mtimeThiTruong() {
+    try { return fs.statSync(duongDanPhu()).mtimeMs; } catch { return 0; }
 }
 
 async function main() {

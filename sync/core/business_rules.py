@@ -23,10 +23,9 @@ from typing import Optional
 # phân ISO 4217. Shop Đài lưu NGUYÊN TWD (cod=950 ⇒ 950 TWD) → 1; shop GCC cũ lưu minor
 # units (cod=9900 ⇒ 99,00 SAR) → 100. Trước 20/08 mọi nơi chia 100 ⇒ tiền Đài tụt 100 lần.
 def _doc_thi_truong() -> dict:
-    from pathlib import Path
-    duong = Path(__file__).resolve().parents[2] / "config" / "talpha_rules.json"
-    with open(duong, encoding="utf-8") as fh:
-        return {k: v for k, v in (json.load(fh).get("markets") or {}).items() if isinstance(v, dict)}
+    # Đã phủ thị trường nhập ở /admin → Thị trường (04/11/2026) — xem sync/core/thi_truong.py.
+    from sync.core.thi_truong import doc_luat
+    return {k: v for k, v in (doc_luat().get("markets") or {}).items() if isinstance(v, dict)}
 
 
 def _so_duong(v):

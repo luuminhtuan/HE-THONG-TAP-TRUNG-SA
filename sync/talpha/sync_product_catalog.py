@@ -2,7 +2,8 @@
 sync/talpha/sync_product_catalog.py — Build product dimension từ Poscake POS.
 
 order_items chỉ có product_id + variation_id (UUID) + quantity; KHÔNG có tên/giá.
-Script này fetch products của 7 shop (6 GCC + Taiwan), dựng bảng `product_catalog`
+Script này fetch products của mọi shop POS khai ở talpha_rules.json → markets (nước đã tắt: giữ
+SP cũ, không gọi POS), dựng bảng `product_catalog`
 (variation_id → product_id, sku, name, retail_price, cost) để JOIN với order_items.
 
 Tạo bảng `product_catalog` (WRITE_TRUNCATE — dimension, full refresh)
@@ -19,7 +20,8 @@ from google.oauth2.service_account import Credentials
 from google.cloud import bigquery
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from sync.core.business_rules import SHOP_DA_TAT  # noqa: E402
+from sync.core.business_rules import SHOP_DA_TAT, shop_pos_tu_markets  # noqa: E402
+from sync.core.thi_truong import doc_luat  # noqa: E402
 
 # Trên máy chủ khoá POS do systemd nạp (talpha-catalog.service đọc dashboard-ui/.env.local).
 # Chạy tay ở máy dev thì đọc .env cạnh script hoặc theo cwd.
@@ -30,22 +32,6 @@ POS_API = "https://pos.pages.fm/api/v1"
 BQ_PROJECT = os.environ.get("BQ_PROJECT_ID", "cty-507710")
 BQ_DATASET = os.environ.get("BQ_DATASET", "TALPHA_Dataset")
 TABLE = f"{BQ_PROJECT}.{BQ_DATASET}.product_catalog"
-
-# Mặc định đọc config/projects/talpha.yaml của repo; TALPHA_CONFIG_YAML để trỏ chỗ khác.
-CONFIG_YAML = os.environ.get("TALPHA_CONFIG_YAML") or os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "config", "projects", "talpha.yaml",
-)
-
-# Danh sách shop CHỈ có 1 nguồn: config/projects/talpha.yaml mục poscake.shops.
-# Bản hardcode cũ thiếu Taiwan → 100% order_items của TW không khớp catalog
-# (102/102 dòng, đo 04/08/2026) → mất hẳn TW khỏi mọi báo cáo theo sản phẩm.
-# Đây là bẫy "danh sách shop/TKQC nằm ở nhiều nơi" — đừng chép lại lần nữa.
-_FALLBACK_SHOPS = [
-    ("SA", "1328205216"), ("AE", "1635200759"), ("KW", "1328205226"),
-    ("OM", "1942200986"), ("QA", "1021271617"), ("BH", "100943483"),
-    ("TW", "1022091930"),  # "TAIWAN SỸ ANH" từ 14/09/2026; trước đó 408074608, trước nữa 1328343252 (hệ thống cũ).
-]
 
 
 # Schema bảng product_catalog — khai ở CẤP MODULE để scripts/setup_bq.py import lại
@@ -66,24 +52,14 @@ CATALOG_SCHEMA = [
 
 
 def load_shops() -> list[tuple[str, str]]:
-    """[(shop_label, shop_id)] đọc từ talpha.yaml; yaml lỗi → fallback hardcode."""
-    try:
-        import yaml
-        with open(CONFIG_YAML, "r", encoding="utf-8") as f:
-            shops = (yaml.safe_load(f) or {}).get("poscake", {}).get("shops", []) or []
-        out = []
-        for s in shops:
-            # api_key trong yaml là "${TALPHA_POSCAKE_XX_KEY}" → lấy XX làm shop_label.
-            label = str(s.get("api_key", "")).replace("${TALPHA_POSCAKE_", "").replace("_KEY}", "")
-            sid = str(s.get("shop_id", "") or "")
-            if len(label) == 2 and sid:
-                out.append((label, sid))
-        if out:
-            return out
-        print(f"⚠️  {CONFIG_YAML}: không đọc được shop nào — dùng danh sách dự phòng")
-    except Exception as e:
-        print(f"⚠️  Không đọc được {CONFIG_YAML} ({e}) — dùng danh sách dự phòng")
-    return _FALLBACK_SHOPS
+    """[(shop_label, shop_id)] — CÙNG danh sách shop với sync đơn: talpha_rules.json → markets đã phủ
+    thị trường nhập ở /admin (shop_pos_tu_markets, 04/11/2026).
+
+    Danh sách shop CHỈ có 1 nguồn. Bản hardcode cũ thiếu Taiwan → 100% order_items của TW không
+    khớp catalog (102/102 dòng, đo 04/08/2026) → mất hẳn TW khỏi mọi báo cáo theo sản phẩm. Sau đó
+    đọc talpha.yaml kèm danh sách dự phòng gõ cứng 6 shop GCC đã chết — nay bỏ cả hai: đọc luật
+    hỏng thì DỪNG, không chạy bằng danh sách sai."""
+    return [(s["label"], s["shop_id"]) for s in shop_pos_tu_markets(doc_luat().get("markets") or {})]
 
 
 SHOPS = load_shops()

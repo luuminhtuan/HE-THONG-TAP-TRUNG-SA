@@ -74,7 +74,11 @@ function startLocalSpawn(): { started: boolean; error?: string; busy?: boolean }
     Object.assign(s, { running: true, startedAt: new Date().toISOString(), finishedAt: null,
         ok: null, exitCode: null, filesDone: 0, totalFiles: TOTAL_FILES, log: [], error: null });
     const traKhoa = () => fs.rmSync(LOCK, { recursive: true, force: true });
-    const proc = spawn(PY, ["-u", SCRIPT], { cwd: DIR, env: { ...process.env, PYTHONUNBUFFERED: "1", PYTHONPATH: RT } });
+    // TALPHA_REPO: bản chép runtime tìm repo qua biến này để phủ thị trường nhập ở /admin (04/11/2026)
+    // — thiếu thì Sheet xuất bằng nút này thiếu nước thêm trên trang, khác Sheet của vòng :20.
+    const proc = spawn(PY, ["-u", SCRIPT], {
+        cwd: DIR, env: { TALPHA_REPO: REPO, ...process.env, PYTHONUNBUFFERED: "1", PYTHONPATH: RT },
+    });
     if (proc.pid) fs.writeFileSync(path.join(LOCK, "pid"), String(proc.pid));
     proc.stdout.on("data", (d) => pushLog(String(d)));
     proc.stderr.on("data", (d) => pushLog(String(d)));

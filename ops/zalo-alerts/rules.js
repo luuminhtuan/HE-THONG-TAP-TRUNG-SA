@@ -8,8 +8,12 @@
 const fs = require("fs");
 const path = require("path");
 
+const { phuLuat, docPhu } = require("./thi_truong");
+
 const RULES_FILE = path.join(__dirname, "..", "..", "config", "talpha_rules.json");
-const RULES = JSON.parse(fs.readFileSync(RULES_FILE, "utf8"));
+// Đã phủ thị trường nhập ở /admin → Thị trường (04/11/2026, xem thi_truong.js) — nước thêm, sửa,
+// tắt trên trang tới bot ngay lần khởi động sau.
+const RULES = phuLuat(JSON.parse(fs.readFileSync(RULES_FILE, "utf8")), docPhu());
 
 const khongGhiChu = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => !k.startsWith("_")));
 

@@ -17,6 +17,29 @@ if not RULES_PATH:
 with open(RULES_PATH, encoding="utf-8") as _f:
     RULES = json.load(_f)
 
+
+def _phu_thi_truong(rules):
+    """Phủ thị trường nhập ở /admin → Thị trường (04/11/2026) lên luật vừa đọc — CÙNG hàm với sync
+    (sync/core/thi_truong.py của repo). Bản chép runtime trên máy chủ tìm repo qua TALPHA_REPO
+    (systemd đặt /opt/talpha). Không tìm thấy repo thì KÊU và chạy bằng luật gốc."""
+    import sys
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    try:
+        import talpha_paths
+        repo = talpha_paths.repo_dir()
+        if repo not in sys.path:
+            sys.path.insert(0, repo)
+        from sync.core.thi_truong import doc_phu, phu_luat
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️  talpha_rules: không nạp được thị trường nhập trên trang ({e}) — dùng luật gốc", file=sys.stderr)
+        return rules
+    return phu_luat(rules, doc_phu(repo))
+
+
+RULES = _phu_thi_truong(RULES)
+
 # ── Thị trường & tỷ giá (tương đương RATE/LOCALCUR/ALLM/MARKETS/SHOP2MKT cũ) ──
 # Nước "sap_chay" chưa có tỷ giá và số chia — khai null
 # trong JSON. Ở đây null → tỷ giá 0 (doanh thu 0, KHÔNG đoán) và số chia 1 (chưa có đơn

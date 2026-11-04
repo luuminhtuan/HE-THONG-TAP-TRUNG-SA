@@ -5,32 +5,22 @@
  * ảnh nằm ở `product.image` hoặc `variations[].images[0]`, tồn vật lý ở
  * `variations_warehouses[].actual_remain_quantity`.
  *
- * Danh sách shop đọc từ config/projects/talpha.yaml → poscake.shops. Một thị
- * trường = một shop; thêm thị trường thì khai ở đó, KHÔNG thêm map trong file này.
+ * Danh sách shop sinh từ talpha_rules.json → markets (SHOP_POS trong rules.ts, 04/11/2026 — trước
+ * đó đọc ở talpha.yaml → poscake.shops). Một thị trường = một shop; thêm thị trường ở config hoặc
+ * /admin → Thị trường, KHÔNG thêm map trong file này.
  */
 
-import fs from "fs";
-import yaml from "js-yaml";
-import { TALPHA_YAML } from "@/lib/talpha/config-path";
 import { docKhoa } from "@/lib/talpha/khoa";
-import { MARKET_DA_TAT, SHOP2MKT } from "@/lib/talpha/rules";
-
-const YAML_PATH = TALPHA_YAML();
+import { MARKET_DA_TAT, SHOP2MKT, SHOP_POS } from "@/lib/talpha/rules";
 
 interface Shop { name: string; api_url: string; api_key: string; shop_id: string }
 
-// Đọc danh sách shop POS từ talpha.yaml (resolve ${ENV} như realtime route). Bỏ shop của nước
-// đã tắt: tab Kho chỉ gọi POS của nước còn bán.
+// Shop POS của nước còn bán, key đã giải (Khoá kết nối trước, rồi .env.local). Nguồn là
+// talpha_rules.json → markets (đã phủ thị trường nhập trên trang) — xem SHOP_POS. Bỏ nước đã tắt:
+// tab Kho và Ads Command Center chỉ gọi POS của nước còn bán.
 export function loadShops(): Shop[] {
-    try {
-        const raw = fs.readFileSync(YAML_PATH, "utf-8")
-            .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, n) => docKhoa(n));
-        const cfg = yaml.load(raw) as { poscake?: { shops?: Shop[] } };
-        return (cfg?.poscake?.shops ?? []).filter((s) => !MARKET_DA_TAT.has(s.name));
-    } catch (e) {
-        console.error("pos-images: không đọc được talpha.yaml:", e);
-        return [];
-    }
+    return SHOP_POS.filter((s) => !MARKET_DA_TAT.has(s.name))
+        .map((s) => ({ name: s.name, api_url: s.api_url, api_key: docKhoa(s.bien_key), shop_id: s.shop_id }));
 }
 
 /**
