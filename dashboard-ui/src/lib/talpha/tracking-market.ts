@@ -40,7 +40,7 @@ export async function loadPartnerMarketShipments<S extends MarketStoreBase>(
     const regNumbers = new Set(Object.entries(store.registered).map(([k, r]) => r.number || clean(k)));
     // NULLS FIRST giữ thứ tự BigQuery (NULL đứng đầu khi xếp tăng) — dòng đầu của một mã thắng khoá.
     const rows = await query<PartnerOrderRow & { synced_at?: string }>(
-        `SELECT order_no, tracking, status, note, ship_method, city, contact_name, phone, cod, marketer,
+        `SELECT order_no, tracking, status, note, ship_method, city, contact_name, phone, cod, marketer, sku, quantity,
                 to_char(order_date, 'YYYY-MM-DD') AS order_date,
                 to_char(ship_date, 'YYYY-MM-DD') AS ship_date,
                 to_char(synced_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS synced_at
@@ -59,7 +59,11 @@ export async function loadPartnerMarketShipments<S extends MarketStoreBase>(
         const key = byKey.has(key0) ? `${key0}#${r.order_no || byKey.size}` : key0;
         const s = partnerOrderShipment(mk, r, store.statuses[key0] as SavedTrack | undefined,
             !!store.registered[key0] || (!!t && regNumbers.has(t)));
-        byKey.set(key, { ...s, tracking: key });
+        byKey.set(key, {
+            ...s, tracking: key,
+            sku: r.sku ? String(r.sku) : null,
+            quantity: Math.max(1, Number(String(r.quantity ?? "").replace(/[^\d.]/g, "")) || 1),
+        });
     }
     return { shipments: [...byKey.values()], store, lastImport };
 }

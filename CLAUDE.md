@@ -63,6 +63,9 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   Google (`bigquery_key.json`) thì ghi thêm file Google Sheet cho team — tuỳ chọn. Giá vốn + phí ship
   ước tính ở `lib/talpha/order-costs.ts` (dùng chung P&L và P&L theo SP). Các tab báo cáo
   không tính trước `report_start_date` (15/09/2026).
+* **Lãi lỗ đủ mọi khoản** (Kế toán → Lãi lỗ, 04/11/2026): `lib/talpha/lai-lo.ts` (hàm thuần, có
+  test) + `lai-lo-nguon.ts` (kiện thật từng nước) → `/api/talpha/lai-lo`. Đây là nơi trả lời
+  "lãi thật bao nhiêu"; tab P&L của mục Báo cáo chỉ là số tạm tính.
 * **Sync**: `sync/talpha/talpha_sync.py` + `sync/core/`. Docker: lịch `ops/docker/lich.py` (cùng giờ các
   systemd timer của VPS).
 * **Đăng nhập + phân quyền theo team** (05/10/2026): NextAuth v5 (`lib/auth.ts`); người dùng

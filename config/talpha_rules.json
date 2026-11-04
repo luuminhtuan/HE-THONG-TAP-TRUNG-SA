@@ -11,7 +11,8 @@
   "markets": {
     "Taiwan": {
       "shop_label": "TW",
-      "nguoi_cam": "Thuong",
+      "nguoi_cam": "SAnh",
+      "_nguoi_cam_note": "Sỹ Anh cầm Đài từ tháng 10/2026 (Sỹ Anh chốt 03/11/2026) — trước là Thương. Đổi người cầm là số lấn nước Đài + số của người đã ngừng chạy (marketers.*.ngung_chay_tu) về file người mới ngay vòng ghi Sheet kế tiếp.",
       "shop_id": "1022091930",
       "currency": "TWD",
       "currency_symbol": "NT$",
@@ -55,17 +56,20 @@
       "pos_money_divisor_confirmed": true,
       "product_code_in_name": false,
       "product_costs_vnd": {
-        "_note": "Giá vốn sản phẩm shop UAE theo ĐÚNG tên trên POS (so chữ HOA), tính bằng ĐỒNG — Sỹ Anh gửi 25/09/2026. 'hang' = tiền hàng, 'hop' = hộp trang sức gửi kèm (15.000đ, chỉ món trang sức). Giá vốn một cái = hang + hop.",
+        "_note": "Giá vốn sản phẩm shop UAE, tính bằng ĐỒNG — Sỹ Anh gửi 25/09/2026. 'hang' = tiền hàng, 'hop' = hộp trang sức gửi kèm (15.000đ, chỉ món trang sức). Giá vốn một cái = hang + hop. Tra theo MÃ VẠCH POS ('barcode') trước, rồi mới theo tên (so chữ HOA): 07/10/2026 shop đổi tên cả ba món (cùng product_id, cùng mã vạch) — Oralhoe Dental 002 → 'Health Product - 01', Lucky Bracelet 003 → 'Jewelry - 01', Gold Bracelet 001 → 'Jewelry - 02' (đối chiếu 04/11/2026). CHƯA có giá: mã vạch 4-1 'Jewelry - 03', 5-1 'Jewelry - 04', 6-1 'Jewelry - 05', 7-1 'Jewelry - 06', 8-1 'Health Product - 02', 9-1 'Health Product - 03'.",
         "ORALHOE DENTAL 002": {
-          "hang": 21400
+          "hang": 21400,
+          "barcode": "2-1"
         },
         "GOLD BRACELET 001": {
           "hang": 23400,
-          "hop": 15000
+          "hop": 15000,
+          "barcode": "1-1"
         },
         "LUCKY BRACELET 003": {
           "hang": 36600,
-          "hop": 15000
+          "hop": 15000,
+          "barcode": "3-1"
         }
       },
       "_product_code_note": "Shop UAE đánh số sản phẩm RIÊNG ('Oralhoe Dental 002', 'Gold Bracelet 001') — số cuối tên KHÔNG phải mã 3 số của bảng giá (002 là vòng phong thuỷ). Giá vốn đơn UAE chỉ tra qua product_name_aliases; tên chưa khai thì hiện ở khung 'Còn thiếu' của tab P&L, không lấy nhầm giá.",
@@ -204,7 +208,9 @@
     "Thuong": {
       "display": "Thương",
       "full": "Thương",
-      "also_sale": true
+      "also_sale": true,
+      "ngung_chay_tu": "2026-10-01",
+      "_ngung_chay_note": "Sỹ Anh chốt 03/11/2026: từ tháng 10 Thương KHÔNG chạy quảng cáo nữa (chỉ làm sale + vận đơn). Từ ngày ngung_chay_tu, MỌI số mang tên người này — đơn POS gắn tag 'Thương Thương' (Thương tạo đơn với vai sale: 16 đơn Đài 01–03/11), camp cũ TW/THƯƠNG… (chạy tới 14/10) — tính cho NGƯỜI CẦM nước đó (markets.*.nguoi_cam): Đài/Nhật → Sỹ Anh, Singapore → Thái, UAE → Lộc. Số trước ngày đó giữ tên Thương. Áp ở talpha_rules.nguoi_tinh_so (Sheet) và rules.nguoiTinhSo (bot Zalo)."
     },
     "Quynh": {
       "display": "Quỳnh",
@@ -238,7 +244,7 @@
   "_access_note": "PHÂN QUYỀN DASHBOARD (Sỹ Anh chốt 05/10/2026). Ba thị trường tách thành ba TEAM riêng, không liên quan nhau: Trung Đông (UAE — leader Lộc), Đông Nam Á (Singapore — leader Thái), Đông Á (Đài Loan — tạm thời Sỹ Anh). Thương làm vận đơn + sale cho cả ba team. Sỹ Anh là giám đốc: thấy hết, quản lý người dùng. Mỗi tài khoản (config/users.json, sửa ở trang /admin → Quản lý User) mang `role` + `teams`: role quyết định THẤY TAB NÀO (access.roles.*.tabs), teams quyết định THẤY NƯỚC NÀO (access.teams.*.markets, khoá = tên ở mục markets). teams [\"*\"] = mọi team. Mở thêm nước cho một team = thêm khoá vào markets của team đó, leader tự thấy, không sửa tài khoản. Chặn ở MÁY CHỦ (dashboard-ui/src/proxy.ts + từng route API), không chỉ ẩn nút: gõ thẳng địa chỉ API nước khác cũng bị từ chối. Đối soát chi phí QC, trợ lý CEO, xuất Sheet, quản lý người dùng/TKQC: chỉ giám đốc. 07/10/2026 (Sỹ Anh chốt): mục KẾ TOÁN = Tiền COD về (cod-recon) + Thanh toán quảng cáo (ads-recon). Tiền COD về do LEADER nước đó và giám đốc kiểm soát chung — leader xem, tải sao kê NAZA, nhập tiền về ngân hàng; không có vai trò kế toán riêng; sale (Thương) KHÔNG vào. Việc đòi NAZA tiền đơn quá hạn nằm ở Sổ đơn hàng, sale vẫn làm được. Thanh toán quảng cáo vẫn chỉ giám đốc. 08/10/2026 (Sỹ Anh chốt): mở NHẬT BẢN thành team riêng `nhat_ban` (leader tạm thời Sỹ Anh) — không gộp vào Đông Á. 10/10/2026 (Sỹ Anh chốt lại): GỘP Nhật vào Đông Á (Đông Á = Đài Loan + Nhật Bản), giữ khoá nhat_ban cho tài khoản cũ.",
   "access": {
     "teams": {
-      "_members_note": "members = marketer của team (khoá trong `marketers`). Sỹ Anh chốt 10/10/2026: số một người chạy LẤN sang nước của team khác (camp cũ chưa đổi tên) tính cho NGƯỜI CẦM nước đó (markets.<nước>.nguoi_cam) — Đài → Thương, Singapore → Thái, UAE → Lộc. Người không có trong members nào thì giữ nguyên số.",
+      "_members_note": "members = marketer của team (khoá trong `marketers`). Sỹ Anh chốt 10/10/2026: số một người chạy LẤN sang nước của team khác (camp cũ chưa đổi tên) tính cho NGƯỜI CẦM nước đó (markets.<nước>.nguoi_cam) — Đài → Sỹ Anh (từ 03/11/2026; trước là Thương), Singapore → Thái, UAE → Lộc, Nhật → Sỹ Anh. Người không có trong members nào thì giữ nguyên số.",
       "trung_dong": { "name": "Trung Đông", "markets": ["UAE"], "leader": "Lộc", "members": ["Loc"] },
       "dong_nam_a": { "name": "Đông Nam Á", "markets": ["Singapore"], "leader": "Thái", "members": ["Thai"] },
       "dong_a": { "name": "Đông Á", "markets": ["Taiwan", "Japan"], "leader": "Sỹ Anh (tạm thời)", "members": ["SAnh", "Quynh", "Thuong", "Thang"] },
@@ -258,18 +264,18 @@
       },
       "leader": {
         "label": "Leader thị trường",
-        "desc": "Mọi số của team mình: báo cáo, P&L, đơn, vận đơn, kế toán (tiền COD về), quảng cáo, kho, khách",
-        "tabs": ["overview", "pnl", "product-pnl", "order-ledger", "cod-recon", "tracking", "products", "marketing", "ad-spend", "ads-command", "ad-health", "customers", "market-intel"]
+        "desc": "Mọi số của team mình: báo cáo, P&L, đơn, vận đơn, kế toán (lãi lỗ, tiền COD về), quảng cáo, kho, khách",
+        "tabs": ["overview", "pnl", "product-pnl", "order-ledger", "lai-lo", "cod-recon", "tracking", "products", "marketing", "ad-spend", "ads-command", "ad-health", "customers", "market-intel"]
       },
       "marketer": {
         "label": "Marketer",
         "desc": "Quảng cáo của team mình",
-        "tabs": ["marketing", "ad-spend", "ads-command", "ad-health", "products"]
+        "tabs": ["lai-lo", "marketing", "ad-spend", "ads-command", "ad-health", "products"]
       },
       "sale": {
         "label": "Sale · vận đơn",
         "desc": "Sổ đơn (kể cả đòi NAZA tiền đơn quá hạn), theo dõi vận đơn, kho, khách — của các team được giao",
-        "tabs": ["order-ledger", "tracking", "products", "customers"]
+        "tabs": ["order-ledger", "lai-lo", "tracking", "products", "customers"]
       }
     }
   },
@@ -458,6 +464,17 @@
     "manual": {},
     "unassigned_label": "(chưa gán sale)"
   },
+  "_ket_qua_kd_note": "Tab Kế toán → Lãi lỗ (04/11/2026, lib/talpha/lai-lo.ts). Doanh thu = tiền COD kiện giao thành công; kiện đang đi ước theo tỉ lệ giao thật của nước (tính trên kiện lên đơn trong cua_so_ngay ngày, bỏ bo_gan_ngay ngày gần nhất vì kiện mới giao xong trước, hoàn về sau). Mẫu dưới mau_toi_thieu kiện thì lấy mọi kiện xong và ghi 'tạm'. cho_len_3pl_ngay: số ngày cuối kỳ mà phần doanh số chưa thành kiện 3PL được ước như kiện đang đi (sale lên đơn trễ). hang_hoan: hàng hoàn của nước trong quay_lai_kho_ban_tiep không mất giá vốn (UAE — kho D&T); nước khác mất nếu không gửi lại; còn hạn = trong luu_kho_ngay ngày kể từ lúc về kho (ước = ngày gửi + ve_kho_sau_gui_ngay).",
+  "ket_qua_kd": {
+    "ty_le_giao": { "cua_so_ngay": 90, "bo_gan_ngay": 21, "mau_toi_thieu": 20 },
+    "cho_len_3pl_ngay": 3,
+    "hang_hoan": {
+      "quay_lai_kho_ban_tiep": ["AE"],
+      "luu_kho_ngay": 30,
+      "ve_kho_sau_gui_ngay": 14
+    },
+    "nhom_van_hanh": ["Lương", "Mặt bằng", "Phần mềm & công cụ", "Điện thoại & sim", "Khác"]
+  },
   "_shipping_note": "Bảng giá 3PL Đài Loan — NAZA供应链. Nguồn: '18.10 COD TỪ TQ ĐI 8 NƯỚC.xlsx' sheet 'ĐÀI LOAN'. Phí ghi bằng RMB, sao kê cũng tính bằng RMB rồi mới quy ra VND. Đã soát ngược 463 dòng phí thật của 7 kỳ: khớp bảng giá 100%, lệch 0 RMB.",
   "shipping_fees": {
     "TW": {
@@ -559,7 +576,9 @@
       "return_ship_fee": 0,
       "cod_fee_pct": 0.02,
       "_ship_note": "Vận chuyển đơn thành công 17 AED, đồng giá cho đơn dưới 1 kg; đơn hoàn miễn phí vận chuyển. Thu hộ COD 2% doanh thu đơn.",
-      "warehouse": "Miễn phí lưu kho nếu mỗi ngày xuất dưới 10% tổng tồn kho; vượt thì tính phí lưu kho (bảng giá không ghi mức)."
+      "warehouse": "Miễn phí lưu kho cho mọi khách; NHƯNG ngày nào số hàng xuất kho dưới 10% tổng số hàng tồn thì tính phí lưu kho 75 AED/CBM/tháng (Sỹ Anh gửi lại bảng giá 04/11/2026 — ghi chú trước đó ghi ngược điều kiện). Tab Lãi lỗ CHƯA trừ khoản này: chưa có số CBM hàng tồn ở kho D&T.",
+      "storage_fee_aed_per_cbm_month": 75,
+      "storage_free_if_daily_out_pct_of_stock": 0.1
     },
     "JP": {
       "partner": "NAZA",
