@@ -1,0 +1,4 @@
+# Ảnh sync (ops/docker/sync.Dockerfile) chỉ cần requirements.txt — code gắn vào lúc chạy.
+# Gửi cả repo làm ngữ cảnh dựng là kéo theo node_modules, data/ (số tiền thật) và khoá.
+*
+!requirements.txt

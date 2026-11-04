@@ -17,6 +17,9 @@ gspread>=6.0.0
 google-api-python-client>=2.140.0
 google-auth-oauthlib>=1.2.0
 
+# ─── Postgres (kho mới, sync/core/pg.py — chỉ nạp khi TALPHA_KHO có postgres) ───
+psycopg[binary]>=3.2
+
 # ─── Gọi API Meta và Poscake ───
 requests>=2.32.0
 

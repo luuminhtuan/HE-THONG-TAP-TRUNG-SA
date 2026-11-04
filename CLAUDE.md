@@ -21,6 +21,9 @@ Trên máy Mac **phải** truyền `TALPHA_RULES`: loader Python ưu tiên
 `~/talpha_reports/talpha_rules.json` — bản của hệ thống cũ (GCC) còn nằm trên Mac — nên chạy
 trần là test đọc nhầm luật và báo lỗi giả.
 
+Máy thử bằng Docker (04/11/2026): `docker compose up -d` → dashboard http://localhost:3200 +
+Postgres 127.0.0.1:5433; `docker compose run --rm sync` kéo số mới vào Postgres. Xem `docs/POSTGRES.md`.
+
 ## Deploy — từ máy Mac
 
 ```bash
@@ -41,7 +44,9 @@ ssh root@139.180.131.21 'bash /opt/talpha/ops/talpha_reports/deploy_runtime.sh -
 
 * **Giao diện + API**: Next.js 16 App Router + React 19 + TailwindCSS, tất cả trong
   `dashboard-ui/`. Không có backend riêng.
-* **Kho số**: BigQuery `cty-507710.TALPHA_Dataset`, đọc qua `/api/query`.
+* **Kho số**: BigQuery `cty-507710.TALPHA_Dataset`, đọc qua `/api/query`. Đang chuyển dần sang
+  Postgres (04/11/2026, `docs/POSTGRES.md`): sync chọn kho bằng `TALPHA_KHO` (`bigquery` mặc định
+  · `postgres` · `ca_hai`), bảng khai bằng migration `db/migrations/`. Dashboard chưa đọc Postgres.
 * **Nguồn thô**: Meta Marketing API và POS Poscake — vừa đồng bộ theo giờ vào BigQuery,
   vừa gọi thẳng cho các màn hình cần số tức thời. Bảng đơn của đối tác 3PL (Google Sheet)
   chép vào bảng `partner_orders` mỗi vòng sync.
@@ -119,3 +124,4 @@ live, gom đơn theo giờ VN vs timezone từng TKQC. Đừng "fix cho khớp" 
 | `docs/CHUAN_DAT_TEN_CAMPAIGN.md` | Quy ước đặt tên campaign (quyết định gán marketer) |
 | `ops/pm2/README.md` | pm2 và systemd timer |
 | `ops/talpha_reports/README.md` | Đường ống báo cáo Google Sheets |
+| `docs/POSTGRES.md` | Chuyển kho sang Postgres, docker compose trên máy thử |

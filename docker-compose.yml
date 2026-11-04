@@ -1,0 +1,101 @@
+# ═══════════════════════════════════════════════════════════════════════════════════════
+# TALPHA trên máy thử — dashboard + Postgres (04/11/2026). Hướng dẫn: docs/POSTGRES.md
+#
+#   docker compose up -d                       # Postgres + migration + dashboard
+#   docker compose run --rm sync               # kéo số mới từ Meta / POS vào Postgres (một lần)
+#   docker compose --profile lich up -d        # thêm vòng kéo số mỗi giờ
+#   docker compose run --rm migrate dem        # số dòng từng bảng
+#
+# CHỈ DÙNG TRÊN MÁY THỬ: dashboard bỏ đăng nhập (DASHBOARD_PUBLIC) và mật khẩu Postgres là mặc định.
+# Cổng chỉ mở cho chính máy này (127.0.0.1). Máy chủ thật vẫn chạy theo ops/deploy/.
+#
+# Khoá Meta / POS / Pancake / 17TRACK: nhập ở /admin → Khoá kết nối của dashboard này — ghi vào
+# dashboard-ui/.env.khoa.local, sync đọc file đó mỗi lần chạy.
+# ═══════════════════════════════════════════════════════════════════════════════════════
+name: talpha
+
+x-sync: &sync
+  build:
+    context: .
+    dockerfile: ops/docker/sync.Dockerfile
+  image: talpha-sync
+  working_dir: /app
+  volumes:
+    - ./:/app
+  env_file:
+    - path: dashboard-ui/.env.local
+      required: false
+    - path: dashboard-ui/.env.khoa.local   # sau .env.local: khoá nhập trên trang thắng
+      required: false
+  environment:
+    DATABASE_URL: postgresql://talpha:talpha@db:5432/talpha
+    TALPHA_KHO: postgres          # chỉ ghi Postgres — không có đường ghi nhầm BigQuery thật
+    TALPHA_RULES: /app/config/talpha_rules.json
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: talpha
+      POSTGRES_PASSWORD: talpha
+      POSTGRES_DB: talpha
+    ports:
+      - "127.0.0.1:${PG_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U talpha -d talpha"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *sync
+    entrypoint: ["python", "-m", "sync.core.pg"]
+    command: ["migrate"]
+
+  dashboard:
+    image: node:22-bookworm-slim
+    working_dir: /app/dashboard-ui
+    command: ["sh", "/app/ops/docker/dashboard-dev.sh"]
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-3200}:3000"
+    environment:
+      DATABASE_URL: postgresql://talpha:talpha@db:5432/talpha
+      AUTH_URL: http://localhost:${DASHBOARD_PORT:-3200}
+      NEXTAUTH_URL: http://localhost:${DASHBOARD_PORT:-3200}
+      AUTH_SECRET: chi-dung-tren-may-thu-docker
+      AUTH_TRUST_HOST: "true"
+      DASHBOARD_PUBLIC: "true"
+      NEXT_PUBLIC_BQ_PROJECT: cty-507710
+      DATASET: TALPHA_Dataset
+      NEXT_PUBLIC_DATASET: TALPHA_Dataset
+      NEXT_PUBLIC_DEPLOYMENT_MODE: talpha
+      NEXT_PUBLIC_APP_NAME: TALPHA
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      - ./:/app
+      - dashboard_node_modules:/app/dashboard-ui/node_modules
+      - dashboard_next:/app/dashboard-ui/.next
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  sync:
+    <<: *sync
+    profiles: ["sync"]
+    command: ["python", "sync/talpha/talpha_sync.py"]
+
+  lich:
+    <<: *sync
+    profiles: ["lich"]
+    command: ["sh", "-c", "while true; do python sync/talpha/talpha_sync.py; sleep 3600; done"]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  dashboard_node_modules:
+  dashboard_next:

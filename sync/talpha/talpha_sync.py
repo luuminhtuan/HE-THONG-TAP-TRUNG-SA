@@ -11,6 +11,10 @@ Usage:
   python talpha_sync.py --test     # Test connections
   python talpha_sync.py --days 7   # Ads backfill 7 ngày
   python talpha_sync.py --shadow   # Ghi vào bảng *_shadow (shadow-run song song runtime)
+
+Kho ghi số chọn bằng TALPHA_KHO (04/11/2026, docs/POSTGRES.md):
+  bigquery (mặc định) — như cũ · postgres — chỉ Postgres ở DATABASE_URL (docker compose, máy thử;
+  không đụng BigQuery) · ca_hai — ghi cả hai, BigQuery vẫn là số chính, Postgres lỗi chỉ báo.
 """
 import os, sys, json, time, logging, argparse, requests
 from datetime import datetime, timedelta
@@ -33,6 +37,7 @@ from sync.core.bq_writer import (
     load_truncate, load_append, ensure_dataset, get_last_sync_ts,
     append_and_rebuild_orders, append_and_rebuild_ads,
 )
+from sync.core import pg_writer
 from sync.core.pos_client import PoscakeClient, PosFetchError
 from sync.core.partner_sheet import chuan_dong, doc_sheet
 from sync.core.meta_client import MetaAdsClient, TALPHA_AD_ACCOUNTS, MetaFetchError
@@ -47,6 +52,12 @@ FB_TOKEN = (
     os.environ.get('AUUS1_META_ACCESS_TOKEN', '')
 )
 DISCORD_WEBHOOK = os.environ.get('DISCORD_WEBHOOK_ETL', '')
+
+KHO = (os.getenv('TALPHA_KHO') or 'bigquery').strip().lower()
+if KHO not in ('bigquery', 'postgres', 'ca_hai'):
+    raise SystemExit(f"TALPHA_KHO={KHO!r} lạ — dùng bigquery | postgres | ca_hai")
+GHI_BQ = KHO in ('bigquery', 'ca_hai')
+GHI_PG = KHO in ('postgres', 'ca_hai')
 
 def _pos_shops():
     """Danh sách shop POS, đọc THẲNG từ config/talpha_rules.json → markets.
@@ -80,8 +91,36 @@ logging.basicConfig(
 )
 log = logging.getLogger('talpha_sync')
 
-client   = bigquery.Client(project=P)
+# Chế độ postgres không tạo client BigQuery: máy thử không có bigquery_key.json vẫn chạy được, và
+# không có đường nào ghi nhầm vào BigQuery thật.
+client   = bigquery.Client(project=P) if GHI_BQ else None
 sync_time = datetime.utcnow().isoformat()
+
+_pg_conn = None
+
+def _pg():
+    """Kết nối Postgres dùng chung cả vòng chạy; lần đầu nối thì chạy migration còn thiếu."""
+    global _pg_conn
+    if _pg_conn is None:
+        from sync.core.pg import chay_migrations, ket_noi
+        _pg_conn = ket_noi()
+        moi = chay_migrations(_pg_conn)
+        if moi:
+            log.info(f"  [postgres] chạy migration: {', '.join(moi)}")
+    return _pg_conn
+
+def _ghi_pg(viec: str, ham):
+    """Một bước ghi Postgres. Chế độ ca_hai: BigQuery là số chính, Postgres lỗi chỉ báo — không làm
+    hỏng vòng sync đang nuôi báo cáo thật. Chế độ postgres: lỗi là lỗi. Không ghi Postgres → None."""
+    if not GHI_PG:
+        return None
+    try:
+        return ham(_pg())
+    except Exception as e:
+        if KHO == 'postgres':
+            raise
+        log.error(f"  [postgres] {viec} lỗi (BigQuery vẫn ghi bình thường): {e}")
+        return None
 
 # ── Table suffix (--shadow → '_shadow') ─────────────────────────
 # Chỉ đổi TÊN BẢNG ĐÍCH khi ghi; không đổi bất kỳ logic nào khác.
@@ -316,16 +355,23 @@ def sync_all_orders(window_start=None) -> tuple[int, int]:
         # Ghi được ngay cả khi thiếu shop: append không xoá gì, đơn của shop lỗi chỉ
         # giữ nguyên bản cũ. Khác hẳn WRITE_TRUNCATE — trước đây thiếu 1 shop là phải
         # huỷ cả vòng ghi, nếu không sẽ xoá trắng đơn của shop đó.
-        n_orders, n_items = append_and_rebuild_orders(
-            client, P, DS, all_orders, all_items, ORDER_SCHEMA, ITEM_SCHEMA,
-            order_table=_tbl('sale_order'), item_table=_tbl('order_items'),
-            # Bảng sạch CHỈ gồm shop đang khai trong config. Đổi shop (14/09/2026:
-            # 408074608 → 1022091930) thì đơn shop cũ vẫn nằm trong *_raw, không xoá,
-            # nhưng không lọt vào báo cáo để bị đếm chung với shop mới.
-            # Gồm CẢ shop của nước đã tắt — lọc nó ra ở đây là đơn cũ của nước đó biến mất.
-            shop_ids=[s["shop_id"] for s in POS_SHOPS],
-            da_thay=da_thay,
-        )
+        # Bảng sạch CHỈ gồm shop đang khai trong config. Đổi shop (14/09/2026:
+        # 408074608 → 1022091930) thì đơn shop cũ vẫn nằm trong *_raw, không xoá,
+        # nhưng không lọt vào báo cáo để bị đếm chung với shop mới.
+        # Gồm CẢ shop của nước đã tắt — lọc nó ra ở đây là đơn cũ của nước đó biến mất.
+        shop_ids = [s["shop_id"] for s in POS_SHOPS]
+        n_orders = n_items = 0
+        if GHI_BQ:
+            n_orders, n_items = append_and_rebuild_orders(
+                client, P, DS, all_orders, all_items, ORDER_SCHEMA, ITEM_SCHEMA,
+                order_table=_tbl('sale_order'), item_table=_tbl('order_items'),
+                shop_ids=shop_ids, da_thay=da_thay,
+            )
+        ra = _ghi_pg('đơn', lambda pg: pg_writer.ghi_don(
+            pg, all_orders, all_items, _tbl('sale_order'), _tbl('order_items'),
+            shop_ids=shop_ids, da_thay=da_thay))
+        if ra and not GHI_BQ:
+            n_orders, n_items = ra
     else:
         log.warning("  Không fetch được order từ bất kỳ shop nào!")
         n_orders = n_items = 0
@@ -513,10 +559,17 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
     # X2: append/rebuild nên account lỗi KHÔNG còn xoá được spend đã có — dòng của
     # account đó chỉ giữ bản cũ. Vẫn raise ở cuối để báo cảnh, nhưng ghi trước đã.
     if all_ads:
-        n_ads = append_and_rebuild_ads(
-            client, P, DS, all_ads, ADS_SCHEMA, _tbl('fb_ads_data'), 'ad_id')
-        n_adsets = append_and_rebuild_ads(
-            client, P, DS, all_adsets, ADSET_SCHEMA, _tbl('fb_adset_data'), 'adset_id')
+        n_ads = n_adsets = 0
+        if GHI_BQ:
+            n_ads = append_and_rebuild_ads(
+                client, P, DS, all_ads, ADS_SCHEMA, _tbl('fb_ads_data'), 'ad_id')
+            n_adsets = append_and_rebuild_ads(
+                client, P, DS, all_adsets, ADSET_SCHEMA, _tbl('fb_adset_data'), 'adset_id')
+        ra = _ghi_pg('ads', lambda pg: (
+            pg_writer.ghi_ads(pg, all_ads, _tbl('fb_ads_data'), 'ad_id'),
+            pg_writer.ghi_ads(pg, all_adsets, _tbl('fb_adset_data'), 'adset_id')))
+        if ra and not GHI_BQ:
+            n_ads, n_adsets = ra
         log.info(f"  ads window {since}→{today} (cửa sổ chỉ làm mới, không xoá lịch sử)")
     else:
         log.warning("  Không fetch được insight ads từ bất kỳ account nào!")
@@ -565,6 +618,17 @@ def sync_ad_dictionary(max_ids: int = 600) -> int:
     (status='error') để không tra lại mãi.
     """
     api = 'https://graph.facebook.com/v21.0'
+    if GHI_BQ:
+        ids = _ad_id_can_tra_bq(max_ids)
+    else:
+        ids = pg_writer.ad_id_can_tra(_pg(), _tbl('sale_order'), max_ids)
+    if not ids:
+        log.info("  ad_dictionary: không có id mới cần tra")
+        return 0
+    return _tra_ad_dictionary(api, ids)
+
+
+def _ad_id_can_tra_bq(max_ids: int) -> list:
     dic_table = f'{P}.{DS}.ad_dictionary'
     try:
         client.get_table(dic_table)
@@ -572,7 +636,7 @@ def sync_ad_dictionary(max_ids: int = 600) -> int:
     except Exception:
         not_in_dic = ""   # bảng chưa tồn tại — vòng đầu tra tất
 
-    ids = [r.id for r in client.query(f"""
+    return [r.id for r in client.query(f"""
         WITH need AS (
             SELECT DISTINCT
                 CASE WHEN o.p_utm_term IS NOT NULL AND LENGTH(o.p_utm_term) > 10
@@ -586,10 +650,9 @@ def sync_ad_dictionary(max_ids: int = 600) -> int:
           AND id NOT IN (SELECT CAST(ad_id AS STRING) FROM `{P}.{DS}.fb_ads_data` WHERE ad_id IS NOT NULL)
           {not_in_dic}
         LIMIT {max_ids}""").result()]
-    if not ids:
-        log.info("  ad_dictionary: không có id mới cần tra")
-        return 0
 
+
+def _tra_ad_dictionary(api: str, ids: list) -> int:
     log.info(f"  ad_dictionary: tra Meta {len(ids)} ad_id lạ (batch 50)...")
     out, acc_names = [], {}
     for i in range(0, len(ids), 50):
@@ -639,10 +702,12 @@ def sync_ad_dictionary(max_ids: int = 600) -> int:
 
     if not out:
         return 0
-    F = bigquery.SchemaField
-    schema = [F(n, 'STRING') for n in ('ad_id', 'account_id', 'account_name',
-              'campaign_id', 'campaign_name', 'ad_name', 'status', 'sync_time')]
-    load_append(client, P, DS, 'ad_dictionary', out, schema)
+    if GHI_BQ:
+        F = bigquery.SchemaField
+        schema = [F(n, 'STRING') for n in ('ad_id', 'account_id', 'account_name',
+                  'campaign_id', 'campaign_name', 'ad_name', 'status', 'sync_time')]
+        load_append(client, P, DS, 'ad_dictionary', out, schema)
+    _ghi_pg('ad_dictionary', lambda pg: pg_writer.them_dong(pg, 'ad_dictionary', out))
     ok = sum(1 for r in out if r['status'] == 'ok')
     log.info(f"  ad_dictionary: +{len(out)} id ({ok} tra được, {len(out)-ok} lỗi)")
     return len(out)
@@ -696,7 +761,10 @@ def sync_campaign_data() -> int:
             log.error(f"  [{acct_id}] Campaign error: {e}")
         time.sleep(0.5)
 
-    n = load_truncate(client, P, DS, _tbl('fb_campaign_data'), all_campaigns, CAMPAIGN_SCHEMA)
+    n = load_truncate(client, P, DS, _tbl('fb_campaign_data'), all_campaigns, CAMPAIGN_SCHEMA) if GHI_BQ else 0
+    ra = _ghi_pg('campaign', lambda pg: pg_writer.thay_ca_bang(pg, _tbl('fb_campaign_data'), all_campaigns))
+    if not GHI_BQ:
+        n = ra or 0
     log.info(f"  {_tbl('fb_campaign_data')}: {n} rows")
     return n
 
@@ -739,8 +807,12 @@ def sync_partner_orders() -> int:
                            "sheet_id": sh["sheet_id"]}, sync_time)
         log.info(f"  [{sh.get('shop_label')}] bảng đối tác: {len(dong)} đơn")
         rows.extend(dong)
-    n = load_truncate(client, P, DS, _tbl(cfg.get("table") or "partner_orders"), rows, PARTNER_ORDER_SCHEMA)
-    log.info(f"  {_tbl(cfg.get('table') or 'partner_orders')}: {n} rows")
+    bang = _tbl(cfg.get("table") or "partner_orders")
+    n = load_truncate(client, P, DS, bang, rows, PARTNER_ORDER_SCHEMA) if GHI_BQ else 0
+    ra = _ghi_pg('partner_orders', lambda pg: pg_writer.thay_ca_bang(pg, bang, rows))
+    if not GHI_BQ:
+        n = ra or 0
+    log.info(f"  {bang}: {n} rows")
     return n
 
 
@@ -839,6 +911,10 @@ def main():
                              '— chỉ đổi tên bảng đích, không đổi logic')
     args = parser.parse_args()
 
+    if args.shadow and GHI_PG:
+        # Bảng *_shadow chỉ có ở BigQuery — Postgres không có, chạy là lỗi giữa chừng.
+        raise SystemExit("--shadow chỉ dùng với TALPHA_KHO=bigquery")
+
     if args.shadow:
         global TABLE_SUFFIX
         TABLE_SUFFIX = '_shadow'
@@ -853,16 +929,19 @@ def main():
     results  = {'errors': []}
 
     log.info("═" * 60)
-    log.info(f"TALPHA SYNC v3  [{P}.{DS}]")
+    log.info(f"TALPHA SYNC v3  [{P}.{DS}]" if KHO == 'bigquery' else f"TALPHA SYNC v3  [kho: {KHO}]")
     log.info(f"Mode: {'FULL' if run_all else ('ADS' if args.ads else 'ORDERS')} | "
              f"{'full-fetch' if args.full else 'incremental'}")
     log.info("═" * 60)
 
-    ensure_dataset(client, P, DS)
+    if GHI_BQ:
+        ensure_dataset(client, P, DS)
+    if KHO == 'postgres':
+        _pg()   # nối + migrate ngay đầu: Postgres không lên thì dừng trước khi gọi Meta / POS
 
     # Thị trường đổi trên trang → view BigQuery phải dựng lại. Không chặn vòng chạy: dựng lỗi thì
     # đơn và tiền ads vẫn kéo bình thường, lỗi báo ra và vòng sau thử lại. Shadow không đụng view.
-    if not args.shadow:
+    if GHI_BQ and not args.shadow:
         try:
             results['view_dung_lai'] = dung_lai_view_neu_thi_truong_doi()
         except Exception as e:
@@ -913,6 +992,9 @@ def main():
             results['ad_dic'] = sync_ad_dictionary()
         except Exception as e:
             log.error(f"  ad_dictionary failed: {e}")
+
+    if _pg_conn is not None:
+        _pg_conn.close()
 
     elapsed = (datetime.now() - start).total_seconds()
     log.info(f"\nDONE {elapsed:.0f}s — {results}")
