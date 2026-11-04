@@ -26,14 +26,15 @@ const TAB_NUOC = new Set(Object.entries(khongGhiChu(RULES.markets)).flatMap(([ke
 // Tab nước → cờ, theo thứ tự khai trong markets (Đài, Singapore, UAE) — dòng "theo nước" của tin ads.
 const CO_NUOC = Object.entries(khongGhiChu(RULES.markets)).map(([key, v]) => ({ key, tab: v.display || key, flag: v.flag || "" }));
 
-// Mã nước (mã shop: TW, SG, AE, JP) → { key: khoá trong markets, ten, flag, sapChay }. Nhóm Zalo
-// "ADS + VẬN ĐƠN <nước>" (08/10/2026) đặt theo mã này. sapChay = nước chưa có shop POS (Nhật lúc
-// mở) — chỉ có tiền ads + tin nhắn, tin không in đơn / doanh số / %ads.
+// Mã nước (mã shop: TW, SG, AE, JP) → { key: khoá trong markets, ten, flag, sapChay, daTat }. Nhóm
+// Zalo "ADS + VẬN ĐƠN <nước>" (08/10/2026) đặt theo mã này. sapChay = nước chưa có shop POS (Nhật lúc
+// mở) — chỉ có tiền ads + tin nhắn, tin không in đơn / doanh số / %ads. daTat (04/11/2026) = nước đã
+// tắt — bot không tự gửi tin gì cho nước đó nữa (bot.js lọc khỏi mọi lịch).
 const NUOC = Object.fromEntries(Object.entries(khongGhiChu(RULES.markets))
     .filter(([, v]) => v && typeof v === "object" && v.shop_label)
     .map(([key, v]) => {
         const ma = String(v.shop_label).toUpperCase();
-        return [ma, { ma, key, ten: v.display || key, flag: v.flag || "", sapChay: v.status === "sap_chay" }];
+        return [ma, { ma, key, ten: v.display || key, flag: v.flag || "", sapChay: v.status === "sap_chay", daTat: v.status === "da_tat" }];
     }));
 
 const CAMP_TOKENS = khongGhiChu(RULES.camp_marketer_tokens);

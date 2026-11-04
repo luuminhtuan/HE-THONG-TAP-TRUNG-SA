@@ -10,6 +10,7 @@ Dùng trong:
   - SQL queries trong dashboard đều phải khớp với logic ở đây
 """
 import json
+import os
 from typing import Optional
 
 # ─── R2 · R1b · R3: Thị trường — ĐỌC TỪ config/talpha_rules.json → markets ──────
@@ -50,6 +51,56 @@ DEFAULT_MONEY_DIVISOR = 100  # shop mới chưa khai: giữ mặc định minor 
 
 # Market code → tên chuẩn (MỌI nước khai trong JSON, kể cả nước sắp chạy)
 MARKET_NAMES: dict[str, str] = {v["shop_label"]: ten for ten, v in _THI_TRUONG.items()}
+
+
+# ─── Nước đã tắt (04/11/2026) ─────────────────────────────────────────────────
+# status "da_tat" = NGỪNG KÉO đơn mới của shop, nhưng GIỮ tỷ giá, số chia và mọi đơn cũ.
+# Đơn cũ phải ở lại vì mỗi vòng sync dựng lại bảng đơn sạch CHỈ từ những shop có trong danh
+# sách (bq_writer._loc_shop): bỏ shop khỏi danh sách là đơn cũ của nước đó biến khỏi báo cáo
+# ngay vòng sau. Nên shop đã tắt VẪN ở trong danh sách, chỉ mang cờ "tat" để vòng kéo bỏ qua.
+SHOP_DA_TAT: frozenset[str] = frozenset(
+    v["shop_label"] for v in _THI_TRUONG.values() if v.get("status") == "da_tat" and v.get("shop_label")
+)
+
+
+def shop_pos_tu_markets(markets: dict, env=None) -> list[dict]:
+    """Danh sách shop POS từ config/talpha_rules.json → markets.
+
+    Nước "sắp chạy" chưa có shop POS: bỏ qua, KHÔNG đưa vào danh sách. Để shop_id rỗng lọt vào
+    là bộ lọc shop_ids của bảng đơn coi như "không lọc" — đơn shop Đài cũ 408074608 quay lại báo
+    cáo. `or ""`: shop_id khai null (JSON) thì str(None) ra chữ "None" — lọt qua đây rồi làm bộ
+    lọc shop_ids nổ "shop_id phải là dãy số", hỏng cả vòng sync (08/10/2026, Nhật mở khi chưa có
+    shop: Sheet đứng từ 13:20).
+
+    Nước "đã tắt" VẪN có mặt, mang `tat=True` — xem SHOP_DA_TAT.
+    """
+    env = os.environ if env is None else env
+    out = []
+    for ten, m in (markets or {}).items():
+        if not isinstance(m, dict):
+            continue
+        label = m.get("shop_label", "")
+        if not label:
+            continue
+        sid = str(m.get("shop_id") or "").strip()
+        if not sid:
+            print(f"[pos] {ten} ({label}): chưa có shop POS — chưa kéo đơn")
+            continue
+        out.append({
+            "key": env.get(f"TALPHA_POSCAKE_{label}_KEY", ""),
+            "label": label,
+            "shop_id": sid,
+            "currency": m.get("currency", ""),
+            # Để quy đơn VND về tiền của shop — xem _drop_foreign_currency.
+            "rate_vnd": m.get("rate_vnd"),
+            "pos_money_divisor": m.get("pos_money_divisor") or 1,
+            "divisor_confirmed": m.get("pos_money_divisor_confirmed", True),
+            # Mốc NGÀY TẠO đơn (giờ VN) bắt đầu tính. Singapore có 54 đơn là bản sao đơn
+            # Đài được tạo sẵn trước khi mở — kéo về là đơn Đài bị đếm hai lần.
+            "orders_from": m.get("orders_from"),
+            "tat": m.get("status") == "da_tat",
+        })
+    return out
 
 # Poscake status_name → (category, sub_category)
 STATUS_CATEGORY_MAP: dict[str, tuple[str, str]] = {

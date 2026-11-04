@@ -50,15 +50,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const ddmm = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : String(d || ""));
 
+// Nước còn chạy: nước đã tắt (talpha_rules.json → status "da_tat", 04/11/2026) bị lọc khỏi MỌI lịch
+// gửi dưới đây, kể cả khi config.json còn ghi tên nó — tắt nước chỉ cần sửa một chỗ.
+const conChay = (m) => !!NUOC[m] && !NUOC[m].daTat;
 // Nước có nhóm "ADS + VẬN ĐƠN" — thứ tự gửi trong một mốc.
-const CAC_NUOC = ((CFG.nhomNuoc || {}).markets || Object.keys(NUOC)).map((x) => String(x).toUpperCase()).filter((m) => NUOC[m]);
+const CAC_NUOC = ((CFG.nhomNuoc || {}).markets || Object.keys(NUOC)).map((x) => String(x).toUpperCase()).filter(conChay);
 // Nước có theo dõi vận đơn (Nhật chưa có).
-const VD_MARKETS = (Array.isArray(VD.markets) && VD.markets.length ? VD.markets : ["TW"]).map((x) => String(x).toUpperCase());
+const VD_MARKETS = (Array.isArray(VD.markets) && VD.markets.length ? VD.markets : ["TW"]).map((x) => String(x).toUpperCase()).filter(conChay);
 // Nước Meta không báo số tin nhắn (Nhật): bản tin ads lấy mess từ Pancake (09/10/2026).
 const MESS_PANCAKE = (((CFG.nhomNuoc || {}).messPancake) || []).map((x) => String(x).toUpperCase());
 // Tin MỖI GIỜ (ads + tin nhắn Pancake + đơn theo page) — Sỹ Anh yêu cầu 09/10/2026 cho Nhật.
 const MG = CFG.moiGio || {};
-const MG_MARKETS = (MG.markets || []).map((x) => String(x).toUpperCase()).filter((m) => NUOC[m]);
+const MG_MARKETS = (MG.markets || []).map((x) => String(x).toUpperCase()).filter(conChay);
 // UAE không qua 17TRACK: đơn POS + tra thẳng trang WeShip (Sỹ Anh chốt 28/09/2026).
 const NGUON_NUOC = { AE: "đơn POS + tra trang WeShip" };
 

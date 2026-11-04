@@ -60,7 +60,9 @@ export default function TALPHAOrderLedgerTab(props: Props) {
     useEffect(() => {
         fetch("/api/talpha/markets").then((r) => r.json())
             .then((d: { markets?: { code: string; display: string; status?: string; co_van_don?: boolean }[] }) => {
-                const dangBan = (d.markets || []).filter((m) => m.status !== "sap_chay");
+                // Chỉ nước đang bán: nước sắp chạy chưa có đơn, nước đã tắt (04/11/2026) không còn sổ
+                // để làm việc — đơn cũ chờ thu tiền xem ở Kế toán → Tiền COD về.
+                const dangBan = (d.markets || []).filter((m) => (m.status || "dang_ban") === "dang_ban");
                 // Sổ đơn đọc đơn + trạng thái giao qua hãng vận chuyển: nước chưa khai tracking.markets
                 // (Nhật Bản lúc mới mở) gọi sổ là máy chủ trả 400 — ẩn nút thay vì hiện màn lỗi.
                 const list = dangBan.filter((m) => m.co_van_don !== false).map((m) => ({ code: m.code, display: m.display }));

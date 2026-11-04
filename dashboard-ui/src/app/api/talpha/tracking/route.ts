@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { bigquery } from "@/lib/bigquery";
 import {
     DISPLAY, UNASSIGNED, SALE_DISPLAY, SALE_UNASSIGNED,
-    attributeOrder, buildAdidOwner, resolveSale, normPosMarketer, PHONE_RULES,
+    attributeOrder, buildAdidOwner, resolveSale, normPosMarketer, PHONE_RULES, MARKET_DA_TAT, SHOP2MKT,
 } from "@/lib/talpha/rules";
 import { trackingFromLink } from "@/lib/talpha/cod-recon";
 import {
@@ -292,7 +292,9 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
             from, to,
             market: { code: mk.code, label: mk.label, currency: mk.currency, provider: mk.provider, source: mk.source },
-            markets: TRACK_MARKETS.filter((m) => !!a && canMarket(a, m.code)).map((m) => ({ code: m.code, label: m.label })),
+            // Nút chọn nước: bỏ nước đã tắt (sổ vận đơn của nó vẫn đọc được nếu gọi thẳng ?market=).
+            markets: TRACK_MARKETS.filter((m) => !!a && canMarket(a, m.code) && !MARKET_DA_TAT.has(SHOP2MKT[m.code]))
+                .map((m) => ({ code: m.code, label: m.label })),
             // Tên nguồn trạng thái cho màn hình và bot Zalo ("17TRACK" / "WeShip").
             provider: mk.provider,
             // WeShip không cần khoá — "có khoá" = tra được.

@@ -7,7 +7,8 @@
 import fs from "fs";
 import { RULES_JSON } from "./config-path";
 
-type MarketStatus = "dang_ban" | "sap_chay";
+/** "da_tat" (04/11/2026): ngừng kéo số mới, GIỮ tỷ giá / số chia / đơn cũ — xem MARKET_DA_TAT. */
+type MarketStatus = "dang_ban" | "sap_chay" | "da_tat";
 /** Một nước trong `markets`. Nước "sap_chay" chưa có shop/tỷ giá/số chia → các ô đó null. */
 type MarketInfo = {
     shop_label: string; shop_id?: string; currency: string; currency_symbol?: string;
@@ -58,6 +59,13 @@ export const EXCHANGE_RATES: Record<string, number> = Object.fromEntries(
 export const MESS_PANCAKE: string[] = MARKET_ENTRIES.filter(([, v]) => v.mess_source === "pancake").map(([k]) => k);
 export const SHOP2MKT: Record<string, string> = Object.fromEntries(
     MARKET_ENTRIES.map(([m, v]) => [v.shop_label, m]));
+/**
+ * Nước đã tắt (khoá "Taiwan"…): KHÔNG gọi POS sống (Kho, Ads Command Center), không hiện ở Sổ đơn,
+ * vận đơn, trang khoá. Vẫn giữ trong EXCHANGE_RATES / MONEY_DIV / SHOP2MKT — báo cáo những ngày
+ * nước đó còn chạy phải ra đúng số, và Tiền COD về còn thu nốt tiền đơn cũ.
+ */
+export const MARKET_DA_TAT: ReadonlySet<string> = new Set(
+    MARKET_ENTRIES.filter(([, v]) => v.status === "da_tat").map(([k]) => k));
 
 // ── X13: số chia đưa tiền thô của POS về ĐƠN VỊ TIỀN THẬT của shop ──
 // 6 shop GCC nhập giá kiểu minor units (cod=9900 ⇒ 99,00 SAR) → 100; shop Đài nhập

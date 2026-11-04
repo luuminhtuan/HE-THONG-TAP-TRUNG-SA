@@ -83,11 +83,15 @@ UAE đặt 100 nhưng **chưa đo** trên đơn SGD/AED thật — có đơn đ�
 sync cảnh báo "số chia CHƯA ĐO" ngay khi shop có đơn ghi SGD/AED có tiền).
 
 **Nước nằm ở `config/talpha_rules.json → markets`**, mỗi nước một khối có `status`:
-`dang_ban` (đã nối shop, có tỷ giá và số chia — số tiền được tính) hoặc `sap_chay` (máy
+`dang_ban` (đã nối shop, có tỷ giá và số chia — số tiền được tính), `sap_chay` (máy
 đã nhận ra trong tên campaign nên chi tiêu tách đúng nước, nhưng chưa kéo đơn, chưa
-tính tiền). Chi tiêu quảng cáo gán về nước bằng **ô đầu tên campaign** (`TW` · `SG` ·
-`AE`); tên cũ không ghi nước tính về Đài. Đơn gom ngày theo **giờ Việt Nam** cho cả ba
-nước. Kế hoạch mở rộng: trang "TALPHA ba thị trường".
+tính tiền) hoặc `da_tat` (04/11/2026 — đã tắt: ngừng kéo đơn mới, không gọi POS, ẩn khỏi
+Sổ đơn, vận đơn, Kho, Ads Command Center, bot Zalo; GIỮ tỷ giá, số chia, đơn cũ, danh mục SP
+nên báo cáo những ngày nó còn chạy không đổi, Tiền COD về vẫn mở để thu nốt tiền). **Đừng xoá
+khối của nước đã tắt**: sync dựng lại bảng đơn chỉ từ shop có trong danh sách, xoá khối là đơn
+cũ của nước đó biến khỏi báo cáo. Chi tiêu quảng cáo gán về nước bằng **ô đầu tên campaign**
+(`TW` · `SG` · `AE` · `JP`); tên cũ không ghi nước tính về Đài. Đơn gom ngày theo **giờ Việt
+Nam** cho mọi nước.
 
 ---
 

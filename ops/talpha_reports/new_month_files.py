@@ -25,7 +25,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import talpha_paths
 import report_files as rf
-from talpha_rules import ALLM, RULES
+from talpha_rules import ALLM, DA_TAT, RULES
 
 
 def main():
@@ -56,12 +56,13 @@ def main():
     print(json.dumps(bo, ensure_ascii=False, indent=1))
 
     # So với tháng KHAI TAY gần nhất (người ngừng chạy vẫn nằm trong talpha_rules.json nên
-    # không so với cả roster — kêu "thiếu" họ mỗi tháng là báo nhầm).
+    # không so với cả roster — kêu "thiếu" họ mỗi tháng là báo nhầm). Nước đã tắt không
+    # còn file tháng mới — cũng không kêu.
     here = os.path.dirname(os.path.abspath(__file__))
     cu = sorted(glob.glob(os.path.join(here, 'report_files', '*.json')))
     if cu:
         truoc = json.load(open(cu[-1], encoding='utf-8'))
-        for x in ALLM:
+        for x in [m for m in ALLM if m not in DA_TAT]:
             thieu = [k for k in (truoc.get('files') or {}).get(x, {}) if k not in bo['files'][x]]
             if thieu:
                 print(f'\nTHIẾU FILE {x.upper()} (so với {os.path.basename(cu[-1])}): ' + ', '.join(thieu))

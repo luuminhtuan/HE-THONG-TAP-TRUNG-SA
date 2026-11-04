@@ -27,7 +27,7 @@ load_dotenv(os.path.join(PROJECT_DIR, '.env'))
 from google.cloud import bigquery
 
 # ── sync/core imports ────────────────────────────────────────────
-from sync.core.business_rules import STATUS_CATEGORY_MAP, quy_doi_don_ngoai_te
+from sync.core.business_rules import STATUS_CATEGORY_MAP, quy_doi_don_ngoai_te, shop_pos_tu_markets
 from sync.core.bq_writer import (
     load_truncate, load_append, ensure_dataset, get_last_sync_ts,
     append_and_rebuild_orders, append_and_rebuild_ads,
@@ -56,42 +56,13 @@ def _pos_shops():
     Trước đây shop_id ghi cứng ở đây, và nó SAI: mã cũ 1328343252 là của hệ
     thống trước, key thật trả về "Cửa hàng không tồn tại". Ghi cứng ở hai nơi
     thì sớm muộn cũng lệch nhau — nay chỉ còn một chỗ khai là config.
+
+    Luật dựng danh sách (nước sắp chạy, nước đã tắt) ở shop_pos_tu_markets — có test.
     """
     path = os.path.join(PROJECT_DIR, "config", "talpha_rules.json")
     with open(path, encoding="utf-8") as fh:
         rules = json.load(fh)
-
-    out = []
-    for ten, m in (rules.get("markets") or {}).items():
-        if not isinstance(m, dict):
-            continue
-        label = m.get("shop_label", "")
-        if not label:
-            continue
-        # Nước "sắp chạy" chưa có shop POS: bỏ qua, KHÔNG
-        # đưa vào danh sách. Để shop_id rỗng lọt vào là bộ lọc shop_ids của bảng đơn
-        # coi như "không lọc" — đơn shop Đài cũ 408074608 sẽ quay lại báo cáo.
-        # `or ""`: shop_id khai null (JSON) thì str(None) ra chữ "None" — lọt qua đây rồi làm
-        # bộ lọc shop_ids nổ "shop_id phải là dãy số", hỏng cả vòng sync (08/10/2026, Nhật mở
-        # khi chưa có shop: Sheet đứng từ 13:20).
-        sid = str(m.get("shop_id") or "").strip()
-        if not sid:
-            print(f"[pos] {ten} ({label}): chưa có shop POS — chưa kéo đơn")
-            continue
-        out.append({
-            "key": os.environ.get(f"TALPHA_POSCAKE_{label}_KEY", ""),
-            "label": label,
-            "shop_id": sid,
-            "currency": m.get("currency", ""),
-            # Để quy đơn VND về tiền của shop — xem _drop_foreign_currency.
-            "rate_vnd": m.get("rate_vnd"),
-            "pos_money_divisor": m.get("pos_money_divisor") or 1,
-            "divisor_confirmed": m.get("pos_money_divisor_confirmed", True),
-            # Mốc NGÀY TẠO đơn (giờ VN) bắt đầu tính. Singapore có 54 đơn là bản sao đơn
-            # Đài được tạo sẵn trước khi mở — kéo về là đơn Đài bị đếm hai lần.
-            "orders_from": m.get("orders_from"),
-        })
-    return out
+    return shop_pos_tu_markets(rules.get("markets") or {})
 
 
 POS_SHOPS = _pos_shops()
@@ -299,6 +270,11 @@ def sync_all_orders(window_start=None) -> tuple[int, int]:
 
     failed_shops = []
     for shop in POS_SHOPS:
+        if shop.get("tat"):
+            # Nước đã tắt: không kéo đơn mới. Shop vẫn nằm trong POS_SHOPS để bước dựng lại
+            # bên dưới giữ đơn cũ của nó (xem SHOP_DA_TAT trong business_rules).
+            log.info(f"  {shop['label']}: nước đã tắt — không kéo đơn mới, giữ đơn cũ")
+            continue
         if not shop["key"]:
             log.warning(f"  Skipping {shop['label']} — no API key")
             continue
@@ -346,6 +322,7 @@ def sync_all_orders(window_start=None) -> tuple[int, int]:
             # Bảng sạch CHỈ gồm shop đang khai trong config. Đổi shop (14/09/2026:
             # 408074608 → 1022091930) thì đơn shop cũ vẫn nằm trong *_raw, không xoá,
             # nhưng không lọt vào báo cáo để bị đếm chung với shop mới.
+            # Gồm CẢ shop của nước đã tắt — lọc nó ra ở đây là đơn cũ của nước đó biến mất.
             shop_ids=[s["shop_id"] for s in POS_SHOPS],
             da_thay=da_thay,
         )
@@ -786,7 +763,9 @@ def test_connections():
 
     log.info("  POS shops:")
     for shop in POS_SHOPS:
-        if shop["key"]:
+        if shop.get("tat"):
+            log.info(f"    {shop['label']}: nước đã tắt — không gọi POS")
+        elif shop["key"]:
             pos = PoscakeClient(
                 api_key=shop["key"], shop_label=shop["label"],
                 shop_id="", currency=shop["currency"],

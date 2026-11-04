@@ -12,7 +12,7 @@ export { cn } from "@/lib/utils";
 // → 0, không đoán.
 export type MarketPublic = {
     key: string; code: string; display: string; currency: string; symbol: string;
-    rate_vnd: number; status: "dang_ban" | "sap_chay"; tokens: string[];
+    rate_vnd: number; status: "dang_ban" | "sap_chay" | "da_tat"; tokens: string[];
 };
 let MARKETS: MarketPublic[] = [];
 export function setMarkets(list: MarketPublic[]) { MARKETS = list; }

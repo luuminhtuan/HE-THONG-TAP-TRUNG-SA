@@ -14,10 +14,26 @@
 // Có dấu hay không dấu, hoa hay thường đều được. Không bắt đầu bằng "/" → không phải lệnh,
 // bot im — tin báo cáo của chính bot cũng đi qua đây nên điều này là bắt buộc.
 const { B, I } = require("./zalo_text");
+const { RULES } = require("./rules");
 
 const boDau = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
     .replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase();
 const gon = (s) => boDau(s).replace(/[\s.]/g, "");
+
+// Tên nước gõ sau /vandon → mã shop (TW, SG…). Sinh từ talpha_rules.json: mã shop, khoá nước, tên
+// hiển thị và mọi cách viết ở market_aliases (04/11/2026) — thêm nước ở config là lệnh nhận ngay.
+const NUOC_THEO_TEN = (() => {
+    const mk = RULES.markets || {};
+    const ma = (v) => (v && typeof v === "object" && v.shop_label ? String(v.shop_label).toUpperCase() : null);
+    const out = {};
+    for (const [key, v] of Object.entries(mk)) {
+        if (ma(v)) for (const ten of [v.shop_label, key, v.display]) if (ten) out[gon(ten)] = ma(v);
+    }
+    for (const [ten, key] of Object.entries(RULES.market_aliases || {})) {
+        if (!ten.startsWith("_") && ma(mk[key])) out[gon(ten)] = ma(mk[key]);
+    }
+    return out;
+})();
 
 const TEN_LENH = {
     baocao: "baocao", bc: "baocao",
@@ -49,10 +65,7 @@ function docLenh(text, { today, nguoi = [] }) {
     if (lenh === "vandon") {
         const nuoc = gon(con.join(" "));
         if (!nuoc) return { lenh };
-        if (["sg", "sing", "singapore", "sgp"].includes(nuoc)) return { lenh, nuoc: "SG" };
-        if (["tw", "dai", "dailoan", "taiwan"].includes(nuoc)) return { lenh, nuoc: "TW" };
-        if (["ae", "uae", "dubai"].includes(nuoc)) return { lenh, nuoc: "AE" };
-        if (["jp", "jpn", "japan", "nhat", "nhatban"].includes(nuoc)) return { lenh, nuoc: "JP" };
+        if (NUOC_THEO_TEN[nuoc]) return { lenh, nuoc: NUOC_THEO_TEN[nuoc] };
         // Mang theo lenh "vandon" để lỗi được trả lời ở nhóm VẬN ĐƠN (lỗi trơn bị bỏ ở đó).
         return { lenh, loi: `Không hiểu "${con.join(" ")}". Gõ /vandon (vận đơn của nước của nhóm này).` };
     }

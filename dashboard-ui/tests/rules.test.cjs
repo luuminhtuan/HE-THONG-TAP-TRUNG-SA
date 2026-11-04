@@ -121,9 +121,11 @@ t("mỗi nước có shop thì có mốc ngày tính đơn hợp lệ", () => {
     // Singapore có 54 đơn là bản sao đơn Đài tạo trước 14/09 — mốc này là thứ chặn đếm hai lần.
     assert.strictEqual(R.RULES.markets.Singapore.orders_from, "2026-09-14");
 });
-t("nước đang bán phải khai đủ shop, tỷ giá, số chia", () => {
+t("nước đang bán hoặc đã tắt phải khai đủ shop, tỷ giá, số chia", () => {
     for (const [ten, v] of Object.entries(R.RULES.markets)) {
-        if (v.status !== "dang_ban") continue;
+        assert.ok(["dang_ban", "sap_chay", "da_tat"].includes(v.status || "dang_ban"), `${ten}: status lạ ${v.status}`);
+        // Nước đã tắt: đơn cũ vẫn trong báo cáo, cần tỷ giá + số chia như lúc còn bán.
+        if (v.status !== "dang_ban" && v.status !== "da_tat") continue;
         assert.ok(String(v.shop_id || "").trim(), `${ten}: thiếu shop_id`);
         assert.ok(v.rate_vnd > 0, `${ten}: thiếu tỷ giá`);
         assert.ok(Number.isInteger(v.pos_money_divisor) && v.pos_money_divisor > 0, `${ten}: thiếu số chia`);

@@ -400,6 +400,7 @@ function NhanThiTruong({ me }: { me: Me | null }) {
     const { markets } = useMarkets();
     const dangBan = markets.filter((m) => m.status === "dang_ban").map((m) => m.display);
     const sapChay = markets.filter((m) => m.status === "sap_chay").map((m) => m.display);
+    const daTat = markets.filter((m) => m.status === "da_tat").map((m) => m.display);
     const team = me && !me.full && me.teams.length ? me.teams.map((t) => t.name).join(" · ") : null;
     return (
         <>
@@ -409,6 +410,9 @@ function NhanThiTruong({ me }: { me: Me | null }) {
             </span>
             {sapChay.length > 0 && (
                 <span className="mt-0.5 text-[10px] text-muted-foreground">Sắp chạy: {sapChay.join(" · ")}</span>
+            )}
+            {daTat.length > 0 && (
+                <span className="mt-0.5 text-[10px] text-muted-foreground">Đã tắt: {daTat.join(" · ")}</span>
             )}
         </>
     );

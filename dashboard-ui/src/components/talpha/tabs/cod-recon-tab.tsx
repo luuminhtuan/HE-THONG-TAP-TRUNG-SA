@@ -150,6 +150,7 @@ export default function TALPHACodReconTab(props: Props) {
     useEffect(() => {
         fetch("/api/talpha/markets").then((r) => r.json())
             .then((d: { markets?: { code: string; display: string; status?: string }[] }) => {
+                // Nước đã tắt VẪN có ở đây (04/11/2026): tắt rồi đối tác còn chuyển tiền đơn cũ về vài tuần.
                 const list = (d.markets || []).filter((m) => m.status !== "sap_chay").map((m) => ({ code: m.code, display: m.display }));
                 setDs(list);
                 setNuoc((n) => (list.length && !list.some((m) => m.code === n) ? list[0].code : n));

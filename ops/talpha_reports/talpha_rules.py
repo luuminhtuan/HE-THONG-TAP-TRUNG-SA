@@ -30,6 +30,9 @@ LOCALCUR = {m: v["currency"] for m, v in _MK.items()}
 CURRENCY_SYMBOL = {m: v.get("currency_symbol") or v["currency"] for m, v in _MK.items()}
 STATUS   = {m: v.get("status", "dang_ban") for m, v in _MK.items()}
 DANG_BAN = [m for m in _MK if STATUS[m] == "dang_ban"]
+# "da_tat" (04/11/2026): ngừng kéo số mới nhưng GIỮ tỷ giá, số chia — vẫn nằm trong ALLM để báo
+# cáo những ngày nước đó còn chạy không đổi. Chỉ việc nhìn về phía trước (file tháng mới) bỏ nó.
+DA_TAT   = [m for m in _MK if STATUS[m] == "da_tat"]
 # ── Ai cầm nước nào (Sỹ Anh chốt 10/10/2026) ──
 # Số một người chạy LẤN sang nước của team khác (camp cũ chưa đổi tên: Lộc còn camp Đài + Sing,
 # Thái còn camp Đài, Thương còn camp Sing) tính cho NGƯỜI CẦM nước đó. Thành viên team ở

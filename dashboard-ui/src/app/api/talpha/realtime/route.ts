@@ -18,6 +18,7 @@ const YAML_PATH = TALPHA_YAML();
 import {
     EXCHANGE_RATES, posMoneyDivisor, MARKET_CANON, CAMP_MARKETS, PAGE_ID_RE,
     normCampMarketer, normPosMarketer, isDelivered, campaignMarket, MESS_PANCAKE, MARKETS_PUBLIC,
+    MARKET_DA_TAT,
 } from "@/lib/talpha/rules";
 import { messPancakeChoCamp } from "@/lib/talpha/pancake-api";
 import { chiaMessTheoCamp } from "@/lib/talpha/pancake";
@@ -407,7 +408,8 @@ export async function GET(request: Request) {
         for (const id of accountIds) {
             if (!accountNames[id]) console.warn(`talpha.yaml: TKQC ${id} chưa có tên trong ad_account_names — UI sẽ hiện raw id`);
         }
-        const shops = cfg.poscake.shops;
+        // Nước đã tắt: không gọi POS sống. Đơn cũ của nó vẫn có ở phần đọc BigQuery (không lọc shop).
+        const shops = cfg.poscake.shops.filter((s) => !MARKET_DA_TAT.has(s.name));
 
         // A3-P2: gom cảnh báo cap phân trang (Meta 10 trang, POS 200 trang) trả về client
         const warnings: string[] = [];

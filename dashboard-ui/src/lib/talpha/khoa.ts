@@ -19,7 +19,7 @@ import fs from "fs";
 import path from "path";
 import yaml from "js-yaml";
 import { REPO_ROOT, TALPHA_YAML } from "./config-path";
-import { MESS_PANCAKE, RULES } from "./rules";
+import { MARKET_DA_TAT, MESS_PANCAKE, RULES, SHOP2MKT } from "./rules";
 import { cheKhoa, docEnv, docGhiChu, suaEnv } from "./khoa-file";
 import { PANCAKE_API, hanToken } from "./pancake";
 import { getQuota, keyId } from "./track17";
@@ -83,10 +83,12 @@ function yamlTho(): YamlTho {
 
 const tenBien = (v: unknown) => /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(String(v ?? "").trim())?.[1] || null;
 
-/** Khoá nào cần nhập. Shop POS lấy từ talpha.yaml — thêm shop ở đó là có thêm ô ở đây. */
+/** Khoá nào cần nhập. Shop POS lấy từ talpha.yaml — thêm shop ở đó là có thêm ô ở đây.
+ *  Nước đã tắt không gọi POS nữa nên không có ô (khoá cũ vẫn nằm trong file, bật lại là dùng). */
 export function danhSachKhoa(): KhoaDef[] {
     const cfg = yamlTho();
     const markets = RULES.markets as Record<string, { display?: string }>;
+    const conChay = (key?: string | null) => !!key && !MARKET_DA_TAT.has(key);
     const out: KhoaDef[] = [{
         ten: tenBien(cfg.meta_ads?.access_token) || "TALPHA_META_ACCESS_TOKEN",
         nhan: "Token Meta Ads",
@@ -95,7 +97,7 @@ export function danhSachKhoa(): KhoaDef[] {
     }];
     for (const s of cfg.poscake?.shops || []) {
         const ten = tenBien(s.api_key);
-        if (!ten) continue;
+        if (!ten || !conChay(s.name)) continue;
         out.push({
             ten,
             nhan: `Key POS ${markets[s.name]?.display || s.name}`,
@@ -105,8 +107,9 @@ export function danhSachKhoa(): KhoaDef[] {
         });
     }
     // Nước nào dùng Pancake / 17TRACK đọc từ talpha_rules.json (markets.*.mess_source, tracking.markets).
-    const nuocPancake = MESS_PANCAKE.map((k) => markets[k]?.display || k).join(", ");
-    const nuoc17 = TRACK_MARKETS.filter((m) => m.provider === "17track").map((m) => m.label).join(", ");
+    const nuocPancake = MESS_PANCAKE.filter(conChay).map((k) => markets[k]?.display || k).join(", ");
+    const nuoc17 = TRACK_MARKETS.filter((m) => m.provider === "17track" && conChay(SHOP2MKT[m.code]))
+        .map((m) => m.label).join(", ");
     out.push({
         ten: "TALPHA_PANCAKE_API_TOKEN",
         nhan: "Token Pancake",

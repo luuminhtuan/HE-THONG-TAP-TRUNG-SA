@@ -173,9 +173,11 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
 
     useEffect(() => {
         fetch("/api/talpha/markets").then((r) => r.json())
-            .then((d: { markets?: { code: string }[] }) => {
-                const codes = (d.markets || []).map((m) => m.code);
-                setMarket(!codes.length || codes.includes("TW") ? "TW" : codes[0]);
+            .then((d: { markets?: { code: string; status?: string }[] }) => {
+                // Nước đầu tiên còn bán, theo thứ tự khai trong config — không ưu tiên cứng Đài,
+                // để tắt Đài (04/11/2026) thì tab mở ở nước kế tiếp.
+                const codes = (d.markets || []).filter((m) => (m.status || "dang_ban") === "dang_ban").map((m) => m.code);
+                setMarket(codes[0] || "TW");
             })
             .catch(() => setMarket("TW"));
     }, []);

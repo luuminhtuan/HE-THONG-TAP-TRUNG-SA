@@ -18,6 +18,9 @@ from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 from google.cloud import bigquery
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from sync.core.business_rules import SHOP_DA_TAT  # noqa: E402
+
 # Trên máy chủ khoá POS do systemd nạp (talpha-catalog.service đọc dashboard-ui/.env.local).
 # Chạy tay ở máy dev thì đọc .env cạnh script hoặc theo cwd.
 load_dotenv()
@@ -143,8 +146,10 @@ def main():
                          "(chỉ dùng khi ĐÃ BIẾT vì sao hụt, VD POS thật sự xoá bớt SP)")
     args = ap.parse_args()
 
-    missing = [lb for lb, _ in SHOPS if not os.environ.get(f"TALPHA_POSCAKE_{lb}_KEY", "")]
-    if len(missing) == len(SHOPS):
+    # Shop của nước đã tắt không gọi POS (key có thể đã bỏ) — SP của nó giữ nguyên, xem dưới.
+    can_goi = [(lb, sid) for lb, sid in SHOPS if lb not in SHOP_DA_TAT]
+    missing = [lb for lb, _ in can_goi if not os.environ.get(f"TALPHA_POSCAKE_{lb}_KEY", "")]
+    if can_goi and len(missing) == len(can_goi):
         # Không có key nào = chưa nạp được .env. Chạy tiếp sẽ WRITE_TRUNCATE bảng
         # về 0 dòng và giết mọi báo cáo theo SP — đã xảy ra thật 04/08/2026.
         raise SystemExit(
@@ -153,11 +158,11 @@ def main():
             f"   DỪNG — không ghi BQ để khỏi xoá trắng {TABLE}."
         )
     if missing:
-        print(f"⚠️  Thiếu API key {len(missing)}/{len(SHOPS)} shop: {', '.join(missing)} "
+        print(f"⚠️  Thiếu API key {len(missing)}/{len(can_goi)} shop: {', '.join(missing)} "
               f"→ SP của các shop này sẽ BIẾN MẤT khỏi catalog sau khi ghi đè")
 
     all_rows = []
-    for label, sid in SHOPS:
+    for label, sid in can_goi:
         key = os.environ.get(f"TALPHA_POSCAKE_{label}_KEY", "")
         if not key:
             continue
@@ -176,7 +181,10 @@ def main():
     named = sum(1 for r in deduped if r["product_name"])
     print(f"Có tên SP: {named}/{len(deduped)} ({100*named/max(len(deduped),1):.0f}%)")
 
+    tat = sorted({lb for lb, _ in SHOPS if lb in SHOP_DA_TAT})
     if args.dry_run:
+        if tat:
+            print(f"Nước đã tắt {', '.join(tat)}: khi ghi thật sẽ giữ nguyên SP đang có trong {TABLE}")
         print("\n--dry-run: KHÔNG ghi BQ. Sample 3 rows:")
         for r in deduped[:3]:
             print(" ", {k: r[k] for k in ["variation_id", "sku", "product_name", "retail_price", "cost", "shop_label"]})
@@ -188,6 +196,24 @@ def main():
         scopes=["https://www.googleapis.com/auth/bigquery"],
     )
     bq = bigquery.Client(credentials=creds, project=BQ_PROJECT)
+
+    # ─── Nước đã tắt: GIỮ SP đang có của shop đó ───
+    # Bảng ghi đè cả bảng mỗi lần chạy, nên shop không gọi POS mà không mang SP cũ theo là
+    # SP đó mất — đơn cũ của nước đó hết tra được giá vốn, P&L các ngày nó còn chạy bị sai.
+    if tat:
+        giu = bq.query(
+            f"SELECT * FROM `{TABLE}` WHERE shop_label IN UNNEST(@nhan)",
+            job_config=bigquery.QueryJobConfig(
+                query_parameters=[bigquery.ArrayQueryParameter("nhan", "STRING", tat)]),
+        ).result()
+        n_giu = 0
+        for r in giu:
+            d = dict(r.items())
+            if d.get("variation_id") and d["variation_id"] not in seen:
+                seen.add(d["variation_id"])
+                deduped.append(d)
+                n_giu += 1
+        print(f"Nước đã tắt {', '.join(tat)}: giữ nguyên {n_giu} dòng SP đang có")
 
     # ─── Hàng rào chống ghi đè hụt ───
     # WRITE_TRUNCATE là atomic nhưng KHÔNG hoàn tác được: POS lỗi giữa chừng / hết

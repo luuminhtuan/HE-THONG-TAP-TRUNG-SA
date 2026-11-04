@@ -13,19 +13,20 @@ import fs from "fs";
 import yaml from "js-yaml";
 import { TALPHA_YAML } from "@/lib/talpha/config-path";
 import { docKhoa } from "@/lib/talpha/khoa";
-import { SHOP2MKT } from "@/lib/talpha/rules";
+import { MARKET_DA_TAT, SHOP2MKT } from "@/lib/talpha/rules";
 
 const YAML_PATH = TALPHA_YAML();
 
 interface Shop { name: string; api_url: string; api_key: string; shop_id: string }
 
-// Đọc danh sách shop POS từ talpha.yaml (resolve ${ENV} như realtime route).
+// Đọc danh sách shop POS từ talpha.yaml (resolve ${ENV} như realtime route). Bỏ shop của nước
+// đã tắt: tab Kho chỉ gọi POS của nước còn bán.
 export function loadShops(): Shop[] {
     try {
         const raw = fs.readFileSync(YAML_PATH, "utf-8")
             .replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, n) => docKhoa(n));
         const cfg = yaml.load(raw) as { poscake?: { shops?: Shop[] } };
-        return cfg?.poscake?.shops ?? [];
+        return (cfg?.poscake?.shops ?? []).filter((s) => !MARKET_DA_TAT.has(s.name));
     } catch (e) {
         console.error("pos-images: không đọc được talpha.yaml:", e);
         return [];
