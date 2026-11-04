@@ -55,3 +55,7 @@ Thumbs.db
 *.local.md
 !*.local.md.example
 *.xlsx
+
+# Vòng báo cáo chạy thẳng trong repo (docker compose, 04/11/2026): mốc chạy, khoá lượt (log đã có *.log)
+ops/talpha_reports/last_run_epoch
+ops/talpha_reports/.lock/

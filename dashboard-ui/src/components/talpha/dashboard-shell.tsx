@@ -142,10 +142,6 @@ export default function TALPHADashboardShell() {
     const [configLoaded, setConfigLoaded] = useState(false);
 
     useEffect(() => {
-        document.cookie = "activeDataset=TALPHA_Dataset; path=/;";
-    }, []);
-
-    useEffect(() => {
         let dung = false;
         fetch("/api/talpha/me")
             .then(async r => {

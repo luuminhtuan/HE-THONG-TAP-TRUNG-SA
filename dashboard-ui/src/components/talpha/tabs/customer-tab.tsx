@@ -8,7 +8,6 @@ import {
 } from "recharts";
 import { Users, Repeat, ShoppingCart, Crown, Heart } from "lucide-react";
 import TabSkeleton from "@/components/ui/tab-skeleton";
-import { BQ_PROJECT, DATASET } from "../constants";
 import { formatVNDCompact, marketName } from "../utils";
 import { useMarkets } from "../markets-context";
 
@@ -49,7 +48,7 @@ export default function TALPHACustomerTab({ dateRange }: Props) {
                     SELECT id,
                            ANY_VALUE(bill_phone_number) AS bill_phone_number,
                            ANY_VALUE(bill_full_name)    AS bill_full_name
-                    FROM \`${BQ_PROJECT}.${DATASET}.sale_order\`
+                    FROM sale_order
                     GROUP BY id
                 )`;
 
@@ -60,7 +59,7 @@ export default function TALPHACustomerTab({ dateRange }: Props) {
                         COUNT(DISTINCT NULLIF(o.bill_phone_number,'')) as unique_customers,
                         COUNT(DISTINCT v.order_id) as total_orders,
                         ROUND(SUM(v.revenue_vnd), 0) as total_revenue_vnd
-                    FROM \`${BQ_PROJECT}.${DATASET}.vw_orders_std\` v
+                    FROM vw_orders_std v
                     JOIN ${CUSTOMER_SRC} o ON o.id = v.order_id
                     WHERE v.order_date BETWEEN '${from}' AND '${to}' AND v.is_confirmed
                       AND o.bill_phone_number IS NOT NULL AND o.bill_phone_number != ''
@@ -77,12 +76,12 @@ export default function TALPHACustomerTab({ dateRange }: Props) {
                         SUM(cnt) as customers
                     FROM (
                         SELECT o.bill_phone_number, COUNT(DISTINCT v.order_id) as order_count, 1 as cnt
-                        FROM \`${BQ_PROJECT}.${DATASET}.vw_orders_std\` v
+                        FROM vw_orders_std v
                         JOIN ${CUSTOMER_SRC} o ON o.id = v.order_id
                         WHERE v.order_date BETWEEN '${from}' AND '${to}' AND v.is_confirmed
                           AND o.bill_phone_number IS NOT NULL AND o.bill_phone_number != ''
                         GROUP BY 1
-                    ) GROUP BY 1 ORDER BY MIN(order_count)`,
+                    ) AS kh GROUP BY 1 ORDER BY MIN(order_count)`,
 
                     // Q2: Top customers — DS Giao TC đã quy VND từ view
                     `SELECT
@@ -93,7 +92,7 @@ export default function TALPHACustomerTab({ dateRange }: Props) {
                         ROUND(SUM(v.revenue_vnd), 0) as revenue_vnd,
                         MIN(v.order_date) as first_order,
                         MAX(v.order_date) as last_order
-                    FROM \`${BQ_PROJECT}.${DATASET}.vw_orders_std\` v
+                    FROM vw_orders_std v
                     JOIN ${CUSTOMER_SRC} o ON o.id = v.order_id
                     WHERE v.order_date BETWEEN '${from}' AND '${to}' AND v.is_confirmed
                       AND o.bill_phone_number IS NOT NULL AND o.bill_phone_number != ''
@@ -105,7 +104,7 @@ export default function TALPHACustomerTab({ dateRange }: Props) {
                         COUNT(DISTINCT NULLIF(o.bill_phone_number,'')) as customers,
                         COUNT(DISTINCT v.order_id) as orders,
                         ROUND(SUM(v.revenue_vnd), 0) as revenue_vnd
-                    FROM \`${BQ_PROJECT}.${DATASET}.vw_orders_std\` v
+                    FROM vw_orders_std v
                     JOIN ${CUSTOMER_SRC} o ON o.id = v.order_id
                     WHERE v.order_date BETWEEN '${from}' AND '${to}' AND v.is_confirmed
                     GROUP BY 1 ORDER BY revenue_vnd DESC`,

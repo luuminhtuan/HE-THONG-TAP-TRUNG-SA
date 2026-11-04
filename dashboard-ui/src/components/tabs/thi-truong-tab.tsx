@@ -136,7 +136,7 @@ export default function ThiTruongTab() {
                     <p className="text-sm text-slate-400">
                         Thêm nước, sửa tỷ giá, tắt hoặc bật lại nước ngay ở đây — không phải sửa file hay deploy.
                         Dashboard áp dụng sau khi tự khởi động lại; sync, Sheet, bot từ vòng chạy kế tiếp; các tab đọc
-                        BigQuery sau khi vòng sync đầu giờ dựng lại view.
+                        view của kho số sau khi vòng sync kế tiếp (đầu giờ) dựng lại view.
                     </p>
                 </div>
                 <button

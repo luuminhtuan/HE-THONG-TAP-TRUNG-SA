@@ -9,7 +9,8 @@ Migration là file SQL trong db/migrations/, chạy theo thứ tự tên, mỗi 
 vào bảng schema_migrations — như `php artisan migrate`. Chỉ THÊM file mới, đừng sửa file đã chạy:
 máy đã chạy file đó sẽ không chạy lại, hai máy ra hai cấu trúc bảng khác nhau.
 
-  python -m sync.core.pg migrate     # chạy migration còn thiếu
+  python -m sync.core.pg migrate     # chạy migration còn thiếu + dựng lại view nếu luật đổi
+  python -m sync.core.pg view [--ep] # chỉ dựng lại view (--ep: dựng dù luật không đổi)
   python -m sync.core.pg dem         # số dòng từng bảng + lần sync gần nhất
 """
 import os
@@ -63,6 +64,19 @@ def chay_migrations(conn, thu_muc: Path = THU_MUC_MIGRATION) -> list:
         conn.execute("SELECT pg_advisory_unlock(%s)", (KHOA_MIGRATION,))
 
 
+def dat_mat_khau_vai_doc(conn) -> bool:
+    """Cho hai vai chỉ đọc (migration 0003) đăng nhập bằng TALPHA_DOC_PASSWORD — cổng /api/query của
+    dashboard đăng nhập bằng chúng. Không đặt biến → giữ NOLOGIN, /api/query từ chối chạy."""
+    mk = (os.environ.get("TALPHA_DOC_PASSWORD") or "").strip()
+    if not mk:
+        return False
+    for vai in ("talpha_doc", "talpha_doc_nuoc"):
+        # ALTER ROLE không nhận tham số $1 — ghép chuỗi đã thoát bằng quote_literal của Postgres.
+        lit = conn.execute("SELECT quote_literal(%s)", (mk,)).fetchone()[0]
+        conn.execute(f"ALTER ROLE {vai} LOGIN PASSWORD {lit}")
+    return True
+
+
 BANG_DEM = ("sale_order", "order_items", "fb_ads_data", "fb_adset_data",
             "fb_campaign_data", "ad_dictionary", "partner_orders")
 
@@ -83,6 +97,14 @@ def main(argv) -> int:
         if lenh == "migrate":
             moi = chay_migrations(conn)
             print("Đã chạy: " + ", ".join(moi) if moi else "Không còn migration nào chưa chạy.")
+            if not dat_mat_khau_vai_doc(conn):
+                print("Chưa đặt TALPHA_DOC_PASSWORD — 4 tab dùng /api/query (Marketing, Sức khoẻ QC, "
+                      "Khách hàng, Market Intel) sẽ báo chưa cấu hình.")
+            from sync.core.pg_view import dung_view
+            print("Đã dựng lại bộ view theo luật hiện tại." if dung_view(conn) else "View đang khớp luật.")
+        elif lenh == "view":
+            from sync.core.pg_view import dung_view
+            print("Đã dựng lại bộ view." if dung_view(conn, ep="--ep" in argv) else "View đang khớp luật.")
         elif lenh == "dem":
             for b, n, moi_nhat in dem_bang(conn):
                 print(f"  {b:<18} {n:>8} dòng   sync gần nhất: {moi_nhat or '—'}")

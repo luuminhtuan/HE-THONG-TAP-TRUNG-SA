@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 import { DISPLAY, parseCampaign, isTestCampaign, parseAudience, AUDIENCE_DISPLAY,
          parseProductCode, productName, isUnknownProduct, isProductTesting } from "@/lib/talpha/rules";
 import { getAccess } from "@/lib/talpha/access";
 import { seesAllMarkets, sqlCampaignMarketKey } from "@/lib/talpha/access-rules";
 
 export const dynamic = "force-dynamic";
-
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 
 // ═══════════════════════════════════════════════════════════════════
 // CHI PHÍ QUẢNG CÁO — nguồn cho tab "Chi phí quảng cáo".
@@ -33,48 +30,34 @@ export async function GET(req: NextRequest) {
     // mọi nước nên lọc theo DÒNG campaign, không theo tài khoản.
     const a = await getAccess(req);
     const hep = !a || !seesAllMarkets(a);
-    const locNuoc = hep ? `AND ${sqlCampaignMarketKey("campaign_name")} IN UNNEST(@mk)` : "";
-    const thamSo = hep
-        ? { params: { from, to, mk: a?.markets || [] }, types: { mk: ["STRING"] } }
-        : { params: { from, to } };
+    const locNuoc = hep ? `AND ${sqlCampaignMarketKey("campaign_name")} = ANY(@mk::text[])` : "";
+    const thamSo = hep ? { from, to, mk: a?.markets || [] } : { from, to };
 
     try {
-        const [dayRows] = await bigquery.query({
-            query: `
+        const dayRows = await query(`
                 SELECT date, SUM(spend) AS spend, SUM(impressions) AS impressions,
                        SUM(clicks) AS clicks,
                        SUM(messaging_conversations_started) AS messages
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.fb_ads_data\`
-                WHERE date BETWEEN @from AND @to ${locNuoc}
-                GROUP BY date ORDER BY date`,
-            ...thamSo,
-        });
+                FROM fb_ads_data
+                WHERE date BETWEEN @from::date AND @to::date ${locNuoc}
+                GROUP BY 1 ORDER BY 1`, thamSo);
 
-        const [accRows] = await bigquery.query({
-            query: `
+        const accRows = await query(`
                 SELECT account_id, ANY_VALUE(account_name) AS account_name,
                        SUM(spend) AS spend,
                        SUM(messaging_conversations_started) AS messages
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.fb_ads_data\`
-                WHERE date BETWEEN @from AND @to ${locNuoc}
-                GROUP BY account_id`,
-            ...thamSo,
-        });
+                FROM fb_ads_data
+                WHERE date BETWEEN @from::date AND @to::date ${locNuoc}
+                GROUP BY 1`, thamSo);
 
-        const [campRows] = await bigquery.query({
-            query: `
+        const campRows = await query(`
                 SELECT campaign_name, ANY_VALUE(account_name) AS account_name,
                        SUM(spend) AS spend, SUM(clicks) AS clicks,
                        SUM(impressions) AS impressions,
                        SUM(messaging_conversations_started) AS messages
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.fb_ads_data\`
-                WHERE date BETWEEN @from AND @to AND spend > 0 ${locNuoc}
-                GROUP BY campaign_name`,
-            ...thamSo,
-        });
-
-        const dayValue = (d: unknown) =>
-            d && typeof d === "object" ? (d as { value: string }).value : String(d ?? "");
+                FROM fb_ads_data
+                WHERE date BETWEEN @from::date AND @to::date AND spend > 0 ${locNuoc}
+                GROUP BY 1`, thamSo);
 
         // ── Bổ theo marketer ──
         type Bucket = { spend: number; messages: number; clicks: number; impressions: number; campaigns: number };
@@ -206,7 +189,7 @@ export async function GET(req: NextRequest) {
             .sort((a, b) => b.spend_vnd - a.spend_vnd);
 
         const daily = (dayRows as Record<string, unknown>[]).map((r) => ({
-            date: dayValue(r.date),
+            date: String(r.date ?? ""),
             spend_vnd: Number(r.spend) || 0,
             impressions: Number(r.impressions) || 0,
             clicks: Number(r.clicks) || 0,

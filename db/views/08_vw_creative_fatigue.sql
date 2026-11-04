@@ -21,32 +21,32 @@
 -- Nguồn: vw_fb_ads_std (30 ngày gần nhất)
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE OR REPLACE VIEW `{PROJECT}.{DATASET}.vw_creative_fatigue` AS
+CREATE VIEW vw_creative_fatigue AS
 WITH ad_stats AS (
     SELECT
         ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name,
-        LOGICAL_OR(is_test_campaign)    AS is_test_campaign,
+        bool_or(is_test_campaign)    AS is_test_campaign,
         COUNT(DISTINCT date)            AS active_days,
         SUM(impressions)                AS total_impressions,
         SUM(reach)                      AS total_reach,
         SUM(clicks)                     AS total_clicks,
         SUM(spend)                      AS total_spend,
         -- frequency suy ra = tổng impr / tổng reach
-        SAFE_DIVIDE(SUM(impressions), NULLIF(SUM(reach), 0)) AS avg_frequency,
+        safe_divide(SUM(impressions), NULLIF(SUM(reach), 0)) AS avg_frequency,
         -- CTR tổng (fraction)
-        SAFE_DIVIDE(SUM(clicks), NULLIF(SUM(impressions), 0)) AS avg_ctr,
+        safe_divide(SUM(clicks), NULLIF(SUM(impressions), 0)) AS avg_ctr,
         -- CTR 3 ngày / 7 ngày gần nhất (fraction)
-        SAFE_DIVIDE(
-            SUM(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY), clicks, 0)),
-            NULLIF(SUM(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY), impressions, 0)), 0)
+        safe_divide(
+            SUM(CASE WHEN date >= (CURRENT_DATE - 3) THEN clicks ELSE 0 END),
+            NULLIF(SUM(CASE WHEN date >= (CURRENT_DATE - 3) THEN impressions ELSE 0 END), 0)
         ) AS ctr_last3d,
-        SAFE_DIVIDE(
-            SUM(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY), clicks, 0)),
-            NULLIF(SUM(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY), impressions, 0)), 0)
+        safe_divide(
+            SUM(CASE WHEN date >= (CURRENT_DATE - 7) THEN clicks ELSE 0 END),
+            NULLIF(SUM(CASE WHEN date >= (CURRENT_DATE - 7) THEN impressions ELSE 0 END), 0)
         ) AS ctr_last7d,
         MAX(date)                       AS last_active_date
-    FROM `{PROJECT}.{DATASET}.vw_fb_ads_std`
-    WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    FROM vw_fb_ads_std
+    WHERE date >= (CURRENT_DATE - 30)
       AND impressions > 0
     GROUP BY ad_id, ad_name, adset_id, adset_name, campaign_id, campaign_name
 )
@@ -76,3 +76,4 @@ WHERE (total_impressions >= {TH_IMPRESSIONS_MIN_DEAD} AND avg_ctr < {TH_CTR_DEAD
    OR avg_frequency > {TH_FREQUENCY_SATURATED}
    OR (ctr_last3d < ctr_last7d * {TH_CTR_WEAROUT_RATIO} AND total_impressions >= {TH_IMPRESSIONS_MIN_WEAROUT})
 ORDER BY fatigue_severity DESC, total_spend DESC;
+

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 import { MARKETS_PUBLIC, PHONE_RULES } from "@/lib/talpha/rules";
 import { buildAlerts, trackMarket, TRACK_MARKETS } from "@/lib/talpha/tracking";
 import { loadMarketShipments, nhanNguonDoiTac } from "@/lib/talpha/tracking-market";
@@ -7,9 +7,6 @@ import { buildMarketLedger, type ProductInfo } from "@/lib/talpha/market-ledger"
 import { homNayVN, locTheoNgayLenDon } from "@/lib/talpha/order-ledger";
 
 export const dynamic = "force-dynamic";
-
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 
 // ═══════════════════════════════════════════════════════════════════
 // SỔ ĐƠN HÀNG — THỊ TRƯỜNG NGOÀI ĐÀI (Sỹ Anh yêu cầu 29/09/2026)
@@ -21,7 +18,7 @@ const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 //                       đổi theo khoảng ngày đang xem.
 //
 // Đơn và trạng thái đọc CHUNG hàm với Theo dõi vận đơn và Đối soát COD (loadMarketShipments):
-//   • Singapore: bảng đối tác (BigQuery partner_orders) + 17TRACK;
+//   • Singapore: bảng đối tác (partner_orders) + 17TRACK;
 //   • UAE: đơn POS + trạng thái tra ở WeShip.
 // Hàng của đơn đọc thêm: Singapore ở cột SKU của bảng đối tác, UAE ở dòng hàng POS (order_items).
 // Đài Loan KHÔNG đi qua đây: sổ Đài là /api/talpha/order-ledger (bảng NAZA + sao kê NAZA).
@@ -34,27 +31,26 @@ async function docHang(code: string, partnerMarket: string | null): Promise<{ ma
     const map = new Map<string, ProductInfo>();
     try {
         if (partnerMarket) {
-            const [rows] = await bigquery.query({
-                query: `SELECT order_no, sku, SAFE_CAST(quantity AS INT64) AS quantity
-                        FROM \`${BQ_PROJECT}.${BQ_DATASET}.partner_orders\` WHERE market = @m`,
-                params: { m: partnerMarket },
-            });
-            for (const r of rows as { order_no: string; sku: string | null; quantity: number | null }[]) {
+            const rows = await query<{ order_no: string; sku: string | null; quantity: number | null }>(
+                `SELECT order_no, sku, quantity FROM partner_orders WHERE market = @m`,
+                { m: partnerMarket },
+            );
+            for (const r of rows) {
                 const k = String(r.order_no || "").trim();
                 if (!k || map.has(k)) continue;
                 map.set(k, { sku: String(r.sku || "").trim(), quantity: r.quantity ?? null });
             }
         } else {
-            const [rows] = await bigquery.query({
-                query: `SELECT i.order_id, i.product_name, i.variation_name, SAFE_CAST(i.quantity AS INT64) AS quantity
-                        FROM \`${BQ_PROJECT}.${BQ_DATASET}.order_items\` i
-                        JOIN (SELECT DISTINCT shop_id, order_id FROM \`${BQ_PROJECT}.${BQ_DATASET}.vw_orders_std\` WHERE market = @m) v
-                          ON v.shop_id = i.shop_id AND v.order_id = i.order_id
-                        ORDER BY i.order_id, i.product_name`,
-                params: { m: code },
-            });
+            const rows = await query<{ order_id: string; product_name: string | null; variation_name: string | null; quantity: number | null }>(
+                `SELECT i.order_id, i.product_name, i.variation_name, i.quantity
+                 FROM order_items i
+                 JOIN (SELECT DISTINCT shop_id, order_id FROM vw_orders_std WHERE market = @m) v
+                   ON v.shop_id = i.shop_id AND v.order_id = i.order_id
+                 ORDER BY i.order_id, i.product_name`,
+                { m: code },
+            );
             const gop = new Map<string, { ten: string[]; sl: number }>();
-            for (const r of rows as { order_id: string; product_name: string | null; variation_name: string | null; quantity: number | null }[]) {
+            for (const r of rows) {
                 const k = String(r.order_id || "");
                 const g = gop.get(k) || { ten: [], sl: 0 };
                 const sl = Number(r.quantity) || 0;

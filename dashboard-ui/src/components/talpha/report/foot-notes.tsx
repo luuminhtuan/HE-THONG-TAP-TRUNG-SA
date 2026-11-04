@@ -16,7 +16,7 @@ interface Props {
     warning?: ReactNode;
     /** Các dòng định nghĩa/cách tính. */
     notes?: ReactNode[];
-    /** Tên các view BigQuery, vd ["vw_orders_std", "vw_fb_ads_std"] */
+    /** Tên các view trong kho số (db/views/), vd ["vw_orders_std", "vw_fb_ads_std"] */
     sources?: string[];
     className?: string;
 }

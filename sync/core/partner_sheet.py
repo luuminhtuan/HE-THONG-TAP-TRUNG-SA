@@ -1,13 +1,13 @@
 """
-Bảng đơn của đối tác 3PL (Google Sheet) → dòng cho bảng BigQuery `partner_orders`.
+Bảng đơn của đối tác 3PL (Google Sheet) → dòng cho bảng Postgres `partner_orders`.
 
 Vì sao cần: POS chỉ biết đơn đã CHỐT; bảng của đối tác mới có mã vận đơn, ngày xuất kho,
 trạng thái giao và tiền COD đối tác thu. Tab Theo dõi vận đơn / Sổ đơn hàng đọc thẳng bảng
-Đài (tracking.partner_file) mà không lưu vào kho số — có bảng trong BigQuery thì muốn tra,
+Đài (tracking.partner_file) mà không lưu vào kho số — có bảng trong kho số thì muốn tra,
 đối chiếu với POS hay dựng báo cáo lúc nào cũng được, kể cả khi đối tác sửa/xoá dòng.
 Sỹ Anh chia sẻ bảng Singapore 25/09/2026 ("cập nhật vào database cho những lúc cần").
 
-Module này KHÔNG ghi BigQuery — chỉ đọc Sheet và chuẩn hoá dòng. Ghi là việc của
+Module này KHÔNG ghi kho số — chỉ đọc Sheet và chuẩn hoá dòng. Ghi là việc của
 talpha_sync.sync_partner_orders() qua bq_writer.load_truncate (LOAD JOB, không DML).
 Cấu hình (sheet nào, tên cột nào) ở config/talpha_rules.json → partner_orders.
 """

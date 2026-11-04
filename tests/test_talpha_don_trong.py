@@ -45,6 +45,6 @@ def test_so_luong_la_chu_la_khong_doan():
 
 def test_sql_cung_dieu_kien():
     sql = sql_la_don_trong()
-    assert "IFNULL(SAFE_CAST(total_quantity AS FLOAT64), 0) = 0" in sql
-    assert "IFNULL(total_price, 0) = 0" in sql and "IFNULL(cod, 0) = 0" in sql
+    assert "COALESCE(CASE WHEN btrim(total_quantity) ~" in sql and "COALESCE(cod, 0) = 0" in sql
+    assert "COALESCE(total_price, 0) = 0" in sql
     assert "t.total_price" in sql_la_don_trong("t")

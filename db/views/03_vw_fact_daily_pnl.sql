@@ -30,31 +30,31 @@
 -- Nguồn: vw_orders_std + vw_fb_ads_std
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE OR REPLACE VIEW `{PROJECT}.{DATASET}.vw_fact_daily_pnl` AS
+CREATE VIEW vw_fact_daily_pnl AS
 WITH ord AS (
     SELECT
         order_date                                          AS report_date,
-        COUNTIF(is_valid)                                   AS total_orders,
-        COUNTIF(is_confirmed)                               AS success_orders,
-        COUNTIF(is_returned)                                AS returned_orders,
-        SUM(IF(is_valid,     revenue_vnd, 0))               AS provisional_revenue,
-        SUM(IF(is_confirmed, revenue_vnd, 0))               AS confirmed_revenue,
-        SUM(IF(is_confirmed, cogs_vnd, 0))                  AS confirmed_cogs,
-        SUM(IF(is_valid,     shipping_fee_vnd, 0))          AS shipping_fee,
-        SUM(IF(is_valid,     partner_fee_vnd, 0))           AS partner_fee,
-        SUM(IF(is_returned,  return_fee_vnd, 0))            AS return_fee,
+        COUNT(*) FILTER (WHERE is_valid)                                   AS total_orders,
+        COUNT(*) FILTER (WHERE is_confirmed)                               AS success_orders,
+        COUNT(*) FILTER (WHERE is_returned)                                AS returned_orders,
+        SUM(CASE WHEN is_valid THEN revenue_vnd ELSE 0 END)               AS provisional_revenue,
+        SUM(CASE WHEN is_confirmed THEN revenue_vnd ELSE 0 END)               AS confirmed_revenue,
+        SUM(CASE WHEN is_confirmed THEN cogs_vnd ELSE 0 END)                  AS confirmed_cogs,
+        SUM(CASE WHEN is_valid THEN shipping_fee_vnd ELSE 0 END)          AS shipping_fee,
+        SUM(CASE WHEN is_valid THEN partner_fee_vnd ELSE 0 END)           AS partner_fee,
+        SUM(CASE WHEN is_returned THEN return_fee_vnd ELSE 0 END)            AS return_fee,
 
         -- ─── G2: cảnh báo độ tin cậy, mang lên cùng số ───
         -- Độ phủ giá vốn bình quân THEO DOANH THU ĐÃ GIAO (không phải theo số
         -- đơn): 1 đơn to chưa khai giá vốn hại hơn 10 đơn nhỏ đã khai.
-        SAFE_DIVIDE(
-            SUM(IF(is_confirmed, revenue_vnd * COALESCE(cogs_coverage, 0), 0)),
-            NULLIF(SUM(IF(is_confirmed, revenue_vnd, 0)), 0)
+        safe_divide(
+            SUM(CASE WHEN is_confirmed THEN revenue_vnd * COALESCE(cogs_coverage, 0) ELSE 0 END),
+            NULLIF(SUM(CASE WHEN is_confirmed THEN revenue_vnd ELSE 0 END), 0)
         )                                                   AS cogs_coverage_wavg,
         -- Đơn thuộc market chưa khai tỷ giá ⇒ mọi cột tiền của đơn đó sai.
-        COUNTIF(is_valid AND NOT is_fx_known)               AS orders_fx_unknown
-    FROM `{PROJECT}.{DATASET}.vw_orders_std`
-    WHERE order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
+        COUNT(*) FILTER (WHERE is_valid AND NOT is_fx_known)               AS orders_fx_unknown
+    FROM vw_orders_std
+    WHERE order_date >= (CURRENT_DATE - 90)
     GROUP BY report_date
 ),
 ads AS (
@@ -62,18 +62,18 @@ ads AS (
         date                                                AS report_date,
         -- Chi tiêu THẬT: đã loại campaign test (rule CEO §7). Cờ is_test_campaign
         -- lấy từ vw_fb_ads_std — một định nghĩa duy nhất cho mọi view.
-        SUM(IF(NOT is_test_campaign, spend, 0))             AS ads_spend,
-        SUM(IF(is_test_campaign,     spend, 0))             AS ads_spend_test,
+        SUM(CASE WHEN NOT is_test_campaign THEN spend ELSE 0 END)             AS ads_spend,
+        SUM(CASE WHEN is_test_campaign THEN spend ELSE 0 END)             AS ads_spend_test,
         SUM(impressions)                                    AS impressions,
         SUM(reach)                                          AS reach,
         SUM(clicks)                                         AS clicks,
         SUM(messages)                                       AS total_messages,
         SUM(leads)                                          AS total_leads,
         ROUND(AVG(NULLIF(cpm, 0)), 2)                       AS avg_cpm,
-        SAFE_DIVIDE(SUM(clicks), NULLIF(SUM(impressions), 0)) AS ctr,
-        SAFE_DIVIDE(SUM(impressions), NULLIF(SUM(reach), 0))  AS frequency
-    FROM `{PROJECT}.{DATASET}.vw_fb_ads_std`
-    WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 90 DAY)
+        safe_divide(SUM(clicks), NULLIF(SUM(impressions), 0)) AS ctr,
+        safe_divide(SUM(impressions), NULLIF(SUM(reach), 0))  AS frequency
+    FROM vw_fb_ads_std
+    WHERE date >= (CURRENT_DATE - 90)
     GROUP BY report_date
 )
 SELECT
@@ -83,8 +83,8 @@ SELECT
     COALESCE(o.total_orders, 0)                             AS total_orders,
     COALESCE(o.success_orders, 0)                           AS success_orders,
     COALESCE(o.returned_orders, 0)                          AS returned_orders,
-    ROUND(SAFE_DIVIDE(o.success_orders, NULLIF(o.total_orders, 0)) * 100, 1) AS success_rate_pct,
-    ROUND(SAFE_DIVIDE(o.returned_orders, NULLIF(o.total_orders, 0)) * 100, 1) AS return_rate_pct,
+    ROUND(safe_divide(o.success_orders, NULLIF(o.total_orders, 0)) * 100, 1) AS success_rate_pct,
+    ROUND(safe_divide(o.returned_orders, NULLIF(o.total_orders, 0)) * 100, 1) AS return_rate_pct,
 
     -- ─── Dual revenue (VND) ───
     COALESCE(o.provisional_revenue, 0)                      AS provisional_revenue,
@@ -110,17 +110,17 @@ SELECT
     , 2)                                                    AS net_profit,
 
     -- ─── CPA (theo đơn giao thành công) ───
-    ROUND(SAFE_DIVIDE(a.ads_spend, NULLIF(o.success_orders, 0)), 2) AS cpa,
+    ROUND(safe_divide(a.ads_spend, NULLIF(o.success_orders, 0)), 2) AS cpa,
 
     -- ─── Dual ROAS ───
-    ROUND(SAFE_DIVIDE(o.provisional_revenue, NULLIF(a.ads_spend, 0)), 2) AS provisional_roas,
-    ROUND(SAFE_DIVIDE(o.confirmed_revenue,   NULLIF(a.ads_spend, 0)), 2) AS confirmed_roas,
+    ROUND(safe_divide(o.provisional_revenue, NULLIF(a.ads_spend, 0)), 2) AS provisional_roas,
+    ROUND(safe_divide(o.confirmed_revenue,   NULLIF(a.ads_spend, 0)), 2) AS confirmed_roas,
 
     -- ─── Early signals (chat-sale) ───
     COALESCE(a.total_messages, 0)                          AS total_messages,
     COALESCE(a.total_leads, 0)                             AS total_leads,
-    ROUND(SAFE_DIVIDE(a.ads_spend, NULLIF(a.total_messages, 0)), 2) AS cost_per_mess,
-    ROUND(SAFE_DIVIDE(a.ads_spend, NULLIF(a.total_leads, 0)), 2)    AS cost_per_lead,
+    ROUND(safe_divide(a.ads_spend, NULLIF(a.total_messages, 0)), 2) AS cost_per_mess,
+    ROUND(safe_divide(a.ads_spend, NULLIF(a.total_leads, 0)), 2)    AS cost_per_lead,
 
     -- ─── Ads efficiency ───
     COALESCE(a.avg_cpm, 0)                                 AS avg_cpm,
@@ -140,3 +140,4 @@ SELECT
     )                                                      AS net_profit_reliable
 FROM ord o
 FULL OUTER JOIN ads a ON o.report_date = a.report_date;
+

@@ -178,9 +178,8 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
 
             {data.missing_months.length > 0 && (
                 <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-                    <strong>Thiếu số tháng {data.missing_months.join(", ")}:</strong> chưa khai ID file TỔNG TEAM của tháng đó trong{" "}
-                    <code className="rounded bg-amber-100 px-1 dark:bg-amber-500/20">talpha_rules.json → report_sheets.grand_by_month</code>.
-                    Các con số dưới đây <strong>chưa gồm</strong> tháng đó.
+                    <strong>Thiếu số tháng {data.missing_months.join(", ")}:</strong> vòng báo cáo (phút :20 mỗi giờ)
+                    chưa ghi số tháng đó. Các con số dưới đây <strong>chưa gồm</strong> tháng đó.
                 </div>
             )}
 

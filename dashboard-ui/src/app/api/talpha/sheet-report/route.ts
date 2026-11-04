@@ -1,126 +1,49 @@
-// Đọc THẲNG số từ file Google Sheet "TỔNG TEAM THÁNG n" — cùng file CEO đang xem.
+// Số báo cáo tháng — CÙNG bảng số với file Google Sheet "TỔNG TEAM THÁNG n".
 //
 // Vì sao cần: bot từng tự tính lại số rồi gửi lên nhóm, và mỗi lần rule đổi là tin nhắn
 // lệch với Sheet (01/09: lệch cả camp test lẫn cách gán đơn; rồi lệch tiếp vì hai bên
-// gom ngày theo hai múi giờ khác nhau). Đọc thẳng ô trong Sheet thì không còn chỗ nào
-// để lệch: Sheet nói gì bot đọc đúng thế.
+// gom ngày theo hai múi giờ khác nhau). Nay chỉ MỘT chỗ tính: format_all.py dựng các tab
+// của file TỔNG TEAM rồi ghi vào bảng Postgres bao_cao_tab (04/11/2026 — trước đó route đọc
+// thẳng file Sheet); có khoá Google thì ghi thêm lên Sheet. Route đọc bảng đó, ô nào cũng
+// đúng như ô trên Sheet.
 //
 // Hai chế độ:
 //   ?date=YYYY-MM-DD          một ngày — bot Zalo (giữ nguyên dạng trả về).
 //   ?from=YYYY-MM-DD&to=…     cộng cả khoảng — tab Tổng quan (25/09/2026: tab tự tính từ
-//                             BigQuery theo luật riêng nên lệch Sheet; nay đọc cùng file).
+//                             BigQuery theo luật riêng nên lệch Sheet; nay đọc cùng bảng số).
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleAuth } from "google-auth-library";
-import fs from "fs";
-import path from "path";
-import { DISPLAY, GRAND_SHEET_BY_MONTH, MARKETS_PUBLIC, REPORT_START_DATE, RULES, UNASSIGNED } from "@/lib/talpha/rules";
+import { query } from "@/lib/db";
+import { DISPLAY, MARKETS_PUBLIC, REPORT_START_DATE, UNASSIGNED } from "@/lib/talpha/rules";
 import { getAccess } from "@/lib/talpha/access";
 import { canMarket, seesAllMarkets, type Access } from "@/lib/talpha/access-rules";
 
 export const dynamic = "force-dynamic";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-// drive.readonly: tìm file TỔNG TEAM trong thư mục "Tháng N" (fileTheoThang bên dưới).
-const SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly", "https://www.googleapis.com/auth/drive.readonly"];
 
-// "32.842.574" → 32842574 · "5,9%" → 5.9 · "" → 0. Sheet đang ở locale vi_VN nên
-// dấu chấm là phân cách nghìn, dấu phẩy là thập phân — đọc nhầm là sai gấp nghìn lần.
+// Ô số ghi dạng SỐ (format_all.py). Ô chữ cũ kiểu Sheet vi_VN vẫn đọc được:
+// "32.842.574" → 32842574 · "5,9%" → 5.9 · "" → 0 — dấu chấm là phân cách nghìn, dấu phẩy là
+// thập phân, đọc nhầm là sai gấp nghìn lần.
 function soVN(v: unknown): number {
+    if (typeof v === "number") return Number.isFinite(v) ? v : 0;
     const s = String(v ?? "").replace(/[đ%\s]/g, "").trim();
     if (!s) return 0;
     const n = Number(s.replace(/\./g, "").replace(",", "."));
     return Number.isFinite(n) ? n : 0;
 }
 
-function auth() {
-    const raw = process.env.GOOGLE_CREDENTIALS_JSON;
-    if (raw) return new GoogleAuth({ credentials: JSON.parse(raw), scopes: SCOPES });
-    const keyFile = path.join(process.cwd(), "../bigquery_key.json");
-    if (fs.existsSync(keyFile)) return new GoogleAuth({ keyFile, scopes: SCOPES });
-    return new GoogleAuth({ scopes: SCOPES });   // ADC
-}
+type Tab = { title: string; head: string[]; rows: unknown[][] };
 
-type Tab = { title: string; head: string[]; rows: string[][] };
-
-// Mỗi file đọc một lần batchGet cho mọi tab. Giữ 60 giây: tab Tổng quan gọi lại mỗi lần
-// đổi ngày, còn Sheet chỉ đổi mỗi giờ một lần (vòng talpha-report phút :20).
-const CACHE = new Map<string, { at: number; tabs: Tab[] }>();
-const CACHE_MS = 60_000;
-
-async function docFile(sheetId: string): Promise<Tab[]> {
-    const hit = CACHE.get(sheetId);
-    if (hit && Date.now() - hit.at < CACHE_MS) return hit.tabs;
-
-    const client = await auth().getClient();
-    const base = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`;
-    const meta: any = (await client.request({ url: `${base}?fields=sheets.properties.title` })).data;
-    const titles: string[] = (meta.sheets || []).map((s: any) => s.properties.title);
-
-    // FORMATTED_VALUE: cột Ngày là ô ngày thật, lấy thô sẽ ra số serial chứ không ra
-    // "01/09/2026" để so.
-    const q = titles.map((t) => `ranges=${encodeURIComponent(`'${t}'!A1:N40`)}`).join("&");
-    const batch: any = (await client.request({
-        url: `${base}/values:batchGet?${q}&valueRenderOption=FORMATTED_VALUE`,
-    })).data;
-
-    const tabs: Tab[] = [];
-    (batch.valueRanges || []).forEach((vr: any, i: number) => {
-        const rows: string[][] = vr.values || [];
-        if (!rows.length) return;
-        const head = rows[0].map((h) => String(h || "").trim());
-        // Chỉ tab SỐ LIỆU (có cột tiền ads). Ai thêm tab ghi chú/danh sách vào file TỔNG TEAM
-        // thì cũng không bị đọc nhầm thành một "marketer".
-        if (!head.includes("TỔNG TIỀN ADS")) return;
-        tabs.push({ title: titles[i], head, rows: rows.slice(1) });
-    });
-    CACHE.set(sheetId, { at: Date.now(), tabs });
-    return tabs;
-}
-
-// ── File TỔNG TEAM của một tháng (Sỹ Anh chốt 01/10/2026: MỖI THÁNG MỘT THƯ MỤC) ──
-// Khai tay ở talpha_rules.report_sheets.grand_by_month thì dùng ID đó (tháng 9/2026). Không có
-// thì tìm trong thư mục gốc report_drive.root_folder_id → thư mục "Tháng N" → Google Sheet tên
-// có "TỔNG TEAM" nằm ngay trong đó — cùng cách format_all.py (ops/talpha_reports/report_files.py)
-// chọn file để ghi, nên chỗ ghi và chỗ đọc luôn là một file. Không thấy → null (route báo thiếu
-// tháng), KHÔNG lùi về file tháng khác.
-const DRIVE = "https://www.googleapis.com/drive/v3/files";
-const ROOT_FOLDER: string = (RULES as unknown as { report_drive?: { root_folder_id?: string } }).report_drive?.root_folder_id || "";
-const boDau = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[đĐ]/g, "D").toUpperCase();
-const FILE_THANG = new Map<string, { at: number; id: string | null }>();
-
-async function dsCon(fid: string, mime?: string): Promise<{ id: string; name: string; mimeType: string }[]> {
-    const client = await auth().getClient();
-    const q = `'${fid}' in parents and trashed = false${mime ? ` and mimeType = '${mime}'` : ""}`;
-    const url = `${DRIVE}?q=${encodeURIComponent(q)}&fields=files(id,name,mimeType)&pageSize=200&supportsAllDrives=true&includeItemsFromAllDrives=true`;
-    return ((await client.request({ url })).data as any).files || [];
-}
-
-async function fileTheoThang(thang: string): Promise<string | null> {
-    if (GRAND_SHEET_BY_MONTH[thang]) return GRAND_SHEET_BY_MONTH[thang];
-    if (!ROOT_FOLDER) return null;
-    const hit = FILE_THANG.get(thang);
-    // Có rồi thì giữ 10 phút; chưa có thì 2 phút — người vừa tạo file là vòng sau thấy ngay.
-    if (hit && Date.now() - hit.at < (hit.id ? 600_000 : 120_000)) return hit.id;
-    const [y, m] = thang.split("-").map(Number);
-    let id: string | null = null;
-    try {
-        const thuMuc = (await dsCon(ROOT_FOLDER, "application/vnd.google-apps.folder")).filter((f) => {
-            const t = boDau(f.name).split(/[^A-Z0-9]+/).filter(Boolean);
-            if (t[0] !== "THANG" || Number(t[1]) !== m) return false;
-            const nam = t.slice(2).find((x) => /^\d{4}$/.test(x));
-            return !nam || Number(nam) === y;
-        });
-        for (const f of thuMuc) {
-            const tong = (await dsCon(f.id, "application/vnd.google-apps.spreadsheet"))
-                .filter((s) => boDau(s.name).replace(/[^A-Z0-9]+/g, " ").includes("TONG TEAM"));
-            if (tong.length) { id = tong[0].id; break; }
-        }
-    } catch (e: any) {
-        console.error(`sheet-report: tìm file tháng ${thang} trên Drive lỗi:`, e?.message || e);
-        if (hit) return hit.id;               // Drive chập chờn: dùng kết quả cũ của CHÍNH tháng đó
-    }
-    FILE_THANG.set(thang, { at: Date.now(), id });
-    return id;
+/** Các tab TỔNG TEAM của một tháng ('YYYY-MM'). Tháng chưa có số (format_all chưa chạy) → null. */
+async function docThang(thang: string): Promise<Tab[] | null> {
+    const rows = await query<{ ten_tab: string; hang: unknown[][] }>(
+        "SELECT ten_tab, hang FROM bao_cao_tab WHERE thang = @thang AND tep = 'tong_team' ORDER BY thu_tu",
+        { thang });
+    if (!rows.length) return null;
+    return rows
+        .map((r) => ({ title: r.ten_tab, head: (r.hang[0] || []).map((h) => String(h ?? "").trim()), rows: r.hang.slice(1) }))
+        // Chỉ tab SỐ LIỆU (có cột tiền ads).
+        .filter((t) => t.head.includes("TỔNG TIỀN ADS"));
 }
 
 type So = { ads: number; mess: number; don: number; doanh_so: number; ds_giao_tc: number };
@@ -128,7 +51,7 @@ const soRong = (): So => ({ ads: 0, mess: 0, don: 0, doanh_so: 0, ds_giao_tc: 0 
 const cong = (a: So, b: So) => {
     a.ads += b.ads; a.mess += b.mess; a.don += b.don; a.doanh_so += b.doanh_so; a.ds_giao_tc += b.ds_giao_tc;
 };
-function docDong(head: string[], r: string[]): So {
+function docDong(head: string[], r: unknown[]): So {
     const g = (ten: string) => soVN(r[head.indexOf(ten)]);
     return { ads: g("TỔNG TIỀN ADS"), mess: g("SỐ TIN NHẮN"), don: g("Số đơn"), doanh_so: g("Doanh Số"), ds_giao_tc: g("DS Giao TC") };
 }
@@ -172,14 +95,12 @@ async function theoKhoang(fromIn: string, to: string, a: Access | null) {
     // Từng ngày của từng tab NƯỚC — để dựng lại "cả team" cho người chỉ xem một phần nước.
     const ngayNuoc = new Map<string, Map<string, So>>();
     const thieuThang: string[] = [];
-    const sheets: Record<string, string> = {};
 
     if (from <= to) {
         for (const thang of cacThang(from, to)) {
-            const id = await fileTheoThang(thang);
-            if (!id) { thieuThang.push(thang); continue; }
-            sheets[thang] = id;
-            for (const t of await docFile(id)) {
+            const tabs = await docThang(thang);
+            if (!tabs) { thieuThang.push(thang); continue; }
+            for (const t of tabs) {
                 const { loai, code } = loaiTab(t);
                 for (const r of t.rows) {
                     const d = ngayISO(r?.[0]);
@@ -226,9 +147,9 @@ async function theoKhoang(fromIn: string, to: string, a: Access | null) {
     const teamTraVe = hep ? days.reduce((s, d) => { cong(s, d); return s; }, soRong()) : team;
 
     return {
-        from, to, start_date: REPORT_START_DATE, sheets,
-        // Tháng trong khoảng mà chưa khai ID file ở talpha_rules.report_sheets — số tháng đó
-        // KHÔNG có trong tổng. Giao diện phải báo ra, không được coi như tháng đó bằng 0.
+        from, to, start_date: REPORT_START_DATE,
+        // Tháng trong khoảng mà vòng báo cáo (format_all.py, phút :20 mỗi giờ) chưa ghi số — số
+        // tháng đó KHÔNG có trong tổng. Giao diện phải báo ra, không được coi như tháng đó bằng 0.
         missing_months: thieuThang,
         team: teamTraVe,
         // true = số đã cắt theo team của người xem (giao diện ẩn bảng marketer, KPI cả công ty).
@@ -259,7 +180,7 @@ export async function GET(req: NextRequest) {
             return NextResponse.json(await theoKhoang(from, to, a));
         } catch (e: any) {
             console.error("sheet-report (khoảng):", e?.message || e);
-            return NextResponse.json({ error: `đọc Sheet lỗi: ${e?.message || e}` }, { status: 500 });
+            return NextResponse.json({ error: `đọc số báo cáo lỗi: ${e?.message || e}` }, { status: 500 });
         }
     }
 
@@ -273,18 +194,17 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "date phải dạng YYYY-MM-DD" }, { status: 400 });
     }
     const thang = date.slice(0, 7);
-    const sheetId = await fileTheoThang(thang);
-    if (!sheetId) {
-        return NextResponse.json(
-            { error: `chưa có file 'TỔNG TEAM THÁNG ${Number(thang.slice(5))}' trong thư mục 'Tháng ${Number(thang.slice(5))}' (hoặc thư mục gốc chưa share cho service account)` },
-            { status: 404 });
-    }
-
     try {
+        const tabs = await docThang(thang);
+        if (!tabs) {
+            return NextResponse.json(
+                { error: `chưa có số báo cáo tháng ${Number(thang.slice(5))} — vòng báo cáo (phút :20 mỗi giờ) chưa chạy` },
+                { status: 404 });
+        }
         const [y, m, d] = date.split("-");
         const nhan = `${d}/${m}/${y}`;
         const out: Record<string, any> = {};
-        for (const t of await docFile(sheetId)) {
+        for (const t of tabs) {
             const r = t.rows.find((x) => String(x?.[0] || "").trim() === nhan);
             if (!r) continue;
             const g = (ten: string) => soVN(r[t.head.indexOf(ten)]);
@@ -301,9 +221,9 @@ export async function GET(req: NextRequest) {
             .map(([tab, v]) => ({ tab, ...v }))
             .sort((a, b) => b.doanh_so - a.doanh_so);
 
-        return NextResponse.json({ date, sheet_id: sheetId, team, marketers });
+        return NextResponse.json({ date, team, marketers });
     } catch (e: any) {
         console.error("sheet-report:", e?.message || e);
-        return NextResponse.json({ error: `đọc Sheet lỗi: ${e?.message || e}` }, { status: 500 });
+        return NextResponse.json({ error: `đọc số báo cáo lỗi: ${e?.message || e}` }, { status: 500 });
     }
 }

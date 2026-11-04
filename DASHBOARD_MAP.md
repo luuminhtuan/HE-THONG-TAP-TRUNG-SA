@@ -6,6 +6,10 @@ Một tài liệu, đọc từ trên xuống là hiểu tiền đi đường nà
 Rule chỉ số (công thức doanh thu, tỷ giá, số chia): `docs/TALPHA_METRIC_RULES.md`.
 Cách vận hành máy chủ: `docs/DEPLOY_VPS.md`.
 
+> **Kho số là Postgres từ 04/11/2026** (nhánh `kho-postgres`, bỏ hẳn BigQuery) — bảng ở `db/migrations/`,
+> view ở `db/views/`, chạy cả hệ thống bằng `docker compose up -d`: xem `docs/POSTGRES.md`. Máy chủ VPS
+> chuyển sang Postgres là một bước deploy riêng — tới lúc đó máy chủ vẫn chạy bản BigQuery của `main`.
+
 ---
 
 ## 1. Việc kinh doanh
@@ -31,13 +35,13 @@ Thành viên: Trung Đông — Lộc · Đông Nam Á — Thái · Đông Á —
 tin nhắn, đơn, doanh số tính cho **người cầm nước** đó (`markets.*.nguoi_cam`): Đài → Thương,
 Singapore → Thái, UAE → Lộc, Nhật → Sỹ Anh (Sỹ Anh chốt 10/10/2026). Áp ở `format_all.py`
 (Sheet, file riêng, số cho bot) và bot Zalo (`rules.chuTinhSo`); các tab dashboard tự tính từ
-BigQuery vẫn theo tên camp gốc. Thư mục Drive tháng: `Tháng N / TEAM … / <NGƯỜI> / <NƯỚC> T<n>` —
+kho số vẫn theo tên camp gốc. Thư mục Drive tháng: `Tháng N / TEAM … / <NGƯỜI> / <NƯỚC> T<n>` —
 người nhận theo thư mục gần file nhất, nước theo tên file.
 
 **Nhật Bản (mở 08/10/2026)** — camp đặt `JP/…` (Thắng, Thương chạy từ 08/10). Shop POS **JAPAN**
 1022115860 nối 09/10/2026 (`TALPHA_POSCAKE_JP_KEY`), JPY lưu nguyên yên (chia 1, đã đo), tỷ giá 1 JPY =
 160đ (Sỹ Anh chốt). Vận đơn từ 13/10/2026 giống Singapore: bảng đối tác "BS UP DATA JAPAN"
-(`partner_orders.sheets` → BigQuery `partner_orders`, market "Japan") + 17TRACK hãng **Japan Post 10021**
+(`partner_orders.sheets` → bảng `partner_orders`, market "Japan") + 17TRACK hãng **Japan Post 10021**
 (`tracking.markets.JP`, sổ `data/tracking_jp.json`) → Sổ đơn, Theo dõi vận đơn, Tiền COD về và tin Zalo
 vận đơn 08:30 · 22:00 vào nhóm ADS + VẬN ĐƠN JAPAN. 13/10 khai Sagawa 100040 nhưng 17TRACK API TỪ CHỐI
 mọi mã ("carrier temporarily does not support registration") nên Nhật chạy theo bảng đối tác; 21/10/2026
@@ -113,22 +117,22 @@ Nam** cho mọi nước.
             khách trả tiền mặt              │                      │
                      │                      │                      │
                      ▼                      ▼                      ▼
-            sao kê NAZA theo kỳ      tab Theo dõi vận đơn    sync giờ → BigQuery
+            sao kê NAZA theo kỳ      tab Theo dõi vận đơn    sync giờ → Postgres
                      │                                             │
                      ▼                                             ▼
-            tab Tiền COD về   ◄──── khớp mã vận đơn ────►  6 tab đọc BigQuery
+            tab Tiền COD về   ◄──── khớp mã vận đơn ────►  6 tab đọc kho số
 ```
 
 Ba câu hỏi tiền, ba màn hình khác nhau — **đừng trộn**:
 
 | Câu hỏi | Màn hình | Nguồn |
 |:--|:--|:--|
-| Bán được bao nhiêu? | Tổng quan | File Sheet **TỔNG TEAM** — doanh số đơn đã chốt + DS giao TC |
-| Lãi gộp tạm tính? | P&L | Sheet TỔNG TEAM + giá vốn (mã SP trên đơn POS × bảng Giá tới Taiwan) + phí ship ước tính (trung bình sao kê NAZA) |
+| Bán được bao nhiêu? | Tổng quan | Bảng **TỔNG TEAM** (`bao_cao_tab`, cùng số file Sheet) — doanh số đơn đã chốt + DS giao TC |
+| Lãi gộp tạm tính? | P&L | Bảng TỔNG TEAM + giá vốn (mã SP trên đơn POS × bảng Giá tới Taiwan) + phí ship ước tính (trung bình sao kê NAZA) |
 | Đang tiêu bao nhiêu, ngay lúc này? | Ads Command Center | Meta + POS **gọi thẳng**, đơn **ĐÃ ĐẶT** |
 | Tiền có về đủ không? | Kế toán: Tiền COD về · Thanh toán quảng cáo | File sao kê người dùng tải lên |
 
-> **Hai định nghĩa doanh thu.** Tab BigQuery đếm đơn đã giao xong; Ads Command Center
+> **Hai định nghĩa doanh thu.** Tab đọc kho số đếm đơn đã giao xong; Ads Command Center
 > đếm đơn vừa đặt. ROAS hai nơi **không so trực tiếp được**. Đây là thiết kế, không
 > phải lỗi cần "fix cho khớp".
 
@@ -136,17 +140,17 @@ Ba câu hỏi tiền, ba màn hình khác nhau — **đừng trộn**:
 
 ## 3. Số chảy vào bằng hai đường
 
-### Đường chốt số — theo giờ, qua BigQuery
+### Đường chốt số — theo giờ, qua kho số Postgres
 
 ```
 Meta API (10 TKQC) ─┐
-                    ├─► talpha-sync.timer (:00 mỗi giờ) ─► BigQuery cty-507710.TALPHA_Dataset
+                    ├─► sync (:00 mỗi giờ) ─────────────► Postgres (DATABASE_URL)
 POS Poscake (1 shop)┘         sync/talpha/talpha_sync.py
                                                               │
                               talpha-report.timer (:20) ──────┤
                               daily_guarded.sh                │
                                 ├─ sync_month.py  (kéo lại tháng hiện tại)
-                                └─ format_all.py  (ghi Google Sheets của từng marketer)
+                                └─ format_all.py  (bảng bao_cao_tab; + Google Sheets nếu có khoá)
                                                               │
                                             /api/query ◄──────┘──► 6 tab báo cáo
 ```
@@ -156,17 +160,17 @@ phần đọc được, còn Sheet nửa mới nửa thiếu thì không. Lý do
 chết 02/09, spend về 0, mà spend nằm ở mẫu số nên Sheet sai theo hướng **đẹp giả**
 (CPO 103.735đ khi thật ~165.000đ) — 46 tiếng không ai nghi.
 
-### Đường phản ứng — gọi thẳng, không qua BigQuery
+### Đường phản ứng — gọi thẳng, không qua kho số
 
 ```
 Meta API + POS ──live──► /api/talpha/realtime   ──► Ads Command Center
 POS            ──live──► /api/talpha/inventory  ──► tab Sản phẩm & Kho
-                            (POS chết → rơi về bảng inventory_snapshot trong BQ)
+                            (POS chết → rơi về bảng inventory_snapshot trong kho số)
 ```
 
 ### Đường thứ ba — file người dùng tải lên
 
-Ba màn hình **không đụng BigQuery lẫn POS**, chạy được cả khi hai thứ kia chết:
+Ba màn hình **không đụng kho số lẫn POS**, chạy được cả khi hai thứ kia chết:
 
 | Màn hình | File đầu vào | Kho lưu |
 |:--|:--|:--|
@@ -207,7 +211,8 @@ tab Tổng quan · P&L · P&L theo SP · Marketing · Chi phí quảng cáo khô
 (`FLOOR_TABS` trong shell) — bộ chọn ngày mặc định từ mốc, chọn sớm hơn thì tự kéo về. Tab
 vận hành (Sổ đơn, Tiền COD về, Vận đơn, Kho, Khách hàng) không chặn: đơn cũ còn chờ thu tiền.
 
-**Tổng quan đọc thẳng Sheet, không tự tính.** Trước 25/09/2026 tab tính lại từ BigQuery theo
+**Tổng quan đọc bảng số TỔNG TEAM, không tự tính** (`bao_cao_tab` — format_all.py ghi cùng lúc với
+file Sheet; trước 04/11/2026 route đọc thẳng file Sheet). Trước 25/09/2026 tab tính lại từ BigQuery theo
 luật riêng (doanh thu chỉ đơn đã giao, tên marketer là tên tài khoản POS, không mốc ngày) nên
 lệch Sheet cả trăm triệu. Muốn đổi cách tính thì sửa `format_all.py` — Sheet, bot Zalo và
 tab đổi theo cùng lúc.
@@ -234,25 +239,27 @@ cách làm (tải sao kê → máy soát → gõ số ngân hàng), cùng tính 
 
 ## 5. Tầng API
 
-### `/api/query` — cổng SQL dùng chung của 6 tab BigQuery
+### `/api/query` — cổng SQL dùng chung của 4 tab
 
-Chỉ nhận `SELECT` / `WITH`; chặn `;` và toàn bộ DDL/DML bằng danh sách từ khoá cấm.
+Chỉ nhận `SELECT` / `WITH`; chặn `;` và toàn bộ DDL/DML bằng danh sách từ khoá cấm. Câu chạy bằng vai
+CHỈ ĐỌC của Postgres (đăng nhập riêng, transaction READ ONLY, tối đa 30 giây — migration 0003).
 Phải đăng nhập (proxy.ts). Người chỉ xem một phần nước: mỗi bảng trong câu bị thay bằng câu con
 đã lọc nước (`vw_orders_std.market`, `sale_order.shop_label`, `order_items` theo shop, chi tiêu
 Meta theo nước ở tên campaign); bảng gộp mọi nước (`vw_attribution_quality`) và mọi đường vòng
-(dataset khác, `INFORMATION_SCHEMA`, chú thích `#`, ký tự thoát) bị từ chối.
+(bảng khác, bảng hệ thống `pg_*`, `information_schema`, nháy kép, chuỗi `$$`, hàm chạy câu SQL nằm
+trong chuỗi) bị từ chối; vai `talpha_doc_nuoc` của họ cũng chỉ được database cho đọc 5 bảng lọc được.
 
 ### `/api/talpha/*`
 
 | Route | Việc | Ai gọi |
 |:--|:--|:--|
 | `realtime` | Meta + POS live, dựng số Ads Command Center | Giao diện, bot WA |
-| `inventory` | Tồn kho POS live; POS chết → snapshot BQ | Giao diện, bot WA |
+| `inventory` | Tồn kho POS live; POS chết → snapshot kho số | Giao diện, bot WA |
 | `order-ledger` | Sổ đơn Đài: mỗi đơn một dòng, khách + tiền + vòng đời (bảng NAZA + sao kê). `?from&to` (27/10/2026): `rows` chỉ còn đơn lên trong khoảng (`locTheoNgayLenDon`); kỳ sao kê, Đòi tiền NAZA, cảnh báo vẫn tính mọi đơn. Không có `from` (Tiền COD về) = mọi đơn | Giao diện |
 | `order-ledger/market?market=SG\|AE` | Sổ đơn Singapore, UAE (29/09/2026): đơn + khách + hàng + trạng thái giao + đèn việc phải làm; `&from&to` (27/10/2026) chỉ giữ đơn lên trong khoảng đang chọn — ô đếm, tỉ lệ giao/hoàn theo đó; cùng nguồn `loadMarketShipments` với Theo dõi vận đơn và Tiền COD về. Hàng: Sing ở cột SKU bảng đối tác, UAE ở `order_items`. Chưa có sao kê nên chưa có cột tiền về | Giao diện (nút Đài Loan / Singapore / UAE) |
 | `cod-recon` | Khớp sao kê 3PL với đơn đã giao | Giao diện |
 | `cod-recon/market?market=SG\|AE` | Tiền COD về nước ngoài Đài, bước 1 (26/09/2026): tiền còn ở đâu — đã giao / chưa giao / hoàn-huỷ. SG đọc bảng đối tác + 17TRACK, UAE (từ 28/09/2026) đọc đơn POS + trạng thái tra ở WeShip — cả hai chung `lib/talpha/tracking-market.ts` với Theo dõi vận đơn. Bước 2 (08/10/2026): POST tải sao kê / DELETE xoá kỳ, kho riêng `data/cod_statements_<sg|ae>.json`, nhận file NAZA hoặc bảng .xlsx/.csv có mã vận đơn + tiền COD, khớp từng đơn (`lib/talpha/cod-statement-market.ts`); sổ cùng bố cục Đài — việc hôm nay, ngân hàng, luồng tiền, máy soát, tỷ giá (`lib/talpha/cod-so-nuoc.ts`, ghi việc qua `cod-recon/market/actions`) — xem `docs/DOI_SOAT_COD.md` | Giao diện (nút Đài Loan / Singapore / UAE, nút “Tải sao kê …”) |
-| `tracking` · `tracking/import` | 17TRACK + nạp bảng đơn đối tác. `?market=SG`: Singapore sổ riêng (`data/tracking_sg.json`), đơn đọc từ BigQuery `partner_orders`. `?market=AE` (28/09/2026): UAE không có bảng đối tác, 17TRACK không có hãng — đơn đọc từ POS (mã AWB ở `sale_order.partner → extend_code`), POST tra thẳng trang WeShip `portal.weshipme.com/tracking` (`lib/talpha/weship.ts`, miễn phí, không quota), sổ `data/tracking_ae.json` | Giao diện (nút Đài Loan / Singapore / UAE, nút “Tra WeShip”) · `talpha-tracking.timer` 6h + 21:30 (nạp bảng Đài + đồng bộ từng nước) · bot Zalo 08:30 + 22:00 (mỗi nước một tin, vào nhóm "ADS + VẬN ĐƠN" của nước đó) |
+| `tracking` · `tracking/import` | 17TRACK + nạp bảng đơn đối tác. `?market=SG`: Singapore sổ riêng (`data/tracking_sg.json`), đơn đọc từ bảng `partner_orders`. `?market=AE` (28/09/2026): UAE không có bảng đối tác, 17TRACK không có hãng — đơn đọc từ POS (mã AWB ở `sale_order.partner → extend_code`), POST tra thẳng trang WeShip `portal.weshipme.com/tracking` (`lib/talpha/weship.ts`, miễn phí, không quota), sổ `data/tracking_ae.json` | Giao diện (nút Đài Loan / Singapore / UAE, nút “Tra WeShip”) · `talpha-tracking.timer` 6h + 21:30 (nạp bảng Đài + đồng bộ từng nước) · bot Zalo 08:30 + 22:00 (mỗi nước một tin, vào nhóm "ADS + VẬN ĐƠN" của nước đó) |
 | `ads-recon` | Đối soát chi phí TKQC với sao kê thẻ | Giao diện |
 | `cod-actions` | Đánh dấu đã đòi / đã nhận tiền | Giao diện |
 | `ad-spend` · `marketer-perf` · `product-costs` · `targets` | Số phụ trợ cho tab | Giao diện |
@@ -271,7 +278,7 @@ Hạ tầng: `auth/[...nextauth]`, `auth/validate`, `users`, `ad-accounts`.
 
 ---
 
-## 6. BigQuery — `cty-507710.TALPHA_Dataset`
+## 6. Kho số — Postgres (`DATABASE_URL`)
 
 View mà dashboard đụng tới, đếm theo số lần tham chiếu trong `dashboard-ui/src`:
 
@@ -286,13 +293,14 @@ vw_creative_fatigue · vw_campaign_lifecycle
 ```
 
 Sửa `vw_orders_std` hoặc `vw_fb_ads_std` là đụng gần như cả dashboard.
-Định nghĩa view: `sql/talpha/views/`, deploy bằng `sql/talpha/deploy_talpha_analytics.py`.
+Định nghĩa view: `db/views/`, dựng bằng `sync/core/pg_view.py` — tự dựng lại ở đầu vòng sync khi SQL sinh
+từ luật (tỷ giá, số chia, giá vốn, múi giờ TKQC…) đổi. Bảng: `db/migrations/` (thêm file mới, đừng sửa file cũ).
 
 Bảng thô dashboard đọc thẳng: `sale_order`, `order_items`, `fb_ads_data`,
-`fb_adset_data`, `inventory_snapshot`, `sync_health`.
+`fb_adset_data`, `inventory_snapshot`, `sync_health`, `bao_cao_tab` (số báo cáo tháng).
 
-`partner_orders` — bảng đơn của đối tác 3PL (Google Sheet) chép vào BigQuery mỗi vòng
-talpha-sync: mã vận đơn, ngày xuất kho, trạng thái giao, COD đối tác thu (đơn vị gốc, cột
+`partner_orders` — bảng đơn của đối tác 3PL (Google Sheet) chép vào bảng này mỗi vòng
+talpha-sync (cần khoá Google): mã vận đơn, ngày xuất kho, trạng thái giao, COD đối tác thu (đơn vị gốc, cột
 `currency`). Khai bảng ở `talpha_rules.json → partner_orders.sheets`; hiện có Singapore
 ("BS UP DATA SGP", 25/09/2026). Bảng phải chia sẻ quyền Người xem cho tài khoản dịch vụ.
 
@@ -304,13 +312,13 @@ talpha-sync: mã vận đơn, ngày xuất kho, trạng thái giao, COD đối t
 |:--|:--|:--|
 | Dashboard | VPS `139.180.131.21:3000`, `/opt/talpha` | pm2 `talpha-dashboard` — `ops/pm2/ecosystem.vps.config.js` |
 | HTTPS + app cài được (PWA) | `https://139.180.131.21` (06/10/2026) — nginx 443 → `127.0.0.1:3000` | `ops/deploy/nginx-talpha-https.conf`, `vps-setup.sh` tự chép mỗi lần deploy. Dùng chung chứng chỉ Let's Encrypt **cho IP** (hạn 6 ngày, `certbot-renew.timer` của AI Sale gia hạn). App: `src/app/manifest.ts`, `public/sw.js` (KHÔNG lưu số liệu — chỉ trang mất mạng), nút "Cài app" `components/talpha/cai-app.tsx`. Điện thoại chỉ cài được qua HTTPS |
-| Kéo số vào BigQuery | VPS, mỗi giờ phút :00 | systemd `talpha-sync.timer` → `sync/talpha/talpha_sync.py` |
-| Ghi Google Sheets | VPS, mỗi giờ phút :20 | systemd `talpha-report.timer` → `/root/talpha_reports/daily_guarded.sh` |
+| Kéo số vào kho số | VPS, mỗi giờ phút :00 | systemd `talpha-sync.timer` → `sync/talpha/talpha_sync.py` |
+| Dựng báo cáo tháng (+ Google Sheets) | VPS, mỗi giờ phút :20 | systemd `talpha-report.timer` → `/root/talpha_reports/daily_guarded.sh` |
 | Snapshot tồn kho (dự phòng tab Sản phẩm) | VPS, mỗi giờ phút :40 (30/10/2026) | systemd `talpha-snapshot.timer` → `ops/talpha_reports/snapshot_cron.sh inventory`, do `vps-setup.sh` dựng mỗi lần deploy. Log `/root/talpha_reports/snapshot_<ngày>.log` |
 | Danh mục sản phẩm `product_catalog` | VPS, mỗi ngày 05:10 (30/10/2026) | systemd `talpha-catalog.timer` → `ops/talpha_reports/catalog_cron.sh` → `sync/talpha/sync_product_catalog.py`, khoá POS lấy từ `dashboard-ui/.env.local`. Bảng này nối mã biến thể POS → mã SKU: thiếu nó thì `vw_orders_std.cogs_vnd` = 0. Script tự dừng nếu đọc được 0 dòng hoặc hụt >30%. Log `/root/talpha_reports/catalog_<ngày>.log` |
 | Nạp bảng đơn đối tác | VPS, 6h sáng mỗi ngày | systemd `talpha-tracking.timer` → `ops/deploy/tracking-import.sh` (gọi route `tracking/import`) |
 | Bot Zalo ads + vận đơn | VPS — MỖI NƯỚC MỘT NHÓM "ADS + VẬN ĐƠN TAIWAN · SGP · UAE · JAPAN" (08/10/2026; bỏ nhóm BÁO CÁO ADS gộp + 3 nhóm VẬN ĐƠN cũ): ads 08:30 · 13:00 · 18:00 · 22:00, vận đơn 08:30 · 22:00, lệnh `/baocao` `/canhbao` `/vandon` trả số đúng nước của nhóm. Số theo nước × người đọc `data/bao_cao_nuoc/<tháng>.json` do `format_all.py` ghi cùng lúc file TỔNG TEAM | pm2 `talpha-zalo-alerts` — nick Zalo phụ ghép 15/09/2026; bot tự nhận nhóm theo tên; ghép lại, đổi nhóm: `ops/zalo-alerts/README.md` |
-| Máy Mac | Máy dev | `cd dashboard-ui && npm run dev`. Không job nền nào. |
+| Docker — máy bất kỳ | `docker compose up -d` (04/11/2026) | Postgres + dashboard + lịch việc nền `ops/docker/lich.py` cùng giờ với các timer ở trên. Xem `docs/POSTGRES.md` |
 
 Việc nền hỏng hoặc chưa có lịch (soát 13/09/2026) đã xử lý hết 30/10/2026: snapshot tồn
 kho, danh mục sản phẩm, nút "Xuất Sheet".
@@ -333,13 +341,15 @@ dashboard-ui/            Next.js 16 + React 19 — toàn bộ giao diện và AP
   src/lib/talpha/config-path.ts   MỘT chỗ biết cấu hình nằm ở đâu
 config/                  talpha_rules.json — NGUỒN RULE DUY NHẤT
   projects/talpha.yaml     TKQC Meta + shop POS
-sync/                    engine sync POS + Meta → BigQuery (bản DUY NHẤT)
-  core/                    pos_client · meta_client · bq_writer · business_rules
+sync/                    engine sync POS + Meta → Postgres (bản DUY NHẤT)
+  core/                    pos_client · meta_client · pg · pg_writer · pg_view · business_rules
 ops/deploy/              5 script dựng và cập nhật máy chủ
 ops/pm2/                 ecosystem.vps.config.js — file pm2 DUY NHẤT
 ops/talpha_reports/      đường ống báo cáo Google Sheets
 ops/zalo-alerts/         bot báo cáo ads vào nhóm Zalo
-sql/talpha/views/        12 định nghĩa view BigQuery
+db/migrations/           bảng (chạy theo thứ tự, như Laravel)
+db/views/                13 view phân tích — luật đúc vào lúc dựng
+docker-compose.yml       chạy cả hệ thống trên một máy
 docs/                    TALPHA_METRIC_RULES.md là source of truth về chỉ số
 ```
 
@@ -353,7 +363,7 @@ docs/                    TALPHA_METRIC_RULES.md là source of truth về chỉ s
    đọc qua `posMoneyDivisor()`.
 2. **Chi phí quảng cáo đã là VND** — không quy đổi lần nào nữa. Cột ngày là `date`,
    không phải `date_start`.
-3. **Chẩn đoán số sai: không bao giờ so Sheet với BigQuery** — cùng nguồn nên cùng sai.
+3. **Chẩn đoán số sai: không bao giờ so Sheet với kho số** — cùng nguồn nên cùng sai.
    Đối chiếu thẳng Meta API cho chi phí và POS API cho đơn.
 
 ---

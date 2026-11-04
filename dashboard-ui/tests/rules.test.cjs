@@ -346,7 +346,7 @@ t("tỷ giá và số chia: Singapore 20.000 ÷100, UAE 7.000 ÷100", () => {
     assert.strictEqual(R.EXCHANGE_RATES.UAE, 7000);
     assert.strictEqual(R.posMoneyDivisor("TW"), 1);
     assert.strictEqual(R.posMoneyDivisor("SG"), 100);
-    // Phải khớp view BigQuery: UAE để trống số chia thì dashboard chia 1, view chia 100.
+    // Phải khớp view (db/views): UAE để trống số chia thì dashboard chia 1, view chia 100.
     assert.strictEqual(R.posMoneyDivisor("AE"), 100);
     assert.strictEqual(R.posMoneyDivisor("UAE"), 100);
 });

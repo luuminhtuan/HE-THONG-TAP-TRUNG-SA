@@ -24,10 +24,10 @@
 -- ▸ Chỉ dùng 3 chữ số (không phải {2,4}) khi bóc mã từ chuỗi tự do: mã thật
 --   của TALPHA đều 3 ký tự, nới rộng sẽ nuốt nhầm số trong tên ("Feng Shui 2").
 --
--- Nguồn: {PROJECT}.{DATASET}.product_catalog (dimension, WRITE_TRUNCATE từ POS)
+-- Nguồn: product_catalog (dimension, WRITE_TRUNCATE từ POS)
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE OR REPLACE VIEW `{PROJECT}.{DATASET}.vw_product_catalog_std` AS
+CREATE VIEW vw_product_catalog_std AS
 WITH norm AS (
     SELECT
         variation_id,
@@ -40,12 +40,12 @@ WITH norm AS (
         remain_quantity,
         image,
         COALESCE(
-            REGEXP_EXTRACT(UPPER(TRIM(sku)), r'^([0-9]{2,4}|[A-Z]{2,4})$'),
-            REGEXP_EXTRACT(TRIM(sku), r'^([0-9]{3})[^0-9]'),
-            REGEXP_EXTRACT(TRIM(product_name), r'^([0-9]{3})\s*[-–]'),
-            REGEXP_EXTRACT(TRIM(product_name), r'[-–]\s*([0-9]{3})\s*$')
+            substring(UPPER(TRIM(sku)) from '^([0-9]{2,4}|[A-Z]{2,4})$'),
+            substring(TRIM(sku) from '^([0-9]{3})[^0-9]'),
+            substring(TRIM(product_name) from '^([0-9]{3})\s*[-–]'),
+            substring(TRIM(product_name) from '[-–]\s*([0-9]{3})\s*$')
         )                                                   AS sku_code
-    FROM `{PROJECT}.{DATASET}.product_catalog`
+    FROM product_catalog
 )
 SELECT
     variation_id,
@@ -62,3 +62,4 @@ SELECT
     remain_quantity,
     image
 FROM norm;
+

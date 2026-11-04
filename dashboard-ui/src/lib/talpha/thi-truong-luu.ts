@@ -68,9 +68,10 @@ export async function luuKhoiPhu(key: string, khoi: KhoiPhu | null, ai: string):
  * trình trong vài giây. Chạy `npm run dev` ở máy: không tự thoát được — người chạy khởi động lại.
  */
 export function khoiDongLai(): "tu_dong" | "tay" {
-    if (process.env.pm_id === undefined) return "tay";
+    // pm2 (máy chủ) hoặc docker compose (TALPHA_TU_KHOI_DONG=1, restart: unless-stopped) tự bật lại.
+    if (process.env.pm_id === undefined && process.env.TALPHA_TU_KHOI_DONG !== "1") return "tay";
     setTimeout(() => {
-        console.log("Thị trường nhập trên trang đã đổi — thoát để pm2 dựng lại với luật mới.");
+        console.log("Thị trường nhập trên trang đã đổi — thoát để pm2 / docker dựng lại với luật mới.");
         process.exit(0);
     }, 1500);
     return "tu_dong";

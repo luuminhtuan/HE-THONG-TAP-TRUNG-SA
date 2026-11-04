@@ -63,7 +63,7 @@ class TestBaThiTruong:
                 assert isinstance(v.get("rate_vnd"), (int, float)) and v["rate_vnd"] > 0, f"{ten}: thiếu tỷ giá"
                 assert isinstance(v.get("pos_money_divisor"), int) and v["pos_money_divisor"] > 0, f"{ten}: thiếu số chia"
             if v.get("rate_vnd"):
-                # Có tỷ giá mà trống số chia: view BigQuery chia 100, Sheet và dashboard chia 1.
+                # Có tỷ giá mà trống số chia: view chia 100, Sheet và dashboard chia 1.
                 assert isinstance(v.get("pos_money_divisor"), int) and v["pos_money_divisor"] > 0, f"{ten}: có tỷ giá mà thiếu số chia"
             assert v.get("currency_symbol"), f"{ten}: thiếu ký hiệu tiền"
             # 08/10/2026: Nhật khai shop_id null → Python str(None) = "None" lọt vào bộ lọc shop,

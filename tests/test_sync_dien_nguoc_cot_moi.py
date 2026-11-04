@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sync.core.bq_writer import chon_don_can_ghi  # noqa: E402
+from sync.core.pg_writer import chon_don_can_ghi  # noqa: E402
 
 
 def don(id_, updated, page="", seller=""):

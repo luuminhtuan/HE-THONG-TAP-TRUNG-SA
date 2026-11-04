@@ -1,18 +1,18 @@
 /**
- * Đơn của một thị trường ngoài Đài (Singapore…), đọc từ bảng đối tác trong BigQuery
+ * Đơn của một thị trường ngoài Đài (Singapore…), đọc từ bảng đối tác trong kho số
  * `partner_orders` (talpha-sync nạp mỗi giờ) rồi ghép trạng thái 17TRACK trong sổ riêng của
  * nước đó (data/tracking_<mã>.json).
  *
  * Dùng chung cho HAI màn: Theo dõi vận đơn (/api/talpha/tracking?market=SG) và Đối soát COD
  * (/api/talpha/cod-recon/market?market=SG) — hai màn đọc hai cách là sớm muộn hai con số.
  *
- * Đọc BigQuery hỏng thì NÉM lỗi: nước này không có nguồn thứ hai, trả danh sách rỗng là nói
+ * Đọc kho số hỏng thì NÉM lỗi: nước này không có nguồn thứ hai, trả danh sách rỗng là nói
  * dối "không có đơn".
  *
  * UAE (source "pos", Sỹ Anh chốt 28/09/2026) không có bảng đối tác: đơn đọc thẳng từ POS, trạng
  * thái tra ở trang WeShip (lib/talpha/weship.ts) — xem loadPosMarketShipments / syncWeshipMarket.
  */
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 import { readStoreFresh, updateStore } from "@/lib/talpha/store";
 import { DISPLAY, normPosMarketer } from "@/lib/talpha/rules";
 import {
@@ -23,9 +23,6 @@ import {
     awbFromPartner, fetchWeship, mapPool, posWeshipShipment, weshipTrack,
     type PosOrderRow, type WeshipEvent, type WeshipSaved,
 } from "./weship";
-
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 
 /** Tối thiểu một sổ vận đơn phải có để ghép trạng thái. */
 export type MarketStoreBase = {
@@ -41,19 +38,20 @@ export async function loadPartnerMarketShipments<S extends MarketStoreBase>(
 ): Promise<{ shipments: Shipment[]; store: S; lastImport: string | null }> {
     const store = await readStoreFresh<S>(mk.store, emptyStore());
     const regNumbers = new Set(Object.entries(store.registered).map(([k, r]) => r.number || clean(k)));
-    const [rows] = await bigquery.query({
-        query: `SELECT order_no, tracking, status, note, ship_method, city, contact_name, phone, cod, marketer,
-                       FORMAT_DATE('%Y-%m-%d', order_date) AS order_date,
-                       FORMAT_DATE('%Y-%m-%d', ship_date) AS ship_date,
-                       FORMAT_TIMESTAMP('%Y-%m-%dT%H:%M:%SZ', synced_at) AS synced_at
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.partner_orders\`
-                WHERE market = @m
-                ORDER BY row_no`,
-        params: { m: mk.partner_market },
-    });
+    // NULLS FIRST giữ thứ tự BigQuery (NULL đứng đầu khi xếp tăng) — dòng đầu của một mã thắng khoá.
+    const rows = await query<PartnerOrderRow & { synced_at?: string }>(
+        `SELECT order_no, tracking, status, note, ship_method, city, contact_name, phone, cod, marketer,
+                to_char(order_date, 'YYYY-MM-DD') AS order_date,
+                to_char(ship_date, 'YYYY-MM-DD') AS ship_date,
+                to_char(synced_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"') AS synced_at
+         FROM partner_orders
+         WHERE market = @m
+         ORDER BY row_no NULLS FIRST`,
+        { m: mk.partner_market },
+    );
     const byKey = new Map<string, Shipment>();
     let lastImport: string | null = null;
-    for (const r of rows as (PartnerOrderRow & { synced_at?: string })[]) {
+    for (const r of rows) {
         if (r.synced_at && (!lastImport || r.synced_at > lastImport)) lastImport = r.synced_at;
         const t = clean(r.tracking);
         const key0 = t || `DON-${r.order_no || "?"}`;
@@ -87,32 +85,35 @@ const emptyWeship = (): WeshipStore => ({ registered: {}, statuses: {} });
 
 /**
  * Đơn của thị trường source "pos": mọi đơn POS của nước đó từ register_from_date, trừ đơn huỷ
- * và đơn thô (chưa có hàng đi đường). Đọc BigQuery hỏng thì NÉM lỗi — như bảng đối tác.
+ * và đơn thô (chưa có hàng đi đường). Đọc kho số hỏng thì NÉM lỗi — như bảng đối tác.
  */
 export async function loadPosMarketShipments<S extends MarketStoreBase>(
     mk: TrackMarket, emptyStore: () => S,
 ): Promise<{ shipments: Shipment[]; store: S; lastImport: string | null }> {
     const store = await readStoreFresh<S>(mk.store, emptyStore());
     const tuNgay = TRACK_CFG.register_from_date;
-    const [rows] = await bigquery.query({
-        query: `SELECT v.order_id, CAST(v.order_date AS STRING) AS order_date,
-                       v.status_name, v.status_category, v.marketer_name AS marketer,
-                       SAFE_DIVIDE(o.cod, NULLIF(v.pos_money_divisor, 0)) AS cod,
-                       o.partner, o.bill_full_name AS customer, o.bill_phone_number AS phone,
-                       o.shipping_province AS province, o.shipping_district AS district,
-                       o.shipping_address AS address,
-                       o.note, o.time_send_partner
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.vw_orders_std\` v
-                LEFT JOIN \`${BQ_PROJECT}.${BQ_DATASET}.sale_order\` o
-                       ON v.shop_id = o.shop_id AND v.order_id = o.id
-                WHERE v.market = @m
-                  AND v.status_category NOT IN ('HUY', 'DON_THO')
-                  ${tuNgay ? "AND v.order_date >= DATE(@tu)" : ""}
-                ORDER BY v.order_date DESC, SAFE_CAST(v.order_id AS INT64) DESC`,
-        params: tuNgay ? { m: mk.pos_market || mk.code, tu: tuNgay } : { m: mk.pos_market || mk.code },
-    });
+    // NULLS LAST giữ thứ tự BigQuery (NULL cuối khi xếp giảm). Mã đơn không phải số (hoặc dài quá
+    // bigint) thì coi là NULL như SAFE_CAST cũ, không làm chết câu.
+    const rows = await query<PosOrderRow>(
+        `SELECT v.order_id, to_char(v.order_date, 'YYYY-MM-DD') AS order_date,
+                v.status_name, v.status_category, v.marketer_name AS marketer,
+                safe_divide(o.cod, NULLIF(v.pos_money_divisor, 0)) AS cod,
+                o.partner, o.bill_full_name AS customer, o.bill_phone_number AS phone,
+                o.shipping_province AS province, o.shipping_district AS district,
+                o.shipping_address AS address,
+                o.note, o.time_send_partner
+         FROM vw_orders_std v
+         LEFT JOIN sale_order o
+                ON v.shop_id = o.shop_id AND v.order_id = o.id
+         WHERE v.market = @m
+           AND v.status_category NOT IN ('HUY', 'DON_THO')
+           ${tuNgay ? "AND v.order_date >= @tu::date" : ""}
+         ORDER BY v.order_date DESC NULLS LAST,
+                  CASE WHEN v.order_id ~ '^-?[0-9]{1,18}$' THEN v.order_id::bigint END DESC NULLS LAST`,
+        tuNgay ? { m: mk.pos_market || mk.code, tu: tuNgay } : { m: mk.pos_market || mk.code },
+    );
     const statuses = store.statuses as Record<string, WeshipSaved>;
-    const shipments = (rows as PosOrderRow[]).map((r) => {
+    const shipments = rows.map((r) => {
         const awb = awbFromPartner(r.partner);
         const key = normPosMarketer(r.marketer);
         return posWeshipShipment(r, awb ? statuses[awb] : undefined, key ? (DISPLAY[key] || key) : (r.marketer || null));

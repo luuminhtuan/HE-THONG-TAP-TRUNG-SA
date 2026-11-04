@@ -8,7 +8,7 @@
  * Hai đường đọc, thử theo thứ tự:
  *
  *   1. Tài khoản dịch vụ (KHUYẾN NGHỊ) — Sheet để RIÊNG TƯ, chỉ chia sẻ quyền
- *      Người xem cho email service account. Dùng lại đúng khoá đang đọc BigQuery,
+ *      Người xem cho email service account. Dùng lại đúng khoá Google của hệ thống (bigquery_key.json),
  *      không phải xin thêm khoá nào.
  *
  *   2. Link công khai — chạy được ngay, nhưng ai có link đều đọc được. Bảng này
@@ -54,7 +54,7 @@ export function exportUrl(sheetId: string, gid = "0"): string {
     return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
 }
 
-/** Thông tin xác thực dùng lại y hệt lib/bigquery.ts. */
+/** Khoá tài khoản dịch vụ Google: GCP_SA_KEY_JSON hoặc file bigquery_key.json ở gốc repo. */
 function credentials(): { credentials?: Record<string, unknown>; keyFile?: string } | null {
     const inline = process.env.GCP_SA_KEY_JSON;
     if (inline) {

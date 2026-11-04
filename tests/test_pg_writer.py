@@ -15,7 +15,6 @@ Canh những chỗ làm sai số nếu trượt:
   • dựng lại bảng sạch khác luật BigQuery (bản mới nhất, bia mộ, lọc shop, NULL xếp cuối);
   • kéo hụt / lỗi giữa chừng xoá mất số đã có.
 """
-import ast
 import os
 import re
 import sys
@@ -28,31 +27,14 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from sync.core import pg_writer  # noqa: E402
-from sync.core.bq_writer import DA_XOA_TREN_POS  # noqa: E402
+from sync.core.pg_writer import DA_XOA_TREN_POS  # noqa: E402
 
 MIGRATION = ROOT / "db" / "migrations" / "0001_bang_tho.sql"
-KIEU_BQ = {"STRING": "text", "FLOAT64": "double precision", "INT64": "bigint",
-           "DATE": "date", "TIMESTAMP": "timestamptz"}
-SCHEMA_CUA_BANG = {"ORDER_SCHEMA": "sale_order", "ITEM_SCHEMA": "order_items",
-                   "ADS_SCHEMA": "fb_ads_data", "ADSET_SCHEMA": "fb_adset_data",
-                   "CAMPAIGN_SCHEMA": "fb_campaign_data", "PARTNER_ORDER_SCHEMA": "partner_orders"}
-
-
-def _schema_bigquery():
-    """{bảng: [(cột, kiểu Postgres)]} đọc từ talpha_sync.py bằng AST — không import (import là
-    nối BigQuery, đọc config, mở file log)."""
-    cay = ast.parse((ROOT / "sync" / "talpha" / "talpha_sync.py").read_text(encoding="utf-8"))
-    out = {}
-    for nut in ast.walk(cay):
-        if isinstance(nut, ast.Assign) and len(nut.targets) == 1 and isinstance(nut.targets[0], ast.Name) \
-                and nut.targets[0].id in SCHEMA_CUA_BANG and isinstance(nut.value, ast.List):
-            out[SCHEMA_CUA_BANG[nut.targets[0].id]] = [
-                (c.args[0].value, KIEU_BQ[c.args[1].value]) for c in nut.value.elts]
-    return out
+TAT_CA_MIGRATION = sorted(p.name for p in (ROOT / "db" / "migrations").glob("*.sql"))
 
 
 def _schema_migration():
-    """{bảng: [(cột, kiểu)]} của các CREATE TABLE có khai cột trong file migration."""
+    """{bảng: [(cột, kiểu)]} của các CREATE TABLE có khai cột trong file migration 0001."""
     sql = MIGRATION.read_text(encoding="utf-8")
     out = {}
     for ten, than in re.findall(r"CREATE TABLE (\w+) \(\n(.*?)\n\);", sql, re.S):
@@ -61,16 +43,18 @@ def _schema_migration():
 
 
 class TestCauTrucBang:
-    def test_bang_postgres_khop_schema_bigquery_cua_sync(self):
-        bq, pg = _schema_bigquery(), _schema_migration()
-        assert set(bq) == set(SCHEMA_CUA_BANG.values())
-        for bang, cot in bq.items():
-            assert pg.get(bang) == cot, f"{bang} lệch cột/kiểu giữa migration và talpha_sync.py"
-
     def test_bang_raw_chep_dung_bang_sach(self):
         sql = MIGRATION.read_text(encoding="utf-8")
         for bang in ("sale_order", "order_items", "fb_ads_data", "fb_adset_data"):
             assert f"CREATE TABLE {bang}_raw (LIKE {bang});" in sql
+
+    def test_cot_sync_ghi_deu_co_trong_bang(self):
+        # Sync ghi dòng có cột bảng chưa có thì dừng giữa chừng (pg_writer.them_dong) — soát trước.
+        bang = _schema_migration()
+        cot = lambda b: {c for c, _ in bang[b]}
+        assert {"page_name", "seller_name", "inserted_at", "updated_at", "sync_time", "cod"} <= cot("sale_order")
+        assert {"spend", "date", "messaging_conversations_started", "account_id"} <= cot("fb_ads_data")
+        assert dict(bang["fb_ads_data"])["date"] == "date" and dict(bang["sale_order"])["inserted_at"] == "text"
 
     def test_ad_dictionary_du_cot(self):
         assert [c for c, _ in _schema_migration()["ad_dictionary"]] == [
@@ -119,7 +103,7 @@ def pg():
     schema = f"test_{uuid.uuid4().hex[:10]}"
     conn.execute(f"CREATE SCHEMA {schema}")
     conn.execute(f"SET search_path TO {schema}")
-    assert chay_migrations(conn) == ["0001_bang_tho.sql"]
+    assert chay_migrations(conn) == TAT_CA_MIGRATION
     try:
         yield conn
     finally:

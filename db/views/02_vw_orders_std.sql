@@ -58,14 +58,14 @@
 --     GIAO_THANH_CONG = đã giao   | DON_HOAN = hoàn
 --     HUY = huỷ | DON_THO = đơn thô/nháp (chưa tính là cầu thực)
 --
--- Nguồn: {PROJECT}.{DATASET}.sale_order + order_items
+-- Nguồn: sale_order + order_items
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE OR REPLACE VIEW `{PROJECT}.{DATASET}.vw_orders_std` AS
+CREATE VIEW vw_orders_std AS
 WITH product_costs AS (
     -- Giá vốn/unit (VND) theo SKU — SINH TỰ ĐỘNG từ config/talpha_rules.json mục
     -- `products` lúc deploy. Sửa giá vốn ở rules file, KHÔNG sửa ở đây.
-    SELECT * FROM UNNEST([{PRODUCT_COSTS}])
+    SELECT * FROM (VALUES {PRODUCT_COSTS}) AS pc(sku, cost_price_vnd)
 ),
 items_cogs AS (
     -- Giá vốn theo đơn (VND). SKU chưa khai giá vốn KHÔNG bị coi là 0 — nó bị loại
@@ -76,13 +76,13 @@ items_cogs AS (
     SELECT
         i.shop_id,
         i.order_id,
-        SUM(IF(pc.sku IS NULL, 0, pc.cost_price_vnd * COALESCE(i.quantity, 0))) AS cogs_vnd,
-        SAFE_DIVIDE(
-            SUM(IF(pc.sku IS NULL, 0, COALESCE(i.quantity, 0))),
+        SUM(CASE WHEN pc.sku IS NULL THEN 0 ELSE pc.cost_price_vnd * COALESCE(i.quantity, 0) END) AS cogs_vnd,
+        safe_divide(
+            SUM(CASE WHEN pc.sku IS NULL THEN 0 ELSE COALESCE(i.quantity, 0) END),
             SUM(COALESCE(i.quantity, 0))
         )                                                                       AS cogs_coverage
-    FROM `{PROJECT}.{DATASET}.order_items` i
-    LEFT JOIN `{PROJECT}.{DATASET}.vw_product_catalog_std` c
+    FROM order_items i
+    LEFT JOIN vw_product_catalog_std c
            ON i.variation_id = c.variation_id
     LEFT JOIN product_costs pc ON c.sku_code = pc.sku
     GROUP BY i.shop_id, i.order_id
@@ -94,13 +94,13 @@ ad_tz AS (
     SELECT ad_id_str, ANY_VALUE(tz) AS tz
     FROM (
         SELECT
-            CAST(ad_id AS STRING) AS ad_id_str,
+            CAST(ad_id AS text) AS ad_id_str,
             -- SINH TỰ ĐỘNG từ config/projects/talpha.yaml (ad_account_timezones).
             -- Thêm TKQC = khai múi giờ ở yaml rồi deploy lại view, KHÔNG sửa tay ở đây.
             {AD_TZ_CASE} AS tz
-        FROM `{PROJECT}.{DATASET}.fb_ads_data`
+        FROM fb_ads_data
         WHERE ad_id IS NOT NULL
-    )
+    ) t
     GROUP BY ad_id_str
 ),
 base AS (
@@ -114,10 +114,7 @@ base AS (
         o.shop_label,
         o.order_currency,
         -- Gom ngày theo tz của ad account (POS day = Meta day). inserted_at = UTC naive.
-        DATE(
-            SAFE.PARSE_TIMESTAMP('%Y-%m-%dT%H:%M:%E*S', REPLACE(TRIM(o.inserted_at), ' ', 'T')),
-            COALESCE(atz.tz, 'Asia/Ho_Chi_Minh')
-        )                                                   AS order_date,
+        ngay_theo_mui(o.inserted_at, COALESCE(atz.tz, 'Asia/Ho_Chi_Minh')) AS order_date,
         o.status_category,
         o.status_name,
 
@@ -148,11 +145,11 @@ base AS (
         -- Tên marketer tách sẵn ở đây để tầng ngoài dùng được 2 lần (tên + nhóm).
         COALESCE(
             CASE WHEN STARTS_WITH(TRIM(o.marketer), '{')
-                 THEN JSON_EXTRACT_SCALAR(o.marketer, '$.name') END,
+                 THEN (safe_json(o.marketer) ->> 'name') END,
             NULLIF(NULLIF(o.marketer, ''), 'None'),
             'unknown'
         )                                                   AS _mk_name
-    FROM `{PROJECT}.{DATASET}.sale_order` o
+    FROM sale_order o
     LEFT JOIN items_cogs c ON o.shop_id = c.shop_id AND o.id = c.order_id
     LEFT JOIN ad_tz atz   ON o.ad_id = atz.ad_id_str
     WHERE o.inserted_at IS NOT NULL AND o.inserted_at != ''
@@ -194,14 +191,14 @@ SELECT
     CASE
         WHEN p_utm_term IS NOT NULL
              AND LENGTH(p_utm_term) > 10
-             AND REGEXP_CONTAINS(p_utm_term, r'^[0-9]+$') THEN p_utm_term
+             AND (p_utm_term ~ '^[0-9]+$') THEN p_utm_term
         WHEN ad_id IS NOT NULL AND TRIM(ad_id) != ''       THEN ad_id
         ELSE NULL
     END                                                    AS resolved_ad_id,
     CASE
         WHEN p_utm_medium IS NOT NULL
              AND LENGTH(p_utm_medium) > 10
-             AND REGEXP_CONTAINS(p_utm_medium, r'^[0-9]+$') THEN p_utm_medium
+             AND (p_utm_medium ~ '^[0-9]+$') THEN p_utm_medium
         WHEN adset_id IS NOT NULL AND TRIM(adset_id) != '' THEN adset_id
         ELSE NULL
     END                                                    AS resolved_adset_id,
@@ -217,7 +214,7 @@ SELECT
     CASE
         WHEN p_utm_term IS NOT NULL
              AND LENGTH(p_utm_term) > 10
-             AND REGEXP_CONTAINS(p_utm_term, r'^[0-9]+$')  THEN 'utm'
+             AND (p_utm_term ~ '^[0-9]+$')  THEN 'utm'
         WHEN ad_id IS NOT NULL AND TRIM(ad_id) != ''       THEN 'pos_field'
         ELSE 'none'
     END                                                    AS attribution_method,
@@ -235,3 +232,4 @@ SELECT
 
     p_utm_campaign
 FROM base;
+

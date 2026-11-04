@@ -17,7 +17,7 @@ import {
 } from "../data/inventory";
 import TabSkeleton from "@/components/ui/tab-skeleton";
 
-// Payload trả về từ /api/talpha/inventory (POS live; POS lỗi → snapshot BQ dự phòng)
+// Payload trả về từ /api/talpha/inventory (POS live; POS lỗi → snapshot dự phòng trong kho số)
 interface InventoryPayload {
     asOf: { label: string; note: string };
     marketOverview: MarketOverview[];
@@ -31,7 +31,7 @@ interface InventoryPayload {
         images?: { configured: boolean; count: number; source?: string };
     };
     fetchedAt?: string;
-    _source?: "pos-live" | "bigquery-fallback";
+    _source?: "pos-live" | "snapshot-fallback";
     _snapshotTime?: string;
 }
 
@@ -107,7 +107,7 @@ export default function TALPHAProductsTab(_props: Props) {
     const [sortKey, setSortKey] = useState<SortKey>("perDay");
     const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-    // ─── Dữ liệu live từ POS (POS lỗi → API trả snapshot BQ có nhãn thời điểm) ───
+    // ─── Dữ liệu live từ POS (POS lỗi → API trả snapshot kho số có nhãn thời điểm) ───
     // KHÔNG còn lớp dữ liệu tĩnh: thà hiện "không đọc được" còn hơn hiện số cũ 2 tháng
     // trông như số thật (bẫy snapshot 19/06 — đã gỡ 20/08).
     const [data, setData] = useState<InventoryPayload | null>(null);
@@ -136,7 +136,7 @@ export default function TALPHAProductsTab(_props: Props) {
         return () => { alive = false; };
     }, [reloadAt]);
 
-    // Nguồn của data đang hiển thị: pos-live / bigquery-fallback
+    // Nguồn của data đang hiển thị: pos-live / snapshot-fallback
     const source = data ? (data._source ?? "pos-live") : "loading";
     const snapshotLabel = (() => {
         if (!data?._snapshotTime) return null;
@@ -219,14 +219,14 @@ export default function TALPHAProductsTab(_props: Props) {
     // Tải lần đầu: skeleton, KHÔNG hiện số nào (trước đây hiện snapshot tĩnh 19/06 trong lúc chờ)
     if (loading && !data) return <TabSkeleton cards={4} showChart={true} rows={8} />;
 
-    // POS + snapshot BQ đều chết và chưa có gì để hiện → nói thẳng, kèm nút thử lại.
+    // POS + snapshot dự phòng đều chết và chưa có gì để hiện → nói thẳng, kèm nút thử lại.
     if (!data) {
         return (
             <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-8 text-center">
                 <AlertTriangle className="mx-auto h-8 w-8 text-rose-500" />
                 <h3 className="mt-3 text-base font-semibold text-foreground">Không đọc được tồn kho</h3>
                 <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-                    POS Poscake không phản hồi và BigQuery cũng không có snapshot dự phòng.
+                    POS Poscake không phản hồi và kho số cũng không có snapshot dự phòng.
                     {error ? ` Chi tiết: ${error}` : ""} Không hiện số cũ để tránh đọc nhầm thành số thật.
                 </p>
                 <button
@@ -250,7 +250,7 @@ export default function TALPHAProductsTab(_props: Props) {
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> LIVE từ POS Poscake
                     </span>
-                ) : source === "bigquery-fallback" ? (
+                ) : source === "snapshot-fallback" ? (
                     <span className="rounded-full bg-amber-100 px-2.5 py-1 font-medium text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
                         ⚠️ POS lỗi — đang dùng dữ liệu dự phòng{snapshotLabel ? ` (snapshot ${snapshotLabel})` : ""} · KHÔNG realtime
                     </span>

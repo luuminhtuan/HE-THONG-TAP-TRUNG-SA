@@ -6,15 +6,12 @@
 //
 // Dùng bởi:
 //   • /api/talpha/inventory       → nguồn chính của tab Sản phẩm & Kho
-//   • /api/talpha/sync-inventory  → ghi snapshot vào BigQuery làm đường dự phòng
+//   • /api/talpha/sync-inventory  → ghi snapshot vào kho số (inventory_snapshot) làm đường dự phòng
 // ═══════════════════════════════════════════════════════════════════
 import { fetchPosInventory, loadShops, posMarketKey } from "@/lib/talpha/pos-images";
 import { RULES } from "@/lib/talpha/rules";
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 import type { MarketOverview, StatusSummary, SkuRow } from "@/components/talpha/data/inventory";
-
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 
 // Mỗi shop POS = một kho. Danh sách lấy từ talpha.yaml → poscake.shops, tên nước và cờ từ
 // talpha_rules.json → markets. Trước 15/09/2026 bảng này gõ cứng một dòng Đài — thêm shop
@@ -48,18 +45,16 @@ function normMkt(nm: string | null): string | null {
 async function fetchSkuMarketers(variationToCode: Map<string, string>, shopCodes?: string[]): Promise<Record<string, string>> {
     const perCode: Record<string, Record<string, number>> = {};
     try {
-        const [rows] = await bigquery.query({
-            query: `
-                SELECT oi.variation_id vid, JSON_EXTRACT_SCALAR(o.marketer, '$.name') nm, SUM(oi.quantity) qty
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.order_items\` oi
+        // Ngày đơn = ngày UTC của inserted_at (chuỗi giờ UTC), so với hôm nay UTC — như bản cũ.
+        const rows = await query(`
+                SELECT oi.variation_id vid, safe_json(o.marketer) ->> 'name' nm, SUM(oi.quantity) qty
+                FROM order_items oi
                 -- X8: mã đơn trùng giữa các shop → ghép cả shop_id.
-                JOIN \`${BQ_PROJECT}.${BQ_DATASET}.sale_order\` o ON oi.shop_id = o.shop_id AND oi.order_id = CAST(o.id AS STRING)
-                WHERE DATE(TIMESTAMP(o.inserted_at)) >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+                JOIN sale_order o ON oi.shop_id = o.shop_id AND oi.order_id = o.id
+                WHERE safe_ts(o.inserted_at)::date >= CURRENT_DATE - 30
                   AND o.status_name != 'canceled' AND oi.variation_id != ''
-                  ${shopCodes ? "AND UPPER(o.shop_label) IN UNNEST(@codes)" : ""}
-                GROUP BY 1, 2`,
-            ...(shopCodes ? { params: { codes: shopCodes }, types: { codes: ["STRING"] } } : {}),
-        });
+                  ${shopCodes ? "AND UPPER(o.shop_label) = ANY(@codes::text[])" : ""}
+                GROUP BY 1, 2`, shopCodes ? { codes: shopCodes } : undefined);
         for (const r of rows as any[]) {
             const code = variationToCode.get(String(r.vid));
             const mk = normMkt(r.nm);
@@ -68,7 +63,7 @@ async function fetchSkuMarketers(variationToCode: Map<string, string>, shopCodes
             m[mk] = (m[mk] || 0) + (Number(r.qty) || 0);
         }
     } catch (e: any) {
-        console.error("sku marketers BQ error:", e?.message || e);
+        console.error("sku marketers (kho số) lỗi:", e?.message || e);
     }
     const out: Record<string, string> = {};
     for (const code of Object.keys(perCode)) {
@@ -77,22 +72,20 @@ async function fetchSkuMarketers(variationToCode: Map<string, string>, shopCodes
     return out;
 }
 
-// Bán 30 ngày theo (thị trường, mã SKU) — đơn THẬT từ BigQuery (đủ 7 kho).
+// Bán 30 ngày theo (thị trường, mã SKU) — đơn THẬT từ kho số (mọi shop đã sync).
 // order_items chỉ có variation_id (UUID; tên SP trống) → map variation_id → mã SKU qua POS.
 // Best-effort: lỗi → trả rỗng, cột bán/ngày để trống.
 async function fetchSold30(variationToCode: Map<string, string>): Promise<Record<string, Record<string, number>>> {
     const out: Record<string, Record<string, number>> = {};
     try {
-        const [rows] = await bigquery.query({
-            query: `
+        const rows = await query(`
                 SELECT LOWER(o.shop_label) mk, oi.variation_id vid, SUM(oi.quantity) qty
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.order_items\` oi
+                FROM order_items oi
                 -- X8: mã đơn trùng giữa các shop → ghép cả shop_id.
-                JOIN \`${BQ_PROJECT}.${BQ_DATASET}.sale_order\` o ON oi.shop_id = o.shop_id AND oi.order_id = CAST(o.id AS STRING)
-                WHERE DATE(TIMESTAMP(o.inserted_at)) >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+                JOIN sale_order o ON oi.shop_id = o.shop_id AND oi.order_id = o.id
+                WHERE safe_ts(o.inserted_at)::date >= CURRENT_DATE - 30
                   AND o.status_name != 'canceled' AND oi.variation_id != ''
-                GROUP BY 1, 2`,
-        });
+                GROUP BY 1, 2`);
         for (const r of rows as any[]) {
             const code = variationToCode.get(String(r.vid));
             if (!code || !r.mk) continue;
@@ -100,7 +93,7 @@ async function fetchSold30(variationToCode: Map<string, string>): Promise<Record
             m[code] = (m[code] || 0) + (Number(r.qty) || 0);
         }
     } catch (e: any) {
-        console.error("velocity BQ error:", e?.message || e);
+        console.error("velocity (kho số) lỗi:", e?.message || e);
     }
     return out;
 }
@@ -120,7 +113,7 @@ export interface InventoryPayload {
 
 /**
  * Nguồn CHUẨN = POS Poscake (actual_remain_quantity) — đã BỎ Google Sheet thủ công.
- * Tồn từ POS; bán/ngày từ đơn thật BigQuery 30 ngày; trạng thái tự tính.
+ * Tồn từ POS; bán/ngày từ đơn thật trong kho số 30 ngày; trạng thái tự tính.
  * Điều chuyển/nhập tay (analyst) không còn nguồn → để rỗng.
  */
 export async function buildInventoryPayload(

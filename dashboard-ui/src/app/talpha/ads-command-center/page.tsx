@@ -388,7 +388,7 @@ export default function TALPHAAdsCommandCenterPage() {
                     <div>
                         <div className="mb-1.5 flex items-center gap-2 px-0.5">
                             <span className="h-3 w-1 rounded-full bg-amber-400" />
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400" title="Doanh số ĐẶT: mọi đơn (cod hoặc total_price), khác DS Giao TC của tab BigQuery">DS đặt (100% đơn)</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400" title="Doanh số ĐẶT: mọi đơn (cod hoặc total_price), khác DS Giao TC của các tab đọc kho số">DS đặt (100% đơn)</span>
                         </div>
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                             <KpiCard icon={Wallet} accent="slate" label="Chi phí Ads" value={formatVNDCompact(summary.total_spend_vnd)} />
@@ -505,7 +505,7 @@ export default function TALPHAAdsCommandCenterPage() {
                                                 <th className="px-2 py-2.5 text-right text-purple-300">🛒 META</th>
                                                 <th className="px-2 py-2.5 text-right text-blue-300">📦 POS</th>
                                                 <th className="px-2 py-2.5 text-right text-emerald-300" title="Doanh số ĐẶT (mọi đơn) — không phải GTC">💰 DS đặt</th>
-                                                <th className="px-2 py-2.5 text-right text-emerald-300" title="ROAS blended = DS đặt ÷ spend — không so trực tiếp với ROAS GTC của tab BigQuery">📈 ROAS</th>
+                                                <th className="px-2 py-2.5 text-right text-emerald-300" title="ROAS blended = DS đặt ÷ spend — không so trực tiếp với ROAS GTC của các tab đọc kho số">📈 ROAS</th>
                                             </tr>
                                         </thead>
                                         <tbody>

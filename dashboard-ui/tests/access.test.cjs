@@ -154,67 +154,71 @@ t("ai đăng nhập cũng đọc được markets, me, report-config", () => {
     for (const p of ["/api/talpha/markets", "/api/talpha/me", "/api/talpha/report-config"]) assert.ok(A.checkApi(thai, p, q("")).ok);
 });
 
-console.log("── /api/query: câu SQL dựng ở trình duyệt ──");
-const P = "cty-507710", D = "TALPHA_Dataset";
-const sc = (sql, a = loc, ds = []) => A.scopeQuery(sql, a, P, D, ds);
+console.log("── /api/query: câu SQL dựng ở trình duyệt (Postgres, 04/11/2026) ──");
+// Mọi bảng / view khác trong database — route lấy danh sách lúc chạy.
+const KHAC = ["sale_order_raw", "order_items_raw", "fb_ads_data_raw", "bao_cao_tab", "partner_orders",
+    "product_catalog", "vw_product_pnl", "sync_health", "schema_migrations"];
+const sc = (sql, a = loc, ds = KHAC) => A.scopeQuery(sql, a, ds);
 t("giám đốc và người xem đủ ba nước: câu giữ nguyên", () => {
-    const s = "SELECT 1 FROM `cty-507710.TALPHA_Dataset.vw_orders_std`";
+    const s = "SELECT 1 FROM vw_orders_std";
     assert.deepStrictEqual(sc(s, sanh), { ok: true, sql: s });
     assert.deepStrictEqual(sc(s, thuong), { ok: true, sql: s });
 });
-t("đơn: lọc theo cột market; mọi kiểu đặt dấu ` đều bị thay", () => {
-    for (const ref of ["`cty-507710.TALPHA_Dataset.vw_orders_std`", "`cty-507710.TALPHA_Dataset`.vw_orders_std",
-        "`cty-507710`.`TALPHA_Dataset`.`vw_orders_std`", "cty-507710.TALPHA_Dataset.vw_orders_std"]) {
+t("đơn: lọc theo cột market; có hay không tiền tố public. đều bị thay", () => {
+    for (const ref of ["vw_orders_std", "public.vw_orders_std", "PUBLIC . VW_ORDERS_STD"]) {
         const r = sc(`SELECT v.market, SUM(v.revenue_vnd) FROM ${ref} v GROUP BY 1`);
         assert.ok(r.ok, ref + " " + r.error);
         assert.ok(r.sql.includes("WHERE market IN ('AE')"), r.sql);
-        assert.ok(!/FROM\s+`cty-507710\.TALPHA_Dataset\.vw_orders_std`\s+v/.test(r.sql), "còn bảng trần: " + r.sql);
+        assert.ok(!/FROM\s+(public\s*\.\s*)?vw_orders_std\s+v/i.test(r.sql), "còn bảng trần: " + r.sql);
     }
 });
 t("sale_order, order_items lọc theo shop; chi tiêu Meta lọc theo nước ở tên campaign", () => {
-    const r = sc("SELECT o.id FROM `cty-507710.TALPHA_Dataset.sale_order` o JOIN `cty-507710.TALPHA_Dataset.order_items` i ON i.order_id = CAST(o.id AS STRING)");
-    assert.ok(r.ok && r.sql.includes("UPPER(shop_label) IN ('AE')") && r.sql.includes("CAST(shop_id AS STRING) IN (SELECT DISTINCT"), r.sql);
-    const m = sc("SELECT SUM(spend) FROM `cty-507710.TALPHA_Dataset`.vw_ad_windows WHERE NOT is_test_campaign", thai);
-    assert.ok(m.ok && m.sql.includes("IN ('Singapore')") && m.sql.includes("SPLIT(IFNULL(campaign_name, ''), '/')"), m.sql);
+    const r = sc("SELECT o.id FROM sale_order o JOIN order_items i ON i.order_id = o.id");
+    assert.ok(r.ok && r.sql.includes("UPPER(shop_label) IN ('AE')") && r.sql.includes("shop_id IN (SELECT DISTINCT shop_id FROM sale_order"), r.sql);
+    const m = sc("SELECT SUM(spend) FROM vw_ad_windows WHERE NOT is_test_campaign", thai);
+    assert.ok(m.ok && m.sql.includes("IN ('Singapore')") && m.sql.includes("string_to_array(COALESCE(campaign_name, ''), '/')"), m.sql);
 });
-t("bảng gộp mọi nước (vw_attribution_quality) và bảng lạ → từ chối", () => {
-    assert.ok(!sc("SELECT * FROM `cty-507710.TALPHA_Dataset`.vw_attribution_quality").ok);
-    assert.ok(!sc("SELECT * FROM `cty-507710.TALPHA_Dataset.fb_ads_data`").ok);
+t("bảng gộp mọi nước (vw_attribution_quality), bảng thô và bảng khác → từ chối", () => {
+    assert.ok(!sc("SELECT * FROM vw_attribution_quality").ok);
+    assert.ok(!sc("SELECT * FROM fb_ads_data").ok);
+    for (const b of KHAC) assert.ok(!sc(`SELECT * FROM vw_orders_std v, ${b} x`).ok, b);
 });
 t("đường vòng tới dữ liệu đều bị chặn", () => {
     const xau = [
-        "SELECT * FROM TALPHA_Dataset.sale_order",                                         // 2 phần, dự án mặc định
-        "SELECT * FROM `cty-507710.TALPHA_Dataset.vw_orders_std` v, `other-proj.ds.t` x",   // dự án khác có dấu `
-        "SELECT * FROM `cty-507710.TALPHA_Dataset.vw_orders_std` v JOIN other-proj.ds.t x ON TRUE",
-        "SELECT * FROM `cty-507710.TALPHA_Dataset.vw_orders_std` v, region-us.INFORMATION_SCHEMA.JOBS j",
-        "SELECT * FROM `cty-507710.TALPHA_Dataset.vw_orders_std` v WHERE v.x IN (SELECT 1 FROM sale_order)",
-        "SELECT __T0__ FROM `cty-507710.TALPHA_Dataset.vw_orders_std`",
-        "SELECT 1",                                                                         // không đọc bảng dashboard
-        "SELECT * FROM `cty-507710.TALPHA_Dataset.vw_orders_st\\x64`",                     // thoát ký tự trong tên
-        // giấu code sau chú thích # — máy tưởng là chuỗi, BigQuery chạy thật
-        "SELECT * FROM `cty-507710.TALPHA_Dataset.vw_orders_std` v # '\n, other.ds.t x -- '",
-        "SELECT r'\\' , (SELECT 1 FROM other.ds.t) , '\\' FROM `cty-507710.TALPHA_Dataset.vw_orders_std`",
-        "SELECT 'chưa đóng FROM `cty-507710.TALPHA_Dataset.vw_orders_std`",
+        'SELECT * FROM vw_orders_std v, "sale_order_raw" x',                                 // tên trong nháy kép
+        'SELECT * FROM "vw_orders_std"',
+        "SELECT * FROM vw_orders_std v WHERE v.x IN (SELECT 1 FROM pg_stats)",                // thống kê lộ giá trị cột
+        "SELECT * FROM vw_orders_std v, information_schema.tables t",
+        "SELECT query_to_xml('select * from sale_order', true, true, '') FROM vw_orders_std", // câu SQL trong chuỗi
+        "SELECT table_to_xml('sale_order', true, true, '') FROM vw_orders_std",
+        "SELECT ts_stat('select 1') FROM vw_orders_std",
+        "SELECT set_config('role', 'talpha', true) FROM vw_orders_std",
+        "SELECT * FROM vw_orders_std v, otherdb.public.sale_order x",                          // 3 phần
+        "SELECT $$x$$ FROM vw_orders_std",                                                     // chuỗi $$
+        "SELECT E'\\x27' FROM vw_orders_std",                                                  // chuỗi có ký tự thoát
+        "SELECT U&'\\0041' FROM vw_orders_std",
+        "SELECT 1 FROM vw_orders_std /* ' */ , sale_order_raw x -- '",                         // chú thích /* */
+        "SELECT __T0__ FROM vw_orders_std",
+        "SELECT 1",                                                                            // không đọc bảng dashboard
+        "SELECT 'chưa đóng FROM vw_orders_std",
     ];
     for (const s of xau) assert.ok(!sc(s).ok, s);
-    // dataset khác trong cùng dự án (danh sách route lấy lúc chạy)
-    assert.ok(!sc("SELECT * FROM `cty-507710.TALPHA_Dataset.vw_orders_std` v, OldGCC.sale_order g", loc, ["TALPHA_Dataset", "OldGCC"]).ok);
 });
 t("chữ trùng tên bảng nằm TRONG chuỗi hoặc chú thích không làm hỏng câu", () => {
-    const r = sc("SELECT 'cty-507710.TALPHA_Dataset.x' AS s, \"sale_order\" AS k -- vw_orders_std\nFROM `cty-507710.TALPHA_Dataset.vw_orders_std`");
+    const r = sc("SELECT 'sale_order_raw' AS s, 'it''s vw_orders_std' AS k -- pg_stats bao_cao_tab\nFROM vw_orders_std");
     assert.ok(r.ok, r.error);
+    assert.ok(r.sql.includes("'it''s vw_orders_std'") && r.sql.includes("-- pg_stats bao_cao_tab"), r.sql);
 });
 t("câu thật của 4 tab chạy được với leader", () => {
-    const T = "`cty-507710.TALPHA_Dataset`";
     const cau = [
-        `SELECT account_name, ROUND(SUM(spend), 0) as spend FROM \`cty-507710.TALPHA_Dataset.vw_fb_ads_std\` WHERE date BETWEEN '2026-09-15' AND '2026-10-05' AND spend > 0 GROUP BY 1 ORDER BY spend DESC`,
-        `SELECT ad_id, campaign_name FROM ${T}.vw_ad_windows WHERE NOT is_test_campaign AND health_severity >= 3 ORDER BY health_severity DESC, spend_7d DESC LIMIT 50`,
-        `WITH o AS (SELECT id, ANY_VALUE(customer_phone) phone FROM \`cty-507710.TALPHA_Dataset.sale_order\` GROUP BY id)
+        `SELECT account_name, ROUND(SUM(spend), 0) as spend FROM vw_fb_ads_std WHERE date BETWEEN '2026-09-15' AND '2026-10-05' AND spend > 0 GROUP BY 1 ORDER BY spend DESC`,
+        `SELECT ad_id, campaign_name FROM vw_ad_windows WHERE NOT is_test_campaign AND health_severity >= 3 ORDER BY health_severity DESC, spend_7d DESC LIMIT 50`,
+        `WITH o AS (SELECT id, ANY_VALUE(bill_phone_number) phone FROM sale_order GROUP BY id)
          SELECT v.market, COUNT(DISTINCT o.phone) c, STRING_AGG(DISTINCT v.market, ', ') s
-         FROM \`cty-507710.TALPHA_Dataset.vw_orders_std\` v JOIN o ON o.id = v.order_id GROUP BY 1`,
+         FROM vw_orders_std v JOIN o ON o.id = v.order_id GROUP BY 1`,
         `SELECT v.market, SUM(oi.quantity) OVER (PARTITION BY oi.shop_id, oi.order_id) q
-         FROM \`cty-507710.TALPHA_Dataset.order_items\` oi
-         JOIN \`cty-507710.TALPHA_Dataset.vw_orders_std\` v ON oi.shop_id = CAST(v.shop_id AS STRING) AND oi.order_id = CAST(v.order_id AS STRING)`,
+         FROM order_items oi
+         JOIN vw_orders_std v ON oi.shop_id = v.shop_id AND oi.order_id = v.order_id`,
     ];
     for (const s of cau) { const r = sc(s); assert.ok(r.ok, r.error + "\n" + s); }
 });

@@ -6,7 +6,7 @@
 // trên trang là lần deploy sau mất. Nên nước thêm / sửa / tắt trên trang nằm ở file PHỦ ngoài git
 // (data/thi_truong.json), và mọi nơi đọc luật phủ file đó lên bản gốc:
 //   • dashboard: lib/talpha/rules.ts (bản này)
-//   • sync, Sheet, view BigQuery: sync/core/thi_truong.py
+//   • sync, Sheet, view Postgres (sync/core/pg_view.py): sync/core/thi_truong.py
 //   • bot Zalo: ops/zalo-alerts/thi_truong.js
 // Ba bản phải ra CÙNG kết quả — bộ dữ liệu chung tests/fixtures/thi_truong_phu.json.
 // ═══════════════════════════════════════════════════════════════════
@@ -133,7 +133,7 @@ export function khoiPhuTuNhap(n: ThiTruongNhap, goc: LuatCoThiTruong): KhoiPhu {
 /**
  * Lỗi của một nước nhập trên trang (rỗng = lưu được). `luat` là luật ĐÃ phủ hiện tại;
  * `laMoi` = thêm nước mới (khoá chưa có). Luật chặn đúng những thứ đã làm sai số thật:
- *   • mã shop vào thẳng câu SQL của view BigQuery → chỉ chữ in hoa;
+ *   • mã shop vào thẳng câu SQL của view (sync/core/pg_view.py) → chỉ chữ in hoa;
  *   • nước đang bán / đã tắt thiếu tỷ giá hay số chia → doanh thu ra 0 hoặc lệch 100 lần;
  *   • mã campaign trùng nước khác → chi tiêu nước này chạy sang nước kia.
  */

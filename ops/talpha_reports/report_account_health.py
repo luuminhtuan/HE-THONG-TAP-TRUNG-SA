@@ -20,15 +20,14 @@
 # ⇒ Bảng ghi WRITE_TRUNCATE nên vòng ngắn GHI ĐÈ MẤT bộ đầy đủ. Tụt quá ngưỡng = phải kêu.
 # Ngoại lệ duy nhất: 2 ngày đầu tháng, cửa sổ sync reset về đầu tháng nên tụt là đương nhiên.
 #
-# Gọi từ daily_guarded.sh sau report_health.py. Load job APPEND (free tier không streaming/
-# DML). Fail ở đây KHÔNG được làm vỡ vòng chạy — luôn exit 0.
-import os, sys, json, io, socket, argparse, datetime
+# Gọi từ daily_guarded.sh sau report_health.py, ghi vào bảng Postgres sync_health_accounts
+# (04/11/2026 — trước đó BigQuery). Fail ở đây KHÔNG được làm vỡ vòng chạy — luôn exit 0.
+import os, sys, socket, argparse, datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from talpha_rules import MONEY_DIV_SHOP  # X13 — số chia tiền POS theo shop, KHÔNG gõ 100
+import talpha_paths
 
-PROJECT = "cty-507710"
-DATASET = "TALPHA_Dataset"
 TABLE = "sync_health_accounts"
 
 # Ngưỡng tụt coi là mất dữ liệu. 5% lấy đúng theo chốt chặn đề xuất cho bản sửa gốc POS
@@ -46,36 +45,36 @@ MONEY_DIV_CASE = "CASE shop_label " + " ".join(
 
 STATE_SQL = """
 SELECT 'ads' AS kind,
-       -- CAST bắt buộc: bảng thật đang là INTEGER (runtime ghi autodetect) trong khi
-       -- ADS_SCHEMA của repo khai STRING — schema drift đã biết, đừng bỏ CAST.
-       CAST(account_id AS STRING) AS entity_id,
+       account_id AS entity_id,
        -- Gộp theo ID, tên lấy bản MỚI NHẤT. Gộp theo cả tên thì Meta đổi tên TK là một TK
        -- tách làm hai dòng, dòng tên mới ít dòng → báo "drop" oan (30/09/2026: Sỹ Anh Taiwan 6
        -- đổi thành ANTALO 4, 248 dòng cũ vẫn nguyên mà bị báo tụt còn 6).
-       ARRAY_AGG(account_name ORDER BY date DESC LIMIT 1)[OFFSET(0)] AS entity_name,
+       (ARRAY_AGG(account_name ORDER BY date DESC))[1] AS entity_name,
        COUNT(*)     AS rows_total,
-       COUNTIF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)) AS rows_recent,
-       ROUND(SUM(spend)) AS metric
-FROM `{p}.{d}.fb_ads_data`
-GROUP BY 1
+       COUNT(*) FILTER (WHERE date >= CURRENT_DATE - 1) AS rows_recent,
+       ROUND(SUM(spend)::numeric) AS metric
+FROM fb_ads_data
+-- GROUP BY 1, 2 — bản 30/09 ghi "GROUP BY 1" (gom theo hằng 'ads') mà vẫn chọn account_id: câu
+-- đó không chạy được, và lỗi bị nuốt ở cuối file nên kiểm theo TKQC im lặng từ đó.
+GROUP BY 1, 2
 UNION ALL
 SELECT 'orders',
        shop_label,
        shop_label,
        COUNT(*),
-       COUNTIF(SUBSTR(inserted_at, 1, 10) >= FORMAT_DATE('%Y-%m-%d', DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY))),
+       COUNT(*) FILTER (WHERE SUBSTR(inserted_at, 1, 10) >= to_char(CURRENT_DATE - 1, 'YYYY-MM-DD')),
        -- rule CEO: doanh thu (tệ địa phương) chỉ tính đơn GIAO_THANH_CONG.
        -- X13: số chia theo TỪNG shop (sinh từ talpha_rules.json) — Đài lưu nguyên TWD,
        -- chia 100 như GCC là tụt 100 lần.
-       ROUND(SUM(IF(status_category = 'GIAO_THANH_CONG' AND cod > 0, cod, 0)) / ({MONEY_DIV_CASE}))
-FROM `{p}.{d}.sale_order`
+       ROUND((SUM(CASE WHEN status_category = 'GIAO_THANH_CONG' AND cod > 0 THEN cod ELSE 0 END) / ({MONEY_DIV_CASE}))::numeric)
+FROM sale_order
 GROUP BY 1, 2, 3
 """
 
 PREV_SQL = """
 SELECT kind, entity_id, rows_total, rows_recent
-FROM `{p}.{d}.{t}`
-WHERE run_ts = (SELECT MAX(run_ts) FROM `{p}.{d}.{t}`)
+FROM sync_health_accounts
+WHERE run_ts = (SELECT MAX(run_ts) FROM sync_health_accounts)
 """
 
 
@@ -101,23 +100,18 @@ def classify(cur_total, cur_recent, prev, month_reset=False):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dry-run", action="store_true", help="in ra, không ghi BQ")
+    ap.add_argument("--dry-run", action="store_true", help="in ra, không ghi")
     a = ap.parse_args()
 
-    os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS",
-                          os.path.expanduser("~/talpha_reports/runtime/bigquery_key.json"))
-    from google.cloud import bigquery
-    client = bigquery.Client(project=PROJECT)
-
-    cur = list(client.query(STATE_SQL.format(p=PROJECT, d=DATASET, MONEY_DIV_CASE=MONEY_DIV_CASE)).result())
-
-    prev = {}
-    try:
-        for r in client.query(PREV_SQL.format(p=PROJECT, d=DATASET, t=TABLE)).result():
-            prev[(r.kind, r.entity_id)] = (int(r.rows_total or 0), int(r.rows_recent or 0))
-    except Exception as e:                                   # noqa: BLE001
-        # Lần chạy đầu: bảng chưa tồn tại → không có mốc so sánh, mọi mục là 'new'.
-        print("sync_health_accounts: chưa có lịch sử ({}), coi tất cả là 'new'".format(e))
+    sys.path.insert(0, talpha_paths.repo_dir())
+    from sync.core.pg import ket_noi
+    from psycopg.rows import namedtuple_row
+    conn = ket_noi()
+    with conn.cursor(row_factory=namedtuple_row) as c:
+        cur = c.execute(STATE_SQL.format(MONEY_DIV_CASE=MONEY_DIV_CASE)).fetchall()
+        # Lần chạy đầu: bảng trống → không có mốc so sánh, mọi mục là 'new'.
+        prev = {(r.kind, r.entity_id): (int(r.rows_total or 0), int(r.rows_recent or 0))
+                for r in c.execute(PREV_SQL).fetchall()}
 
     now = datetime.datetime.utcnow()
     month_reset = now.day <= MONTH_RESET_DAYS
@@ -160,30 +154,17 @@ def main():
     print("sync_health_accounts: {} mục, {} mục CÓ VẤN ĐỀ".format(len(rows), len(bad)))
 
     if a.dry_run:
-        print("(dry-run — không ghi BQ)")
+        print("(dry-run — không ghi)")
         return
 
-    schema = [
-        bigquery.SchemaField("ts", "TIMESTAMP"),
-        bigquery.SchemaField("run_ts", "TIMESTAMP"),
-        bigquery.SchemaField("host", "STRING"),
-        bigquery.SchemaField("kind", "STRING"),
-        bigquery.SchemaField("entity_id", "STRING"),
-        bigquery.SchemaField("entity_name", "STRING"),
-        bigquery.SchemaField("rows_total", "INT64"),
-        bigquery.SchemaField("rows_recent", "INT64"),
-        bigquery.SchemaField("metric", "FLOAT64"),
-        bigquery.SchemaField("prev_rows_total", "INT64"),
-        bigquery.SchemaField("status", "STRING"),
-    ]
-    jc = bigquery.LoadJobConfig(
-        source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-        write_disposition=bigquery.WriteDisposition.WRITE_APPEND, schema=schema)
-    payload = "\n".join(json.dumps(r) for r in rows).encode()
-    client.load_table_from_file(
-        io.BytesIO(payload), "{}.{}.{}".format(PROJECT, DATASET, TABLE),
-        job_config=jc).result()
-
+    cot = ("ts", "run_ts", "host", "kind", "entity_id", "entity_name", "rows_total", "rows_recent",
+           "metric", "prev_rows_total", "status")
+    with conn.transaction():
+        with conn.cursor() as c:
+            c.executemany(
+                f"INSERT INTO {TABLE} ({', '.join(cot)}) VALUES ({', '.join(['%s'] * len(cot))})",
+                [tuple(r[k] for k in cot) for r in rows])
+    conn.close()
 
 if __name__ == "__main__":
     try:

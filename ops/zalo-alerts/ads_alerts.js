@@ -1,5 +1,5 @@
 // Cảnh báo ADS mỗi adsPollMinutes: tổng chi tiêu hôm nay cao bất thường, và campaign đốt
-// tiền mà 0 tin nhắn. Nguồn: /api/talpha/ads-alerts (BigQuery, đã loại camp có chữ "test").
+// tiền mà 0 tin nhắn. Nguồn: /api/talpha/ads-alerts (kho số Postgres, đã loại camp có chữ "test").
 //
 // Cùng luật với pollAds() của bot WhatsApp, tách thành hàm THUẦN để test được:
 //   vào (số của route, state cũ, config) → ra (tin cần gửi hoặc null, state mới).

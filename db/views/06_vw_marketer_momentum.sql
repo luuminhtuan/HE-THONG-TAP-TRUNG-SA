@@ -19,9 +19,9 @@
 -- Nguồn: vw_fact_daily_marketer
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE OR REPLACE VIEW `{PROJECT}.{DATASET}.vw_marketer_momentum` AS
+CREATE VIEW vw_marketer_momentum AS
 WITH d AS (
-    SELECT * FROM `{PROJECT}.{DATASET}.vw_fact_daily_marketer`
+    SELECT * FROM vw_fact_daily_marketer
 )
 SELECT
     d.*,
@@ -50,7 +50,7 @@ SELECT
     -- ═══ EFFICIENCY SCORE (rank marketers) ═══
     ROUND(
         AVG(confirmed_roas) OVER w7 *
-        SAFE_DIVIDE(AVG(success_orders) OVER w7, NULLIF(AVG(total_orders) OVER w7, 0))
+        safe_divide(AVG(success_orders) OVER w7, NULLIF(AVG(total_orders) OVER w7, 0))
     , 2)                                                  AS efficiency_score,
 
     -- ═══ PHANTOM REVENUE WARNING ═══
@@ -63,3 +63,4 @@ FROM d
 WINDOW
     w3 AS (PARTITION BY marketer_name ORDER BY report_date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW),
     w7 AS (PARTITION BY marketer_name ORDER BY report_date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW);
+

@@ -16,9 +16,9 @@
 -- Nguồn: vw_fact_daily_pnl
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE OR REPLACE VIEW `{PROJECT}.{DATASET}.vw_daily_momentum` AS
+CREATE VIEW vw_daily_momentum AS
 WITH d AS (
-    SELECT * FROM `{PROJECT}.{DATASET}.vw_fact_daily_pnl`
+    SELECT * FROM vw_fact_daily_pnl
 )
 SELECT
     d.*,
@@ -92,7 +92,7 @@ SELECT
     END                                                   AS phantom_revenue_warning,
 
     -- ═══ DAY-OVER-DAY ═══
-    ROUND(SAFE_DIVIDE(confirmed_revenue - LAG(confirmed_revenue) OVER wo,
+    ROUND(safe_divide(confirmed_revenue - LAG(confirmed_revenue) OVER wo,
           NULLIF(LAG(confirmed_revenue) OVER wo, 0)) * 100, 1) AS confirmed_revenue_dod_pct,
     ROUND(confirmed_roas - LAG(confirmed_roas) OVER wo, 2)     AS confirmed_roas_dod_change
 
@@ -101,3 +101,4 @@ WINDOW
     w3 AS (ORDER BY report_date ROWS BETWEEN 2 PRECEDING AND CURRENT ROW),
     w7 AS (ORDER BY report_date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW),
     wo AS (ORDER BY report_date);
+

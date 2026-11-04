@@ -1,20 +1,22 @@
 # ═══════════════════════════════════════════════════════════════════════════════════════
-# TALPHA trên máy thử — dashboard + Postgres (04/11/2026). Hướng dẫn: docs/POSTGRES.md
+# TALPHA — chạy cả hệ thống bằng Docker (04/11/2026). Hướng dẫn: docs/POSTGRES.md
 #
-#   docker compose up -d                       # Postgres + migration + dashboard
-#   docker compose run --rm sync               # kéo số mới từ Meta / POS vào Postgres (một lần)
-#   docker compose --profile lich up -d        # thêm vòng kéo số mỗi giờ
+#   docker compose up -d                       # Postgres + dashboard + lịch việc nền
+#   mở http://localhost:3200/admin             # → Khoá kết nối: dán token Meta, key POS từng nước
+#   docker compose run --rm sync               # kéo số ngay, không chờ đầu giờ
 #   docker compose run --rm migrate dem        # số dòng từng bảng
+#   docker compose logs -f lich                # xem các việc nền chạy
+#   docker compose --profile zalo up -d zalo   # bot Zalo (ghép nick trước: xem docs/POSTGRES.md)
 #
-# CHỈ DÙNG TRÊN MÁY THỬ: dashboard bỏ đăng nhập (DASHBOARD_PUBLIC) và mật khẩu Postgres là mặc định.
-# Cổng chỉ mở cho chính máy này (127.0.0.1). Máy chủ thật vẫn chạy theo ops/deploy/.
+# MÁY THỬ / MÁY NỘI BỘ: dashboard bỏ đăng nhập (DASHBOARD_PUBLIC) và mật khẩu Postgres là mặc định.
+# Cổng chỉ mở cho chính máy này (127.0.0.1). Đưa ra internet thì phải bật đăng nhập và đổi mật khẩu.
 #
-# Khoá Meta / POS / Pancake / 17TRACK: nhập ở /admin → Khoá kết nối của dashboard này — ghi vào
-# dashboard-ui/.env.khoa.local, sync đọc file đó mỗi lần chạy.
+# Khoá Meta / POS / Pancake / 17TRACK nhập ở /admin → Khoá kết nối — ghi vào
+# dashboard-ui/.env.khoa.local (ngoài git); việc nền đọc lại file đó trước mỗi lần chạy.
 # ═══════════════════════════════════════════════════════════════════════════════════════
 name: talpha
 
-x-sync: &sync
+x-python: &python
   build:
     context: .
     dockerfile: ops/docker/sync.Dockerfile
@@ -29,8 +31,14 @@ x-sync: &sync
       required: false
   environment:
     DATABASE_URL: postgresql://talpha:talpha@db:5432/talpha
-    TALPHA_KHO: postgres          # chỉ ghi Postgres — không có đường ghi nhầm BigQuery thật
+    TALPHA_DOC_PASSWORD: ${TALPHA_DOC_PASSWORD:-chi-doc-may-thu}
     TALPHA_RULES: /app/config/talpha_rules.json
+    TALPHA_REPO: /app
+    TALPHA_APP_DIR: /app
+    TALPHA_PYTHON: python
+    # Việc nền gọi route của dashboard (chụp tồn kho, nạp vận đơn) qua mạng nội bộ compose.
+    TALPHA_DASH_URL: http://dashboard:3000
+    TALPHA_BASE_URL: http://dashboard:3000
   depends_on:
     db:
       condition: service_healthy
@@ -51,9 +59,11 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
 
+  # Bảng (db/migrations) + bộ view (db/views) — chạy mỗi lần `up`, chỉ làm phần còn thiếu.
   migrate:
-    <<: *sync
+    <<: *python
     entrypoint: ["python", "-m", "sync.core.pg"]
     command: ["migrate"]
 
@@ -65,17 +75,17 @@ services:
       - "127.0.0.1:${DASHBOARD_PORT:-3200}:3000"
     environment:
       DATABASE_URL: postgresql://talpha:talpha@db:5432/talpha
+      TALPHA_DOC_PASSWORD: ${TALPHA_DOC_PASSWORD:-chi-doc-may-thu}
       AUTH_URL: http://localhost:${DASHBOARD_PORT:-3200}
       NEXTAUTH_URL: http://localhost:${DASHBOARD_PORT:-3200}
       AUTH_SECRET: chi-dung-tren-may-thu-docker
       AUTH_TRUST_HOST: "true"
       DASHBOARD_PUBLIC: "true"
-      NEXT_PUBLIC_BQ_PROJECT: cty-507710
-      DATASET: TALPHA_Dataset
-      NEXT_PUBLIC_DATASET: TALPHA_Dataset
       NEXT_PUBLIC_DEPLOYMENT_MODE: talpha
       NEXT_PUBLIC_APP_NAME: TALPHA
       NEXT_TELEMETRY_DISABLED: "1"
+      # Lưu Thị trường trên /admin → thoát tiến trình, docker bật lại với luật mới.
+      TALPHA_TU_KHOI_DONG: "1"
     volumes:
       - ./:/app
       - dashboard_node_modules:/app/dashboard-ui/node_modules
@@ -83,19 +93,41 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    restart: unless-stopped
 
+  # Lịch việc nền — thay systemd timer của máy chủ (ops/docker/lich.py).
+  lich:
+    <<: *python
+    command: ["python", "ops/docker/lich.py"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Kéo số một lần, tay: docker compose run --rm sync
   sync:
-    <<: *sync
-    profiles: ["sync"]
+    <<: *python
+    profiles: ["tay"]
     command: ["python", "sync/talpha/talpha_sync.py"]
 
-  lich:
-    <<: *sync
-    profiles: ["lich"]
-    command: ["sh", "-c", "while true; do python sync/talpha/talpha_sync.py; sleep 3600; done"]
+  # Bot Zalo — tuỳ chọn. Ghép nick lần đầu: docker compose --profile zalo run --rm zalo node pair.js
+  zalo:
+    image: node:22-bookworm-slim
+    profiles: ["zalo"]
+    working_dir: /app/ops/zalo-alerts
+    command: ["sh", "-c", "[ -d node_modules/zca-js ] || npm ci --no-audit --no-fund; exec node bot.js"]
+    environment:
+      TALPHA_DASHBOARD_URL: http://dashboard:3000
+      TALPHA_REPO: /app
+    volumes:
+      - ./:/app
+      - zalo_node_modules:/app/ops/zalo-alerts/node_modules
+    depends_on:
+      - dashboard
     restart: unless-stopped
 
 volumes:
   pgdata:
   dashboard_node_modules:
   dashboard_next:
+  zalo_node_modules:

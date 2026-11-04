@@ -12,7 +12,7 @@
 //   • đơn / doanh số theo page — bảng sale_order, CÙNG luật Sheet (bỏ HUY, DON_THO, đơn trống),
 //     tiền quy bằng posMoneyDivisor + tỷ giá của nước.
 import { NextRequest, NextResponse } from "next/server";
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 import { MARKETS_PUBLIC, EXCHANGE_RATES, posMoneyDivisor, campaignMarket, DISPLAY, normCampMarketer, CAMP_MARKETS } from "@/lib/talpha/rules";
 import { chuanTenPage, trangCuaCamp, demTrongNgay, laTrangCuaNuoc } from "@/lib/talpha/pancake";
 import { cacPage, hoiThoaiTu, sleep, GIAN_MS, tokenPancake } from "@/lib/talpha/pancake-api";
@@ -20,8 +20,6 @@ import { cacPage, hoiThoaiTu, sleep, GIAN_MS, tokenPancake } from "@/lib/talpha/
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const homNayVN = () => new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
 
@@ -62,11 +60,11 @@ export async function GET(req: NextRequest) {
         }
     };
     try {
-        const [rows] = await bigquery.query({
-            query: `SELECT campaign_name, CAST(MAX(date) AS STRING) AS d FROM \`${BQ_PROJECT}.${BQ_DATASET}.fb_ads_data\`
-                    WHERE date >= DATE(@dau) AND date <= DATE(@ngay) GROUP BY 1`,
-            params: { dau: `${thang}-01`, ngay },
-        });
+        const rows = await query(
+            `SELECT campaign_name, to_char(MAX(date), 'YYYY-MM-DD') AS d FROM fb_ads_data
+             WHERE date >= @dau::date AND date <= @ngay::date GROUP BY 1`,
+            { dau: `${thang}-01`, ngay },
+        );
         for (const r of rows as { campaign_name: string; d: string }[]) {
             if (campaignMarket(r.campaign_name).market === nuoc.key) ghiCamp(r.campaign_name, r.d);
         }
@@ -106,18 +104,20 @@ export async function GET(req: NextRequest) {
     // ── Đơn + doanh số theo page (bảng đơn, cùng luật Sheet) ──
     const don: KetQua[] = [];
     try {
-        const [rows] = await bigquery.query({
-            query: `SELECT IFNULL(page_name, '') AS page_name, CAST(page_id AS STRING) AS page_id,
-                           JSON_EXTRACT_SCALAR(marketer, '$.name') AS tag, COUNT(*) AS n, SUM(IFNULL(cod, 0)) AS cod
-                    FROM \`${BQ_PROJECT}.${BQ_DATASET}.sale_order\`
-                    WHERE UPPER(shop_label) = @code
-                      AND DATE(TIMESTAMP(inserted_at), 'Asia/Ho_Chi_Minh') = DATE(@ngay)
-                      AND status_category NOT IN ('HUY', 'DON_THO')
-                      AND NOT (IFNULL(SAFE_CAST(total_quantity AS FLOAT64), 0) = 0
-                               AND IFNULL(total_price, 0) = 0 AND IFNULL(cod, 0) = 0)
-                    GROUP BY 1, 2, 3`,
-            params: { code, ngay },
-        });
+        // total_quantity là chuỗi: không phải số thì coi như 0 (như SAFE_CAST cũ), đừng để ::float8 làm chết câu.
+        const rows = await query(
+            `SELECT COALESCE(page_name, '') AS page_name, page_id,
+                    safe_json(marketer) ->> 'name' AS tag, COUNT(*) AS n, SUM(COALESCE(cod, 0)) AS cod
+             FROM sale_order
+             WHERE UPPER(shop_label) = @code
+               AND ngay_theo_mui(inserted_at, 'Asia/Ho_Chi_Minh') = @ngay::date
+               AND status_category NOT IN ('HUY', 'DON_THO')
+               AND NOT (COALESCE(CASE WHEN total_quantity ~ '^[[:space:]]*[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?[[:space:]]*$'
+                                      THEN total_quantity::float8 END, 0) = 0
+                        AND COALESCE(total_price, 0) = 0 AND COALESCE(cod, 0) = 0)
+             GROUP BY 1, 2, 3`,
+            { code, ngay },
+        );
         const chia = posMoneyDivisor(code), ty = EXCHANGE_RATES[nuoc.key] || 0;
         for (const r of rows as { page_name: string; page_id: string | null; tag: string | null; n: number; cod: number }[]) {
             const local = Number(r.cod || 0) / chia;

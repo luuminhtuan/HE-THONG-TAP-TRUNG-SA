@@ -35,7 +35,7 @@
 -- Nguồn: vw_fb_ads_std + vw_pos_by_ad
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE OR REPLACE VIEW `{PROJECT}.{DATASET}.vw_ad_windows` AS
+CREATE VIEW vw_ad_windows AS
 WITH ad_day AS (
     SELECT
         ad_id,
@@ -50,8 +50,8 @@ WITH ad_day AS (
         SUM(impressions)         AS impressions,
         SUM(clicks)              AS clicks,
         MAX(frequency)           AS frequency
-    FROM `{PROJECT}.{DATASET}.vw_fb_ads_std`
-    WHERE date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    FROM vw_fb_ads_std
+    WHERE date >= (CURRENT_DATE - 30)
     GROUP BY ad_id, date
 ),
 w AS (
@@ -65,52 +65,51 @@ w AS (
         ANY_VALUE(account_name)  AS account_name,
 
         -- Cờ campaign test (pattern sinh từ config/talpha_rules.json lúc deploy)
-        REGEXP_CONTAINS(IFNULL(ANY_VALUE(campaign_name), ''), r'{TEST_CAMPAIGN_RE2}')
+        (COALESCE(ANY_VALUE(campaign_name), '') ~ '{TEST_CAMPAIGN_RE}')
                                                             AS is_test_campaign,
 
         -- ─── Chi tiêu theo cửa sổ (VND — spend đã là VND, rule CEO) ───
-        SUM(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY), spend, 0))  AS spend_1d,
-        SUM(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY), spend, 0))  AS spend_3d,
-        SUM(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY), spend, 0))  AS spend_7d,
+        SUM(CASE WHEN date >= (CURRENT_DATE - 1) THEN spend ELSE 0 END)  AS spend_1d,
+        SUM(CASE WHEN date >= (CURRENT_DATE - 3) THEN spend ELSE 0 END)  AS spend_3d,
+        SUM(CASE WHEN date >= (CURRENT_DATE - 7) THEN spend ELSE 0 END)  AS spend_7d,
         SUM(spend)                                                          AS spend_30d,
 
         -- ─── CTR phân số theo cửa sổ ───
-        SAFE_DIVIDE(
-            SUM(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY), clicks, 0)),
-            NULLIF(SUM(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY), impressions, 0)), 0)
+        safe_divide(
+            SUM(CASE WHEN date >= (CURRENT_DATE - 1) THEN clicks ELSE 0 END),
+            NULLIF(SUM(CASE WHEN date >= (CURRENT_DATE - 1) THEN impressions ELSE 0 END), 0)
         )                                                                   AS ctr_1d,
-        SAFE_DIVIDE(
-            SUM(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY), clicks, 0)),
-            NULLIF(SUM(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY), impressions, 0)), 0)
+        safe_divide(
+            SUM(CASE WHEN date >= (CURRENT_DATE - 7) THEN clicks ELSE 0 END),
+            NULLIF(SUM(CASE WHEN date >= (CURRENT_DATE - 7) THEN impressions ELSE 0 END), 0)
         )                                                                   AS ctr_7d,
-        MAX(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY),
-               SAFE_DIVIDE(clicks, NULLIF(impressions, 0)), NULL))          AS ctr_peak_7d,
+        MAX(CASE WHEN date >= (CURRENT_DATE - 7) THEN safe_divide(clicks, NULLIF(impressions, 0)) ELSE NULL END)          AS ctr_peak_7d,
 
-        MAX(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY), frequency, NULL)) AS frequency_1d,
-        SUM(IF(date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY), impressions, 0))  AS impressions_7d,
+        MAX(CASE WHEN date >= (CURRENT_DATE - 1) THEN frequency ELSE NULL END) AS frequency_1d,
+        SUM(CASE WHEN date >= (CURRENT_DATE - 7) THEN impressions ELSE 0 END)  AS impressions_7d,
 
         MAX(date)                                                           AS last_active_date,
-        DATE_DIFF(CURRENT_DATE(), MIN(date), DAY) + 1                       AS ad_age_days
+        (CURRENT_DATE - MIN(date)) + 1                       AS ad_age_days
     FROM ad_day
     GROUP BY ad_id
 ),
 joined AS (
     SELECT
         w.*,
-        IFNULL(p.pos_orders_7d, 0)                          AS pos_orders_7d,
-        IFNULL(p.pos_orders_3d, 0)                          AS pos_orders_3d,
-        IFNULL(p.pos_orders_30d, 0)                         AS pos_orders_30d,
-        IFNULL(p.pos_revenue_confirmed_7d_vnd, 0)           AS pos_revenue_7d_vnd,
+        COALESCE(p.pos_orders_7d, 0)                          AS pos_orders_7d,
+        COALESCE(p.pos_orders_3d, 0)                          AS pos_orders_3d,
+        COALESCE(p.pos_orders_30d, 0)                         AS pos_orders_30d,
+        COALESCE(p.pos_revenue_confirmed_7d_vnd, 0)           AS pos_revenue_7d_vnd,
         p.last_order_date,
-        SAFE_DIVIDE(w.spend_7d, NULLIF(p.pos_orders_7d, 0)) AS pos_cpo_7d,
-        SAFE_DIVIDE(w.spend_3d, NULLIF(p.pos_orders_3d, 0)) AS pos_cpo_3d
+        safe_divide(w.spend_7d, NULLIF(p.pos_orders_7d, 0)) AS pos_cpo_7d,
+        safe_divide(w.spend_3d, NULLIF(p.pos_orders_3d, 0)) AS pos_cpo_3d
     FROM w
-    LEFT JOIN `{PROJECT}.{DATASET}.vw_pos_by_ad` p USING (ad_id)
+    LEFT JOIN vw_pos_by_ad p USING (ad_id)
 ),
 overall AS (
     -- Mức chung của 7 ngày, đã loại campaign test. Đây là mốc để so, thay cho
     -- việc gõ tay một con số CPO mục tiêu (CEO chưa chốt — xem G1 mục 3).
-    SELECT SAFE_DIVIDE(SUM(spend_7d), NULLIF(SUM(pos_orders_7d), 0)) AS cpo_7d_chung
+    SELECT safe_divide(SUM(spend_7d), NULLIF(SUM(pos_orders_7d), 0)) AS cpo_7d_chung
     FROM joined
     WHERE NOT is_test_campaign
 )
@@ -129,7 +128,7 @@ SELECT
     ROUND(j.pos_cpo_3d, 0)              AS pos_cpo_3d,
     ROUND(j.pos_cpo_7d, 0)              AS pos_cpo_7d,
     ROUND(o.cpo_7d_chung, 0)            AS cpo_7d_chung,
-    SAFE_DIVIDE(j.pos_revenue_7d_vnd, NULLIF(j.spend_7d, 0)) AS pos_roas_7d,
+    safe_divide(j.pos_revenue_7d_vnd, NULLIF(j.spend_7d, 0)) AS pos_roas_7d,
 
     -- ─── Tín hiệu hiển thị ───
     ROUND(j.ctr_1d, 5)                  AS ctr_1d,
@@ -165,3 +164,4 @@ SELECT
 FROM joined j
 CROSS JOIN overall o
 WHERE j.spend_7d > 0;
+

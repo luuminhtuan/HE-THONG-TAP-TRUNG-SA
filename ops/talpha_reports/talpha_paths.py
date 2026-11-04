@@ -112,7 +112,10 @@ def dat_moi_truong() -> str:
     `last_run_epoch` đều là đường dẫn tương đối. Chạy sai cwd thì hai vòng chạy
     không thấy lock của nhau và cùng ghi Sheet một lúc.
     """
-    os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", bq_key())
+    # Khoá Google nay là TUỲ CHỌN (chỉ để ghi Sheet / đọc bảng đối tác) — không có file thì đừng trỏ
+    # biến vào một đường dẫn không tồn tại, thư viện Google sẽ báo lỗi thay vì bỏ qua.
+    if os.path.isfile(bq_key()):
+        os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", bq_key())
     d = reports_dir()
     os.chdir(d)
     return d

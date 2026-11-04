@@ -73,7 +73,7 @@ class TestTrangThaiNuoc:
 
     def test_uae_da_co_ty_gia(self):
         # Chốt 15/09/2026: 1 AED = 7.000đ. Số chia 100 chưa đo — phải khai cùng lúc với tỷ
-        # giá: để trống thì ở đây ra 1 trong khi view BigQuery chia 100.
+        # giá: để trống thì ở đây ra 1 trong khi view chia 100.
         assert RATE["UAE"] == 7000 and MONEY_DIV["UAE"] == 100
 
     def test_ca_ba_nuoc_dang_ban(self):

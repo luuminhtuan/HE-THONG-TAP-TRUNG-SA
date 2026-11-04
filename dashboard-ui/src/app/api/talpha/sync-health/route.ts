@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
-
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 
 // B5 — trạng thái theo TỪNG TKQC/shop của vòng chạy mới nhất. Bảng do
 // ops/talpha_reports/report_account_health.py ghi. Chỉ trả về mục CÓ VẤN ĐỀ
@@ -12,17 +9,16 @@ const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 // không phát sinh (camp tạm dừng), KHÔNG phải lỗi sync nên không đưa vào cảnh báo.
 async function accountHealth() {
     try {
-        const [rows] = await bigquery.query({
-            query: `
+        // NULLS LAST: Postgres xếp NULL lên ĐẦU khi DESC (BigQuery xếp cuối) — giữ thứ tự cũ.
+        const rows = await query(`
                 SELECT run_ts, kind, entity_name, rows_total, prev_rows_total, status
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.sync_health_accounts\`
-                WHERE run_ts = (SELECT MAX(run_ts) FROM \`${BQ_PROJECT}.${BQ_DATASET}.sync_health_accounts\`)
-                ORDER BY rows_total DESC`,
-        });
+                FROM sync_health_accounts
+                WHERE run_ts = (SELECT MAX(run_ts) FROM sync_health_accounts)
+                ORDER BY rows_total DESC NULLS LAST`);
         if (!rows?.length) return null;
         const bad = rows.filter((r: any) => r.status === "empty" || r.status === "drop");
         return {
-            run_ts: rows[0].run_ts?.value || rows[0].run_ts,
+            run_ts: rows[0].run_ts,
             checked: rows.length,
             failing: bad.map((r: any) => ({
                 kind: r.kind,
@@ -56,13 +52,12 @@ function docLoiFetch(detail: unknown) {
 export async function GET() {
     try {
         const accounts = await accountHealth();
-        const [rows] = await bigquery.query({
-            query: `
+        // age_min = số PHÚT TRÒN đã qua (cắt phần lẻ, như TIMESTAMP_DIFF … MINUTE bản cũ).
+        const rows = await query(`
                 SELECT ts, host, ok, sync_rc, format_rc, detail,
-                       TIMESTAMP_DIFF(CURRENT_TIMESTAMP(), ts, MINUTE) AS age_min
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.sync_health\`
-                ORDER BY ts DESC LIMIT 200`,
-        });
+                       trunc(EXTRACT(EPOCH FROM (now() - ts)) / 60)::bigint AS age_min
+                FROM sync_health
+                ORDER BY ts DESC LIMIT 200`);
         if (!rows?.length) return NextResponse.json({ status: "no-data", accounts });
         const last = rows[0];
         // LIMIT 200 (≈8 ngày chạy mỗi giờ), KHÔNG phải 5: route chỉ dùng dòng mới nhất và
@@ -88,7 +83,7 @@ export async function GET() {
             status: last.ok ? "ok" : "fail",
             accounts: accountsOut,
             fetch_errors,
-            last_run_ts: last.ts?.value || last.ts,
+            last_run_ts: last.ts,
             age_minutes: Number(last.age_min),
             last_ok_age_minutes: lastOk ? Number(lastOk.age_min) : null,
             sync_rc: last.sync_rc, format_rc: last.format_rc,
@@ -96,7 +91,7 @@ export async function GET() {
         });
     } catch (e: any) {
         // bảng chưa tồn tại (chưa có run nào ghi) → coi như no-data, không phải lỗi
-        if (/Not found: Table/.test(String(e?.message))) return NextResponse.json({ status: "no-data" });
+        if (e?.code === "42P01") return NextResponse.json({ status: "no-data" });
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
 }

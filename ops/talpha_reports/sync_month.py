@@ -20,7 +20,7 @@ talpha_paths.dat_moi_truong()
 # đủ; fetch fail → raise → bảng cũ còn nguyên (số cũ nhưng đúng), exit code ≠ 0 để soi log.
 import sync.talpha.talpha_sync as ts
 print("sync code =", ts.__file__)
-# Chốt hạ: nạp nhầm bản khác thì DỪNG NGAY, đừng ghi vào BigQuery bằng code lạ.
+# Chốt hạ: nạp nhầm bản khác thì DỪNG NGAY, đừng ghi vào kho số bằng code lạ.
 _mong_doi = os.path.join(REPO, "sync", "talpha", "talpha_sync.py")
 if os.path.realpath(ts.__file__) != os.path.realpath(_mong_doi):
     sys.exit(

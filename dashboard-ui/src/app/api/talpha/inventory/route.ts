@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 import { buildInventoryPayload } from "@/lib/talpha/inventory";
 import { getAccess } from "@/lib/talpha/access";
 import { seesAllMarkets } from "@/lib/talpha/access-rules";
 
 export const dynamic = "force-dynamic";
 
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
-
 // Tồn kho bám THẲNG POS Poscake (actual_remain_quantity, 7 shop) — realtime mỗi lần load.
-// Snapshot BQ (do /api/talpha/sync-inventory ghi) chỉ dùng DỰ PHÒNG khi POS lỗi/timeout,
-// để trang không trắng. Trước đây ưu tiên snapshot → hay kẹt số cũ; giờ đảo lại.
+// Snapshot trong kho số (bảng inventory_snapshot, do /api/talpha/sync-inventory ghi) chỉ dùng
+// DỰ PHÒNG khi POS lỗi/timeout, để trang không trắng. Trước đây ưu tiên snapshot → hay kẹt số cũ; giờ đảo lại.
 // Test đường dự phòng không cần ngắt POS thật: /api/talpha/inventory?force=fallback
 // (UI: tab Kho với ?inv=fallback trên URL trang).
 export async function GET(req: Request) {
@@ -26,7 +23,7 @@ export async function GET(req: Request) {
             const payload = await buildInventoryPayload(chiNuoc);
             return NextResponse.json({ ...payload, _source: "pos-live" });
         } catch (err: any) {
-            console.error("inventory: POS live lỗi → thử snapshot BQ dự phòng:", err?.message || err);
+            console.error("inventory: POS live lỗi → thử snapshot dự phòng:", err?.message || err);
         }
     }
 
@@ -35,16 +32,15 @@ export async function GET(req: Request) {
         return NextResponse.json({ error: "POS chưa phản hồi — thử lại sau ít phút" }, { status: 503 });
     }
 
-    // 2) Dự phòng: snapshot mới nhất trong BQ (có thể cũ)
+    // 2) Dự phòng: snapshot mới nhất trong kho số (có thể cũ)
     try {
-        const [rows] = await bigquery.query({
-            query: `
-                SELECT payload, CAST(snapshot_time AS STRING) AS snapshot_time
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.inventory_snapshot\`
+        // snapshot_time (timestamptz) về tay là chuỗi ISO giờ UTC — lib/db.ts đổi sẵn.
+        const rows = await query(`
+                SELECT payload, snapshot_time
+                FROM inventory_snapshot
                 ORDER BY snapshot_time DESC
                 LIMIT 1
-            `,
-        });
+            `);
         if (rows.length && rows[0].payload) {
             const payload = JSON.parse(rows[0].payload);
             const snap = String(rows[0].snapshot_time);
@@ -52,13 +48,13 @@ export async function GET(req: Request) {
             const snapLabel = isNaN(d.getTime()) ? snap : d.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
             // Ghi đè asOf để MỌI consumer (tab Kho, CEO insights…) thấy rõ đây là dữ liệu dự phòng
             payload.asOf = {
-                label: `⚠️ Dự phòng — snapshot BigQuery ${snapLabel}`,
+                label: `⚠️ Dự phòng — snapshot kho số ${snapLabel}`,
                 note: "POS Poscake không phản hồi — số liệu là snapshot cũ, KHÔNG realtime",
             };
-            return NextResponse.json({ ...payload, _source: "bigquery-fallback", _snapshotTime: snap });
+            return NextResponse.json({ ...payload, _source: "snapshot-fallback", _snapshotTime: snap });
         }
     } catch (e: any) {
-        console.error("inventory: snapshot BQ dự phòng cũng lỗi:", e?.message || e);
+        console.error("inventory: snapshot dự phòng cũng lỗi:", e?.message || e);
     }
 
     return NextResponse.json(

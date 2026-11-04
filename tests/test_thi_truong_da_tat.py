@@ -4,7 +4,7 @@ Tắt một thị trường (status "da_tat", 04/11/2026) — ngừng kéo số 
 Chạy: TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/test_thi_truong_da_tat.py -q
 
 Canh chỗ làm mất dữ liệu nếu trượt: bảng đơn sạch dựng lại mỗi giờ CHỈ từ những shop có trong
-danh sách (bq_writer._loc_shop). Bỏ shop của nước đã tắt khỏi danh sách là đơn cũ của nước đó
+danh sách (pg_writer._loc_shop). Bỏ shop của nước đã tắt khỏi danh sách là đơn cũ của nước đó
 biến khỏi mọi báo cáo ngay vòng sync sau.
 """
 import importlib.util
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from sync.core.business_rules import shop_pos_tu_markets  # noqa: E402
-from sync.core.bq_writer import sql_rebuild_orders  # noqa: E402
+from sync.core.pg_writer import sql_dung_lai_don  # noqa: E402
 
 MARKETS = {
     "Taiwan": {"shop_label": "TW", "shop_id": "1022091930", "currency": "TWD",
@@ -47,7 +47,7 @@ class TestDanhSachShop:
     def test_dung_lai_bang_don_giu_don_cu_cua_nuoc_da_tat(self):
         # talpha_sync truyền shop_ids = MỌI shop trong danh sách → câu dựng lại phải giữ shop Đài.
         ids = [s["shop_id"] for s in shop_pos_tu_markets(MARKETS, ENV)]
-        sql = sql_rebuild_orders("p", "d", "sale_order", ids)
+        sql = sql_dung_lai_don("sale_order", ids)
         assert "'1022091930'" in sql and "'715135541'" in sql
 
 

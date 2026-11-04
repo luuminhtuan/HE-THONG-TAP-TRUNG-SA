@@ -12,17 +12,19 @@ POS Poscake (`config/talpha_rules.json → markets`); tài khoản quảng cáo 
 ## Chạy
 
 ```bash
-cd dashboard-ui && npm run dev          # http://localhost:3000
+docker compose up -d                    # Postgres + dashboard http://localhost:3200 + lịch việc nền
 cd dashboard-ui && npm test             # phép thử logic đối soát, vận đơn, sổ đơn
-TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/   # rule nghiệp vụ
+DATABASE_URL=postgresql://talpha:talpha@127.0.0.1:5433/talpha \
+  TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/   # rule nghiệp vụ + cách ghi số
 ```
 
 Trên máy Mac **phải** truyền `TALPHA_RULES`: loader Python ưu tiên
 `~/talpha_reports/talpha_rules.json` — bản của hệ thống cũ (GCC) còn nằm trên Mac — nên chạy
 trần là test đọc nhầm luật và báo lỗi giả.
 
-Máy thử bằng Docker (04/11/2026): `docker compose up -d` → dashboard http://localhost:3200 +
-Postgres 127.0.0.1:5433; `docker compose run --rm sync` kéo số mới vào Postgres. Xem `docs/POSTGRES.md`.
+Mở trang → `/admin` → Khoá kết nối: dán token Meta + key POS là việc nền tự kéo số. Chạy dashboard ngoài
+Docker (`cd dashboard-ui && npm run dev`) thì đặt `DATABASE_URL` + `TALPHA_DOC_PASSWORD` trỏ vào Postgres
+của compose. Chi tiết: `docs/POSTGRES.md`.
 
 ## Deploy — từ máy Mac
 
@@ -40,21 +42,29 @@ ssh root@139.180.131.21 'bash /opt/talpha/ops/talpha_reports/deploy_runtime.sh -
 
 `from-mac.sh` chép `dashboard-ui/.env.local` của Mac đè lên máy chủ — so hai bản trước khi chạy.
 
+**Máy chủ VPS vẫn chạy bản BigQuery.** Kho số Postgres (nhánh `kho-postgres`, 04/11/2026) cần máy chủ có
+Postgres + `DATABASE_URL` trước — các script `ops/deploy/vps-*-setup.sh` chưa dựng phần đó. Đừng đưa nhánh
+này lên `main` rồi deploy khi máy chủ chưa chuyển.
+
 ## Kiến trúc
 
 * **Giao diện + API**: Next.js 16 App Router + React 19 + TailwindCSS, tất cả trong
   `dashboard-ui/`. Không có backend riêng.
-* **Kho số**: BigQuery `cty-507710.TALPHA_Dataset`, đọc qua `/api/query`. Đang chuyển dần sang
-  Postgres (04/11/2026, `docs/POSTGRES.md`): sync chọn kho bằng `TALPHA_KHO` (`bigquery` mặc định
-  · `postgres` · `ca_hai`), bảng khai bằng migration `db/migrations/`. Dashboard chưa đọc Postgres.
-* **Nguồn thô**: Meta Marketing API và POS Poscake — vừa đồng bộ theo giờ vào BigQuery,
+* **Kho số**: Postgres ở `DATABASE_URL` (04/11/2026 — bỏ hẳn BigQuery, `docs/POSTGRES.md`). Bảng khai bằng
+  migration `db/migrations/` (thêm file mới, không sửa file cũ), view ở `db/views/` dựng bằng
+  `sync/core/pg_view.py` (luật đúc vào SQL, tự dựng lại khi luật đổi). Dashboard đọc qua `lib/db.ts`
+  (`query(sql, { ten })` — tham số `@ten`). Câu SQL dựng ở trình duyệt / AI viết chạy bằng vai CHỈ ĐỌC
+  (`queryChiDoc`, migration 0003) — đừng chạy chúng bằng `query()`.
+* **Nguồn thô**: Meta Marketing API và POS Poscake — vừa đồng bộ theo giờ vào Postgres,
   vừa gọi thẳng cho các màn hình cần số tức thời. Bảng đơn của đối tác 3PL (Google Sheet)
   chép vào bảng `partner_orders` mỗi vòng sync.
-* **Báo cáo số**: tab Tổng quan, P&L, Marketer đọc THẲNG file Google Sheet "TỔNG TEAM THÁNG n"
-  qua `/api/talpha/sheet-report?from&to` — cùng số với Sheet và bot Zalo. Giá vốn + phí ship
+* **Báo cáo số**: `format_all.py` dựng các tab "TỔNG TEAM THÁNG n" và ghi vào bảng `bao_cao_tab`;
+  tab Tổng quan, P&L, Marketer và bot Zalo đọc bảng đó qua `/api/talpha/sheet-report?from&to`. Có khoá
+  Google (`bigquery_key.json`) thì ghi thêm file Google Sheet cho team — tuỳ chọn. Giá vốn + phí ship
   ước tính ở `lib/talpha/order-costs.ts` (dùng chung P&L và P&L theo SP). Các tab báo cáo
   không tính trước `report_start_date` (15/09/2026).
-* **Sync**: `sync/talpha/talpha_sync.py` + `sync/core/`, chạy bằng systemd trên VPS.
+* **Sync**: `sync/talpha/talpha_sync.py` + `sync/core/`. Docker: lịch `ops/docker/lich.py` (cùng giờ các
+  systemd timer của VPS).
 * **Đăng nhập + phân quyền theo team** (05/10/2026): NextAuth v5 (`lib/auth.ts`); người dùng
   qua `lib/users.ts` (`config/users.json`, mỗi người `role` + `teams`). Luật ở
   `talpha_rules.json → access`, đọc qua `lib/talpha/access-rules.ts` (có test). Cửa chặn chung:
@@ -65,14 +75,14 @@ ssh root@139.180.131.21 'bash /opt/talpha/ops/talpha_reports/deploy_runtime.sh -
   `/admin` → Khoá kết nối — máy gọi thử khoá rồi mới lưu. Lưu ở `dashboard-ui/.env.khoa.local`
   (ngoài git, `from-mac.sh` không đè), thắng khoá cùng tên trong `.env.local`. Dashboard đọc qua
   `docKhoa()` (`lib/talpha/khoa.ts`) — **đừng đọc `process.env` thẳng cho khoá**; sync, Sheet,
-  danh mục SP nhận qua drop-in systemd `khoa.conf` do `vps-setup.sh` dựng.
+  danh mục SP nhận qua drop-in systemd `khoa.conf` (VPS) hoặc lịch Docker đọc lại file trước mỗi việc.
 * **Thị trường trên trang** (04/11/2026): `/admin` → Thị trường thêm nước, sửa tỷ giá, tắt / bật nước.
   Lưu ở `data/thi_truong.json` (ngoài git), PHỦ lên `talpha_rules.json` ở cả dashboard
   (`lib/talpha/thi-truong.ts`), sync / Sheet / view (`sync/core/thi_truong.py`) và bot
   (`ops/zalo-alerts/thi_truong.js`) — ba bản chạy chung `tests/fixtures/thi_truong_phu.json`, sửa
   luật phủ thì sửa cả ba. Shop POS sinh từ `markets` (`talpha.yaml → poscake` không còn ai đọc).
   Chỉ nước `dang_ban` được kéo đơn / gọi POS; `da_tat` giữ lịch sử. Lưu xong dashboard và bot tự
-  khởi động lại (pm2); vòng sync đầu giờ tự dựng lại view BigQuery khi tỷ giá / số chia đổi.
+  khởi động lại (pm2 / docker); vòng sync đầu giờ tự dựng lại view khi tỷ giá / số chia đổi.
 
 ## Nguyên tắc cứng — vi phạm là số sai hoặc mất dữ liệu
 
@@ -83,9 +93,12 @@ ssh root@139.180.131.21 'bash /opt/talpha/ops/talpha_reports/deploy_runtime.sh -
 * **Số chia tiền POS không phải lúc nào cũng 100.** Shop Đài lưu nguyên TWD nên chia 1;
   Singapore và UAE chia 100 (đã đo trên đơn thật). Dùng `posMoneyDivisor()`, đừng gõ `/100`.
 * **Chi phí quảng cáo đã là VND.** Không quy đổi thêm lần nào.
-* **BigQuery: không tự chạy DELETE / DROP / TRUNCATE.** Sync ghi WRITE_TRUNCATE atomic —
-  fetch hỏng thì bảng cũ còn nguyên. Pattern drop-trước-khi-fetch bị CẤM (đã mất trắng
-  dữ liệu ngày 06/07 vì nó).
+* **Kho số: không tự chạy DELETE / DROP / TRUNCATE lên bảng dữ liệu.** Sync ghi `<bảng>_raw` CHỈ THÊM, bảng
+  sạch dựng lại từ raw trong MỘT transaction (`sync/core/pg_writer.py`) — fetch hỏng thì bảng cũ còn
+  nguyên. Pattern drop-trước-khi-fetch bị CẤM (đã mất trắng dữ liệu ngày 06/07 vì nó).
+* **Postgres khác BigQuery ở chỗ ra số sai mà không báo lỗi**: chia hai số nguyên là chia nguyên (dùng
+  `safe_divide`), `GROUP BY tên` ưu tiên cột gốc, tên cột không trong nháy bị hạ chữ thường, nháy kép là
+  tên cột chứ không phải chuỗi. Bảng dịch đủ: `docs/POSTGRES.md`.
 * **Chỉ có MỘT engine sync**: `sync/talpha/talpha_sync.py`. Đừng chép bản thứ hai sang
   runtime — trước đây có hai bản cùng ghi một bộ bảng mỗi giờ và đè lẫn nhau.
 * **Chỉ có MỘT file pm2**: `ops/pm2/ecosystem.vps.config.js`.
@@ -95,7 +108,7 @@ ssh root@139.180.131.21 'bash /opt/talpha/ops/talpha_reports/deploy_runtime.sh -
 
 ## Chẩn đoán số sai
 
-Không bao giờ so Google Sheet với BigQuery — cùng nguồn nên cùng sai. Đối chiếu thẳng:
+Không bao giờ so Google Sheet với kho số — cùng nguồn nên cùng sai. Đối chiếu thẳng:
 
 ```bash
 # Token Meta còn sống không, TKQC nào đọc được
@@ -110,7 +123,7 @@ ssh root@139.180.131.21 'tail -40 /root/talpha_reports/daily_$(date +%Y%m%d).log
 
 `/api/talpha/sync-health` trả tên TKQC / shop đọc lỗi của vòng gần nhất (`fetch_errors`).
 
-Sheet lệch dashboard **là cố hữu** ở những màn còn tự tính từ BigQuery: sync theo giờ vs gọi
+Sheet lệch dashboard **là cố hữu** ở những màn còn tự tính từ kho số: sync theo giờ vs gọi
 live, gom đơn theo giờ VN vs timezone từng TKQC. Đừng "fix cho khớp" từng ngày.
 
 ## Tài liệu
@@ -124,4 +137,4 @@ live, gom đơn theo giờ VN vs timezone từng TKQC. Đừng "fix cho khớp" 
 | `docs/CHUAN_DAT_TEN_CAMPAIGN.md` | Quy ước đặt tên campaign (quyết định gán marketer) |
 | `ops/pm2/README.md` | pm2 và systemd timer |
 | `ops/talpha_reports/README.md` | Đường ống báo cáo Google Sheets |
-| `docs/POSTGRES.md` | Chuyển kho sang Postgres, docker compose trên máy thử |
+| `docs/POSTGRES.md` | Kho số Postgres, chạy bằng docker compose, bảng dịch SQL BigQuery → Postgres |

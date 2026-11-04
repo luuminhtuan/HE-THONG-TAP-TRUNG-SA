@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 import {
     DISPLAY, UNASSIGNED, SALE_DISPLAY, SALE_UNASSIGNED,
     attributeOrder, buildAdidOwner, resolveSale, normPosMarketer, PHONE_RULES, MARKET_DA_TAT, SHOP2MKT,
@@ -24,9 +24,6 @@ import { moiTruongKhoa } from "@/lib/talpha/khoa";
 
 export const dynamic = "force-dynamic";
 
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
-
 // ═══════════════════════════════════════════════════════════════════
 // THEO DÕI VẬN ĐƠN
 //
@@ -45,7 +42,7 @@ const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 // nhiêu quota" — và báo LỖI, chứ không im lặng gửi số cũ như số mới.
 //
 // ?market=SG (Sỹ Anh chốt 25/09/2026): mỗi thị trường một SỔ RIÊNG, đọc bảng đối tác
-// riêng — Đài từ data/tracking.json (nút "Đọc bảng đối tác"), nước khác từ BigQuery
+// riêng — Đài từ data/tracking.json (nút "Đọc bảng đối tác"), nước khác từ bảng
 // partner_orders. Không có market (hoặc mã lạ) = Đài Loan. Khoá 17TRACK dùng chung.
 //
 // ?market=AE (Sỹ Anh chốt 28/09/2026): UAE không có bảng đối tác, không qua 17TRACK — đơn đọc
@@ -110,10 +107,10 @@ const emptyStore = (): Store => ({ registered: {}, statuses: {}, partner: {} });
 
 /**
  * Danh sách vận đơn = HỢP của hai nguồn, khớp theo mã vận đơn:
- *   • đơn trong BigQuery (có tên khách, SĐT, marketer, sale)
+ *   • đơn trong kho số (có tên khách, SĐT, marketer, sale)
  *   • dòng trong file đối tác (có trạng thái giao hàng)
  *
- * Phải là hợp chứ không phải giao: lúc mới dựng, BigQuery còn trống mà file đối
+ * Phải là hợp chứ không phải giao: lúc mới dựng, kho số còn trống mà file đối
  * tác đã có 600 đơn — lấy giao thì màn hình trắng trơn dù dữ liệu nằm sẵn đó.
  * Ngược lại, đơn vừa lên trong POS mà file đối tác chưa cập nhật cũng phải hiện.
  */
@@ -145,7 +142,7 @@ async function loadShipments(mk: TrackMarket, from: string, to: string): Promise
             // ngày này. Trước đây gán nhầm ngày xuất kho vào đây.
             order_date: pm?.order_date ?? saved?.order_date ?? pm?.ship_date ?? null,
             // Tên và SĐT LẤY TỪ FILE ĐỐI TÁC. Bản trước để trống rồi chờ
-            // BigQuery điền — mà POS mới có vài đơn nên gần như dòng nào cũng
+            // kho số điền — mà POS mới có vài đơn nên gần như dòng nào cũng
             // trống, và tab này thành vô dụng cho việc gọi khách.
             customer: pm?.contact_name || "",
             phone: pm?.phone || "",
@@ -183,36 +180,36 @@ async function loadShipments(mk: TrackMarket, from: string, to: string): Promise
         byTracking.set(tracking, shipmentFrom(tracking));
     }
 
-    // ── Nguồn 2: BigQuery — bổ sung thông tin khách và người phụ trách ──
+    // ── Nguồn 2: kho số — bổ sung thông tin khách và người phụ trách ──
     try {
-        const [adRows] = await bigquery.query({
-            query: `SELECT DISTINCT CAST(ad_id AS STRING) AS ad_id, campaign_name
-                    FROM \`${BQ_PROJECT}.${BQ_DATASET}.fb_ads_data\`
-                    WHERE ad_id IS NOT NULL AND campaign_name IS NOT NULL`,
-        });
-        const adidOwner = buildAdidOwner(adRows as { ad_id: string; campaign_name: string }[]);
+        const adRows = await query<{ ad_id: string; campaign_name: string }>(
+            `SELECT DISTINCT ad_id::text AS ad_id, campaign_name
+             FROM fb_ads_data
+             WHERE ad_id IS NOT NULL AND campaign_name IS NOT NULL`,
+        );
+        const adidOwner = buildAdidOwner(adRows);
 
-        const [rows] = await bigquery.query({
-            query: `
+        const rows = await query<Record<string, unknown>>(
+            `
                 SELECT
                     v.order_uid, v.order_id, v.order_date, v.pos_money_divisor,
                     v.marketer_name, v.resolved_ad_id,
                     o.cod, o.tracking_link, o.page_id, o.tags, o.seller_name,
                     o.bill_full_name, o.bill_phone_number
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.vw_orders_std\` v
-                LEFT JOIN \`${BQ_PROJECT}.${BQ_DATASET}.sale_order\` o
+                FROM vw_orders_std v
+                LEFT JOIN sale_order o
                        ON v.shop_id = o.shop_id AND v.order_id = o.id
-                WHERE v.order_date BETWEEN @from AND @to
+                WHERE v.order_date BETWEEN @from::date AND @to::date
                   -- CHỈ shop Đài: trước khi tách thị trường, đơn Singapore có link vận
                   -- đơn trên POS lọt vào danh sách Đài (gặp thật 25/09/2026).
                   AND v.market = 'TW'
                   AND o.tracking_link IS NOT NULL AND TRIM(o.tracking_link) != ''
                   -- Đơn huỷ/đơn thô chưa có hàng đi đường, theo dõi làm gì.
                   AND v.status_category NOT IN ('HUY', 'DON_THO')`,
-            params: { from, to },
-        });
+            { from, to },
+        );
 
-        for (const r of rows as Record<string, unknown>[]) {
+        for (const r of rows) {
             const tracking = trackingFromLink(r.tracking_link as string | null);
             if (!tracking) continue;
             const divisor = Number(r.pos_money_divisor) || 1;
@@ -229,9 +226,7 @@ async function loadShipments(mk: TrackMarket, from: string, to: string): Promise
                 ...base,
                 order_uid: r.order_uid as string,
                 order_id: String(r.order_id ?? base.order_id),
-                order_date: r.order_date && typeof r.order_date === "object"
-                    ? (r.order_date as { value: string }).value
-                    : String(r.order_date ?? base.order_date ?? ""),
+                order_date: String(r.order_date ?? base.order_date ?? ""),
                 customer: (r.bill_full_name as string) || "",
                 phone: (r.bill_phone_number as string) || "",
                 marketer: key === UNASSIGNED ? UNASSIGNED : (DISPLAY[key] || key),
@@ -241,9 +236,9 @@ async function loadShipments(mk: TrackMarket, from: string, to: string): Promise
             });
         }
     } catch (e) {
-        // BigQuery hỏng hoặc chưa có số thì vẫn trả được phần từ file đối tác,
+        // Kho số hỏng hoặc chưa có số thì vẫn trả được phần từ file đối tác,
         // thay vì để cả tab trắng trơn.
-        console.warn("tracking: không đọc được BigQuery, chỉ dùng file đối tác:", e);
+        console.warn("tracking: không đọc được Postgres, chỉ dùng file đối tác:", e);
     }
 
     return { shipments: [...byTracking.values()], store, lastImport: store.partner_import?.imported_at ?? null };

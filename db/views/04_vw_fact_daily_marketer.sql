@@ -27,7 +27,7 @@
 -- Nguồn: vw_orders_std + vw_fb_ads_std
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE OR REPLACE VIEW `{PROJECT}.{DATASET}.vw_fact_daily_marketer` AS
+CREATE VIEW vw_fact_daily_marketer AS
 WITH
 -- Doanh thu/đơn theo marketer × ngày (từ orders)
 marketer_rev AS (
@@ -37,12 +37,12 @@ marketer_rev AS (
         -- marketer_group suy từ TÊN qua rules file nên 1 người chỉ thuộc 1 nhóm;
         -- ANY_VALUE ở đây là an toàn, không phải chọn bừa.
         ANY_VALUE(marketer_group)                           AS marketer_group,
-        COUNTIF(is_valid)                                   AS total_orders,
-        COUNTIF(is_confirmed)                               AS success_orders,
-        SUM(IF(is_valid,     revenue_vnd, 0))               AS provisional_revenue,
-        SUM(IF(is_confirmed, revenue_vnd, 0))               AS confirmed_revenue
-    FROM `{PROJECT}.{DATASET}.vw_orders_std`
-    WHERE order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+        COUNT(*) FILTER (WHERE is_valid)                                   AS total_orders,
+        COUNT(*) FILTER (WHERE is_confirmed)                               AS success_orders,
+        SUM(CASE WHEN is_valid THEN revenue_vnd ELSE 0 END)               AS provisional_revenue,
+        SUM(CASE WHEN is_confirmed THEN revenue_vnd ELSE 0 END)               AS confirmed_revenue
+    FROM vw_orders_std
+    WHERE order_date >= (CURRENT_DATE - 30)
     GROUP BY report_date, marketer_name
 ),
 -- ad_id → marketer (chủ sở hữu = người có nhiều đơn nhất trên ad đó)
@@ -53,14 +53,14 @@ ad_marketer AS (
         SELECT
             resolved_ad_id                                  AS ad_id,
             marketer_name,
-            SAFE_DIVIDE(
+            safe_divide(
                 COUNT(*),
                 SUM(COUNT(*)) OVER (PARTITION BY resolved_ad_id)
             )                                               AS owner_confidence,
             ROW_NUMBER() OVER (
                 PARTITION BY resolved_ad_id ORDER BY COUNT(*) DESC, marketer_name
             )                                               AS rn
-        FROM `{PROJECT}.{DATASET}.vw_orders_std`
+        FROM vw_orders_std
         WHERE resolved_ad_id IS NOT NULL
           AND marketer_name != 'unknown'
         GROUP BY resolved_ad_id, marketer_name
@@ -75,11 +75,11 @@ marketer_spend AS (
         SUM(a.spend)                                        AS ads_spend,
         -- Bình quân độ chắc THEO TIỀN: 1 ad tiêu nhiều mà gán mơ hồ kéo cả
         -- chỉ số xuống, đúng như nó phải thế.
-        SAFE_DIVIDE(SUM(a.spend * am.owner_confidence), NULLIF(SUM(a.spend), 0))
+        safe_divide(SUM(a.spend * am.owner_confidence), NULLIF(SUM(a.spend), 0))
                                                             AS spend_owner_confidence
-    FROM `{PROJECT}.{DATASET}.vw_fb_ads_std` a
+    FROM vw_fb_ads_std a
     JOIN ad_marketer am ON a.ad_id = am.ad_id
-    WHERE a.date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+    WHERE a.date >= (CURRENT_DATE - 30)
       AND NOT a.is_test_campaign
     GROUP BY report_date, am.marketer_name
 )
@@ -96,12 +96,13 @@ SELECT
     COALESCE(r.success_orders, 0)                           AS success_orders,
     COALESCE(r.provisional_revenue, 0)                      AS provisional_revenue,
     COALESCE(r.confirmed_revenue, 0)                        AS confirmed_revenue,
-    ROUND(SAFE_DIVIDE(r.provisional_revenue, NULLIF(s.ads_spend, 0)), 2) AS provisional_roas,
-    ROUND(SAFE_DIVIDE(r.confirmed_revenue,   NULLIF(s.ads_spend, 0)), 2) AS confirmed_roas,
-    ROUND(SAFE_DIVIDE(s.ads_spend, NULLIF(r.success_orders, 0)), 2)      AS cpa,
-    ROUND(SAFE_DIVIDE(r.success_orders, NULLIF(r.total_orders, 0)) * 100, 1) AS success_rate_pct
+    ROUND(safe_divide(r.provisional_revenue, NULLIF(s.ads_spend, 0)), 2) AS provisional_roas,
+    ROUND(safe_divide(r.confirmed_revenue,   NULLIF(s.ads_spend, 0)), 2) AS confirmed_roas,
+    ROUND(safe_divide(s.ads_spend, NULLIF(r.success_orders, 0)), 2)      AS cpa,
+    ROUND(safe_divide(r.success_orders, NULLIF(r.total_orders, 0)) * 100, 1) AS success_rate_pct
 FROM marketer_rev r
 FULL OUTER JOIN marketer_spend s
     ON  r.report_date = s.report_date
     AND r.marketer_name = s.marketer_name
 WHERE COALESCE(r.marketer_name, s.marketer_name) IS NOT NULL;
+

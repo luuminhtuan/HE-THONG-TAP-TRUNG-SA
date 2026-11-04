@@ -1,96 +1,134 @@
-# Kho Postgres — chuyển dần khỏi BigQuery
+# Kho số Postgres — chạy TALPHA bằng Docker
 
-Bắt đầu 04/11/2026. Mục tiêu: TALPHA dựng như một dự án web thường — **code + một cơ sở dữ liệu**,
-`docker compose up` là chạy, không phải dựng project Google Cloud, tài khoản máy, dataset, view.
+Từ 04/11/2026 (nhánh `kho-postgres`) TALPHA bỏ hẳn BigQuery: số nằm trong một Postgres, cả hệ thống chạy
+bằng `docker compose up -d` — như một dự án web thường, code + một database. Không cần project Google
+Cloud, tài khoản máy, dataset hay script dựng view nào nữa.
 
-## Lộ trình
-
-| Bước | Việc | Trạng thái |
-|:--|:--|:--|
-| 0 | Xuất BigQuery ra file làm bản lưu | Để sau — dữ liệu cũ tính sau |
-| 1 | `docker-compose.yml` (dashboard + Postgres), migration bảng thô, sync ghi được vào Postgres | **Xong** |
-| 2 | Máy chủ chạy `TALPHA_KHO=ca_hai` — ghi cả hai kho 1–2 tuần, đối chiếu số mỗi ngày | Chưa |
-| 3 | Dashboard, 4 script ghi Sheet, bot đọc Postgres; viết lại 12 view (`sql/talpha/views/`) | Chưa |
-| 4 | Dồn `data/*.json` (COD, thanh toán QC, vận đơn), danh bạ TKQC, thị trường vào Postgres | Chưa |
-| 5 | Tắt BigQuery | Chưa |
-
-**Đang ở đâu sau bước 1:** sync kéo số mới vào Postgres được. Dashboard VẪN đọc BigQuery (cần
-`bigquery_key.json` mới có số) — xem số trong Postgres bằng TablePlus / DBeaver hoặc lệnh `dem` ở dưới.
-
-## Chạy trên máy thử
+## Mở lên và dùng
 
 Cần Docker Desktop.
 
 ```bash
-docker compose up -d                       # Postgres + migration + dashboard (lần đầu cài thư viện ~2 phút)
-open http://localhost:3200/admin           # → Khoá kết nối: dán token Meta, key POS từng nước
-docker compose run --rm sync               # kéo số mới từ Meta / POS vào Postgres (một lần)
-docker compose run --rm migrate dem        # số dòng từng bảng + lần sync gần nhất
-docker compose --profile lich up -d        # bật vòng kéo số mỗi giờ (tắt: docker compose stop lich)
-docker compose logs -f dashboard           # xem log
-docker compose down                        # dừng (dữ liệu Postgres còn nguyên trong volume)
+docker compose up -d          # Postgres + dashboard + lịch việc nền (lần đầu cài thư viện ~1 phút)
 ```
 
-Mở bằng TablePlus / DBeaver: host `127.0.0.1`, cổng `5433`, user `talpha`, mật khẩu `talpha`,
-database `talpha`. Đổi cổng khi trùng: `PG_PORT=5434 DASHBOARD_PORT=3300 docker compose up -d`.
+1. Mở **http://localhost:3200/admin** → **Khoá kết nối**: dán token Meta, key POS từng nước (Pancake,
+   17TRACK nếu có). Máy gọi thử khoá rồi mới lưu.
+2. Xong. Lịch việc nền đọc lại khoá trước mỗi việc — đầu giờ kế tiếp là có số. Muốn có ngay:
+   `docker compose restart lich` — bật lại là chạy ngay một vòng kéo số + dựng báo cáo tháng (tab Tổng
+   quan / P&L / Marketer). Vòng báo cáo tự kéo lại cả tháng hiện tại (đơn 30 ngày, chi tiêu từ ngày 1);
+   muốn có cả tháng trước: `docker compose run --rm sync python sync/talpha/talpha_sync.py --days 40`.
 
-**Chỉ dùng trên máy thử.** Dashboard trong compose bỏ đăng nhập (`DASHBOARD_PUBLIC`), mật khẩu Postgres
-là mặc định; cổng chỉ mở cho chính máy đó. Máy chủ thật vẫn chạy theo `ops/deploy/`.
+Dashboard trong compose **bỏ đăng nhập** (`DASHBOARD_PUBLIC`) và mật khẩu Postgres là mặc định; cổng chỉ mở
+cho chính máy đó (127.0.0.1). Đưa ra ngoài thì phải bật đăng nhập (bỏ `DASHBOARD_PUBLIC`, đặt
+`AUTH_SECRET` thật) và đổi mật khẩu.
 
-Khoá nhập ở Khoá kết nối ghi vào `dashboard-ui/.env.khoa.local` (ngoài git); container sync đọc file
-đó mỗi lần chạy. Bảng đơn đối tác 3PL (`partner_orders`) đọc Google Sheet nên cần `bigquery_key.json`
-ở gốc repo — thiếu thì bước đó báo lỗi, đơn POS và tiền ads vẫn kéo bình thường.
+| Lệnh | Việc |
+|:--|:--|
+| `docker compose logs -f lich` | xem các việc nền chạy |
+| `docker compose logs -f dashboard` | log dashboard |
+| `docker compose run --rm migrate dem` | số dòng từng bảng + lần sync gần nhất |
+| `docker compose run --rm migrate view --ep` | dựng lại bộ view ngay |
+| `docker compose down` | dừng — dữ liệu còn nguyên trong volume `talpha_pgdata` |
+| `docker compose down -v` | dừng và **XOÁ SẠCH** dữ liệu Postgres |
 
-## Chọn kho ghi: `TALPHA_KHO`
+Mở database bằng TablePlus / DBeaver: `127.0.0.1:5433`, user / mật khẩu / database đều `talpha`. Trùng
+cổng thì: `PG_PORT=5434 DASHBOARD_PORT=3300 docker compose up -d`.
 
-| Giá trị | Ghi vào | Dùng ở |
-|:--|:--|:--|
-| `bigquery` (mặc định) | BigQuery như cũ | Máy chủ hiện tại — không đặt gì là không đổi gì |
-| `postgres` | Chỉ Postgres ở `DATABASE_URL`, không tạo client BigQuery | docker compose |
-| `ca_hai` | Cả hai. BigQuery vẫn là số chính, Postgres lỗi chỉ ghi log | Bước 2 |
+## Cái gì chạy
 
-## Bảng
+| Dịch vụ | Việc |
+|:--|:--|
+| `db` | Postgres 17 |
+| `migrate` | chạy mỗi lần `up`: bảng còn thiếu (`db/migrations/`) + dựng lại view nếu luật đổi |
+| `dashboard` | Next.js (`next dev`) ở cổng 3200 |
+| `lich` | việc nền, giờ Việt Nam (`ops/docker/lich.py`) — cùng giờ systemd timer của máy chủ |
+| `zalo` (tuỳ chọn) | bot Zalo: `docker compose --profile zalo run --rm zalo node pair.js` để ghép nick, rồi `docker compose --profile zalo up -d zalo` |
 
-Migration `db/migrations/0001_bang_tho.sql`. Cột và kiểu chép đúng schema BigQuery trong
-`sync/talpha/talpha_sync.py` — `tests/test_pg_writer.py` so hai bên, lệch là test đỏ.
+Lịch việc nền: :00 mỗi giờ kéo đơn POS + chi tiêu Meta · :20 dựng báo cáo tháng · :40 chụp tồn kho dự
+phòng · 05:10 danh mục sản phẩm · 06:00 và 21:30 nạp bảng đối tác + đồng bộ vận đơn. Bật container là
+chạy ngay một vòng kéo số + báo cáo.
 
-| Bảng | Nội dung | Cách ghi |
-|:--|:--|:--|
-| `sale_order`, `order_items` | Đơn POS + dòng hàng | Hai tầng: `_raw` chỉ ghi thêm, bảng sạch dựng lại mỗi vòng |
-| `fb_ads_data`, `fb_adset_data` | Chi tiêu theo ad / adset × ngày (đã là VND) | Hai tầng, bản `sync_time` mới nhất thắng |
-| `fb_campaign_data` | Ngân sách campaign | Thay cả bảng |
-| `partner_orders` | Bảng đơn đối tác 3PL | Thay cả bảng |
-| `ad_dictionary` | ad_id lạ trên đơn (X9) | Chỉ ghi thêm |
+## Khoá Google — tuỳ chọn
 
-Luật ghi giữ nguyên như BigQuery (`sync/core/pg_writer.py` dùng chung luật chọn đơn với
-`bq_writer.py`): kéo hụt không xoá số đã có, đơn xoá trên POS có dòng "bia mộ", bảng sạch chỉ gồm shop
-đang khai. Khác BigQuery một điểm có lợi: ghi raw và dựng lại nằm trong **một transaction** — lỗi giữa
-chừng là mọi thứ quay về như trước vòng chạy.
+Không có khoá Google thì mọi tab vẫn đủ số. Có file `bigquery_key.json` (tài khoản máy Google) ở gốc repo
+thì thêm được hai thứ:
 
-Chưa chuyển (vẫn chỉ ở BigQuery): `product_catalog` (`sync_product_catalog.py`), `inventory_snapshot`
-(`/api/talpha/sync-inventory`), `sync_health` (`report_health.py`), 12 view phân tích.
+* ghi file Google Sheet "TỔNG TEAM THÁNG n" + file riêng từng người cho team xem như trước;
+* đọc bảng đơn của đối tác 3PL (Singapore, Nhật) → vận đơn, sổ đơn, tiền COD của hai nước đó.
 
-## Thêm cột / thêm bảng
+## Báo cáo tháng không còn phụ thuộc Google Sheet
 
-Như Laravel: **thêm file mới** `db/migrations/0002_<ten>.sql`, đừng sửa file đã chạy (máy đã chạy file
-đó sẽ không chạy lại). Thêm cột cho bảng hai tầng thì thêm vào cả bảng sạch lẫn `_raw`:
+`ops/talpha_reports/format_all.py` giữ nguyên toàn bộ luật tính (gán đơn theo page, tách camp test, chia
+tin nhắn Nhật, lấn nước…), chỉ đổi nguồn sang Postgres. Các tab của file TỔNG TEAM ghi vào bảng
+`bao_cao_tab` TRƯỚC — tab Tổng quan, P&L, Marketer và bot Zalo đọc từ đó (`/api/talpha/sheet-report`) —
+rồi mới ghi Sheet nếu có khoá. Một lần tính, ba nơi cùng số.
 
-```sql
-ALTER TABLE sale_order     ADD COLUMN ten_cot text;
-ALTER TABLE sale_order_raw ADD COLUMN ten_cot text;
-```
+## Bảng và view
 
-Migration chạy tự động khi `docker compose up` và ở đầu mỗi vòng sync; chạy tay:
-`docker compose run --rm migrate`. Sync gặp dòng có cột bảng chưa có thì dừng và báo "thêm file
-migration", không lặng lẽ bỏ cột. Nhớ sửa schema BigQuery trong `talpha_sync.py` cùng lúc chừng nào
-còn chạy hai kho.
+* **Bảng**: `db/migrations/` — chạy theo thứ tự tên, mỗi file một lần (bảng `schema_migrations`), như
+  `php artisan migrate`. **Thêm file mới, đừng sửa file đã chạy.** Bảng hai tầng (đơn, dòng hàng, quảng
+  cáo) có `<bảng>_raw` chỉ ghi thêm + bảng sạch dựng lại mỗi vòng — thêm cột thì thêm vào cả hai.
+* **View**: `db/views/` — tỷ giá, số chia, giá vốn, múi giờ TKQC, nhóm marketer, ngưỡng đúc vào câu SQL
+  lúc dựng (`sync/core/pg_view.py`, sinh từ `config/talpha_rules.json` + `talpha.yaml`). Đầu mỗi vòng
+  sync băm câu SQL đã sinh; khác lần trước là dựng lại trong một transaction.
+* **Vai chỉ đọc** (migration 0003): `/api/query` (4 tab Marketing, Sức khoẻ QC, Khách hàng, Market Intel)
+  và "CEO hỏi" đăng nhập Postgres bằng `talpha_doc` / `talpha_doc_nuoc`, transaction READ ONLY, 30 giây.
+  Mật khẩu: `TALPHA_DOC_PASSWORD` (compose đặt sẵn), đặt lúc `migrate`.
+
+| Bảng | Nội dung |
+|:--|:--|
+| `sale_order`, `order_items` (+ `_raw`) | đơn POS + dòng hàng |
+| `fb_ads_data`, `fb_adset_data` (+ `_raw`) | chi tiêu theo ad / adset × ngày (đã là VND) |
+| `fb_campaign_data`, `ad_dictionary` | ngân sách campaign; ad_id lạ trên đơn |
+| `partner_orders` | bảng đơn đối tác 3PL (cần khoá Google) |
+| `product_catalog` | danh mục SP — nối biến thể POS → mã SKU (giá vốn) |
+| `inventory_snapshot` | ảnh chụp tồn kho, dự phòng tab Kho (giữ 60 ngày) |
+| `sync_health`, `sync_health_accounts` | sức khoẻ vòng chạy, theo từng TKQC / shop |
+| `bao_cao_tab` | bảng số báo cáo tháng (= nội dung file TỔNG TEAM) |
+
+## Viết SQL: BigQuery → Postgres
+
+Database có sẵn các hàm giữ nghĩa BigQuery: `safe_divide(a, b)`, `round(số thực, n)`, `safe_ts(chuỗi)`,
+`ngay_theo_mui(chuỗi giờ UTC, 'Asia/Ho_Chi_Minh')`, `safe_json(chuỗi)`.
+
+| BigQuery | Postgres |
+|:--|:--|
+| `IFNULL(a, b)` · `IF(c, a, b)` · `COUNTIF(c)` | `COALESCE(a, b)` · `CASE WHEN c THEN a ELSE b END` · `COUNT(*) FILTER (WHERE c)` |
+| `SAFE_DIVIDE(a, b)` · `LOGICAL_OR` | `safe_divide(a, b)` · `bool_or` |
+| `DATE_SUB(d, INTERVAL n DAY)` · `DATE_DIFF(a, b, DAY)` | `d - n` · `a - b` |
+| `DATE(TIMESTAMP(inserted_at), 'Asia/Ho_Chi_Minh')` | `ngay_theo_mui(inserted_at, 'Asia/Ho_Chi_Minh')` |
+| `CAST(x AS STRING / INT64 / FLOAT64)` | `x::text / bigint / double precision` |
+| `JSON_EXTRACT_SCALAR(m, '$.name')` | `safe_json(m) ->> 'name'` |
+| `REGEXP_CONTAINS(s, r'p')` · `REGEXP_EXTRACT` · `REGEXP_REPLACE` | `s ~ 'p'` · `substring(s from 'p')` · `regexp_replace(s, 'p', x, 'g')` |
+| `x IN UNNEST(@ds)` · `ARRAY_AGG(x ORDER BY y LIMIT 1)[OFFSET(0)]` | `x = ANY(@ds)` · `(ARRAY_AGG(x ORDER BY y))[1]` |
+
+**Bẫy ra số sai mà không báo lỗi** — soát từng câu:
+
+1. Chia hai số nguyên là chia NGUYÊN (3/4 = 0). Dùng `safe_divide` hoặc ép `::float8`.
+2. `GROUP BY ten` ưu tiên CỘT GỐC trùng tên, không phải cột ở SELECT — chắc ăn `GROUP BY 1, 2`.
+3. Tên cột không trong nháy bị hạ chữ thường: `AS cpoChung` trả về `cpochung`. Đặt tên `cpo_chung`.
+4. Nháy kép `"…"` là TÊN cột / bảng, không phải chuỗi. `GREATEST/LEAST` bỏ qua NULL.
+5. NULL xếp ĐẦU khi `ORDER BY … DESC` (BigQuery xếp cuối) — ghi rõ `NULLS LAST` khi thứ tự quyết định số.
 
 ## Test
 
 ```bash
-TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/test_pg_writer.py -q   # không cần Postgres
+docker compose up -d db
 DATABASE_URL=postgresql://talpha:talpha@127.0.0.1:5433/talpha \
-  TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/test_pg_writer.py -q   # chạy đủ
+  TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/ -q
 ```
 
-Phần chạy trên Postgres dựng một schema tạm rồi xoá — không đụng bảng thật của database đó.
+Phần chạy trên Postgres dựng một schema tạm rồi xoá — không đụng bảng thật. Dữ liệu mẫu để thử giao diện
+khi chưa có khoá (4 nước, 40 ngày, KHÔNG phải số thật — chỉ ghi vào database đang trống):
+`docker compose run --rm --entrypoint python migrate tests/fixtures/du_lieu_mau.py`. Xoá đi trước khi nhập
+khoá thật: `docker compose down -v && docker compose up -d`.
+
+## Còn lại
+
+* **Máy chủ VPS** vẫn chạy bản BigQuery của `main`. Chuyển máy chủ = cài Postgres (hoặc chạy compose trên
+  máy chủ), đặt `DATABASE_URL` cho dashboard + các systemd service, sửa `ops/deploy/vps-*-setup.sh`. Chưa làm.
+* **Dữ liệu cũ trên BigQuery** chưa chép sang (chốt 04/11/2026: tính sau). Đơn POS và chi tiêu Meta kéo lại
+  được bằng `python sync/talpha/talpha_sync.py --full` và `--days N`; ảnh chụp tồn kho cũ thì không.
+* `data/*.json` (tiền COD, thanh toán QC, vận đơn), danh bạ TKQC, thị trường vẫn là file — dồn vào Postgres
+  là bước sau.

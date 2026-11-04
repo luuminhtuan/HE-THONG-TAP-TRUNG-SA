@@ -11,10 +11,8 @@ currency: VND                # tiền báo cáo; tiền từng nước ở talph
 timezone: Asia/Ho_Chi_Minh   # đơn gom ngày theo giờ Việt Nam cho cả ba nước (chốt 15/09/2026)
 status: active
 
-# ─── 2. BIGQUERY ───
-bigquery:
-  project_gcp: "cty-507710"
-  dataset: "TALPHA_Dataset"
+# ─── 2. KHO SỐ ───
+# Postgres ở DATABASE_URL (04/11/2026 — trước đó BigQuery cty-507710.TALPHA_Dataset). Xem docs/POSTGRES.md.
 
 # ─── 3. FACEBOOK ADS — app riêng "Talpha Post" ───
 meta_ads:

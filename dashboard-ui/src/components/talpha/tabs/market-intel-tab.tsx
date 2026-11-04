@@ -8,7 +8,6 @@ import {
 } from "recharts";
 import { MapPin } from "lucide-react";
 import TabSkeleton from "@/components/ui/tab-skeleton";
-import { BQ_PROJECT, DATASET } from "../constants";
 import { formatVNDCompact, marketName } from "../utils";
 import { useMarkets } from "../markets-context";
 
@@ -46,7 +45,7 @@ export default function TALPHAMarketIntelTab({ dateRange }: Props) {
                 // JOIN, nếu không doanh thu bị nhân đôi.
                 const PHONE_SRC = `(
                     SELECT id, ANY_VALUE(bill_phone_number) AS bill_phone_number
-                    FROM \`${BQ_PROJECT}.${DATASET}.sale_order\`
+                    FROM sale_order
                     GROUP BY id
                 )`;
 
@@ -58,7 +57,7 @@ export default function TALPHAMarketIntelTab({ dateRange }: Props) {
                         ROUND(SUM(v.revenue_vnd), 0) as revenue_vnd,
                         ROUND(AVG(v.revenue_vnd), 0) as avg_order_vnd,
                         COUNT(DISTINCT NULLIF(o.bill_phone_number,'')) as customers
-                    FROM \`${BQ_PROJECT}.${DATASET}.vw_orders_std\` v
+                    FROM vw_orders_std v
                     JOIN ${PHONE_SRC} o ON o.id = v.order_id
                     WHERE v.order_date BETWEEN '${from}' AND '${to}' AND v.is_confirmed
                     GROUP BY 1 ORDER BY revenue_vnd DESC`,
@@ -71,15 +70,15 @@ export default function TALPHAMarketIntelTab({ dateRange }: Props) {
                             v.market,
                             oi.product_name,
                             oi.quantity,
-                            v.revenue_vnd * SAFE_DIVIDE(
+                            v.revenue_vnd * safe_divide(
                                 oi.quantity,
                                 SUM(oi.quantity) OVER (PARTITION BY oi.shop_id, oi.order_id)
                             ) AS revenue_vnd
-                        FROM \`${BQ_PROJECT}.${DATASET}.order_items\` oi
+                        FROM order_items oi
                         -- X8: mã đơn KHÔNG duy nhất giữa các shop (đơn 65 có cả ở shop Đài lẫn
                         -- Singapore) → ghép cả shop_id, không thì dòng hàng nước này chui sang nước kia.
-                        JOIN \`${BQ_PROJECT}.${DATASET}.vw_orders_std\` v
-                          ON oi.shop_id = CAST(v.shop_id AS STRING) AND oi.order_id = CAST(v.order_id AS STRING)
+                        JOIN vw_orders_std v
+                          ON oi.shop_id = v.shop_id AND oi.order_id = v.order_id
                         WHERE v.order_date BETWEEN '${from}' AND '${to}'
                           AND v.is_confirmed AND oi.product_name != ''
                     )

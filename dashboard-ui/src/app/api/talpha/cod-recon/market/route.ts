@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 import { MARKETS_PUBLIC } from "@/lib/talpha/rules";
 import { trackMarket } from "@/lib/talpha/tracking";
 import { loadMarketShipments, nhanNguonDoiTac } from "@/lib/talpha/tracking-market";
@@ -19,9 +19,6 @@ import { readStoreFresh, updateStore } from "@/lib/talpha/store";
 import { MAX_UPLOAD_BYTES, tooBigMessage } from "@/lib/talpha/upload-limit";
 
 export const dynamic = "force-dynamic";
-
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 
 // ═══════════════════════════════════════════════════════════════════
 // ĐỐI SOÁT COD — THỊ TRƯỜNG NGOÀI ĐÀI (bước 1, Sỹ Anh chốt 26/09/2026)
@@ -81,19 +78,20 @@ async function layDon(code: string): Promise<{ don: DonCod[]; nguon: Nguon }> {
             ? { loai: "weship", nhan: "Đơn POS + trạng thái tra ở WeShip", cap_nhat: store.last_sync?.ok ? store.last_sync.at : null }
             : { loai: "doi_tac", nhan: nhanNguonDoiTac(shipments, store as { last_sync?: { register_rejected?: number } }), cap_nhat: lastImport };
     } else {
-        const [rows] = await bigquery.query({
-            query: `SELECT v.order_id, CAST(v.order_date AS STRING) AS order_date,
-                           v.status_category, v.status_name,
-                           SAFE_DIVIDE(o.cod, NULLIF(v.pos_money_divisor, 0)) AS cod,
-                           o.tracking_link, o.bill_full_name
-                    FROM \`${BQ_PROJECT}.${BQ_DATASET}.vw_orders_std\` v
-                    LEFT JOIN \`${BQ_PROJECT}.${BQ_DATASET}.sale_order\` o
-                           ON v.shop_id = o.shop_id AND v.order_id = o.id
-                    WHERE v.market = @m
-                    ORDER BY v.order_date DESC`,
-            params: { m: code },
-        });
-        for (const r of rows as Record<string, unknown>[]) {
+        // NULLS LAST: BigQuery xếp NULL cuối khi DESC, Postgres mặc định xếp đầu.
+        const rows = await query<Record<string, unknown>>(
+            `SELECT v.order_id, v.order_date,
+                    v.status_category, v.status_name,
+                    safe_divide(o.cod, NULLIF(v.pos_money_divisor, 0)) AS cod,
+                    o.tracking_link, o.bill_full_name
+             FROM vw_orders_std v
+             LEFT JOIN sale_order o
+                    ON v.shop_id = o.shop_id AND v.order_id = o.id
+             WHERE v.market = @m
+             ORDER BY v.order_date DESC NULLS LAST`,
+            { m: code },
+        );
+        for (const r of rows) {
             const p = nhomTheoPos(r.status_category as string);
             if (!p) continue;
             don.push({

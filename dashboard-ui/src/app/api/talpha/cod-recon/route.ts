@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 import {
     DISPLAY, UNASSIGNED, SALE_DISPLAY, SALE_UNASSIGNED,
     attributeOrder, buildAdidOwner, resolveSale, RULES,
@@ -16,9 +16,6 @@ import { readStoreFresh, updateStore } from "@/lib/talpha/store";
 import { MAX_UPLOAD_BYTES, tooBigMessage } from "@/lib/talpha/upload-limit";
 
 export const dynamic = "force-dynamic";
-
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 
 // ═══════════════════════════════════════════════════════════════════
 // ĐỐI SOÁT COD
@@ -62,30 +59,29 @@ const emptyStore = (): { statements: Statement[] } => ({ statements: [] });
 
 /** Đơn đã giao trong kỳ, kèm mã vận đơn và người phụ trách. */
 async function loadDeliveredOrders(from: string, to: string): Promise<PosOrder[]> {
-    const [adRows] = await bigquery.query({
-        query: `SELECT DISTINCT CAST(ad_id AS STRING) AS ad_id, campaign_name
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.fb_ads_data\`
-                WHERE ad_id IS NOT NULL AND campaign_name IS NOT NULL`,
-    });
-    const adidOwner = buildAdidOwner(adRows as { ad_id: string; campaign_name: string }[]);
+    const adRows = await query<{ ad_id: string; campaign_name: string }>(
+        `SELECT DISTINCT ad_id::text AS ad_id, campaign_name
+         FROM fb_ads_data
+         WHERE ad_id IS NOT NULL AND campaign_name IS NOT NULL`,
+    );
+    const adidOwner = buildAdidOwner(adRows);
 
-    const [rows] = await bigquery.query({
-        query: `
-            SELECT
-                v.order_uid, v.order_id, v.order_date,
-                v.status_category, v.status_name, v.pos_money_divisor,
-                v.marketer_name, v.resolved_ad_id,
-                o.cod, o.tracking_link, o.page_id, o.tags, o.seller_name
-            FROM \`${BQ_PROJECT}.${BQ_DATASET}.vw_orders_std\` v
-            LEFT JOIN \`${BQ_PROJECT}.${BQ_DATASET}.sale_order\` o
-                   ON v.shop_id = o.shop_id AND v.order_id = o.id
-            WHERE v.order_date BETWEEN @from AND @to
-              AND v.status_category = 'GIAO_THANH_CONG'
-              AND COALESCE(o.cod, 0) > 0`,
-        params: { from, to },
-    });
+    const rows = await query<Record<string, unknown>>(
+        `SELECT
+             v.order_uid, v.order_id, v.order_date,
+             v.status_category, v.status_name, v.pos_money_divisor,
+             v.marketer_name, v.resolved_ad_id,
+             o.cod, o.tracking_link, o.page_id, o.tags, o.seller_name
+         FROM vw_orders_std v
+         LEFT JOIN sale_order o
+                ON v.shop_id = o.shop_id AND v.order_id = o.id
+         WHERE v.order_date BETWEEN @from::date AND @to::date
+           AND v.status_category = 'GIAO_THANH_CONG'
+           AND COALESCE(o.cod, 0) > 0`,
+        { from, to },
+    );
 
-    return (rows as Record<string, unknown>[]).map((r) => {
+    return rows.map((r) => {
         const divisor = Number(r.pos_money_divisor) || 1;
         const { key } = attributeOrder(
             r.marketer_name as string | null,
@@ -102,9 +98,7 @@ async function loadDeliveredOrders(from: string, to: string): Promise<PosOrder[]
             order_uid: r.order_uid as string,
             order_id: String(r.order_id ?? ""),
             tracking: trackingFromLink(r.tracking_link as string | null),
-            order_date: r.order_date && typeof r.order_date === "object"
-                ? (r.order_date as { value: string }).value
-                : String(r.order_date ?? ""),
+            order_date: String(r.order_date ?? ""),
             status_category: r.status_category as string,
             status_name: r.status_name as string,
             cod_local: (Number(r.cod) || 0) / divisor,
@@ -118,11 +112,11 @@ async function loadDeliveredOrders(from: string, to: string): Promise<PosOrder[]
 // NGUỒN ĐƠN DỰ PHÒNG — file đối tác
 //
 // Đối soát cần biết "đơn nào đã giao, thu bao nhiêu". Nguồn chuẩn là POS qua
-// BigQuery, nhưng chừng nào chưa có key Poscake thì kho đó trống, và đối soát
+// kho số, nhưng chừng nào chưa có key Poscake thì kho đó trống, và đối soát
 // sẽ hiện toàn số 0 dù sao kê đã tải lên đầy đủ.
 //
 // File đối tác 3PL trả lời được đúng câu hỏi đó: có mã vận đơn, tiền COD, trạng
-// thái giao. Nên khi BigQuery không trả về đơn nào, lấy tạm từ đó — kèm cờ
+// thái giao. Nên khi kho số không trả về đơn nào, lấy tạm từ đó — kèm cờ
 // `order_source` để màn hình nói rõ số đang đọc từ đâu, không giả vờ là POS.
 //
 // Đây là cùng một lối đã dùng ở tab Theo dõi vận đơn: hợp hai nguồn thay vì
@@ -258,7 +252,7 @@ export async function GET(req: NextRequest) {
         // POS và file đối tác đều trả lời "đơn nào đã giao", nhưng lệch nhau rất
         // xa: POS mới có 5 đơn giao thành công có COD, file đối tác có 361 —
         // đội không cập nhật trạng thái lên POS kịp. Bản trước chỉ lấy file đối
-        // tác KHI BigQuery trống; đến lúc POS có vài đơn thì hệ thống bỏ luôn
+        // tác KHI kho số trống; đến lúc POS có vài đơn thì hệ thống bỏ luôn
         // file đối tác, và đối soát tụt từ 316 đơn khớp xuống 0.
         //
         // Nên gộp: POS thắng khi cùng một mã vận đơn (có marketer, có sale),
@@ -267,7 +261,7 @@ export async function GET(req: NextRequest) {
         try {
             posOrders = await loadDeliveredOrders(ALL_FROM, ALL_TO);
         } catch (e) {
-            console.warn("cod-recon: không đọc được đơn từ BigQuery, chỉ dùng file đối tác:", e);
+            console.warn("cod-recon: không đọc được đơn từ Postgres, chỉ dùng file đối tác:", e);
         }
         const partnerOrders = await loadPartnerDelivered(ALL_FROM, ALL_TO);
 

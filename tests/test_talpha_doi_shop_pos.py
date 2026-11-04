@@ -17,7 +17,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from sync.core.business_rules import quy_doi_don_ngoai_te, revenue_vnd  # noqa: E402
-from sync.core.bq_writer import _loc_shop, sql_rebuild_orders  # noqa: E402
+from sync.core.pg_writer import _loc_shop, sql_dung_lai_don  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ops" / "talpha_reports"))
 from talpha_rules import norm_pos_nv  # noqa: E402
@@ -79,13 +79,13 @@ class TestDonVndTrongShopTwd:
 
 class TestBangDonChiGomShopDangKhai:
     def test_khoa_theo_shop_id_khong_theo_nhan(self):
-        sql = sql_rebuild_orders("p", "d", "sale_order", ["1022091930"])
-        assert "PARTITION BY shop_id, id" in sql
+        sql = sql_dung_lai_don("sale_order", ["1022091930"])
+        assert "DISTINCT ON (shop_id, id)" in sql
         assert "shop_label" not in sql
 
     def test_loc_dung_shop_dang_khai(self):
-        sql = sql_rebuild_orders("p", "d", "sale_order", ["1022091930"])
-        assert "WHERE t.shop_id IN ('1022091930')" in sql
+        sql = sql_dung_lai_don("sale_order", ["1022091930"])
+        assert "WHERE shop_id IN ('1022091930')" in sql
         assert "408074608" not in sql
 
     def test_thieu_ma_shop_thi_khong_loc(self):

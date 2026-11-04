@@ -4,7 +4,7 @@
 //   { thang, ghi_luc, khong_gan, nuoc: { "Japan": { "2026-10-12": { "SAnh": { ads, mess, don,
 //     doanh_so, ds_giao_tc } } } } }
 // Số tin nhắn của nước Meta không báo (Nhật) trong bản này đã là số Pancake — nên màn nào tự tính
-// từ BigQuery (Meta) mà cần mess Nhật thì lấy ở đây cho khớp Sheet (Sỹ Anh 13/10/2026).
+// từ kho số (số Meta) mà cần mess Nhật thì lấy ở đây cho khớp Sheet (Sỹ Anh 13/10/2026).
 // ═══════════════════════════════════════════════════════════════════
 import * as fs from "fs";
 import * as path from "path";

@@ -6,21 +6,21 @@ Script này fetch products của mọi shop POS khai ở talpha_rules.json → m
 SP cũ, không gọi POS), dựng bảng `product_catalog`
 (variation_id → product_id, sku, name, retail_price, cost) để JOIN với order_items.
 
-Tạo bảng `product_catalog` (WRITE_TRUNCATE — dimension, full refresh)
-và view `vw_product_pnl` (order_items × product_catalog × sale_order).
+Thay cả bảng `product_catalog` trong Postgres (dimension, full refresh, một transaction). View
+`vw_product_pnl` nay nằm trong bộ view chung (db/views/12_vw_product_pnl.sql).
 
 Usage:
   python sync/talpha/sync_product_catalog.py            # full sync
-  python sync/talpha/sync_product_catalog.py --dry-run  # chỉ fetch, không ghi BQ
+  python sync/talpha/sync_product_catalog.py --dry-run  # chỉ fetch, không ghi
 """
-import os, sys, json, time, tempfile, argparse
+import os, sys, time, argparse
 import requests
 from dotenv import load_dotenv
-from google.oauth2.service_account import Credentials
-from google.cloud import bigquery
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from sync.core import pg_writer  # noqa: E402
 from sync.core.business_rules import shop_pos_tu_markets  # noqa: E402
+from sync.core.pg import ket_noi  # noqa: E402
 from sync.core.thi_truong import doc_luat  # noqa: E402
 
 # Trên máy chủ khoá POS do systemd nạp (talpha-catalog.service đọc dashboard-ui/.env.local).
@@ -29,26 +29,7 @@ load_dotenv()
 load_dotenv(os.path.join(os.getcwd(), ".env"))
 
 POS_API = "https://pos.pages.fm/api/v1"
-BQ_PROJECT = os.environ.get("BQ_PROJECT_ID", "cty-507710")
-BQ_DATASET = os.environ.get("BQ_DATASET", "TALPHA_Dataset")
-TABLE = f"{BQ_PROJECT}.{BQ_DATASET}.product_catalog"
-
-
-# Schema bảng product_catalog — khai ở CẤP MODULE để scripts/setup_bq.py import lại
-# được. Trước đây nó nằm trong thân hàm nên nơi khác muốn dựng bảng phải gõ tay lần
-# hai, và hai bản sẽ lệch nhau lúc nào không biết.
-CATALOG_SCHEMA = [
-    bigquery.SchemaField("variation_id", "STRING", mode="REQUIRED"),
-    bigquery.SchemaField("product_id", "STRING"),
-    bigquery.SchemaField("sku", "STRING"),
-    bigquery.SchemaField("product_name", "STRING"),
-    bigquery.SchemaField("variation_name", "STRING"),
-    bigquery.SchemaField("retail_price", "FLOAT64"),
-    bigquery.SchemaField("cost", "FLOAT64"),
-    bigquery.SchemaField("remain_quantity", "INT64"),
-    bigquery.SchemaField("shop_label", "STRING"),
-    bigquery.SchemaField("image", "STRING"),
-]
+TABLE = "product_catalog"
 
 
 def load_shops() -> list[dict]:
@@ -117,7 +98,7 @@ def fetch_shop_products(label: str, shop_id: str, key: str) -> list[dict]:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dry-run", action="store_true", help="Chỉ fetch, không ghi BQ")
+    ap.add_argument("--dry-run", action="store_true", help="Chỉ fetch, không ghi")
     ap.add_argument("--force", action="store_true",
                     help="Ghi đè kể cả khi bảng mới hụt >30%% so với bảng đang có "
                          "(chỉ dùng khi ĐÃ BIẾT vì sao hụt, VD POS thật sự xoá bớt SP)")
@@ -127,12 +108,12 @@ def main():
     can_goi = [(s["label"], s["shop_id"]) for s in SHOPS if s["keo"]]
     missing = [lb for lb, _ in can_goi if not os.environ.get(f"TALPHA_POSCAKE_{lb}_KEY", "")]
     if can_goi and len(missing) == len(can_goi):
-        # Không có key nào = chưa nạp được .env. Chạy tiếp sẽ WRITE_TRUNCATE bảng
-        # về 0 dòng và giết mọi báo cáo theo SP — đã xảy ra thật 04/08/2026.
+        # Không có key nào = chưa nạp được khoá. Chạy tiếp sẽ thay bảng bằng 0 dòng
+        # và giết mọi báo cáo theo SP — đã xảy ra thật 04/08/2026.
         raise SystemExit(
             f"❌ Không đọc được API key của shop nào ({', '.join(missing)}).\n"
             f"   .env đang tìm ở: {os.getcwd()}/.env và cạnh file script.\n"
-            f"   DỪNG — không ghi BQ để khỏi xoá trắng {TABLE}."
+            f"   DỪNG — không ghi để khỏi xoá trắng {TABLE}."
         )
     if missing:
         print(f"⚠️  Thiếu API key {len(missing)}/{len(can_goi)} shop: {', '.join(missing)} "
@@ -162,30 +143,22 @@ def main():
     if args.dry_run:
         if tat:
             print(f"Nước không gọi POS {', '.join(tat)}: khi ghi thật sẽ giữ nguyên SP đang có trong {TABLE}")
-        print("\n--dry-run: KHÔNG ghi BQ. Sample 3 rows:")
+        print("\n--dry-run: KHÔNG ghi. Sample 3 rows:")
         for r in deduped[:3]:
             print(" ", {k: r[k] for k in ["variation_id", "sku", "product_name", "retail_price", "cost", "shop_label"]})
         return
 
-    # ─── Load vào BQ (WRITE_TRUNCATE — dimension) ───
-    creds = Credentials.from_service_account_file(
-        "bigquery_key.json",
-        scopes=["https://www.googleapis.com/auth/bigquery"],
-    )
-    bq = bigquery.Client(credentials=creds, project=BQ_PROJECT)
+    conn = ket_noi()
 
     # ─── Nước không gọi POS (đã tắt / sắp chạy): GIỮ SP đang có của shop đó ───
-    # Bảng ghi đè cả bảng mỗi lần chạy, nên shop không gọi POS mà không mang SP cũ theo là
+    # Bảng thay cả bảng mỗi lần chạy, nên shop không gọi POS mà không mang SP cũ theo là
     # SP đó mất — đơn cũ của nước đó hết tra được giá vốn, P&L các ngày nó còn chạy bị sai.
     if tat:
-        giu = bq.query(
-            f"SELECT * FROM `{TABLE}` WHERE shop_label IN UNNEST(@nhan)",
-            job_config=bigquery.QueryJobConfig(
-                query_parameters=[bigquery.ArrayQueryParameter("nhan", "STRING", tat)]),
-        ).result()
+        from psycopg.rows import dict_row
+        with conn.cursor(row_factory=dict_row) as cur:
+            giu = cur.execute(f"SELECT * FROM {TABLE} WHERE shop_label = ANY(%s)", (tat,)).fetchall()
         n_giu = 0
-        for r in giu:
-            d = dict(r.items())
+        for d in giu:
             if d.get("variation_id") and d["variation_id"] not in seen:
                 seen.add(d["variation_id"])
                 deduped.append(d)
@@ -193,100 +166,32 @@ def main():
         print(f"Nước không gọi POS {', '.join(tat)}: giữ nguyên {n_giu} dòng SP đang có")
 
     # ─── Hàng rào chống ghi đè hụt ───
-    # WRITE_TRUNCATE là atomic nhưng KHÔNG hoàn tác được: POS lỗi giữa chừng / hết
-    # key / đổi schema API là bảng dimension teo lại, kéo sập mọi báo cáo theo SP.
+    # Thay bảng nằm trong một transaction nhưng KHÔNG hoàn tác được sau khi xong: POS lỗi giữa
+    # chừng / hết key / đổi schema API là bảng dimension teo lại, kéo sập mọi báo cáo theo SP.
     # Hụt >30% so với bảng đang có ⇒ dừng, bắt người chạy xác nhận bằng --force.
     if len(deduped) == 0:
         raise SystemExit(f"❌ Fetch được 0 variation — DỪNG, giữ nguyên {TABLE}.")
-    try:
-        cur = list(bq.query(f"SELECT COUNT(*) n FROM `{TABLE}`").result())[0]["n"]
-    except Exception as e:
-        cur = 0
-        print(f"⚠️  Không đọc được số dòng hiện tại ({e}) — bỏ qua hàng rào")
-    if cur and len(deduped) < cur * 0.7 and not args.force:
+    cur_n = conn.execute(f"SELECT COUNT(*) FROM {TABLE}").fetchone()[0]
+    if cur_n and len(deduped) < cur_n * 0.7 and not args.force:
         raise SystemExit(
-            f"❌ Bảng mới {len(deduped)} dòng, hụt {100*(1-len(deduped)/cur):.0f}% "
-            f"so với {cur} dòng đang có — DỪNG, giữ nguyên {TABLE}.\n"
+            f"❌ Bảng mới {len(deduped)} dòng, hụt {100*(1-len(deduped)/cur_n):.0f}% "
+            f"so với {cur_n} dòng đang có — DỪNG, giữ nguyên {TABLE}.\n"
             f"   Kiểm tra POS/API key trước. Chắc chắn đúng thì chạy lại với --force."
         )
-    print(f"Bảng hiện có {cur} dòng → sẽ ghi {len(deduped)} dòng")
+    print(f"Bảng hiện có {cur_n} dòng → sẽ ghi {len(deduped)} dòng")
 
-    schema = CATALOG_SCHEMA
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as tmp:
-        for r in deduped:
-            tmp.write(json.dumps(r, ensure_ascii=False) + "\n")
-        tmp_path = tmp.name
-
-    cfg = bigquery.LoadJobConfig(
-        schema=schema,
-        source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
-    )
-    with open(tmp_path, "rb") as f:
-        bq.load_table_from_file(f, TABLE, job_config=cfg).result()
-    os.unlink(tmp_path)
+    pg_writer.thay_ca_bang(conn, TABLE, deduped)
     print(f"\n✅ Loaded {len(deduped)} rows → {TABLE}")
 
-    # ─── Tạo view vw_product_pnl ───
-    # E2 — bản cũ của view này KHÔNG chạy được: SUM(... SUM() OVER ...) là hàm
-    # analytic lồng trong hàm aggregate, BigQuery từ chối ("Analytic functions
-    # cannot be arguments to aggregate functions") ⇒ view chưa bao giờ tạo thành
-    # công sau lần sửa đó. Nay tách window function ra CTE riêng.
-    #
-    # Đồng thời chuyển sang dùng vw_orders_std + vw_product_catalog_std để P&L theo
-    # SP đi CHUNG một định nghĩa với dashboard: doanh thu đã quy VND theo shop_label
-    # (bản cũ trả cod/100 tiền địa phương, cộng 7 market lại là số vô nghĩa) và gom
-    # theo sku ĐÃ CHUẨN HOÁ (bản cũ gom theo sku thô nên "008" và "Necklace box"
-    # tách hai dòng).
-    view_sql = f"""
-    CREATE OR REPLACE VIEW `{BQ_PROJECT}.{BQ_DATASET}.vw_product_pnl` AS
-    WITH item_rev AS (
-      -- Doanh thu đơn phân bổ cho từng item theo quantity.
-      SELECT
-        i.shop_id,
-        i.order_id,
-        i.variation_id,
-        i.quantity,
-        v.shop_label,
-        v.order_date,
-        v.revenue_vnd * SAFE_DIVIDE(
-          i.quantity, SUM(i.quantity) OVER (PARTITION BY i.shop_id, i.order_id)
-        ) AS revenue_vnd
-      FROM `{BQ_PROJECT}.{BQ_DATASET}.order_items` i
-      -- Khoá (shop_id, order_id): mỗi shop POS đánh số đơn riêng, nối mỗi order_id là
-      -- cộng doanh thu đơn 18 của Đài với đơn 18 của Sing.
-      JOIN `{BQ_PROJECT}.{BQ_DATASET}.vw_orders_std` v
-        ON i.shop_id = v.shop_id AND i.order_id = CAST(v.order_id AS STRING)
-      WHERE v.is_confirmed
-    )
-    SELECT
-      c.sku,
-      c.sku_code,
-      ANY_VALUE(c.product_name)     AS product_name,
-      ir.shop_label,
-      COUNT(DISTINCT CONCAT(CAST(ir.shop_id AS STRING), '-', ir.order_id)) AS orders,
-      SUM(ir.quantity)              AS units,
-      ROUND(SUM(ir.revenue_vnd), 0) AS revenue_vnd
-    FROM item_rev ir
-    JOIN `{BQ_PROJECT}.{BQ_DATASET}.vw_product_catalog_std` c
-      ON ir.variation_id = c.variation_id
-    GROUP BY c.sku, c.sku_code, ir.shop_label
-    """
-    bq.query(view_sql).result()
-    print(f"✅ Created view vw_product_pnl")
-
     # Verify coverage
-    cov = list(bq.query(f"""
-      SELECT
-        COUNT(*) AS total_items,
-        COUNTIF(c.variation_id IS NOT NULL) AS matched
-      FROM `{BQ_PROJECT}.{BQ_DATASET}.order_items` i
-      LEFT JOIN `{BQ_PROJECT}.{BQ_DATASET}.product_catalog` c
-        ON i.variation_id = c.variation_id
-    """).result())[0]
-    pct = 100 * cov["matched"] / max(cov["total_items"], 1)
-    print(f"✅ JOIN coverage: {cov['matched']:,}/{cov['total_items']:,} order_items khớp catalog ({pct:.1f}%)")
+    total, matched = conn.execute(f"""
+      SELECT COUNT(*), COUNT(*) FILTER (WHERE c.variation_id IS NOT NULL)
+      FROM order_items i
+      LEFT JOIN {TABLE} c ON i.variation_id = c.variation_id
+    """).fetchone()
+    pct = 100 * matched / max(total, 1)
+    print(f"✅ JOIN coverage: {matched:,}/{total:,} order_items khớp catalog ({pct:.1f}%)")
+    conn.close()
 
 
 if __name__ == "__main__":

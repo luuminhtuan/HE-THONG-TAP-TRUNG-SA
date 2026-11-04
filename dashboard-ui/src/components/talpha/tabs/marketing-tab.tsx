@@ -8,7 +8,6 @@ import {
 } from "recharts";
 import { TrendingUp, DollarSign, Users, MessageCircle } from "lucide-react";
 import TabSkeleton from "@/components/ui/tab-skeleton";
-import { BQ_PROJECT, DATASET } from "../constants";
 import { formatVNDCompact } from "../utils";
 
 // Một dòng của file TỔNG TEAM (/api/talpha/sheet-report?from&to) — cùng số với tab Tổng quan.
@@ -23,7 +22,7 @@ export default function TALPHAMarketingTab({ dateRange }: Props) {
     const [unassigned, setUnassigned] = useState<So | null>(null);
     const [loiSheet, setLoiSheet] = useState<string | null>(null);
     // Xem theo team (phân quyền 05/10/2026): tab người trong Sheet gộp MỌI nước của người đó,
-    // nên bảng từng người lấy từ /api/talpha/marketer-perf — BigQuery, đã lọc theo nước.
+    // nên bảng từng người lấy từ /api/talpha/marketer-perf — kho số, đã lọc theo nước.
     const [theoTeam, setTheoTeam] = useState(false);
     const [accounts, setAccounts] = useState<any[]>([]);
     const [summary, setSummary] = useState({ spend: 0, messages: 0, impressions: 0, cpm: 0 });
@@ -48,7 +47,7 @@ export default function TALPHAMarketingTab({ dateRange }: Props) {
                         SUM(impressions) as impressions,
                         SUM(clicks) as clicks,
                         COUNT(DISTINCT campaign_id) as campaigns
-                    FROM \`${BQ_PROJECT}.${DATASET}.vw_fb_ads_std\`
+                    FROM vw_fb_ads_std
                     WHERE date BETWEEN '${from}' AND '${to}' AND spend > 0
                     GROUP BY 1 ORDER BY spend DESC`,
 
@@ -57,7 +56,7 @@ export default function TALPHAMarketingTab({ dateRange }: Props) {
                         ROUND(SUM(spend), 0) as spend,
                         SUM(messages) as messages,
                         SUM(impressions) as impressions
-                    FROM \`${BQ_PROJECT}.${DATASET}.vw_fb_ads_std\`
+                    FROM vw_fb_ads_std
                     WHERE date BETWEEN '${from}' AND '${to}' AND spend > 0`,
                 ];
 
@@ -111,8 +110,8 @@ export default function TALPHAMarketingTab({ dateRange }: Props) {
 
                 const s = results[1].data?.[0] || {};
                 // Tin nhắn theo Sheet (cùng số tab Tổng quan): Meta không báo mess ở Nhật nên số
-                // BigQuery thiếu phần Nhật — Sheet đã có phần đó đếm từ Pancake. Sheet lỗi / thiếu
-                // tháng thì lùi về số BigQuery.
+                // trong kho thiếu phần Nhật — Sheet đã có phần đó đếm từ Pancake. Sheet lỗi / thiếu
+                // tháng thì lùi về số trong kho.
                 const messSheet = !perf.error && !(perf.missing_months || []).length ? perf.team?.mess : null;
                 setSummary({
                     spend: s.spend || 0, messages: messSheet ?? (s.messages || 0),
@@ -150,7 +149,7 @@ export default function TALPHAMarketingTab({ dateRange }: Props) {
                     <h3 className="text-sm font-semibold text-foreground">👤 Hiệu suất Marketer</h3>
                     <p className="mb-3 mt-0.5 text-[11px] leading-snug text-muted-foreground">
                         {theoTeam
-                            ? <>Chỉ số trong team: tiền ads theo campaign của nước team, đơn theo shop nước đó (số BigQuery — có thể lệch Sheet vài đơn,
+                            ? <>Chỉ số trong team: tiền ads theo campaign của nước team, đơn theo shop nước đó (số tính từ kho số — có thể lệch Sheet vài đơn,
                                 vì tab từng người trong Sheet gộp mọi nước nên không dùng được). DS giao TC là phần đã giao xong.</>
                             : <>Tab của từng người trong file TỔNG TEAM — cùng số với tab Tổng quan và bot Zalo. Doanh số là đơn đã chốt;
                                 DS giao TC là phần đã giao xong.</>}

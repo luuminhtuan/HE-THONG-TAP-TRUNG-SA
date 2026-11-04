@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 import {
     RULES, DISPLAY, UNASSIGNED, MESS_PANCAKE,
     attributeOrder, buildAdidOwner, campaignMarket, parseCampaign, isTestCampaign,
@@ -9,9 +9,6 @@ import { getAccess } from "@/lib/talpha/access";
 import { canMarket, seesAllMarkets } from "@/lib/talpha/access-rules";
 
 export const dynamic = "force-dynamic";
-
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 
 // ═══════════════════════════════════════════════════════════════════
 // X7 — Hiệu suất marketer cho tab "Marketing & Ads".
@@ -52,8 +49,8 @@ export async function GET(req: NextRequest) {
         // Q0 — đơn GTC gom theo (tag POS thô, ad_id). Dedupe theo `order_uid` (= shop-id)
         // chứ KHÔNG phải `order_id`: POS đánh số đơn riêng từng shop nên id 18 tồn tại ở
         // cả 7 shop — gom theo order_id là nhập các đơn khác nhau làm một.
-        const [orderRows] = await bigquery.query({
-            query: `
+        const orderRows = await query(
+            `
                 WITH o AS (
                     SELECT
                         order_uid,
@@ -61,22 +58,21 @@ export async function GET(req: NextRequest) {
                         ANY_VALUE(resolved_ad_id)  AS resolved_ad_id,
                         ANY_VALUE(revenue_vnd)     AS revenue_vnd,
                         ANY_VALUE(is_confirmed)    AS is_confirmed
-                    FROM \`${BQ_PROJECT}.${BQ_DATASET}.vw_orders_std\`
-                    WHERE order_date BETWEEN @from AND @to AND is_valid
-                      ${hep ? "AND market IN UNNEST(@codes)" : ""}
-                    GROUP BY order_uid
+                    FROM vw_orders_std
+                    WHERE order_date BETWEEN @from::date AND @to::date AND is_valid
+                      ${hep ? "AND market = ANY(@codes::text[])" : ""}
+                    GROUP BY 1
                 )
                 -- Lọc nới ra is_valid để lấy THÊM phần ship, nhưng orders/revenue vẫn
                 -- đếm đúng đơn đã giao như trước → mọi số dashboard đang hiện không đổi.
                 SELECT marketer_name, resolved_ad_id,
-                       COUNTIF(is_confirmed)                        AS orders,
-                       SUM(IF(is_confirmed, revenue_vnd, 0))        AS revenue_vnd,
-                       COUNT(*)                                     AS ship_orders,
-                       SUM(revenue_vnd)                             AS ship_revenue_vnd
+                       COUNT(*) FILTER (WHERE is_confirmed)                      AS orders,
+                       SUM(CASE WHEN is_confirmed THEN revenue_vnd ELSE 0 END)   AS revenue_vnd,
+                       COUNT(*)                                                  AS ship_orders,
+                       SUM(revenue_vnd)                                          AS ship_revenue_vnd
                 FROM o GROUP BY 1, 2`,
-            params: hep ? { from, to, codes } : { from, to },
-            ...(hep ? { types: { codes: ["STRING"] } } : {}),
-        });
+            hep ? { from, to, codes } : { from, to },
+        );
 
         // Q1 — bảng tra BẬC 2: id trên đơn → chủ campaign. Không lọc ngày: đơn hôm nay
         // có thể đến từ ad chạy hôm trước.
@@ -86,18 +82,16 @@ export async function GET(req: NextRequest) {
         // fb_ads_data (ad_id) + fb_adset_data (adset_id). Id nào cũng chỉ về campaign
         // của nó nên không có chuyện gán nhầm người; trượt cả hai thì mới "(không gán)".
         const [adRows, adsetRows] = await Promise.all([
-            bigquery.query({
-                query: `
-                    SELECT CAST(ad_id AS STRING) AS ad_id, ANY_VALUE(campaign_name) AS campaign_name
-                    FROM \`${BQ_PROJECT}.${BQ_DATASET}.fb_ads_data\`
-                    WHERE ad_id IS NOT NULL GROUP BY 1`,
-            }).then(r => r[0]),
-            bigquery.query({
-                query: `
-                    SELECT CAST(adset_id AS STRING) AS ad_id, ANY_VALUE(campaign_name) AS campaign_name
-                    FROM \`${BQ_PROJECT}.${BQ_DATASET}.fb_adset_data\`
-                    WHERE adset_id IS NOT NULL GROUP BY 1`,
-            }).then(r => r[0]),
+            query(
+                `SELECT ad_id::text AS ad_id, ANY_VALUE(campaign_name) AS campaign_name
+                 FROM fb_ads_data
+                 WHERE ad_id IS NOT NULL GROUP BY 1`,
+            ),
+            query(
+                `SELECT adset_id::text AS ad_id, ANY_VALUE(campaign_name) AS campaign_name
+                 FROM fb_adset_data
+                 WHERE adset_id IS NOT NULL GROUP BY 1`,
+            ),
         ]);
         // ad_id tra trước — nếu một id vừa là ad vừa là adset thì bản ad chính xác hơn.
         const adidOwner = { ...buildAdidOwner(adsetRows as any[]), ...buildAdidOwner(adRows as any[]) };
@@ -113,14 +107,13 @@ export async function GET(req: NextRequest) {
         // Q2 — chi ads theo campaign, để chia tiền cho từng người. Người ngoài team CHẠY
         // CHUNG 14 TKQC của TALPHA nên tiền của họ nằm sẵn trong fb_ads_data: phải tách
         // ra chứ không được cộng vào team, cũng không được giấu đi.
-        const [campRows] = await bigquery.query({
-            query: `
-                SELECT campaign_name, SUM(spend) AS spend, SUM(messages) AS messages
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.vw_fb_ads_std\`
-                WHERE date BETWEEN @from AND @to AND spend > 0
-                GROUP BY 1`,
-            params: { from, to },
-        });
+        const campRows = await query(
+            `SELECT campaign_name, SUM(spend) AS spend, SUM(messages) AS messages
+             FROM vw_fb_ads_std
+             WHERE date BETWEEN @from::date AND @to::date AND spend > 0
+             GROUP BY 1`,
+            { from, to },
+        );
 
         const agg = new Map<string, Bucket>();
         let spendChuaNhanRa = 0;

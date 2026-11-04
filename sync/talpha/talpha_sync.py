@@ -10,33 +10,28 @@ Usage:
   python talpha_sync.py --full     # Force full re-fetch (bỏ qua Smart Stop)
   python talpha_sync.py --test     # Test connections
   python talpha_sync.py --days 7   # Ads backfill 7 ngày
-  python talpha_sync.py --shadow   # Ghi vào bảng *_shadow (shadow-run song song runtime)
 
-Kho ghi số chọn bằng TALPHA_KHO (04/11/2026, docs/POSTGRES.md):
-  bigquery (mặc định) — như cũ · postgres — chỉ Postgres ở DATABASE_URL (docker compose, máy thử;
-  không đụng BigQuery) · ca_hai — ghi cả hai, BigQuery vẫn là số chính, Postgres lỗi chỉ báo.
+Ghi vào Postgres ở DATABASE_URL (04/11/2026 — trước đó BigQuery; docs/POSTGRES.md). Đầu mỗi vòng: chạy
+migration còn thiếu + dựng lại view nếu luật (tỷ giá, số chia, giá vốn…) đổi.
 """
 import os, sys, json, time, logging, argparse, requests
 from datetime import datetime, timedelta
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(os.path.dirname(SCRIPT_DIR))
-os.environ.setdefault('GOOGLE_APPLICATION_CREDENTIALS', os.path.join(PROJECT_DIR, 'bigquery_key.json'))
+# Khoá Google (tuỳ chọn) — chỉ bảng đơn đối tác 3PL đọc Google Sheet cần. Không có thì bước đó báo lỗi,
+# đơn POS và tiền ads vẫn kéo bình thường.
+if os.path.exists(os.path.join(PROJECT_DIR, 'bigquery_key.json')):
+    os.environ.setdefault('GOOGLE_APPLICATION_CREDENTIALS', os.path.join(PROJECT_DIR, 'bigquery_key.json'))
 sys.stdout.reconfigure(encoding='utf-8')
 sys.path.insert(0, PROJECT_DIR)
 
 from dotenv import load_dotenv
 load_dotenv(os.path.join(PROJECT_DIR, '.env'))
 
-from google.cloud import bigquery
-
 # ── sync/core imports ────────────────────────────────────────────
 from sync.core.business_rules import STATUS_CATEGORY_MAP, quy_doi_don_ngoai_te, shop_pos_tu_markets
-from sync.core.thi_truong import doc_luat, van_tay_view
-from sync.core.bq_writer import (
-    load_truncate, load_append, ensure_dataset, get_last_sync_ts,
-    append_and_rebuild_orders, append_and_rebuild_ads,
-)
+from sync.core.thi_truong import doc_luat
 from sync.core import pg_writer
 from sync.core.pos_client import PoscakeClient, PosFetchError
 from sync.core.partner_sheet import chuan_dong, doc_sheet
@@ -45,19 +40,11 @@ from sync.core.tk_loi import tach_tk_loi
 from sync.config_loader import get_active_accounts
 
 # ── Config ───────────────────────────────────────────────────────
-P  = os.getenv('BQ_PROJECT_ID', 'cty-507710')
-DS = os.getenv('BQ_DATASET',    'TALPHA_Dataset')
 FB_TOKEN = (
     os.environ.get('TALPHA_META_ACCESS_TOKEN', '') or
     os.environ.get('AUUS1_META_ACCESS_TOKEN', '')
 )
 DISCORD_WEBHOOK = os.environ.get('DISCORD_WEBHOOK_ETL', '')
-
-KHO = (os.getenv('TALPHA_KHO') or 'bigquery').strip().lower()
-if KHO not in ('bigquery', 'postgres', 'ca_hai'):
-    raise SystemExit(f"TALPHA_KHO={KHO!r} lạ — dùng bigquery | postgres | ca_hai")
-GHI_BQ = KHO in ('bigquery', 'ca_hai')
-GHI_PG = KHO in ('postgres', 'ca_hai')
 
 def _pos_shops():
     """Danh sách shop POS, đọc THẲNG từ config/talpha_rules.json → markets.
@@ -91,9 +78,6 @@ logging.basicConfig(
 )
 log = logging.getLogger('talpha_sync')
 
-# Chế độ postgres không tạo client BigQuery: máy thử không có bigquery_key.json vẫn chạy được, và
-# không có đường nào ghi nhầm vào BigQuery thật.
-client   = bigquery.Client(project=P) if GHI_BQ else None
 sync_time = datetime.utcnow().isoformat()
 
 _pg_conn = None
@@ -108,27 +92,6 @@ def _pg():
         if moi:
             log.info(f"  [postgres] chạy migration: {', '.join(moi)}")
     return _pg_conn
-
-def _ghi_pg(viec: str, ham):
-    """Một bước ghi Postgres. Chế độ ca_hai: BigQuery là số chính, Postgres lỗi chỉ báo — không làm
-    hỏng vòng sync đang nuôi báo cáo thật. Chế độ postgres: lỗi là lỗi. Không ghi Postgres → None."""
-    if not GHI_PG:
-        return None
-    try:
-        return ham(_pg())
-    except Exception as e:
-        if KHO == 'postgres':
-            raise
-        log.error(f"  [postgres] {viec} lỗi (BigQuery vẫn ghi bình thường): {e}")
-        return None
-
-# ── Table suffix (--shadow → '_shadow') ─────────────────────────
-# Chỉ đổi TÊN BẢNG ĐÍCH khi ghi; không đổi bất kỳ logic nào khác.
-TABLE_SUFFIX = ''
-
-def _tbl(name: str) -> str:
-    """Tên bảng đích thực tế (thêm hậu tố khi chạy --shadow)."""
-    return f"{name}{TABLE_SUFFIX}"
 
 # ── Ad accounts: đọc từ ad_accounts.json qua config_loader ──────
 # Fallback: hard-code TALPHA_AD_ACCOUNTS trong meta_client (cảnh báo rõ).
@@ -150,79 +113,7 @@ def _load_ad_accounts() -> list[dict]:
 
 AD_ACCOUNTS = _load_ad_accounts()
 
-# ── BQ Schemas ───────────────────────────────────────────────────
-F = bigquery.SchemaField
-ORDER_SCHEMA = [
-    F('id','STRING'), F('shop_id','STRING'), F('shop_label','STRING'),
-    F('status','STRING'), F('status_name','STRING'),
-    F('status_category','STRING'), F('status_sub','STRING'),
-    F('total_price','FLOAT64'), F('shipping_fee','FLOAT64'), F('cod','FLOAT64'),
-    F('total_discount','FLOAT64'), F('partner_fee','FLOAT64'), F('return_fee','FLOAT64'),
-    F('surcharge','FLOAT64'), F('money_to_collect','FLOAT64'),
-    F('total_quantity','STRING'), F('marketer','STRING'),
-    F('ad_id','STRING'), F('adset_id','STRING'), F('ads_source','STRING'),
-    F('page_id','STRING'), F('post_id','STRING'),
-    F('p_utm_source','STRING'), F('p_utm_campaign','STRING'), F('p_utm_medium','STRING'),
-    F('p_utm_content','STRING'), F('p_utm_term','STRING'), F('p_utm_id','STRING'),
-    F('order_currency','STRING'),
-    F('customer_id','STRING'), F('customer_name','STRING'),
-    F('bill_full_name','STRING'), F('bill_phone_number','STRING'),
-    F('shipping_address','STRING'), F('shipping_province','STRING'), F('shipping_district','STRING'),
-    F('partner','STRING'), F('warehouse_id','STRING'), F('tracking_link','STRING'),
-    F('inserted_at','STRING'), F('updated_at','STRING'),
-    F('time_send_partner','STRING'), F('estimate_delivery_date','STRING'),
-    F('note','STRING'), F('tags','STRING'), F('order_link','STRING'),
-    F('sync_time','STRING'),
-    # Thêm 17/09/2026 (xem pos_client): tên page = cột "Nguồn đơn" trên POS, sale = người được
-    # gán bán. Để CUỐI — BigQuery luôn thêm cột mới vào cuối bảng; bq_writer điền ngược đơn cũ.
-    F('page_name','STRING'), F('seller_name','STRING'),
-]
-ITEM_SCHEMA = [
-    F('item_id','STRING'), F('order_id','STRING'), F('shop_id','STRING'),
-    F('shop_name','STRING'), F('project_id','STRING'),
-    F('product_id','STRING'), F('variation_id','STRING'),
-    F('product_name','STRING'), F('variation_name','STRING'), F('barcode','STRING'),
-    F('quantity','INT64'), F('return_quantity','INT64'),
-    F('returned_count','INT64'), F('returning_quantity','INT64'),
-    F('retail_price','FLOAT64'), F('discount_each_product','FLOAT64'),
-    F('total_discount','FLOAT64'), F('same_price_discount','FLOAT64'),
-    F('avg_imported_price','FLOAT64'),
-    F('is_bonus_product','STRING'), F('is_composite','STRING'), F('is_wholesale','STRING'),
-    F('order_inserted_at','STRING'), F('sync_time','STRING'),
-]
-ADS_SCHEMA = [
-    F('ad_id','STRING'), F('ad_name','STRING'),
-    F('adset_id','STRING'), F('adset_name','STRING'),
-    F('campaign_id','STRING'), F('campaign_name','STRING'),
-    F('account_id','STRING'), F('account_name','STRING'),
-    F('date','DATE'),
-    F('spend','FLOAT64'),       # VND (đã quy đổi — account billed VND)
-    F('spend_usd','FLOAT64'),   # USD raw từ Meta API
-    F('impressions','INT64'), F('clicks','INT64'),
-    F('reach','INT64'),
-    F('purchases','INT64'), F('purchase_value','FLOAT64'),
-    F('leads','FLOAT64'),
-    F('messaging_conversations_started','INT64'), F('add_to_cart','INT64'),
-    F('cpm','FLOAT64'), F('ctr','FLOAT64'), F('cpc','FLOAT64'), F('frequency','FLOAT64'),
-    F('project_id','STRING'),   # 'TALPHA' — port từ engine runtime (monolith)
-    F('sync_time','STRING'),
-]
-# fb_adset_data — port từ engine runtime, SCHEMA TƯỜNG MINH (runtime dùng autodetect
-# → nguồn schema-drift). Field set = đúng bộ runtime ghi (không có add_to_cart/spend_usd).
-ADSET_SCHEMA = [
-    F('adset_id','STRING'), F('adset_name','STRING'),
-    F('campaign_id','STRING'), F('campaign_name','STRING'),
-    F('account_id','STRING'), F('account_name','STRING'),
-    F('date','DATE'),
-    F('spend','FLOAT64'),
-    F('impressions','INT64'), F('reach','INT64'), F('clicks','INT64'),
-    F('cpm','FLOAT64'), F('ctr','FLOAT64'), F('cpc','FLOAT64'), F('frequency','FLOAT64'),
-    F('purchases','INT64'), F('purchase_value','FLOAT64'),
-    F('leads','INT64'),
-    F('messaging_conversations_started','INT64'),
-    F('project_id','STRING'),   # 'TALPHA'
-    F('sync_time','STRING'),
-]
+# Cột của từng bảng khai bằng migration (db/migrations/), không khai ở đây.
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -295,7 +186,7 @@ def _moc_shop(window_start, orders_from):
 
 
 def sync_all_orders(window_start=None) -> tuple[int, int]:
-    """Fetch đơn TẠO từ `window_start` trở đi ở mọi POS shop rồi ghi vào BQ.
+    """Fetch đơn TẠO từ `window_start` trở đi ở mọi POS shop rồi ghi vào Postgres.
 
     X1 — hai thay đổi so với bản cũ:
       • Cửa sổ theo `inserted_at` (đúng chiều sắp xếp của feed) thay cho Smart Stop
@@ -359,19 +250,9 @@ def sync_all_orders(window_start=None) -> tuple[int, int]:
         # 408074608 → 1022091930) thì đơn shop cũ vẫn nằm trong *_raw, không xoá,
         # nhưng không lọt vào báo cáo để bị đếm chung với shop mới.
         # Gồm CẢ shop của nước đã tắt — lọc nó ra ở đây là đơn cũ của nước đó biến mất.
-        shop_ids = [s["shop_id"] for s in POS_SHOPS]
-        n_orders = n_items = 0
-        if GHI_BQ:
-            n_orders, n_items = append_and_rebuild_orders(
-                client, P, DS, all_orders, all_items, ORDER_SCHEMA, ITEM_SCHEMA,
-                order_table=_tbl('sale_order'), item_table=_tbl('order_items'),
-                shop_ids=shop_ids, da_thay=da_thay,
-            )
-        ra = _ghi_pg('đơn', lambda pg: pg_writer.ghi_don(
-            pg, all_orders, all_items, _tbl('sale_order'), _tbl('order_items'),
-            shop_ids=shop_ids, da_thay=da_thay))
-        if ra and not GHI_BQ:
-            n_orders, n_items = ra
+        n_orders, n_items = pg_writer.ghi_don(
+            _pg(), all_orders, all_items,
+            shop_ids=[s["shop_id"] for s in POS_SHOPS], da_thay=da_thay)
     else:
         log.warning("  Không fetch được order từ bất kỳ shop nào!")
         n_orders = n_items = 0
@@ -390,7 +271,7 @@ def sync_all_orders(window_start=None) -> tuple[int, int]:
 # ═══════════════════════════════════════════════════════════════════
 
 def _transform_ads_row(r: dict, account_id: str, account_name: str) -> dict:
-    """Transform 1 insight row → BQ format (ghi thẳng VND vì account billed VND)."""
+    """Transform 1 insight row → dòng fb_ads_data (ghi thẳng VND vì account billed VND)."""
     actions   = r.get('actions', []) or []
     act_vals  = r.get('action_values', []) or []
 
@@ -430,7 +311,7 @@ def _transform_ads_row(r: dict, account_id: str, account_name: str) -> dict:
 
 
 def _transform_adset_row(r: dict, account_id: str, account_name: str) -> dict:
-    """Transform 1 adset-level insight row → BQ format (field set = engine runtime)."""
+    """Transform 1 adset-level insight row → dòng fb_adset_data (field set = engine runtime)."""
     actions  = r.get('actions', []) or []
     act_vals = r.get('action_values', []) or []
     return {
@@ -480,7 +361,7 @@ def _is_permanent_meta_error(err) -> bool:
 
 
 def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tuple[int, int]:
-    """Fetch Meta Ads insights → BQ theo cơ chế raw/rebuild (X2).
+    """Fetch Meta Ads insights → Postgres theo cơ chế raw/rebuild (X2).
 
     `days_back` chỉ quyết định NGÀY NÀO ĐƯỢC LÀM MỚI, không còn quyết định ngày nào
     bị xoá — bản cũ WRITE_TRUNCATE cả bảng nên mỗi lần sang tháng mới là mất sạch
@@ -559,17 +440,8 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
     # X2: append/rebuild nên account lỗi KHÔNG còn xoá được spend đã có — dòng của
     # account đó chỉ giữ bản cũ. Vẫn raise ở cuối để báo cảnh, nhưng ghi trước đã.
     if all_ads:
-        n_ads = n_adsets = 0
-        if GHI_BQ:
-            n_ads = append_and_rebuild_ads(
-                client, P, DS, all_ads, ADS_SCHEMA, _tbl('fb_ads_data'), 'ad_id')
-            n_adsets = append_and_rebuild_ads(
-                client, P, DS, all_adsets, ADSET_SCHEMA, _tbl('fb_adset_data'), 'adset_id')
-        ra = _ghi_pg('ads', lambda pg: (
-            pg_writer.ghi_ads(pg, all_ads, _tbl('fb_ads_data'), 'ad_id'),
-            pg_writer.ghi_ads(pg, all_adsets, _tbl('fb_adset_data'), 'adset_id')))
-        if ra and not GHI_BQ:
-            n_ads, n_adsets = ra
+        n_ads = pg_writer.ghi_ads(_pg(), all_ads, 'fb_ads_data', 'ad_id')
+        n_adsets = pg_writer.ghi_ads(_pg(), all_adsets, 'fb_adset_data', 'adset_id')
         log.info(f"  ads window {since}→{today} (cửa sổ chỉ làm mới, không xoá lịch sử)")
     else:
         log.warning("  Không fetch được insight ads từ bất kỳ account nào!")
@@ -598,15 +470,6 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
 # CAMPAIGN BUDGET SYNC (giữ nguyên — chưa có trong meta_client)
 # ═══════════════════════════════════════════════════════════════════
 
-CAMPAIGN_SCHEMA = [
-    F('campaign_id','STRING'), F('campaign_name','STRING'),
-    F('status','STRING'), F('effective_status','STRING'),
-    F('daily_budget','FLOAT64'), F('lifetime_budget','FLOAT64'),
-    F('budget_remaining','FLOAT64'), F('objective','STRING'),
-    F('start_time','STRING'), F('stop_time','STRING'),
-    F('account_id','STRING'), F('sync_time','STRING'),
-]
-
 def sync_ad_dictionary(max_ids: int = 600) -> int:
     """X9 — tra Meta cho ad_id nằm trên ĐƠN nhưng không có trong fb_ads_data → bảng
     `ad_dictionary` (ad_id, account, campaign_name) cho attribution bậc 2.
@@ -618,38 +481,11 @@ def sync_ad_dictionary(max_ids: int = 600) -> int:
     (status='error') để không tra lại mãi.
     """
     api = 'https://graph.facebook.com/v21.0'
-    if GHI_BQ:
-        ids = _ad_id_can_tra_bq(max_ids)
-    else:
-        ids = pg_writer.ad_id_can_tra(_pg(), _tbl('sale_order'), max_ids)
+    ids = pg_writer.ad_id_can_tra(_pg(), 'sale_order', max_ids)
     if not ids:
         log.info("  ad_dictionary: không có id mới cần tra")
         return 0
     return _tra_ad_dictionary(api, ids)
-
-
-def _ad_id_can_tra_bq(max_ids: int) -> list:
-    dic_table = f'{P}.{DS}.ad_dictionary'
-    try:
-        client.get_table(dic_table)
-        not_in_dic = f"AND id NOT IN (SELECT ad_id FROM `{dic_table}`)"
-    except Exception:
-        not_in_dic = ""   # bảng chưa tồn tại — vòng đầu tra tất
-
-    return [r.id for r in client.query(f"""
-        WITH need AS (
-            SELECT DISTINCT
-                CASE WHEN o.p_utm_term IS NOT NULL AND LENGTH(o.p_utm_term) > 10
-                          AND REGEXP_CONTAINS(o.p_utm_term, r'^[0-9]+$') THEN o.p_utm_term
-                     WHEN o.ad_id IS NOT NULL AND TRIM(o.ad_id) != '' THEN o.ad_id
-                END AS id
-            FROM `{P}.{DS}.{_tbl('sale_order')}` o
-        )
-        SELECT id FROM need
-        WHERE id IS NOT NULL
-          AND id NOT IN (SELECT CAST(ad_id AS STRING) FROM `{P}.{DS}.fb_ads_data` WHERE ad_id IS NOT NULL)
-          {not_in_dic}
-        LIMIT {max_ids}""").result()]
 
 
 def _tra_ad_dictionary(api: str, ids: list) -> int:
@@ -702,12 +538,8 @@ def _tra_ad_dictionary(api: str, ids: list) -> int:
 
     if not out:
         return 0
-    if GHI_BQ:
-        F = bigquery.SchemaField
-        schema = [F(n, 'STRING') for n in ('ad_id', 'account_id', 'account_name',
-                  'campaign_id', 'campaign_name', 'ad_name', 'status', 'sync_time')]
-        load_append(client, P, DS, 'ad_dictionary', out, schema)
-    _ghi_pg('ad_dictionary', lambda pg: pg_writer.them_dong(pg, 'ad_dictionary', out))
+    with _pg().transaction():
+        pg_writer.them_dong(_pg(), 'ad_dictionary', out)
     ok = sum(1 for r in out if r['status'] == 'ok')
     log.info(f"  ad_dictionary: +{len(out)} id ({ok} tra được, {len(out)-ok} lỗi)")
     return len(out)
@@ -761,11 +593,8 @@ def sync_campaign_data() -> int:
             log.error(f"  [{acct_id}] Campaign error: {e}")
         time.sleep(0.5)
 
-    n = load_truncate(client, P, DS, _tbl('fb_campaign_data'), all_campaigns, CAMPAIGN_SCHEMA) if GHI_BQ else 0
-    ra = _ghi_pg('campaign', lambda pg: pg_writer.thay_ca_bang(pg, _tbl('fb_campaign_data'), all_campaigns))
-    if not GHI_BQ:
-        n = ra or 0
-    log.info(f"  {_tbl('fb_campaign_data')}: {n} rows")
+    n = pg_writer.thay_ca_bang(_pg(), 'fb_campaign_data', all_campaigns)
+    log.info(f"  fb_campaign_data: {n} rows")
     return n
 
 
@@ -773,24 +602,11 @@ def sync_campaign_data() -> int:
 # BẢNG ĐƠN ĐỐI TÁC (Google Sheet) → partner_orders
 # ═══════════════════════════════════════════════════════════════════
 
-PARTNER_ORDER_SCHEMA = [
-    F('market','STRING'), F('shop_label','STRING'), F('sheet_id','STRING'), F('row_no','INT64'),
-    F('marketer','STRING'), F('recon','STRING'), F('note','STRING'), F('status','STRING'),
-    F('order_date','DATE'), F('ship_date','DATE'), F('ship_method','STRING'),
-    F('order_no','STRING'), F('tracking','STRING'), F('return_order_no','STRING'),
-    F('sku','STRING'), F('quantity','INT64'),
-    F('contact_name','STRING'), F('phone','STRING'), F('country','STRING'), F('state','STRING'),
-    F('city','STRING'), F('address','STRING'), F('postcode','STRING'),
-    F('cod','FLOAT64'), F('currency','STRING'),
-    F('synced_at','TIMESTAMP'),
-]
-
-
 def sync_partner_orders() -> int:
-    """Bảng đơn đối tác (config/talpha_rules.json → partner_orders.sheets) → BigQuery.
+    """Bảng đơn đối tác (config/talpha_rules.json → partner_orders.sheets) → Postgres.
 
-    Ghi đè CẢ bảng một lần bằng LOAD JOB. Một bảng đọc lỗi thì NÉM lỗi và KHÔNG ghi gì —
-    ghi các bảng còn lại bằng WRITE_TRUNCATE là xoá mất dòng của bảng lỗi. Tiền COD giữ
+    Thay CẢ bảng một lần trong một transaction. Một bảng đọc lỗi thì NÉM lỗi và KHÔNG ghi gì —
+    thay bằng các bảng còn lại là xoá mất dòng của bảng lỗi. Tiền COD giữ
     nguyên đơn vị trong bảng đối tác (cột currency), không quy đổi ở đây.
     """
     with open(os.path.join(PROJECT_DIR, "config", "talpha_rules.json"), encoding="utf-8") as fh:
@@ -798,6 +614,11 @@ def sync_partner_orders() -> int:
     sheets = [x for x in cfg.get("sheets") or [] if isinstance(x, dict) and x.get("sheet_id")]
     if not sheets:
         log.info("  partner_orders: chưa khai bảng nào — bỏ qua")
+        return 0
+    if not os.path.isfile(os.environ.get('GOOGLE_APPLICATION_CREDENTIALS') or ''):
+        # Không có khoá thì thư viện Google dò máy chủ metadata ~9 giây rồi báo lỗi khó hiểu.
+        log.warning("  partner_orders: chưa có khoá Google (bigquery_key.json ở gốc repo) — bỏ qua bảng "
+                    "đối tác, vận đơn Singapore / Nhật chưa có số")
         return 0
     rows = []
     for sh in sheets:
@@ -807,11 +628,8 @@ def sync_partner_orders() -> int:
                            "sheet_id": sh["sheet_id"]}, sync_time)
         log.info(f"  [{sh.get('shop_label')}] bảng đối tác: {len(dong)} đơn")
         rows.extend(dong)
-    bang = _tbl(cfg.get("table") or "partner_orders")
-    n = load_truncate(client, P, DS, bang, rows, PARTNER_ORDER_SCHEMA) if GHI_BQ else 0
-    ra = _ghi_pg('partner_orders', lambda pg: pg_writer.thay_ca_bang(pg, bang, rows))
-    if not GHI_BQ:
-        n = ra or 0
+    bang = cfg.get("table") or "partner_orders"
+    n = pg_writer.thay_ca_bang(_pg(), bang, rows)
     log.info(f"  {bang}: {n} rows")
     return n
 
@@ -852,48 +670,6 @@ def test_connections():
 # MAIN
 # ═══════════════════════════════════════════════════════════════════
 
-# Vân tay thị trường lúc view BigQuery được dựng lần gần nhất — xem dung_lai_view_neu_thi_truong_doi.
-VIEW_MOC_FILE = os.path.join(PROJECT_DIR, 'data', '.view_thi_truong')
-
-
-def dung_lai_view_neu_thi_truong_doi() -> bool:
-    """Dựng lại view BigQuery khi mã shop / tỷ giá / số chia / trạng thái của một nước đổi (04/11/2026).
-
-    View đúc tỷ giá và số chia vào câu SQL lúc dựng. Trước đây dựng tay sau mỗi lần sửa
-    talpha_rules.json; nay nước còn được thêm / sửa / tắt trên trang /admin → Thị trường, nên vòng
-    sync đầu giờ tự dựng lại khi thấy đổi — nếu không, các tab đọc BigQuery tính nước mới ra
-    doanh thu 0. Script dựng view chỉ chạy CREATE OR REPLACE VIEW, không đụng dữ liệu.
-
-    Chưa có mốc (lần đầu chạy bản này, hoặc mất thư mục data/) → CHỈ ghi mốc, không dựng: coi view
-    đang khớp luật. Dựng lỗi → không ghi mốc, vòng sau thử lại. Trả True nếu đã dựng lại.
-    """
-    moi = van_tay_view(doc_luat(repo=PROJECT_DIR))
-    try:
-        with open(VIEW_MOC_FILE, encoding='utf-8') as fh:
-            cu = fh.read().strip()
-    except FileNotFoundError:
-        cu = None
-    if cu == moi:
-        return False
-    if cu is not None:
-        log.info(f"  Thị trường đổi (vân tay {cu} → {moi}) — dựng lại view BigQuery...")
-        import subprocess
-        r = subprocess.run(
-            [sys.executable, os.path.join(PROJECT_DIR, 'sql', 'talpha', 'deploy_talpha_analytics.py'), '--execute'],
-            capture_output=True, text=True, timeout=900,
-        )
-        for dong in (r.stdout or '').splitlines()[-16:]:
-            log.info(f"    {dong}")
-        if r.returncode != 0:
-            raise RuntimeError(f"dựng lại view lỗi (rc={r.returncode}): {(r.stderr or r.stdout or '')[-300:]}")
-    else:
-        log.info(f"  Chưa có mốc vân tay thị trường — ghi mốc {moi}, không dựng lại view")
-    os.makedirs(os.path.dirname(VIEW_MOC_FILE), exist_ok=True)
-    with open(VIEW_MOC_FILE, 'w', encoding='utf-8') as fh:
-        fh.write(moi + '\n')
-    return cu is not None
-
-
 def main():
     parser = argparse.ArgumentParser(description='TALPHA Full Sync v3')
     parser.add_argument('--ads',    action='store_true', help='Ads only')
@@ -905,20 +681,7 @@ def main():
                         help='Số ngày lùi lại theo ngày TẠO đơn (mặc định 60)')
     parser.add_argument('--test',   action='store_true', help='Test connections')
     parser.add_argument('--days',   type=int, default=1, help='Days back for ads (default: 1)')
-    parser.add_argument('--shadow', action='store_true',
-                        help='Shadow run: ghi vào bảng *_shadow (fb_ads_data_shadow, sale_order_shadow, '
-                             'order_items_shadow, fb_campaign_data_shadow, fb_adset_data_shadow) '
-                             '— chỉ đổi tên bảng đích, không đổi logic')
     args = parser.parse_args()
-
-    if args.shadow and GHI_PG:
-        # Bảng *_shadow chỉ có ở BigQuery — Postgres không có, chạy là lỗi giữa chừng.
-        raise SystemExit("--shadow chỉ dùng với TALPHA_KHO=bigquery")
-
-    if args.shadow:
-        global TABLE_SUFFIX
-        TABLE_SUFFIX = '_shadow'
-        log.info("SHADOW MODE: mọi bảng đích thêm hậu tố '_shadow' — bảng thật KHÔNG bị đụng.")
 
     if args.test:
         test_connections()
@@ -929,24 +692,24 @@ def main():
     results  = {'errors': []}
 
     log.info("═" * 60)
-    log.info(f"TALPHA SYNC v3  [{P}.{DS}]" if KHO == 'bigquery' else f"TALPHA SYNC v3  [kho: {KHO}]")
+    log.info("TALPHA SYNC v3  [Postgres]")
     log.info(f"Mode: {'FULL' if run_all else ('ADS' if args.ads else 'ORDERS')} | "
              f"{'full-fetch' if args.full else 'incremental'}")
     log.info("═" * 60)
 
-    if GHI_BQ:
-        ensure_dataset(client, P, DS)
-    if KHO == 'postgres':
-        _pg()   # nối + migrate ngay đầu: Postgres không lên thì dừng trước khi gọi Meta / POS
+    _pg()   # nối + migrate ngay đầu: Postgres không lên thì dừng trước khi gọi Meta / POS
 
-    # Thị trường đổi trên trang → view BigQuery phải dựng lại. Không chặn vòng chạy: dựng lỗi thì
-    # đơn và tiền ads vẫn kéo bình thường, lỗi báo ra và vòng sau thử lại. Shadow không đụng view.
-    if GHI_BQ and not args.shadow:
-        try:
-            results['view_dung_lai'] = dung_lai_view_neu_thi_truong_doi()
-        except Exception as e:
-            log.error(f"  Dựng lại view theo thị trường lỗi: {e}")
-            results['errors'].append(f"view: {e}")
+    # Luật đổi (thêm nước / sửa tỷ giá trên /admin → Thị trường, khai giá vốn…) → view phải dựng lại,
+    # nếu không các tab tính nước mới ra doanh thu 0. Không chặn vòng chạy: dựng lỗi thì đơn và tiền
+    # ads vẫn kéo bình thường, lỗi báo ra và vòng sau thử lại.
+    try:
+        from sync.core.pg_view import dung_view
+        results['view_dung_lai'] = dung_view(_pg())
+        if results['view_dung_lai']:
+            log.info("  Luật đổi — đã dựng lại bộ view")
+    except (Exception, SystemExit) as e:   # SystemExit: bộ dựng view dừng khi luật khai thiếu
+        log.error(f"  Dựng lại view lỗi: {e}")
+        results['errors'].append(f"view: {e}")
 
     if run_all or args.orders:
         log.info(f"\n[1/3] Orders (POS {len(POS_SHOPS)} shop)...")

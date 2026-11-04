@@ -5,7 +5,7 @@
 # Gọi định kỳ bởi systemd `talpha-snapshot.timer` (mỗi giờ phút :40), do
 # ops/deploy/vps-setup.sh dựng ở mỗi lần deploy — chạy thẳng bản trong repo.
 #
-#   inventory → /api/talpha/sync-inventory → BQ inventory_snapshot
+#   inventory → /api/talpha/sync-inventory → bảng Postgres inventory_snapshot
 #               Đây là ĐƯỜNG DỰ PHÒNG của tab Kho: POS Poscake chết thì
 #               /api/talpha/inventory đọc snapshot mới nhất. Không ai gọi định kỳ
 #               → 03/08 snapshot mới nhất là 10/07, tức dự phòng lệch 24 ngày.

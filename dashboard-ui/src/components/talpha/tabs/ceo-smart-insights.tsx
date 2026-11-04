@@ -81,13 +81,13 @@ export default function CeoSmartInsights({ roas, margin, net, roasTarget = 4.0 }
                     { done: urgent.length === 0, label: "Tồn kho: không có SKU cần nhập gấp", note: urgent.length ? `${urgent.length} SKU cần xử lý` : undefined },
                     { done: negative.length === 0, label: "Đối soát SKU tồn âm", note: negative.length ? `${negative.length} SKU` : undefined },
                     { done: roas >= roasTarget, label: `ROAS đạt mục tiêu ≥ ${roasTarget}x`, note: roas > 0 ? `hiện ${roas.toFixed(2)}x` : undefined },
-                    { done: posLive, label: "Tồn kho đọc thẳng từ POS", note: posLive ? undefined : "đang dùng snapshot BigQuery dự phòng — số có thể cũ" },
+                    { done: posLive, label: "Tồn kho đọc thẳng từ POS", note: posLive ? undefined : "đang dùng snapshot dự phòng trong kho số — số có thể cũ" },
                 ];
 
                 // ─── D5: Timeline (data freshness — mốc thật) ───
                 const tl: TimelineEvent[] = [];
                 if (inv.asOf?.label) tl.push({ when: "Tồn kho", label: inv.asOf.label, tone: "ok" });
-                if (inv._snapshotTime) tl.push({ when: "BQ snapshot", label: String(inv._snapshotTime).slice(0, 16).replace("T", " "), tone: "ok" });
+                if (inv._snapshotTime) tl.push({ when: "Snapshot kho số", label: String(inv._snapshotTime).slice(0, 16).replace("T", " "), tone: "ok" });
                 (inv.marketOverview || []).slice(0, 3).forEach((m: any) => {
                     tl.push({ when: m.market, label: m.source || "—", tone: "ok" });
                 });

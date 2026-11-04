@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sync.core.bq_writer import DA_XOA_TREN_POS, chon_don_da_xoa, sql_rebuild_orders  # noqa: E402
+from sync.core.pg_writer import DA_XOA_TREN_POS, chon_don_da_xoa, sql_dung_lai_don  # noqa: E402
 
 SG = "715135541"
 TW = "1022091930"
@@ -57,7 +57,7 @@ def test_it_don_bi_xoa_van_dung_nguong_toi_thieu():
 
 
 def test_dung_lai_bang_bo_dong_danh_dau_xoa_va_van_loc_shop():
-    sql = sql_rebuild_orders("p", "d", "sale_order", [TW, SG])
-    assert f"IFNULL(status_name, '') != '{DA_XOA_TREN_POS}'" in sql
-    assert "ORDER BY updated_at DESC, sync_time DESC" in sql     # dòng đánh dấu cùng updated_at, sync_time mới hơn → thắng
-    assert f"WHERE t.shop_id IN ('{TW}', '{SG}')" in sql
+    sql = sql_dung_lai_don("sale_order", [TW, SG])
+    assert f"COALESCE(status_name, '') <> '{DA_XOA_TREN_POS}'" in sql
+    assert "updated_at DESC NULLS LAST, sync_time DESC NULLS LAST" in sql     # dòng đánh dấu cùng updated_at, sync_time mới hơn → thắng
+    assert f"WHERE shop_id IN ('{TW}', '{SG}')" in sql

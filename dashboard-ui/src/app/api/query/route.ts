@@ -1,34 +1,29 @@
 import { NextResponse } from "next/server";
-import { bigquery } from "@/lib/bigquery";
+import { query, queryChiDoc } from "@/lib/db";
 import { getAccess } from "@/lib/talpha/access";
 import { scopeQuery, seesAllMarkets } from "@/lib/talpha/access-rules";
 
-// Force dynamic rendering to prevent caching issues with BQ data
+// Force dynamic rendering to prevent caching issues
 export const dynamic = "force-dynamic";
 
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.NEXT_PUBLIC_DATASET || "TALPHA_Dataset";
-
-// Dataset khác trong dự án — `ds.bang` hai phần trỏ thẳng về dự án đang chạy, nên câu của
-// người xem một phần nước không được nhắc tới chúng. Hỏi BigQuery 10 phút một lần.
-let dsCache: { at: number; ds: string[] } | null = null;
-async function cacDataset(): Promise<string[]> {
-    if (dsCache && Date.now() - dsCache.at < 600_000) return dsCache.ds;
-    try {
-        const [ds] = await bigquery.getDatasets();
-        dsCache = { at: Date.now(), ds: ds.map((d) => String(d.id || "")).filter(Boolean) };
-    } catch (e) {
-        console.error("query: không liệt kê được dataset:", (e as Error)?.message || e);
-        dsCache = { at: Date.now() - 540_000, ds: dsCache?.ds || [] };   // thử lại sau 1 phút
-    }
-    return dsCache.ds;
+// Tên mọi bảng / view trong database — câu của người xem một phần nước không được nhắc tới cái nào
+// ngoài 5 bảng lọc được (scopeQuery). Hỏi Postgres 10 phút một lần.
+let bangCache: { at: number; ds: string[] } | null = null;
+async function cacBang(): Promise<string[]> {
+    if (bangCache && Date.now() - bangCache.at < 600_000) return bangCache.ds;
+    const rows = await query<{ ten: string }>(
+        "SELECT c.relname AS ten FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace " +
+        "WHERE n.nspname = current_schema() AND c.relkind IN ('r', 'v', 'm', 'p', 'f')");
+    bangCache = { at: Date.now(), ds: rows.map((r) => r.ten) };
+    return bangCache.ds;
 }
 
 // ═══ SECURITY: API Key Authentication ═══
 const API_KEY = process.env.DASHBOARD_API_KEY || "";
 
 // ═══ SECURITY: SQL Whitelist ═══
-// Only allow SELECT and WITH (for CTEs) queries — block all DDL/DML
+// Only allow SELECT and WITH (for CTEs) queries — block all DDL/DML. Lớp chặn thật nằm ở database:
+// câu chạy bằng vai chỉ đọc trong transaction READ ONLY (lib/db.ts → queryChiDoc).
 const BLOCKED_KEYWORDS = [
     "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER",
     "TRUNCATE", "MERGE", "GRANT", "REVOKE", "EXEC", "EXECUTE",
@@ -78,16 +73,16 @@ export async function POST(request: Request) {
             }
         }
 
-        const { query, params } = await request.json();
+        const { query: cau, params } = await request.json();
 
-        if (!query) {
+        if (!cau) {
             return NextResponse.json({ error: "Query is required" }, { status: 400 });
         }
 
         // ═══ SQL SAFETY CHECK ═══
-        const safety = isQuerySafe(query);
+        const safety = isQuerySafe(cau);
         if (!safety.safe) {
-            console.warn(`🔒 Blocked unsafe query: ${safety.reason} — "${query.substring(0, 100)}..."`);
+            console.warn(`🔒 Blocked unsafe query: ${safety.reason} — "${cau.substring(0, 100)}..."`);
             return NextResponse.json(
                 { error: `Query blocked: ${safety.reason}` },
                 { status: 403 }
@@ -96,12 +91,14 @@ export async function POST(request: Request) {
 
         // ═══ PHÂN QUYỀN THEO TEAM (05/10/2026) ═══
         // Câu SQL dựng ở trình duyệt. Người chỉ xem một phần nước: mỗi bảng bị thay bằng
-        // câu con đã lọc theo nước của họ (lib/talpha/access-rules.ts → scopeQuery).
+        // câu con đã lọc theo nước của họ (lib/talpha/access-rules.ts → scopeQuery), và câu chạy
+        // bằng vai talpha_doc_nuoc — database chỉ cho vai này đọc đúng các bảng lọc được.
         const a = await getAccess(request);
         if (!a) return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
-        let sql: string = query;
-        if (!seesAllMarkets(a)) {
-            const kq = scopeQuery(query, a, BQ_PROJECT, BQ_DATASET, await cacDataset());
+        let sql: string = cau;
+        const tatCa = seesAllMarkets(a);
+        if (!tatCa) {
+            const kq = scopeQuery(cau, a, await cacBang());
             if (!kq.ok) {
                 console.warn(`🔒 query bị chặn (${a.email || a.name}): ${kq.error}`);
                 return NextResponse.json({ error: kq.error }, { status: 403 });
@@ -109,29 +106,8 @@ export async function POST(request: Request) {
             sql = kq.sql;
         }
 
-        // Execute query
-        const options = {
-            query: sql,
-            params,
-        };
-
-        const [rows] = await bigquery.query(options);
-
-        // Serialize BigQuery special types (DATE, TIMESTAMP, NUMERIC come as {value: "..."})
-        const serializedRows = rows.map((row: Record<string, any>) => {
-            const out: Record<string, any> = {};
-            for (const [key, val] of Object.entries(row)) {
-                if (val !== null && typeof val === "object" && "value" in val && Object.keys(val).length === 1) {
-                    out[key] = val.value;
-                } else {
-                    out[key] = val;
-                }
-            }
-            return out;
-        });
-
-        // Return results
-        return NextResponse.json({ data: serializedRows });
+        const rows = await queryChiDoc(sql, tatCa ? "talpha_doc" : "talpha_doc_nuoc", params || undefined);
+        return NextResponse.json({ data: rows });
     } catch (error: any) {
         console.error("API Error:", error);
         return NextResponse.json(

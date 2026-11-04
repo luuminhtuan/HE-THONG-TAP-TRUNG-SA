@@ -204,7 +204,7 @@ class MetaAdsClient:
     def transform_to_bq_row(
         self, row: dict, account_name: str = "", usd_to_vnd: float = 25700
     ) -> dict:
-        """Transform 1 insight row → BQ format.
+        """Transform 1 insight row → dòng fb_ads_data.
 
         Note: spend từ Meta là USD → nhân usd_to_vnd để ra VND.
         """

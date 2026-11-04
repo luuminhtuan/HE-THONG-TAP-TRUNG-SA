@@ -238,14 +238,16 @@ export function checkApi(
 
 // ═══════════════════════════════════════════════════════════════════
 // /api/query — cổng SQL chung của 4 tab (Marketing, Sức khoẻ QC, Khách hàng, Market Intel).
-// Câu SQL dựng ở trình duyệt nên KHÔNG tin được: với người chỉ xem một phần nước, mỗi
-// bảng trong câu bị thay bằng một câu con đã lọc sẵn theo nước; bảng không lọc được
-// (vw_attribution_quality gộp mọi nước theo ngày…) thì từ chối cả câu. Sau khi thay,
-// câu còn bất cứ đường nào khác tới dữ liệu (dấu `, tên dataset, bảng dự án khác,
-// INFORMATION_SCHEMA) cũng từ chối — thà tab trống một ô còn hơn lộ số team khác.
+// Câu SQL dựng ở trình duyệt nên KHÔNG tin được. Route chạy câu bằng vai CHỈ ĐỌC của Postgres
+// (migration 0003): người xem mọi nước → talpha_doc; người xem một phần nước → talpha_doc_nuoc,
+// vai mà database chỉ cho đọc đúng 5 bảng/view ở dieuKien() bên dưới. Với người xem một phần, mỗi
+// bảng trong câu còn bị thay bằng một câu con đã lọc theo nước; câu còn đường nào khác tới dữ liệu
+// (tên bảng khác, bảng hệ thống, hàm chạy câu SQL nằm trong chuỗi…) thì từ chối — thà tab trống một
+// ô còn hơn lộ số team khác.
 // ═══════════════════════════════════════════════════════════════════
 
-const sqlStr = (s: string) => `'${s.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+/** Chuỗi SQL của Postgres: nháy đơn nhân đôi, gạch ngược giữ nguyên (standard_conforming_strings). */
+const sqlStr = (s: string) => `'${s.replace(/'/g, "''")}'`;
 const sqlList = (xs: string[]) => (xs.length ? xs.map(sqlStr).join(", ") : "NULL");
 
 /**
@@ -259,20 +261,22 @@ export function sqlCampaignMarketKey(col = "campaign_name"): string {
     if (!pairs.length) return mac;
     return `COALESCE((
         SELECT CASE UPPER(TRIM(seg)) ${pairs.map(([t, m]) => `WHEN ${sqlStr(t.toUpperCase())} THEN ${sqlStr(m)}`).join(" ")} END
-        FROM UNNEST(SPLIT(IFNULL(${col}, ''), '/')) AS seg WITH OFFSET AS vi_tri
+        FROM unnest(string_to_array(COALESCE(${col}, ''), '/')) WITH ORDINALITY AS o_(seg, vi_tri)
         WHERE UPPER(TRIM(seg)) IN (${pairs.map(([t]) => sqlStr(t.toUpperCase())).join(", ")})
         ORDER BY vi_tri LIMIT 1
     ), ${mac})`;
 }
 
-/** Bảng → điều kiện lọc theo nước. Bảng không có ở đây = người xem một phần không được đụng. */
-function dieuKien(bang: string, a: Access, goc: (t: string) => string): string | null {
+/** Bảng → điều kiện lọc theo nước. Bảng không có ở đây = người xem một phần không được đụng
+ *  (và vai talpha_doc_nuoc cũng không có quyền đọc — migration 0003 + sync/core/pg_view.py). */
+const BANG_LOC_DUOC = ["vw_orders_std", "sale_order", "order_items", "vw_fb_ads_std", "vw_ad_windows"];
+function dieuKien(bang: string, a: Access): string | null {
     const codes = sqlList(a.codes);
     switch (bang) {
         case "vw_orders_std": return `market IN (${codes})`;
         case "sale_order": return `UPPER(shop_label) IN (${codes})`;
         case "order_items":
-            return `CAST(shop_id AS STRING) IN (SELECT DISTINCT CAST(shop_id AS STRING) FROM ${goc("sale_order")} WHERE UPPER(shop_label) IN (${codes}))`;
+            return `shop_id IN (SELECT DISTINCT shop_id FROM sale_order WHERE UPPER(shop_label) IN (${codes}))`;
         case "vw_fb_ads_std":
         case "vw_ad_windows":
             return `${sqlCampaignMarketKey("campaign_name")} IN (${sqlList(a.markets)})`;
@@ -281,67 +285,63 @@ function dieuKien(bang: string, a: Access, goc: (t: string) => string): string |
 }
 
 /**
- * Che chuỗi và chú thích bằng ký hiệu \u0000N\u0000 để việc thay bảng và soát câu chỉ chạy
- * trên phần CODE (chuỗi có thể chứa chữ trùng tên bảng). Tên trong dấu ` giữ nguyên — nó là
- * code, và nằm trong một khớp riêng nên dấu nháy bên trong không mở nhầm một chuỗi.
- * Trả null khi câu có thứ máy tách không chắc bằng BigQuery: ký tự thoát "\\", chú thích
- * "#", dấu nháy không đóng. Tách lệch BigQuery là kẽ hở: một đoạn code BigQuery chạy thật
- * mà máy tưởng là chuỗi thì không bị soát.
+ * Che chuỗi '…' và chú thích -- bằng ký hiệu \u0000N\u0000 để việc thay bảng và soát câu chỉ chạy
+ * trên phần CODE. Trả null khi câu có thứ máy tách không chắc bằng Postgres: dấu " (tên trong nháy
+ * kép là TÊN BẢNG ở Postgres, không phải chuỗi), $ (chuỗi $$…$$), gạch ngược và E'…' (chuỗi có ký tự
+ * thoát), U& (tên / chuỗi mã unicode), chú thích khối mở bằng "/" + "*" (lồng nhau được), nháy không đóng. Tách lệch
+ * Postgres là kẽ hở: một đoạn code chạy thật mà máy tưởng là chuỗi thì không bị soát.
  */
 function cheChuoi(sql: string): { code: string; chuoi: string[] } | null {
-    if (/[\\#\u0000]/.test(sql)) return null;
+    if (/["$\\\u0000]|\/\*|\bU&|\b[eE]'/.test(sql)) return null;
     const chuoi: string[] = [];
-    const code = sql.replace(
-        /`[^`]*`|'''[\s\S]*?'''|"""[\s\S]*?"""|'[^'\n]*'|"[^"\n]*"|--[^\n]*|\/\*[\s\S]*?\*\//g,
-        (m) => {
-            if (m.startsWith("`")) return m;
-            chuoi.push(m);
-            return ` \u0000${chuoi.length - 1}\u0000 `;
-        });
-    if (/['"]|\/\*/.test(code)) return null;     // nháy hoặc /* không đóng
+    const code = sql.replace(/'(?:[^']|'')*'|--[^\n]*/g, (m) => {
+        chuoi.push(m);
+        return ` \u0000${chuoi.length - 1}\u0000 `;
+    });
+    if (/'/.test(code)) return null;     // nháy không đóng
     return { code, chuoi };
 }
 
 /**
- * `datasetsKhac`: các dataset KHÁC trong dự án (route lấy danh sách lúc chạy) — `ds.bang`
- * hai phần trỏ thẳng về dự án đang chạy, không cần ghi tên dự án.
+ * `bangKhac`: tên MỌI bảng / view khác trong database (route lấy danh sách lúc chạy) — câu nhắc tới
+ * bất kỳ cái nào là từ chối, kể cả bảng không có số tiền: soát theo danh sách đóng chứ không đoán.
  */
 export function scopeQuery(
-    sql: string, a: Access, project: string, dataset: string, datasetsKhac: string[] = [],
+    sql: string, a: Access, bangKhac: string[] = [],
 ): { ok: true; sql: string } | { ok: false; error: string } {
     if (seesAllMarkets(a)) return { ok: true, sql };
     const tuChoi = (ly: string) => ({ ok: false as const, error: `Câu truy vấn có ${ly} — không cho phép với tài khoản xem một phần nước` });
     if (/__T\d+__/.test(sql)) return tuChoi("ký hiệu __T…__");
     const che = cheChuoi(sql);
-    if (!che) return tuChoi("ký tự thoát, chú thích # hoặc dấu nháy không đóng");
-
-    const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
-    const goc = (t: string) => `\`${project}.${dataset}.${t}\``;
-    // `proj.ds.bang` · `proj.ds`.bang · `proj`.`ds`.`bang` · proj.ds.bang — mọi kiểu đặt dấu `.
-    const re = new RegExp(`\`?${esc(project)}\`?\\s*\\.\\s*\`?${esc(dataset)}\`?\\s*\\.\\s*\`?([A-Za-z_][A-Za-z0-9_]*)\`?`, "gi");
+    if (!che) return tuChoi("dấu \", $, gạch ngược, chuỗi E'…' / U&, chú thích khối hoặc dấu nháy không đóng");
+    // Soát TRƯỚC khi thay bảng: thay xong thì "db.public.sale_order" chỉ còn "db. (câu con)".
+    const BA_PHAN = /\b[A-Za-z_]\w*\s*\.\s*[A-Za-z_]\w*\s*\.\s*[A-Za-z_]\w*\b(?!\s*\()/;
+    if (BA_PHAN.test(che.code)) return tuChoi("đường dẫn bảng 3 phần");
 
     const thay: string[] = [];
     let loi: string | null = null;
+    // Tên bảng của dashboard, có hoặc không có tiền tố schema "public." — mọi chỗ nó xuất hiện trong code.
+    const re = new RegExp(`(?:\\bpublic\\s*\\.\\s*)?\\b(${[...BANG_LOC_DUOC, "vw_attribution_quality", "fb_ads_data", "fb_adset_data"].join("|")})\\b`, "gi");
     const coCho = che.code.replace(re, (_m, bang: string) => {
-        const dk = dieuKien(bang, a, goc);
-        if (!dk) { loi = loi || `Bảng ${bang} gộp số mọi nước — tài khoản chỉ xem một phần nước không đọc được`; return " "; }
-        thay.push(`(SELECT * FROM ${goc(bang)} WHERE ${dk})`);
+        const b = bang.toLowerCase();
+        const dk = dieuKien(b, a);
+        if (!dk) { loi = loi || `Bảng ${b} gộp số mọi nước — tài khoản chỉ xem một phần nước không đọc được`; return " "; }
+        thay.push(`(SELECT * FROM ${b} WHERE ${dk})`);
         return ` __T${thay.length - 1}__ `;
     });
     if (loi) return { ok: false, error: loi };
     if (!thay.length) return { ok: false, error: "Câu truy vấn không đọc bảng nào của dashboard" };
 
     // Phần code còn lại không được có đường nào khác tới dữ liệu.
+    const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+    const khac = bangKhac.map((b) => b.toLowerCase()).filter((b) => b && !BANG_LOC_DUOC.includes(b));
     const cam: [RegExp, string][] = [
-        [/`/, "dấu ` ngoài tên bảng"],
-        [new RegExp(esc(dataset), "i"), `tên dataset ${dataset}`],
-        [new RegExp(esc(project), "i"), `tên dự án ${project}`],
-        [/INFORMATION_SCHEMA/i, "INFORMATION_SCHEMA"],
-        // a.b.c không theo sau bởi "(" — bảng của dự án/dataset khác.
-        [/\b[A-Za-z_][\w-]*\s*\.\s*[A-Za-z_][\w-]*\s*\.\s*[A-Za-z_]\w*\b(?!\s*\()/, "đường dẫn bảng 3 phần"],
-        ...datasetsKhac.filter(Boolean).map((ds): [RegExp, string] => [new RegExp(`\\b${esc(ds)}\\s*\\.`, "i"), `dataset ${ds}`]),
-        // Bảng dashboard gọi trần (không qua dự án.dataset) — chỉ chạy được khi có dataset mặc định, chặn luôn cho chắc.
-        [/\b(vw_orders_std|sale_order|order_items|vw_fb_ads_std|vw_ad_windows|vw_attribution_quality|fb_ads_data|fb_adset_data)\b/i, "tên bảng không ghi đủ dự án.dataset"],
+        [/\bpg_\w*/i, "bảng / hàm hệ thống pg_…"],
+        [/\binformation_schema\b/i, "information_schema"],
+        // Hàm chạy một câu SQL nằm trong chuỗi — chuỗi đã bị che nên câu bên trong không được thay bảng.
+        [/\b(\w*_to_xml\w*|xmlschema\w*|ts_stat|ts_rewrite|set_config|dblink\w*|lo_\w+)\s*\(/i, "hàm chạy câu SQL / đổi cấu hình"],
+        [/\bpublic\s*\./i, "schema public."],
+        ...khac.map((b): [RegExp, string] => [new RegExp(`\\b${esc(b)}\\b`, "i"), `bảng ${b}`]),
     ];
     for (const [r, ten] of cam) if (r.test(coCho)) return tuChoi(ten);
 

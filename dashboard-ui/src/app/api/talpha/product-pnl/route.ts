@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 import { RULES, REPORT_START_DATE, campaignMarket, parseCampaign, parseProductCode } from "@/lib/talpha/rules";
 import { tinhChiPhiDon } from "@/lib/talpha/order-costs";
 import { getAccess } from "@/lib/talpha/access";
@@ -7,8 +7,6 @@ import { canMarket, seesAllMarkets } from "@/lib/talpha/access-rules";
 
 export const dynamic = "force-dynamic";
 
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // ═══════════════════════════════════════════════════════════════════
@@ -56,16 +54,15 @@ export async function GET(req: NextRequest) {
     const duocXem = (m: string | null | undefined) => !!a && !!m && canMarket(a, m);
 
     try {
-        const [{ don, thieu, ship_basis }, [campRows]] = await Promise.all([
+        const [{ don, thieu, ship_basis }, campRows] = await Promise.all([
             tinhChiPhiDon(from, to, hep ? (shop) => duocXem(shop) : undefined),
-            bigquery.query({
-                query: `
-                    SELECT campaign_name, SUM(spend) AS spend, SUM(messages) AS messages
-                    FROM \`${BQ_PROJECT}.${BQ_DATASET}.vw_fb_ads_std\`
-                    WHERE date BETWEEN @from AND @to AND spend > 0
-                    GROUP BY 1`,
-                params: { from, to },
-            }),
+            query(
+                `SELECT campaign_name, SUM(spend) AS spend, SUM(messages) AS messages
+                 FROM vw_fb_ads_std
+                 WHERE date BETWEEN @from::date AND @to::date AND spend > 0
+                 GROUP BY 1`,
+                { from, to },
+            ),
         ]);
 
         const map = new Map<string, Dong>();

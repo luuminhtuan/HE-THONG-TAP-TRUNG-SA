@@ -1,26 +1,101 @@
 """
-sync/core/pg_writer.py — ghi số vào Postgres, cùng luật với bq_writer (04/11/2026).
+sync/core/pg_writer.py — ghi số vào Postgres (04/11/2026, thay bq_writer của thời BigQuery).
 
-Giữ NGUYÊN cơ chế hai tầng của BigQuery (X1/X2, xem bq_writer): <bảng>_raw chỉ ghi thêm, bảng sạch
-dựng lại từ raw mỗi vòng — kéo hụt không xoá được số đã có, đơn bị xoá trên POS có dòng "bia mộ".
-Luật chọn đơn dùng chung với bq_writer, không chép.
+Cơ chế hai tầng (X1/X2): <bảng>_raw chỉ GHI THÊM, mọi phiên bản đơn / dòng quảng cáo từng thấy, không
+bao giờ xoá; bảng sạch dựng lại từ raw mỗi vòng = bản mới nhất của mỗi khoá. Kéo hụt chỉ làm đơn đó giữ
+bản cũ, không xoá được số đã có. Lý do ra đời: WRITE_TRUNCATE cả bảng đặt cược mọi thứ vào việc lần kéo
+này phải đủ — 04/08 sale_order tụt 4.440 → 3.960 trong 1 giờ; tháng 7/2026 mất sạch spend vì cửa sổ
+ngày 1 co về 1 ngày.
 
-Khác BigQuery ở chỗ có transaction: ghi raw + dựng lại bảng sạch nằm trong MỘT transaction. Lỗi giữa
-chừng là mọi thứ quay về như trước vòng chạy; người đang đọc thấy bảng cũ cho tới lúc COMMIT. Bước
-"DELETE bảng sạch rồi INSERT lại" vì thế an toàn — khác hẳn pattern drop-trước-khi-fetch đã bị cấm.
+Ghi raw + dựng lại bảng sạch nằm trong MỘT transaction. Lỗi giữa chừng là mọi thứ quay về như trước
+vòng chạy; người đang đọc thấy bảng cũ cho tới lúc COMMIT. Bước "DELETE bảng sạch rồi INSERT lại" vì
+thế an toàn — khác hẳn pattern drop-trước-khi-fetch đã bị cấm.
 
-Cột lấy từ bảng thật trong Postgres (information_schema), không lấy từ schema BigQuery: dòng mang cột
-bảng chưa có thì báo lỗi rõ "thêm migration", không lặng lẽ bỏ cột.
+Cột lấy từ bảng thật (information_schema): dòng mang cột bảng chưa có thì báo lỗi rõ "thêm
+migration", không lặng lẽ bỏ cột.
 """
 import json
 import logging
 import re
 
-from sync.core.bq_writer import (
-    COT_DIEN_NGUOC, DA_XOA_TREN_POS, _loc_shop, chon_don_can_ghi, chon_don_da_xoa,
-)
-
 log = logging.getLogger(__name__)
+
+
+# ═══ Luật chọn đơn (thuần, có test) ═══════════════════════════════════════════════════════
+
+def _loc_shop(shop_ids, cot: str) -> str:
+    """Mệnh đề WHERE giữ đúng các shop đang khai. Rỗng/thiếu mã shop → không lọc.
+
+    Mã shop POS là dãy số; nhận thứ khác là từ chối luôn, vì chuỗi này ghép thẳng vào SQL.
+    """
+    ids = [str(s).strip() for s in (shop_ids or [])]
+    if not ids or any(not s for s in ids):
+        return ""
+    for s in ids:
+        if not s.isdigit():
+            raise ValueError(f"shop_id phải là dãy số, nhận {s!r}")
+    return f"WHERE {cot} IN (" + ", ".join(f"'{s}'" for s in ids) + ")"
+
+
+# Đơn bị XOÁ trên POS (17/09/2026: 10 đơn Singapore #59–#81 — ngày 14/09 Sheet ra 6 đơn, POS thật 3).
+# Raw chỉ ghi thêm, nên đơn đã xoá cứ nằm lại mãi ở bản cuối cùng từng thấy. Vòng sync nào kéo ĐỦ
+# cửa sổ của một shop mà không còn thấy đơn đó thì nối vào raw một dòng "bia mộ": y bản cuối, trạng
+# thái = dấu này, sync_time mới hơn → thắng khi dựng lại → bảng sạch bỏ đơn đó. Raw vẫn giữ nguyên
+# lịch sử. Đơn hiện lại trên POS thì vòng sau nối bản mới → sống lại.
+DA_XOA_TREN_POS = "__da_xoa_tren_pos__"
+
+# Cột thêm SAU khi bảng đơn đã có dữ liệu (17/09/2026: tên page + sale). Đơn cũ không đổi
+# `updated_at` thì không bao giờ được nối lại → mãi mang NULL ở cột mới. Vòng sync nào thấy
+# POS đã có giá trị mà bảng còn trống thì nối lại đơn đó MỘT lần — tự lành.
+COT_DIEN_NGUOC = ("page_name", "seller_name")
+
+
+def chon_don_can_ghi(orders, known, thieu_cot=False, trong=None, cot=COT_DIEN_NGUOC):
+    """Đơn phải nối vào raw:
+      · đơn mới, hoặc `updated_at` mới hơn bản đang có;
+      · bảng sạch CHƯA có cột mới (thieu_cot) → mọi đơn trong cửa sổ, để điền ngược;
+      · bảng đang TRỐNG cột mới ở đơn đó (trong[cột] chứa khoá) mà POS đã có giá trị.
+    known: {"shop_id|id": updated_at} · trong: {tên cột: {"shop_id|id", …}}."""
+    trong = trong or {}
+    out = []
+    for o in orders:
+        k = f"{o.get('shop_id', '')}|{o.get('id', '')}"
+        if (thieu_cot
+                or str(o.get("updated_at", "")) > known.get(k, "")
+                or any(o.get(c) and k in trong.get(c, ()) for c in cot)):
+            out.append(o)
+    return out
+
+
+def chon_don_da_xoa(trong_bang, da_thay, toi_thieu=20, ty_le=0.3):
+    """Đơn bị XOÁ trên POS: đang có trong bảng sạch, thuộc cửa sổ vừa kéo ĐỦ của shop, mà POS
+    không trả về nữa.
+    trong_bang: [(shop_id, id, inserted_at), …] · da_thay: {shop_id: (mốc inserted_at, {id POS trả})}
+    Trả ([(shop_id, id), …], [cảnh báo]). Hai chốt để không xoá oan đơn thật:
+      · POS trả 0 đơn cho shop → không đánh dấu gì ở shop đó (key hỏng, API lỗi câm…);
+      · một lượt "mất" > max(toi_thieu, ty_le × số đơn POS trả) → nghi POS trả thiếu, bỏ qua shop."""
+    theo_shop = {}
+    for shop, id_, ins in trong_bang:
+        shop = str(shop)
+        if shop not in da_thay:
+            continue
+        moc, thay = da_thay[shop]
+        if str(ins or "") >= str(moc or "") and str(id_) not in thay:
+            theo_shop.setdefault(shop, []).append((shop, str(id_)))
+    xoa, canh_bao = [], []
+    for shop, ds in sorted(theo_shop.items()):
+        thay = da_thay[shop][1]
+        if not thay:
+            canh_bao.append(f"shop {shop}: POS trả 0 đơn — không đánh dấu xoá {len(ds)} đơn đang có trong bảng")
+        elif len(ds) > max(toi_thieu, ty_le * len(thay)):
+            canh_bao.append(f"shop {shop}: {len(ds)} đơn không còn trên POS trong khi POS trả {len(thay)} đơn "
+                            f"— nghi POS trả thiếu, KHÔNG đánh dấu xoá")
+        else:
+            xoa += ds
+    return xoa, canh_bao
+
+
+# ═══ Ghi vào Postgres ══════════════════════════════════════════════════════════════════════
 
 _TEN_HOP_LE = re.compile(r"^[a-z_][a-z0-9_]*$")
 
@@ -42,7 +117,7 @@ def cot_bang(conn, bang: str) -> dict:
 
 
 def _gia_tri(v, kieu: str):
-    """Giá trị Python → giá trị ghi vào cột, theo đúng cách BigQuery nhận dòng JSON."""
+    """Giá trị Python → giá trị ghi vào cột (chuỗi rỗng ở cột ngày / số là NULL, số ở cột chữ thành chữ)."""
     if v is None:
         return None
     if kieu == "text":
@@ -98,7 +173,7 @@ def _dung_lai(conn, bang: str, chon_sql: str) -> int:
 
 def sql_dung_lai_don(bang_don: str, shop_ids=None) -> str:
     """Mỗi (shop_id, id) giữ bản mới nhất trong raw; bản mới nhất là bia mộ thì bỏ đơn.
-    Cùng luật với bq_writer.sql_rebuild_orders. NULLS LAST: BigQuery xếp NULL cuối khi DESC,
+    NULLS LAST: bản cũ (BigQuery) xếp NULL cuối khi DESC,
     Postgres mặc định xếp đầu — không ghi rõ là đơn mất updated_at thắng đơn có."""
     return f"""
         SELECT * FROM (
@@ -124,7 +199,11 @@ def sql_dung_lai_item(bang_item: str, shop_ids=None) -> str:
 
 def ghi_don(conn, orders: list, items: list, bang_don: str = "sale_order",
             bang_item: str = "order_items", shop_ids=None, da_thay=None) -> tuple:
-    """Tương đương bq_writer.append_and_rebuild_orders. Trả (số đơn, số item) của bảng sạch."""
+    """Ghi đơn + dòng hàng theo cơ chế hai tầng. Trả (số đơn, số item) của bảng sạch.
+
+    Chỉ nối vào raw đơn MỚI hoặc có `updated_at` mới hơn bản đang có (kèm toàn bộ item của đơn đó),
+    cộng bia mộ cho đơn đã xoá trên POS (da_thay: {shop_id: (mốc inserted_at, {id POS trả})} của
+    những shop kéo ĐỦ ở vòng này). Khoá đơn là (shop_id, id): POS đánh số riêng từng shop."""
     bang_don, bang_item = _ten(bang_don), _ten(bang_item)
     with conn.transaction():
         known = {f"{s}|{i}": (t or "") for s, i, t in conn.execute(
@@ -172,7 +251,7 @@ def ghi_don(conn, orders: list, items: list, bang_don: str = "sale_order",
 
 
 def ghi_ads(conn, rows: list, bang: str, id_col: str) -> int:
-    """Tương đương bq_writer.append_and_rebuild_ads: khoá (account_id, id_col, date), bản
+    """Ghi insight quảng cáo theo cơ chế hai tầng: khoá (account_id, id_col, date), bản
     sync_time mới nhất thắng. Cửa sổ kéo chỉ quyết định ngày nào được làm mới, không xoá ngày nào."""
     if id_col not in ("ad_id", "adset_id"):
         raise ValueError(f"id_col lạ: {id_col!r}")

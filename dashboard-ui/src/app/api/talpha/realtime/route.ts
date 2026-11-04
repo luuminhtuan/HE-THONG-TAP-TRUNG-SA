@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import * as fs from "fs";
 import * as yaml from "js-yaml";
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 90;
@@ -219,30 +219,24 @@ async function fetchMetaAds(token: string, accountIds: string[], accountNames: R
     return allAds;
 }
 
-// ═══ POS: HYBRID — BigQuery for history + Direct API for today ═══
+// ═══ POS: HYBRID — kho số (Postgres) for history + Direct API for today ═══
 
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
-
-// Fetch historical orders from BigQuery (synced data — accurate)
-async function fetchPOSFromBigQuery(fromDate: string, toDate: string) {
+// Fetch historical orders from the kho số (synced data — accurate).
+// inserted_at là chuỗi giờ UTC → 10 ký tự đầu là ngày UTC của đơn.
+async function fetchPOSFromKho(fromDate: string, toDate: string) {
     const allOrders: any[] = [];
     try {
-        const query = `
+        const rows = await query(`
             SELECT
                 id, shop_label AS shop_name, ad_id, page_id, total_price, cod,
-                CAST(inserted_at AS STRING) AS inserted_at,
-                JSON_EXTRACT_SCALAR(marketer, '$.name') AS marketer, status, status_name, status_category,
+                inserted_at,
+                safe_json(marketer) ->> 'name' AS marketer, status, status_name, status_category,
                 bill_full_name AS customer_name
-            FROM \`${BQ_PROJECT}.${BQ_DATASET}.sale_order\`
-            WHERE DATE(inserted_at) >= @fromDate
-              AND DATE(inserted_at) <= @toDate
+            FROM sale_order
+            WHERE SUBSTR(inserted_at, 1, 10) >= @fromDate
+              AND SUBSTR(inserted_at, 1, 10) <= @toDate
             ORDER BY inserted_at DESC
-        `;
-        const [rows] = await bigquery.query({
-            query,
-            params: { fromDate, toDate },
-        });
+        `, { fromDate, toDate });
         for (const row of rows) {
             const shopName = normalizeMarket(row.shop_name); // shop_label code → POS full name
             // Nước chưa khai tỷ giá → 0, KHÔNG dùng số dự phòng. Bản cũ rơi về 6.850 — tỷ giá AED
@@ -263,12 +257,12 @@ async function fetchPOSFromBigQuery(fromDate: string, toDate: string) {
                 delivered: isDelivered(row.status_name, row.status_category),
                 inserted_at: row.inserted_at,
                 customer_name: String(row.customer_name || ''),
-                source: 'bigquery',
+                source: 'kho',
             });
         }
-        console.log(`BQ POS: ${allOrders.length} orders for ${fromDate}→${toDate}`);
+        console.log(`Kho POS: ${allOrders.length} orders for ${fromDate}→${toDate}`);
     } catch (e: any) {
-        console.error('BQ POS error:', e.message);
+        console.error('Kho POS error:', e.message);
     }
     return allOrders;
 }
@@ -306,12 +300,12 @@ async function fetchPOSFromDirectAPI(shops: YamlConfig["poscake"]["shops"], star
 
                     // utcDate within [startUtc, endUtc] → include this order
                     const shopName = normalizeMarket(shop.name);
-                    const rate = EXCHANGE_RATES[shopName] ?? 0;   // xem chú thích ở fetchPOSFromBigQuery
-                    // X13 — số chia theo shop (GCC 100, Đài 1), xem fetchPOSFromBigQuery.
+                    const rate = EXCHANGE_RATES[shopName] ?? 0;   // xem chú thích ở fetchPOSFromKho
+                    // X13 — số chia theo shop (GCC 100, Đài 1), xem fetchPOSFromKho.
                     // Đơn ghi bằng VND trong shop TWD (shop 1022091930 còn 340 đơn như vậy):
                     // chia cho tỷ giá như bước sync làm (business_rules.quy_doi_don_ngoai_te),
                     // để phép nhân tỷ giá bên dưới trả lại đúng số VND — không thì 730.000đ
-                    // hoá 584 triệu. Đường BigQuery không cần: bảng đơn đã quy đổi sẵn.
+                    // hoá 584 triệu. Đường kho số không cần: bảng đơn đã quy đổi sẵn.
                     const laVnd = String(o.order_currency || '').toUpperCase() === 'VND';
                     const priceLocal = (o.cod || o.total_price || 0) / (laVnd ? rate : posMoneyDivisor(shopName));
                     const mkRaw = o.marketer || o.pke_mkter || null;
@@ -352,8 +346,8 @@ async function fetchPOSFromDirectAPI(shops: YamlConfig["poscake"]["shops"], star
     return allOrders;
 }
 
-// Hybrid: BQ for history (2+ days ago) + direct API for recent (today & yesterday).
-// Why yesterday via API? BQ sync often hasn't run yet for yesterday's data.
+// Hybrid: kho số for history (2+ days ago) + direct API for recent (today & yesterday).
+// Why yesterday via API? The hourly sync often hasn't caught up on yesterday's data yet.
 // All bounds are UTC dates (the fetched window is padded ±1 day vs the requested
 // range so no order is dropped before per-account-timezone bucketing downstream).
 async function fetchPOSHybrid(shops: YamlConfig["poscake"]["shops"], fetchFrom: string, fetchTo: string, todayUtc: string, warnings: string[]) {
@@ -362,10 +356,10 @@ async function fetchPOSHybrid(shops: YamlConfig["poscake"]["shops"], fetchFrom: 
 
     const tasks: Promise<any[]>[] = [];
 
-    // BQ for the older part of the window (fetchFrom → min(fetchTo, twoDaysAgo))
+    // Kho số for the older part of the window (fetchFrom → min(fetchTo, twoDaysAgo))
     if (fetchFrom <= twoDaysAgo) {
-        const bqEnd = fetchTo <= twoDaysAgo ? fetchTo : twoDaysAgo;
-        tasks.push(fetchPOSFromBigQuery(fetchFrom, bqEnd));
+        const khoEnd = fetchTo <= twoDaysAgo ? fetchTo : twoDaysAgo;
+        tasks.push(fetchPOSFromKho(fetchFrom, khoEnd));
     }
 
     // Direct API for the recent part (yesterday → fetchTo), if any overlap
@@ -409,7 +403,7 @@ export async function GET(request: Request) {
             if (!accountNames[id]) console.warn(`talpha.yaml: TKQC ${id} chưa có tên trong ad_account_names — UI sẽ hiện raw id`);
         }
         // Shop POS từ talpha_rules.json → markets (cùng nguồn với Kho, 04/11/2026), bỏ nước đã tắt:
-        // không gọi POS sống. Đơn cũ của nó vẫn có ở phần đọc BigQuery (không lọc shop).
+        // không gọi POS sống. Đơn cũ của nó vẫn có ở phần đọc kho số (không lọc shop).
         const shops = loadShops();
 
         // A3-P2: gom cảnh báo cap phân trang (Meta 10 trang, POS 200 trang) trả về client
@@ -627,9 +621,9 @@ export async function GET(request: Request) {
         const deliveredRoas = totalSpendVnd > 0 ? Math.round((deliveredRevenueVnd / totalSpendVnd) * 100) / 100 : 0;
 
         // Determine POS source label
-        const hasBQ = orders.some((o: any) => o.source === 'bigquery');
+        const hasKho = orders.some((o: any) => o.source === 'kho');
         const hasDirect = orders.some((o: any) => o.source === 'direct_api');
-        const posSource = hasBQ && hasDirect ? 'BQ+API' : hasBQ ? 'BigQuery' : 'Direct API';
+        const posSource = hasKho && hasDirect ? 'Kho+API' : hasKho ? 'Kho' : 'Direct API';
 
         return NextResponse.json({
             source: `META:Direct|POS:${posSource}`,

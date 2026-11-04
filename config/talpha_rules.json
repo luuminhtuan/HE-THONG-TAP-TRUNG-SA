@@ -4,7 +4,7 @@
   "_market_note": "X13 — pos_money_divisor là SỐ ĐƠN VỊ PHỤ trên 1 đơn vị tiền MÀ POS ĐANG LƯU. Shop Đài lưu NGUYÊN TWD (cod=950 ⇒ 950 TWD) nên chia 1, KHÔNG chia 100. Gõ /100 cứng ở bất kỳ đâu = tiền tụt đúng 100 lần.",
   "primary_market": "Taiwan",
   "cost_rate_rmb_vnd": 3860,
-  "_cost_rate_rmb_vnd_note": "Tỷ giá tệ → VND để quy GIÁ VỐN (products.*.cost_price_rmb) ở nơi không có tỷ giá của kỳ sao kê: view BigQuery, tab P&L theo SP, CEO hỏi. Sổ đơn hàng vẫn ưu tiên tỷ giá của chính kỳ sao kê NAZA, chỉ lùi về số này khi kỳ đó không có. 3.860 = tỷ giá sheet TỔNG của NAZA kỳ 11/09/2026 — soát lại mỗi tháng. Trước 15/09/2026 số này gõ cứng trong order-ledger.ts, còn view BigQuery vẫn dùng 27 giá VND của hệ thống cũ (cao gấp mấy lần giá thật).",
+  "_cost_rate_rmb_vnd_note": "Tỷ giá tệ → VND để quy GIÁ VỐN (products.*.cost_price_rmb) ở nơi không có tỷ giá của kỳ sao kê: view Postgres, tab P&L theo SP, CEO hỏi. Sổ đơn hàng vẫn ưu tiên tỷ giá của chính kỳ sao kê NAZA, chỉ lùi về số này khi kỳ đó không có. 3.860 = tỷ giá sheet TỔNG của NAZA kỳ 11/09/2026 — soát lại mỗi tháng. Trước 15/09/2026 số này gõ cứng trong order-ledger.ts, còn view (BigQuery thời đó) vẫn dùng 27 giá VND của hệ thống cũ (cao gấp mấy lần giá thật).",
   "_primary_market_note": "CHỈ dùng cho campaign KHÔNG ghi nước ở tên (tên cũ kiểu 'Lộc/Philippine/…'): tính về Đài — Sỹ Anh chốt 15/09/2026. Campaign mới phải ghi nước ở ô đầu (TW/SG/AE); thiếu thì báo cáo vẫn tính Đài nhưng liệt kê ra để sửa tên. Không dùng primary_market để suy nước của ĐƠN — nước của đơn là shop POS.",
   "_status_note": "markets.*.status: 'dang_ban' = đã nối shop POS, có tỷ giá và số chia, số tiền được tính; 'sap_chay' = mới nhận ra trong tên campaign (chi tiêu tách đúng nước) nhưng CHƯA kéo đơn, CHƯA tính tiền. Chuyển sang dang_ban khi khai đủ shop_id + key + rate_vnd + pos_money_divisor (đo trên đơn thật, không đoán). 'da_tat' (04/11/2026) = đã tắt: NGỪNG kéo đơn mới của shop, ẩn khỏi Sổ đơn, vận đơn, Kho, Ads Command Center, bot Zalo; GIỮ tỷ giá, số chia, đơn cũ, danh mục SP — báo cáo những ngày nước đó còn chạy không đổi, Tiền COD về vẫn mở để thu nốt tiền đơn cũ. Đừng xoá khối của nước đã tắt: xoá là đơn cũ mất tỷ giá.",
   "_phone_note": "markets.*.phone — dựng link WhatsApp (wa.me) cho khách ở Sổ đơn hàng và Theo dõi vận đơn (Sỹ Anh yêu cầu 29/09/2026). cc = mã nước; national_len = số chữ số của số trong nước SAU khi bỏ số 0 đầu (trunk). Đo trên số thật 29/09/2026: Đài ghi 9 số 9xxxxxxxx (vài số có 0 đầu), Singapore 8 số (vài số đã có 65 đầu), UAE 9 số 5xxxxxxxx (một số có 05 đầu). Số không khớp luật thì KHÔNG dựng link — link sai là nhắn nhầm người. whatsapp: true/false bật tắt nút WhatsApp từng nước — Sỹ Anh chốt 29/09/2026 CHỈ UAE dùng WhatsApp (xác nhận đơn với khách), Đài và Singapore không.",
@@ -966,7 +966,7 @@
     "register_terminal": true,
     "_register_window_note": "Sỹ Anh chốt 25/09/2026: theo dõi MỌI đơn có NGÀY TẠO (order_date, không có thì ngày xuất kho) từ register_from_date trở đi — thay cho luật tuổi register_max_age_days (chỉ dùng khi để trống ngày này). register_terminal = true: đăng ký CẢ đơn đối tác đã ghi kết thúc (đã giao, hoàn, huỷ, tiêu huỷ) để ĐỐI CHIẾU — trạng thái 17TRACK không đè trạng thái đối tác, chỉ cảnh báo khi lệch kiểu mất tiền: đối tác ghi đã giao mà 17TRACK ghi sự cố/đang hoàn, hoặc đối tác ghi hoàn/huỷ mà 17TRACK ghi khách đã nhận. Các đơn này đứng CUỐI hàng ưu tiên và đi theo nhịp chia quota (quota tháng không dùng hết là mất khi reset ngày 1).",
     "markets": {
-      "_note": "Sỹ Anh chốt 25/09/2026: theo dõi vận đơn TÁCH RIÊNG từng thị trường — sổ riêng (data/tracking_<mã>.json), màn riêng (nút chọn nước ở tab Theo dõi vận đơn), tin Zalo riêng. Khoá 17TRACK và quota DÙNG CHUNG. Đài Loan (TW) là thị trường gốc: bảng đối tác nạp qua nút 'Đọc bảng đối tác' vào data/tracking.json, luật cửa hàng tiện lợi ở trên. Thị trường khác đọc bảng đối tác từ BigQuery partner_orders (talpha-sync nạp mỗi giờ, xem khối partner_orders).",
+      "_note": "Sỹ Anh chốt 25/09/2026: theo dõi vận đơn TÁCH RIÊNG từng thị trường — sổ riêng (data/tracking_<mã>.json), màn riêng (nút chọn nước ở tab Theo dõi vận đơn), tin Zalo riêng. Khoá 17TRACK và quota DÙNG CHUNG. Đài Loan (TW) là thị trường gốc: bảng đối tác nạp qua nút 'Đọc bảng đối tác' vào data/tracking.json, luật cửa hàng tiện lợi ở trên. Thị trường khác đọc bảng đối tác từ bảng partner_orders của kho số Postgres (talpha-sync nạp mỗi giờ, xem khối partner_orders).",
       "SG": {
         "label": "Singapore",
         "store": "tracking_sg",
@@ -1068,7 +1068,7 @@
     "partner_file": {
       "sheet_id": "1UGEcebSs-hDV2FB0P-4aDn6eKOkTjmhe44bwdbfxJXc",
       "sheet_gid": "0",
-      "_sheet_note": "Bảng 'BẢNG LÊN ĐƠN' của đối tác, cập nhật 2 ngày/lần. Dashboard đọc thẳng, không phải tải file tay. ⚠️ BẢO MẬT: bảng chứa tên, số điện thoại và địa chỉ khách. NÊN để bảng ở chế độ riêng tư rồi chia sẻ quyền Người xem cho email tài khoản dịch vụ đang đọc BigQuery — hệ thống tự dùng khoá đó. Để 'ai có link đều xem được' là công khai dữ liệu khách.",
+      "_sheet_note": "Bảng 'BẢNG LÊN ĐƠN' của đối tác, cập nhật 2 ngày/lần. Dashboard đọc thẳng, không phải tải file tay. ⚠️ BẢO MẬT: bảng chứa tên, số điện thoại và địa chỉ khách. NÊN để bảng ở chế độ riêng tư rồi chia sẻ quyền Người xem cho email tài khoản dịch vụ Google của hệ thống (khoá bigquery_key.json) — hệ thống tự dùng khoá đó. Để 'ai có link đều xem được' là công khai dữ liệu khách.",
       "column_map": {
         "order_no": [
           "order no.",
@@ -1697,7 +1697,7 @@
     "_tinh_tam_note": "Sỹ Anh chốt 25/09/2026: ba tên gõ tay này (đơn TW-428, 429, 436 · TW-380 · TW-402) chưa rõ là hàng gì nên TÍNH TẠM theo giá 075 - DEGO. Biết mã thật thì đổi sang mã đó, và sửa tên trên POS cho có mã."
   },
   "partner_orders": {
-    "_note": "Bảng đơn của đối tác 3PL (Google Sheet) nạp vào BigQuery bảng `partner_orders` mỗi vòng talpha-sync (mỗi giờ) — để tra, đối chiếu với POS, dựng báo cáo lúc cần. Ghi đè cả bảng bằng LOAD JOB; một bảng đọc lỗi thì giữ nguyên bảng cũ, không ghi nửa vời. Bảng phải CHIA SẺ quyền Người xem cho email tài khoản dịch vụ (talpha-dashboard@cty-507710.iam.gserviceaccount.com), KHÔNG để công khai — có tên, số điện thoại, địa chỉ khách.",
+    "_note": "Bảng đơn của đối tác 3PL (Google Sheet) nạp vào bảng Postgres `partner_orders` mỗi vòng talpha-sync (mỗi giờ) — để tra, đối chiếu với POS, dựng báo cáo lúc cần. Thay cả bảng trong một transaction; một bảng đọc lỗi thì giữ nguyên bảng cũ, không ghi nửa vời. Bảng phải CHIA SẺ quyền Người xem cho email tài khoản dịch vụ (talpha-dashboard@cty-507710.iam.gserviceaccount.com), KHÔNG để công khai — có tên, số điện thoại, địa chỉ khách.",
     "table": "partner_orders",
     "sheets": [
       {
@@ -1810,7 +1810,7 @@
     }
   },
   "report_drive": {
-    "_note": "Sỹ Anh chốt 01/10/2026: MỖI THÁNG MỘT THƯ MỤC. Thư mục gốc 'CÔNG TY ANTALO / BÁO CÁO ADS ANTALO' chứa 'Tháng 9', 'Tháng 10'… Trong thư mục tháng: file 'TỔNG TEAM THÁNG n' + mỗi người một thư mục (LOC, THAI…) chứa '<NƯỚC> T<n>' + file có chữ TEST. format_all.py (ops/talpha_reports/report_files.py) và /api/talpha/sheet-report tự tìm bộ file của tháng đang chạy trong đó — không còn ID cố định, nên không bao giờ ghi số tháng này vào file tháng khác. Thư mục gốc PHẢI share Editor cho service account talpha-dashboard@cty-507710.iam.gserviceaccount.com. Service account không tạo được file (quota Drive = 0) — file tháng mới do người tạo, hoặc chạy Apps Script ops/talpha_reports/tao_thang_moi.gs.",
+    "_note": "Sỹ Anh chốt 01/10/2026: MỖI THÁNG MỘT THƯ MỤC. Thư mục gốc 'CÔNG TY ANTALO / BÁO CÁO ADS ANTALO' chứa 'Tháng 9', 'Tháng 10'… Trong thư mục tháng: file 'TỔNG TEAM THÁNG n' + mỗi người một thư mục (LOC, THAI…) chứa '<NƯỚC> T<n>' + file có chữ TEST. format_all.py (ops/talpha_reports/report_files.py) tự tìm bộ file của tháng đang chạy trong đó (chỉ khi có khoá Google — số cho dashboard và bot ghi ở bảng Postgres bao_cao_tab, không cần file) — không còn ID cố định, nên không bao giờ ghi số tháng này vào file tháng khác. Thư mục gốc PHẢI share Editor cho service account talpha-dashboard@cty-507710.iam.gserviceaccount.com. Service account không tạo được file (quota Drive = 0) — file tháng mới do người tạo, hoặc chạy Apps Script ops/talpha_reports/tao_thang_moi.gs.",
     "root_folder_id": "1AW2xgJ-6kQXxjA04VSpjJjeLEe1IcOV6"
   },
   "_todo": [

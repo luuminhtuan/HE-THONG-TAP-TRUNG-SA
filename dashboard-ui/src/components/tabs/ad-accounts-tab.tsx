@@ -391,7 +391,7 @@ export default function AdAccountsTab() {
             <div className="rounded-lg border border-border bg-muted/30 p-3 sm:p-4 text-xs text-muted-foreground space-y-1">
                 <p className="font-medium text-foreground/80">📌 Hướng dẫn:</p>
                 <ul className="list-disc space-y-0.5 pl-5">
-                    <li>Khi TKQC die → bấm <XCircle className="h-3 w-3 inline text-red-400" /> để đánh dấu. Data cũ vẫn được giữ trong BigQuery.</li>
+                    <li>Khi TKQC die → bấm <XCircle className="h-3 w-3 inline text-red-400" /> để đánh dấu. Data cũ vẫn được giữ trong kho số.</li>
                     <li>Thêm TKQC mới → bấm <Plus className="h-3 w-3 inline text-indigo-400" /> ở header mỗi project.</li>
                     <li>Đổi Access Token / BM → bấm <Key className="h-3 w-3 inline text-amber-400" />, cập nhật tên biến .env, rồi sửa file <code>.env</code> trên server.</li>
                     <li>Sync scripts sẽ TỰ ĐỘNG đọc config mới — không cần restart hay sửa code.</li>

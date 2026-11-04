@@ -57,7 +57,7 @@ else
   $PY $DIR/format_all.py >> "$LOG" 2>&1; FMT_RC=$?
 fi
 date +%s > "$EPOCH"; echo "=== DONE $(date) (sync=$SYNC_RC format=$FMT_RC) ===" >> "$LOG"
-# Ghi health vào BQ để bot WhatsApp cảnh báo khi sync fail/im lặng (không chặn vòng chạy)
+# Ghi health vào Postgres (sync_health) để bot Zalo cảnh báo khi sync fail/im lặng (không chặn vòng chạy)
 OK=1; [ $SYNC_RC -ne 0 ] && OK=0; [ $FMT_RC -ne 0 ] && OK=0
 # Tên TKQC / shop đọc lỗi trong vòng này, ĐẶT ĐẦU detail để bot báo đích danh.
 # Vì sao: 23/09/2026 hai TKQC BM Thuyên mất quyền ads_read từ 10:22, sync hỏng suốt 12 tiếng,

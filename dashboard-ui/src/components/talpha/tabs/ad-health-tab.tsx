@@ -11,7 +11,8 @@
  * ⚠ Tab này KHÔNG theo date picker. Ngưỡng và cửa sổ (1/3/7 ngày) nằm
  * trong view để chỉ có MỘT định nghĩa — nếu tab tự tính lại theo khoảng
  * ngày tuỳ chọn thì lại đẻ ra định nghĩa thứ hai, đúng cái bệnh mà G1
- * sinh ra để chữa. Muốn đổi ngưỡng: sửa 10_vw_ad_windows.sql rồi deploy.
+ * sinh ra để chữa. Muốn đổi ngưỡng: sửa db/views/10_vw_ad_windows.sql rồi
+ * deploy — vòng sync kế tiếp tự dựng lại view (sync/core/pg_view.py).
  */
 
 import { useEffect, useState } from "react";
@@ -19,7 +20,6 @@ import {
     AlertTriangle, TrendingUp, Target, Megaphone, Link2, Ban,
 } from "lucide-react";
 import TabSkeleton from "@/components/ui/tab-skeleton";
-import { BQ_PROJECT, DATASET } from "../constants";
 import { formatVNDCompact } from "../utils";
 
 interface AdRow {
@@ -64,34 +64,37 @@ export default function TALPHAAdHealthTab() {
         async function run() {
             setLoading(true);
             try {
-                const T = `\`${BQ_PROJECT}.${DATASET}\``;
+                // Bí danh cột viết thường, có gạch dưới: Postgres hạ chữ hoa của bí danh không nằm trong
+                // nháy kép (cpoChung → cpochung) mà /api/query lại cấm dấu " — nên đặt tên thường rồi
+                // đổi sang tên trong state ở dưới.
                 const queries = [
                     // Q0 — tổng hợp. Loại campaign test (cờ sinh từ rules file trong view).
                     `SELECT
-                        ROUND(SUM(spend_7d)) AS spend7d,
-                        SUM(pos_orders_7d) AS orders7d,
-                        ROUND(SAFE_DIVIDE(SUM(spend_7d), NULLIF(SUM(pos_orders_7d),0))) AS cpoChung,
-                        COUNTIF(health_status = 'NO_ORDERS') AS adKhongDon,
-                        ROUND(SUM(IF(health_status = 'NO_ORDERS', spend_7d, 0))) AS tienKhongDon,
-                        COUNTIF(cpo_trend_worse) AS adXauDi,
-                        ROUND(SUM(IF(cpo_trend_worse, spend_3d, 0))) AS tienXauDi
-                     FROM ${T}.vw_ad_windows WHERE NOT is_test_campaign`,
+                        ROUND(SUM(spend_7d), 0) AS spend_7d,
+                        SUM(pos_orders_7d) AS orders_7d,
+                        ROUND(safe_divide(SUM(spend_7d), NULLIF(SUM(pos_orders_7d), 0)), 0) AS cpo_chung,
+                        COUNT(*) FILTER (WHERE health_status = 'NO_ORDERS') AS ad_khong_don,
+                        ROUND(SUM(CASE WHEN health_status = 'NO_ORDERS' THEN spend_7d ELSE 0 END), 0) AS tien_khong_don,
+                        COUNT(*) FILTER (WHERE cpo_trend_worse) AS ad_xau_di,
+                        ROUND(SUM(CASE WHEN cpo_trend_worse THEN spend_3d ELSE 0 END), 0) AS tien_xau_di
+                     FROM vw_ad_windows WHERE NOT is_test_campaign`,
 
                     // Q1 — danh sách cần xử lý, nặng tiền lên trước
                     `SELECT ad_id, ad_name, campaign_name, account_name,
                             spend_7d, spend_3d, pos_orders_7d, pos_cpo_7d, pos_cpo_3d,
                             ctr_7d, frequency_1d, ad_age_days,
                             health_status, health_severity, recommended_action
-                     FROM ${T}.vw_ad_windows
+                     FROM vw_ad_windows
                      WHERE NOT is_test_campaign AND health_severity >= 3
                      ORDER BY health_severity DESC, spend_7d DESC
                      LIMIT 50`,
 
-                    // Q2 — độ phủ gán của ngày gần nhất đã trọn vẹn
+                    // Q2 — độ phủ gán của ngày gần nhất đã trọn vẹn. View gộp mọi nước nên tài khoản
+                    // xem một phần nước bị /api/query từ chối câu này → ô độ phủ hiện "—".
                     `SELECT report_date, pct_don_gan_duoc, don_ad_khong_tra_ve,
                             pct_ad_khong_tra_ve, don_fx_khong_biet
-                     FROM ${T}.vw_attribution_quality
-                     WHERE report_date < CURRENT_DATE()
+                     FROM vw_attribution_quality
+                     WHERE report_date < CURRENT_DATE
                      ORDER BY report_date DESC LIMIT 1`,
                 ];
 
@@ -107,14 +110,14 @@ export default function TALPHAAdHealthTab() {
 
                 const s = (res[0].data || [])[0];
                 if (s) setSum({
-                    spend7d: s.spend7d || 0, orders7d: s.orders7d || 0,
-                    cpoChung: s.cpoChung || 0, adKhongDon: s.adKhongDon || 0,
-                    tienKhongDon: s.tienKhongDon || 0, adXauDi: s.adXauDi || 0,
-                    tienXauDi: s.tienXauDi || 0,
+                    spend7d: s.spend_7d || 0, orders7d: s.orders_7d || 0,
+                    cpoChung: s.cpo_chung || 0, adKhongDon: s.ad_khong_don || 0,
+                    tienKhongDon: s.tien_khong_don || 0, adXauDi: s.ad_xau_di || 0,
+                    tienXauDi: s.tien_xau_di || 0,
                 });
                 setRows(res[1].data || []);
                 const a = (res[2].data || [])[0];
-                if (a) setAttr({ ...a, report_date: a.report_date?.value || a.report_date });
+                if (a) setAttr(a);     // report_date đã là chuỗi 'YYYY-MM-DD' (lib/db.ts)
             } catch (e) {
                 console.error(e);
             } finally {

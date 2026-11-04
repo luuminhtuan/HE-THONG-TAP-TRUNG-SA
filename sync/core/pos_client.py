@@ -198,7 +198,7 @@ class PoscakeClient:
         return keep, False
 
     def _normalize_order(self, o: dict) -> tuple[dict, list[dict]]:
-        """Chuẩn hóa 1 order dict từ Poscake API → BQ row format."""
+        """Chuẩn hóa 1 order dict từ Poscake API → dòng sale_order."""
         marketer_raw = o.get("marketer")
         marketer_str = (
             json.dumps(marketer_raw, ensure_ascii=False)

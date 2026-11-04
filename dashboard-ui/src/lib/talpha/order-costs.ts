@@ -25,7 +25,7 @@
 //     theo bậc 0,5 kg (cân lấy từ kiện NAZA Đài như Singapore) + thu hộ theo bậc tiền COD (yên).
 //   • Nước khác: không đoán — null để giao diện ghi "thiếu".
 // ═══════════════════════════════════════════════════════════════════
-import { bigquery } from "@/lib/bigquery";
+import { query } from "@/lib/db";
 import {
     COST_RATE_RMB_VND, EXCHANGE_RATES, POS_TIMEZONE, RULES, SHOP2MKT,
     costPriceVnd, posMoneyDivisor,
@@ -33,9 +33,6 @@ import {
 import { productCodes } from "@/lib/talpha/order-ledger";
 import { BANG_GIA_NHAT, cuocNhatRmb, phiShipNhatVnd } from "@/lib/talpha/phi-ship-nhat";
 import { readStoreFresh } from "@/lib/talpha/store";
-
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || "TALPHA_Dataset";
 
 type FeeLine = { ship_fee?: number; op_fee?: number; chargeable_kg?: number | null };
 type Statement = {
@@ -167,26 +164,28 @@ export type ThieuGia = { ma: string; ten: string; qty: number; orders: number };
 export async function tinhChiPhiDon(from: string, to: string, chiShop?: (shop: string) => boolean): Promise<{
     don: DonChiPhi[]; thieu: ThieuGia[]; ship_basis: Record<string, string>;
 }> {
-    const [rows] = await bigquery.query({
-        query: `
+    const rows = await query(
+        `
             WITH don AS (
-                SELECT CAST(id AS STRING) AS id, shop_id, UPPER(shop_label) AS shop,
-                       DATE(TIMESTAMP(inserted_at), @tz) AS d,
-                       IFNULL(cod, 0) AS cod, IFNULL(total_price, 0) AS total_price
-                FROM \`${BQ_PROJECT}.${BQ_DATASET}.sale_order\`
-                WHERE DATE(TIMESTAMP(inserted_at), @tz) BETWEEN @from AND @to
+                SELECT id, shop_id, UPPER(shop_label) AS shop,
+                       ngay_theo_mui(inserted_at, @tz) AS d,
+                       COALESCE(cod, 0) AS cod, COALESCE(total_price, 0) AS total_price
+                FROM sale_order
+                WHERE ngay_theo_mui(inserted_at, @tz) BETWEEN @from::date AND @to::date
                   AND status_category NOT IN ('HUY', 'DON_THO')
                   -- Đơn trống (0 sản phẩm, 0 tiền) — Sheet không đếm (sql_la_don_trong).
-                  AND NOT (IFNULL(SAFE_CAST(total_quantity AS FLOAT64), 0) = 0
-                           AND IFNULL(total_price, 0) = 0 AND IFNULL(cod, 0) = 0)
+                  -- total_quantity là chuỗi: không phải số thì coi như 0 (như SAFE_CAST cũ).
+                  AND NOT (COALESCE(CASE WHEN total_quantity ~ '^[[:space:]]*[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?[[:space:]]*$'
+                                         THEN total_quantity::float8 END, 0) = 0
+                           AND COALESCE(total_price, 0) = 0 AND COALESCE(cod, 0) = 0)
             )
-            SELECT don.id, don.shop, CAST(don.d AS STRING) AS d, don.cod, don.total_price,
-                   i.product_name, i.variation_name, IFNULL(i.quantity, 0) AS qty
+            SELECT don.id, don.shop, to_char(don.d, 'YYYY-MM-DD') AS d, don.cod, don.total_price,
+                   i.product_name, i.variation_name, COALESCE(i.quantity, 0) AS qty
             FROM don
-            LEFT JOIN \`${BQ_PROJECT}.${BQ_DATASET}.order_items\` i
-                   ON CAST(i.order_id AS STRING) = don.id AND i.shop_id = don.shop_id`,
-        params: { from, to, tz: POS_TIMEZONE },
-    });
+            LEFT JOIN order_items i
+                   ON i.order_id = don.id AND i.shop_id = don.shop_id`,
+        { from, to, tz: POS_TIMEZONE },
+    );
 
     const donMap = new Map<string, DonChiPhi>();
     const thieu = new Map<string, { ma: string; ten: string; qty: number; don: Set<string> }>();

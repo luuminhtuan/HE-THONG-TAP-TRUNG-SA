@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Type } from "@google/genai";
-import { bigquery } from "@/lib/bigquery";
+import { queryChiDoc } from "@/lib/db";
 import { buildSystemPrompt } from "@/lib/talpha/ceo-ask-prompt";
 import { checkSql, cleanSql } from "@/lib/talpha/ceo-ask-sql";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const BQ_PROJECT = process.env.NEXT_PUBLIC_BQ_PROJECT || "cty-507710";
-const BQ_DATASET = process.env.DATASET || process.env.NEXT_PUBLIC_DATASET || "TALPHA_Dataset";
 // Google Gemini (free tier). Chuỗi model fallback: thử model mạnh trước, hết quota
 // (429) thì tự rớt xuống model nhẹ hơn. Override bằng TALPHA_AI_MODEL (phẩy ngăn cách).
 // 2.5-flash = SQL tốt nhất; flash-lite = quota cao, đỡ khi 2.5-flash hết hạn mức.
@@ -17,25 +15,22 @@ const MODELS = (process.env.TALPHA_AI_MODEL || "gemini-2.5-flash,gemini-2.0-flas
 const MAX_SQL_CALLS = 4;
 const ROW_CAP = 200;
 
-// SQL safety (SELECT/WITH only, 1 câu, đúng dataset) + gỡ nháy thừa: xem
-// lib/talpha/ceo-ask-sql.ts — dùng chung với prompt builder.
-
+// Câu SQL do LLM viết = KHÔNG tin được. Hai lớp chặn:
+//   1. Soát chữ ở đây: chỉ 1 câu SELECT/WITH, không từ khoá ghi/DDL (danh sách chung ở
+//      lib/talpha/ceo-ask-sql.ts — dùng chung với prompt builder). Gỡ nháy thừa: cleanSql.
+//   2. Database: chạy bằng vai CHỈ ĐỌC talpha_doc, transaction READ ONLY, tối đa 30 giây
+//      (queryChiDoc, migration 0003) — lọt qua lớp 1 cũng không ghi / không treo máy được.
+// Bản BigQuery còn khoá "đúng dataset" + hạn mức byte quét; Postgres chỉ có một database và vai
+// chỉ đọc thay cho cả hai.
 async function runSql(rawSql: string): Promise<{ rows?: any[]; error?: string }> {
     const sql = cleanSql(rawSql);
-    const safe = checkSql(sql, { project: BQ_PROJECT, dataset: BQ_DATASET });
+    const safe = checkSql(sql);
     if (!safe.ok) return { error: `Query blocked: ${safe.reason}` };
     // Bound result size if the model forgot a LIMIT.
     const limited = /\blimit\b/i.test(sql) ? sql : `${sql.trim()}\nLIMIT ${ROW_CAP}`;
     try {
-        const [rows] = await bigquery.query({ query: limited, maximumBytesBilled: "2000000000" });
-        const serial = (rows as any[]).slice(0, ROW_CAP).map((r) => {
-            const o: Record<string, any> = {};
-            for (const [k, v] of Object.entries(r)) {
-                o[k] = v !== null && typeof v === "object" && "value" in (v as any) ? (v as any).value : v;
-            }
-            return o;
-        });
-        return { rows: serial };
+        const rows = await queryChiDoc(limited, "talpha_doc");
+        return { rows: rows.slice(0, ROW_CAP) };
     } catch (e: any) {
         return { error: e?.message || String(e) };
     }
@@ -44,7 +39,7 @@ async function runSql(rawSql: string): Promise<{ rows?: any[]; error?: string }>
 // System prompt SINH TỰ ĐỘNG từ config/talpha_rules.json (A5) — đừng chép rule
 // bằng tay vào đây nữa, sửa rule là sửa JSON. Xem lib/talpha/ceo-ask-prompt.ts.
 function systemPrompt(from: string, to: string): string {
-    return buildSystemPrompt(from, to, { project: BQ_PROJECT, dataset: BQ_DATASET });
+    return buildSystemPrompt(from, to);
 }
 
 // Free tier Gemini thỉnh thoảng trả 503 UNAVAILABLE / 429 (quá tải) — retry với
@@ -72,11 +67,11 @@ const TOOLS = [
         functionDeclarations: [
             {
                 name: "run_sql",
-                description: "Chạy 1 câu truy vấn BigQuery (chỉ SELECT/WITH) trên dataset TALPHA và trả về tối đa 200 dòng kết quả dạng JSON. Dùng để lấy số liệu trả lời câu hỏi.",
+                description: "Chạy 1 câu truy vấn Postgres (chỉ SELECT/WITH) trên kho số TALPHA và trả về tối đa 200 dòng kết quả dạng JSON. Dùng để lấy số liệu trả lời câu hỏi.",
                 parameters: {
                     type: Type.OBJECT,
                     properties: {
-                        sql: { type: Type.STRING, description: "Câu SELECT hợp lệ, có tên bảng đầy đủ `project.dataset.table`." },
+                        sql: { type: Type.STRING, description: "Một câu SELECT Postgres hợp lệ, tên bảng / view viết trần (vd vw_orders_std), không dấu ;." },
                     },
                     required: ["sql"],
                 },

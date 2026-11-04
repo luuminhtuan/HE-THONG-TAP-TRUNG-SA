@@ -24,39 +24,37 @@
 -- Nguồn: vw_orders_std
 -- ═══════════════════════════════════════════════════════════════════
 
-CREATE OR REPLACE VIEW `{PROJECT}.{DATASET}.vw_pos_by_ad` AS
+CREATE VIEW vw_pos_by_ad AS
 SELECT
     resolved_ad_id                                              AS ad_id,
 
     -- ─── Đếm đơn theo cửa sổ (khoá order_uid — X8) ───
     COUNT(DISTINCT order_uid)                                   AS pos_orders_30d,
-    COUNT(DISTINCT IF(order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY),
-                      order_uid, NULL))                         AS pos_orders_7d,
-    COUNT(DISTINCT IF(order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY),
-                      order_uid, NULL))                         AS pos_orders_3d,
-    COUNT(DISTINCT IF(order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY),
-                      order_uid, NULL))                         AS pos_orders_1d,
+    COUNT(DISTINCT CASE WHEN order_date >= (CURRENT_DATE - 7) THEN order_uid ELSE NULL END)                         AS pos_orders_7d,
+    COUNT(DISTINCT CASE WHEN order_date >= (CURRENT_DATE - 3) THEN order_uid ELSE NULL END)                         AS pos_orders_3d,
+    COUNT(DISTINCT CASE WHEN order_date >= (CURRENT_DATE - 1) THEN order_uid ELSE NULL END)                         AS pos_orders_1d,
 
     -- Chỉ đơn của người TRONG team (X10) — tab tổng dùng cột này
-    COUNT(DISTINCT IF(marketer_group != 'external', order_uid, NULL)) AS pos_orders_team_30d,
+    COUNT(DISTINCT CASE WHEN marketer_group != 'external' THEN order_uid ELSE NULL END) AS pos_orders_team_30d,
 
     -- ─── Chất lượng đơn ───
-    COUNT(DISTINCT IF(is_confirmed, order_uid, NULL))           AS pos_orders_confirmed_30d,
-    COUNT(DISTINCT IF(is_returned,  order_uid, NULL))           AS pos_returned_30d,
+    COUNT(DISTINCT CASE WHEN is_confirmed THEN order_uid ELSE NULL END)           AS pos_orders_confirmed_30d,
+    COUNT(DISTINCT CASE WHEN is_returned THEN order_uid ELSE NULL END)           AS pos_returned_30d,
 
     -- ─── Tiền (đã quy VND trong vw_orders_std) ───
-    ROUND(SUM(IF(is_confirmed, revenue_vnd, 0)), 0)             AS pos_revenue_confirmed_vnd,
+    ROUND(SUM(CASE WHEN is_confirmed THEN revenue_vnd ELSE 0 END), 0)             AS pos_revenue_confirmed_vnd,
     ROUND(SUM(revenue_vnd), 0)                                  AS pos_revenue_all_vnd,
-    ROUND(SUM(IF(order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)
-                 AND is_confirmed, revenue_vnd, 0)), 0)         AS pos_revenue_confirmed_7d_vnd,
+    ROUND(SUM(CASE WHEN order_date >= (CURRENT_DATE - 7)
+                 AND is_confirmed THEN revenue_vnd ELSE 0 END), 0)         AS pos_revenue_confirmed_7d_vnd,
 
     -- Cờ market chưa khai tỷ giá — nếu TRUE thì mọi cột tiền ở trên không tin được
-    LOGICAL_OR(NOT is_fx_known)                                 AS co_market_chua_khai_ty_gia,
+    bool_or(NOT is_fx_known)                                 AS co_market_chua_khai_ty_gia,
 
     MIN(order_date)                                             AS first_order_date,
     MAX(order_date)                                             AS last_order_date
-FROM `{PROJECT}.{DATASET}.vw_orders_std`
+FROM vw_orders_std
 WHERE resolved_ad_id IS NOT NULL
   AND is_valid                                   -- loại HUY + DON_THO
-  AND order_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY)
+  AND order_date >= (CURRENT_DATE - 30)
 GROUP BY resolved_ad_id;
+

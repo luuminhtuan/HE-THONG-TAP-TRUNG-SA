@@ -149,7 +149,7 @@ export default function TALPHAPnLTab({ dateRange }: Props) {
 
             {(sheet.missing_months.length > 0 || loiCost) && (
                 <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-                    {sheet.missing_months.length > 0 && <p>Thiếu số tháng {sheet.missing_months.join(", ")} — chưa khai ID file TỔNG TEAM của tháng đó.</p>}
+                    {sheet.missing_months.length > 0 && <p>Thiếu số tháng {sheet.missing_months.join(", ")} — vòng báo cáo (phút :20 mỗi giờ) chưa ghi số tháng đó.</p>}
                     {loiCost && <p>Không tính được giá vốn và phí ship ({loiCost}) — hai khoản đó đang để 0.</p>}
                 </div>
             )}

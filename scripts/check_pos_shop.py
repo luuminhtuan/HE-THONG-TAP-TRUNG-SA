@@ -3,7 +3,7 @@
 
     python3 scripts/check_pos_shop.py
 
-Chạy trước mỗi lần đổi shop hoặc đổi key. Không ghi gì vào BigQuery.
+Chạy trước mỗi lần đổi shop hoặc đổi key. Không ghi gì vào kho số.
 
 Vì sao cần: shop_id từng bị ghi cứng trong code và SAI (mã cũ 1328343252 là
 của hệ thống trước). Gọi API thật là biết ngay, thay vì chạy cả pipeline rồi

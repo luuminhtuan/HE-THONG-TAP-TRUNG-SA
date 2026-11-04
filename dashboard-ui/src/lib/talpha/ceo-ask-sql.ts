@@ -24,18 +24,15 @@ export function sanitizeSqlComment(text: string): string {
     return s.replace(/\s+/g, " ").trim();
 }
 
-/** Chỉ cho phép 1 câu SELECT/WITH đọc đúng dataset TALPHA. */
-export function checkSql(raw: string, ids: { project: string; dataset: string }): { ok: boolean; reason?: string } {
+/** Chỉ cho phép 1 câu SELECT/WITH. Lớp chặn thật nằm ở database: câu chạy bằng vai chỉ đọc
+ *  (lib/db.ts → queryChiDoc), nên không còn khoá "đúng dataset" như thời BigQuery. */
+export function checkSql(raw: string): { ok: boolean; reason?: string } {
     const q = raw.trim();
     const up = q.toUpperCase();
     if (!up.startsWith("SELECT") && !up.startsWith("WITH")) return { ok: false, reason: "Chỉ cho phép SELECT/WITH" };
     if (q.includes(";")) return { ok: false, reason: "Không cho phép nhiều câu lệnh (;)" };
     for (const kw of BLOCKED_SQL_KEYWORDS) {
         if (new RegExp(`\\b${kw}\\b`, "i").test(q)) return { ok: false, reason: `Từ khoá bị chặn: ${kw}` };
-    }
-    // Lock data access to the TALPHA dataset only.
-    if (!q.includes(`${ids.project}.${ids.dataset}`)) {
-        return { ok: false, reason: `Chỉ truy vấn được dataset ${ids.project}.${ids.dataset}` };
     }
     return { ok: true };
 }

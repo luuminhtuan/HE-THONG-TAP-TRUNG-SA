@@ -12,7 +12,7 @@
 # (đừng gọi trần script: khoá POS TALPHA_POSCAKE_*_KEY do systemd nạp từ
 # dashboard-ui/.env.local, giống talpha-sync.service).
 #
-# Ghi BQ bằng LOAD JOB WRITE_TRUNCATE (atomic). sync_product_catalog.py tự dừng,
+# Thay cả bảng trong một transaction (atomic). sync_product_catalog.py tự dừng,
 # giữ nguyên bảng cũ, khi: không có khoá shop nào · đọc được 0 dòng · hụt >30%.
 # ═══════════════════════════════════════════════════════════════════
 set -uo pipefail

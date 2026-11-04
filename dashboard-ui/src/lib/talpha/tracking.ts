@@ -50,7 +50,7 @@ export type StatusRule = { match: RegExp; status: string; sub_status: string | n
  * Thị trường theo dõi vận đơn. "TW" là thị trường gốc (bảng đối tác nạp tay, luật cửa hàng
  * tiện lợi ở phần chung); các nước khác khai ở tracking.markets — sổ riêng, hãng và ngưỡng
  * đứng im riêng. Hai kiểu nguồn:
- *   • source "partner" (Singapore): bảng đối tác trong BigQuery partner_orders + 17TRACK;
+ *   • source "partner" (Singapore): bảng đối tác partner_orders trong kho số + 17TRACK;
  *   • source "pos" (UAE): đơn đọc thẳng từ POS, trạng thái tra ở trang của hãng (provider
  *     "weship") — không có bảng đối tác, không tốn quota 17TRACK.
  */
@@ -646,7 +646,7 @@ export function mapMarketStatus(market: TrackMarket, raw?: string | null): strin
     return null;
 }
 
-/** Một dòng bảng đối tác (BigQuery partner_orders) của thị trường ngoài Đài. */
+/** Một dòng bảng đối tác (partner_orders trong kho số) của thị trường ngoài Đài. */
 export type PartnerOrderRow = {
     order_no?: string | null; tracking?: string | null; status?: string | null; note?: string | null;
     order_date?: string | null; ship_date?: string | null; contact_name?: string | null; phone?: string | null;

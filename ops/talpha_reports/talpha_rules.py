@@ -501,7 +501,9 @@ def la_don_trong(total_quantity, total_price, cod):
 
 
 def sql_la_don_trong(bang=""):
-    """Cùng điều kiện la_don_trong, viết bằng SQL cho bảng sale_order (total_quantity là STRING)."""
+    """Cùng điều kiện la_don_trong, viết bằng SQL Postgres cho bảng sale_order (total_quantity là
+    chuỗi: không phải số thì coi như 0, đừng để ép kiểu làm chết cả câu)."""
     t = f"{bang}." if bang else ""
-    return (f"(IFNULL(SAFE_CAST({t}total_quantity AS FLOAT64), 0) = 0 "
-            f"AND IFNULL({t}total_price, 0) = 0 AND IFNULL({t}cod, 0) = 0)")
+    return (f"(COALESCE(CASE WHEN btrim({t}total_quantity) ~ '^-?[0-9]+(\\.[0-9]+)?$' "
+            f"THEN btrim({t}total_quantity)::float8 END, 0) = 0 "
+            f"AND COALESCE({t}total_price, 0) = 0 AND COALESCE({t}cod, 0) = 0)")
