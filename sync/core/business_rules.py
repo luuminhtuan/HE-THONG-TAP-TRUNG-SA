@@ -52,14 +52,12 @@ DEFAULT_MONEY_DIVISOR = 100  # shop mới chưa khai: giữ mặc định minor 
 MARKET_NAMES: dict[str, str] = {v["shop_label"]: ten for ten, v in _THI_TRUONG.items()}
 
 
-# ─── Nước đã tắt (04/11/2026) ─────────────────────────────────────────────────
-# status "da_tat" = NGỪNG KÉO đơn mới của shop, nhưng GIỮ tỷ giá, số chia và mọi đơn cũ.
-# Đơn cũ phải ở lại vì mỗi vòng sync dựng lại bảng đơn sạch CHỈ từ những shop có trong danh
-# sách (bq_writer._loc_shop): bỏ shop khỏi danh sách là đơn cũ của nước đó biến khỏi báo cáo
-# ngay vòng sau. Nên shop đã tắt VẪN ở trong danh sách, chỉ mang cờ "tat" để vòng kéo bỏ qua.
-SHOP_DA_TAT: frozenset[str] = frozenset(
-    v["shop_label"] for v in _THI_TRUONG.values() if v.get("status") == "da_tat" and v.get("shop_label")
-)
+# ─── Nước không kéo đơn: đã tắt, sắp chạy (04/11/2026) ───────────────────────
+# CHỈ nước "dang_ban" được kéo đơn mới. "da_tat" = ngừng kéo nhưng GIỮ tỷ giá, số chia và mọi đơn
+# cũ; "sap_chay" = có thể đã khai shop (thêm ở /admin → Thị trường) nhưng chưa bán.
+# Shop không kéo VẪN ở trong danh sách, chỉ mang cờ keo=False: mỗi vòng sync dựng lại bảng đơn
+# sạch CHỈ từ những shop có trong danh sách (bq_writer._loc_shop) — bỏ shop khỏi danh sách là đơn
+# cũ của nước đó biến khỏi báo cáo ngay vòng sau.
 
 
 def shop_pos_tu_markets(markets: dict, env=None) -> list[dict]:
@@ -71,7 +69,7 @@ def shop_pos_tu_markets(markets: dict, env=None) -> list[dict]:
     lọc shop_ids nổ "shop_id phải là dãy số", hỏng cả vòng sync (08/10/2026, Nhật mở khi chưa có
     shop: Sheet đứng từ 13:20).
 
-    Nước "đã tắt" VẪN có mặt, mang `tat=True` — xem SHOP_DA_TAT.
+    Nước đã tắt / sắp chạy có shop VẪN có mặt, mang `keo=False` — xem ghi chú trên.
     """
     env = os.environ if env is None else env
     out = []
@@ -97,7 +95,8 @@ def shop_pos_tu_markets(markets: dict, env=None) -> list[dict]:
             # Mốc NGÀY TẠO đơn (giờ VN) bắt đầu tính. Singapore có 54 đơn là bản sao đơn
             # Đài được tạo sẵn trước khi mở — kéo về là đơn Đài bị đếm hai lần.
             "orders_from": m.get("orders_from"),
-            "tat": m.get("status") == "da_tat",
+            "trang_thai": m.get("status") or "dang_ban",
+            "keo": (m.get("status") or "dang_ban") == "dang_ban",
         })
     return out
 

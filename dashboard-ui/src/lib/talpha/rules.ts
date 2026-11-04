@@ -82,6 +82,10 @@ export const SHOP2MKT: Record<string, string> = Object.fromEntries(
  */
 export const MARKET_DA_TAT: ReadonlySet<string> = new Set(
     MARKET_ENTRIES.filter(([, v]) => v.status === "da_tat").map(([k]) => k));
+/** Nước ĐANG BÁN — chỉ những nước này được gọi POS sống. Nước sắp chạy có thể đã khai shop (thêm ở
+ *  /admin → Thị trường) nhưng chưa bán, thường chưa có key: gọi là chờ timeout mỗi lần mở tab Kho. */
+export const MARKET_DANG_BAN: ReadonlySet<string> = new Set(
+    MARKET_ENTRIES.filter(([, v]) => (v.status || "dang_ban") === "dang_ban").map(([k]) => k));
 
 /** Shop POS của mọi nước có shop_id (kể cả nước đã tắt — nơi gọi tự lọc MARKET_DA_TAT).
  *  CÙNG luật với shop_pos_tu_markets bên Python: key nằm ở biến TALPHA_POSCAKE_<mã shop>_KEY.

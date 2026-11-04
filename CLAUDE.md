@@ -61,6 +61,13 @@ ssh root@139.180.131.21 'bash /opt/talpha/ops/talpha_reports/deploy_runtime.sh -
   (ngoài git, `from-mac.sh` không đè), thắng khoá cùng tên trong `.env.local`. Dashboard đọc qua
   `docKhoa()` (`lib/talpha/khoa.ts`) — **đừng đọc `process.env` thẳng cho khoá**; sync, Sheet,
   danh mục SP nhận qua drop-in systemd `khoa.conf` do `vps-setup.sh` dựng.
+* **Thị trường trên trang** (04/11/2026): `/admin` → Thị trường thêm nước, sửa tỷ giá, tắt / bật nước.
+  Lưu ở `data/thi_truong.json` (ngoài git), PHỦ lên `talpha_rules.json` ở cả dashboard
+  (`lib/talpha/thi-truong.ts`), sync / Sheet / view (`sync/core/thi_truong.py`) và bot
+  (`ops/zalo-alerts/thi_truong.js`) — ba bản chạy chung `tests/fixtures/thi_truong_phu.json`, sửa
+  luật phủ thì sửa cả ba. Shop POS sinh từ `markets` (`talpha.yaml → poscake` không còn ai đọc).
+  Chỉ nước `dang_ban` được kéo đơn / gọi POS; `da_tat` giữ lịch sử. Lưu xong dashboard và bot tự
+  khởi động lại (pm2); vòng sync đầu giờ tự dựng lại view BigQuery khi tỷ giá / số chia đổi.
 
 ## Nguyên tắc cứng — vi phạm là số sai hoặc mất dữ liệu
 

@@ -20,7 +20,7 @@ from google.oauth2.service_account import Credentials
 from google.cloud import bigquery
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from sync.core.business_rules import SHOP_DA_TAT, shop_pos_tu_markets  # noqa: E402
+from sync.core.business_rules import shop_pos_tu_markets  # noqa: E402
 from sync.core.thi_truong import doc_luat  # noqa: E402
 
 # Trên máy chủ khoá POS do systemd nạp (talpha-catalog.service đọc dashboard-ui/.env.local).
@@ -51,15 +51,16 @@ CATALOG_SCHEMA = [
 ]
 
 
-def load_shops() -> list[tuple[str, str]]:
-    """[(shop_label, shop_id)] — CÙNG danh sách shop với sync đơn: talpha_rules.json → markets đã phủ
-    thị trường nhập ở /admin (shop_pos_tu_markets, 04/11/2026).
+def load_shops() -> list[dict]:
+    """Shop POS — CÙNG danh sách với sync đơn: talpha_rules.json → markets đã phủ thị trường nhập ở
+    /admin (shop_pos_tu_markets, 04/11/2026). Mỗi shop có label, shop_id, keo (chỉ nước đang bán
+    mới gọi POS; nước đã tắt / sắp chạy thì giữ SP đang có).
 
     Danh sách shop CHỈ có 1 nguồn. Bản hardcode cũ thiếu Taiwan → 100% order_items của TW không
     khớp catalog (102/102 dòng, đo 04/08/2026) → mất hẳn TW khỏi mọi báo cáo theo sản phẩm. Sau đó
     đọc talpha.yaml kèm danh sách dự phòng gõ cứng 6 shop GCC đã chết — nay bỏ cả hai: đọc luật
     hỏng thì DỪNG, không chạy bằng danh sách sai."""
-    return [(s["label"], s["shop_id"]) for s in shop_pos_tu_markets(doc_luat().get("markets") or {})]
+    return shop_pos_tu_markets(doc_luat().get("markets") or {})
 
 
 SHOPS = load_shops()
@@ -122,8 +123,8 @@ def main():
                          "(chỉ dùng khi ĐÃ BIẾT vì sao hụt, VD POS thật sự xoá bớt SP)")
     args = ap.parse_args()
 
-    # Shop của nước đã tắt không gọi POS (key có thể đã bỏ) — SP của nó giữ nguyên, xem dưới.
-    can_goi = [(lb, sid) for lb, sid in SHOPS if lb not in SHOP_DA_TAT]
+    # Chỉ nước đang bán gọi POS. Nước đã tắt (key có thể đã bỏ) / sắp chạy: SP đang có giữ nguyên, xem dưới.
+    can_goi = [(s["label"], s["shop_id"]) for s in SHOPS if s["keo"]]
     missing = [lb for lb, _ in can_goi if not os.environ.get(f"TALPHA_POSCAKE_{lb}_KEY", "")]
     if can_goi and len(missing) == len(can_goi):
         # Không có key nào = chưa nạp được .env. Chạy tiếp sẽ WRITE_TRUNCATE bảng
@@ -157,10 +158,10 @@ def main():
     named = sum(1 for r in deduped if r["product_name"])
     print(f"Có tên SP: {named}/{len(deduped)} ({100*named/max(len(deduped),1):.0f}%)")
 
-    tat = sorted({lb for lb, _ in SHOPS if lb in SHOP_DA_TAT})
+    tat = sorted({s["label"] for s in SHOPS if not s["keo"]})
     if args.dry_run:
         if tat:
-            print(f"Nước đã tắt {', '.join(tat)}: khi ghi thật sẽ giữ nguyên SP đang có trong {TABLE}")
+            print(f"Nước không gọi POS {', '.join(tat)}: khi ghi thật sẽ giữ nguyên SP đang có trong {TABLE}")
         print("\n--dry-run: KHÔNG ghi BQ. Sample 3 rows:")
         for r in deduped[:3]:
             print(" ", {k: r[k] for k in ["variation_id", "sku", "product_name", "retail_price", "cost", "shop_label"]})
@@ -173,7 +174,7 @@ def main():
     )
     bq = bigquery.Client(credentials=creds, project=BQ_PROJECT)
 
-    # ─── Nước đã tắt: GIỮ SP đang có của shop đó ───
+    # ─── Nước không gọi POS (đã tắt / sắp chạy): GIỮ SP đang có của shop đó ───
     # Bảng ghi đè cả bảng mỗi lần chạy, nên shop không gọi POS mà không mang SP cũ theo là
     # SP đó mất — đơn cũ của nước đó hết tra được giá vốn, P&L các ngày nó còn chạy bị sai.
     if tat:
@@ -189,7 +190,7 @@ def main():
                 seen.add(d["variation_id"])
                 deduped.append(d)
                 n_giu += 1
-        print(f"Nước đã tắt {', '.join(tat)}: giữ nguyên {n_giu} dòng SP đang có")
+        print(f"Nước không gọi POS {', '.join(tat)}: giữ nguyên {n_giu} dòng SP đang có")
 
     # ─── Hàng rào chống ghi đè hụt ───
     # WRITE_TRUNCATE là atomic nhưng KHÔNG hoàn tác được: POS lỗi giữa chừng / hết

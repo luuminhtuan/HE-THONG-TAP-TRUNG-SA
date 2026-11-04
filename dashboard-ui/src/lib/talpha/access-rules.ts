@@ -195,6 +195,7 @@ export const API_RULES: Record<string, ApiRule> = {
     "/api/talpha/export-report": { full: true },
     "/api/talpha/sync-inventory": { full: true },
     "/api/talpha/khoa": { full: true },
+    "/api/talpha/thi-truong": { full: true },
     "/api/ad-accounts": { full: true },
     "/api/users": { full: true },
 };

@@ -30,13 +30,19 @@ ENV = {"TALPHA_POSCAKE_SG_KEY": "k-sg"}
 
 
 class TestDanhSachShop:
-    def test_shop_da_tat_van_trong_danh_sach_va_mang_co(self):
+    def test_shop_da_tat_van_trong_danh_sach_nhung_khong_keo(self):
         ds = {s["label"]: s for s in shop_pos_tu_markets(MARKETS, ENV)}
-        assert ds["TW"]["tat"] is True
-        assert ds["SG"]["tat"] is False and ds["SG"]["key"] == "k-sg"
+        assert ds["TW"]["keo"] is False and ds["TW"]["trang_thai"] == "da_tat"
+        assert ds["SG"]["keo"] is True and ds["SG"]["key"] == "k-sg"
 
     def test_nuoc_sap_chay_chua_co_shop_thi_bo(self):
         assert "TH" not in {s["label"] for s in shop_pos_tu_markets(MARKETS, ENV)}
+
+    def test_nuoc_sap_chay_da_khai_shop_thi_chua_keo(self):
+        # Thêm nước trên trang có thể khai shop trước khi bán (04/11/2026) — chưa được kéo đơn.
+        mk = {**MARKETS, "Thailand": {**MARKETS["Thailand"], "shop_id": "123456"}}
+        ds = {s["label"]: s for s in shop_pos_tu_markets(mk, ENV)}
+        assert ds["TH"]["keo"] is False and ds["TH"]["trang_thai"] == "sap_chay"
 
     def test_dung_lai_bang_don_giu_don_cu_cua_nuoc_da_tat(self):
         # talpha_sync truyền shop_ids = MỌI shop trong danh sách → câu dựng lại phải giữ shop Đài.

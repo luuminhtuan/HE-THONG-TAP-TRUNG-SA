@@ -11,15 +11,15 @@
  */
 
 import { docKhoa } from "@/lib/talpha/khoa";
-import { MARKET_DA_TAT, SHOP2MKT, SHOP_POS } from "@/lib/talpha/rules";
+import { MARKET_DANG_BAN, SHOP2MKT, SHOP_POS } from "@/lib/talpha/rules";
 
 interface Shop { name: string; api_url: string; api_key: string; shop_id: string }
 
-// Shop POS của nước còn bán, key đã giải (Khoá kết nối trước, rồi .env.local). Nguồn là
-// talpha_rules.json → markets (đã phủ thị trường nhập trên trang) — xem SHOP_POS. Bỏ nước đã tắt:
-// tab Kho và Ads Command Center chỉ gọi POS của nước còn bán.
+// Shop POS của nước ĐANG BÁN, key đã giải (Khoá kết nối trước, rồi .env.local). Nguồn là
+// talpha_rules.json → markets (đã phủ thị trường nhập trên trang) — xem SHOP_POS. Nước đã tắt / sắp
+// chạy không gọi: tab Kho và Ads Command Center chỉ gọi POS của nước đang bán.
 export function loadShops(): Shop[] {
-    return SHOP_POS.filter((s) => !MARKET_DA_TAT.has(s.name))
+    return SHOP_POS.filter((s) => MARKET_DANG_BAN.has(s.name))
         .map((s) => ({ name: s.name, api_url: s.api_url, api_key: docKhoa(s.bien_key), shop_id: s.shop_id }));
 }
 

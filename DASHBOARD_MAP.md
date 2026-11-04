@@ -82,7 +82,9 @@ shop có 54 đơn là bản sao đơn Đài (cùng SĐT, cùng phút tạo). S�
 UAE đặt 100 nhưng **chưa đo** trên đơn SGD/AED thật — có đơn đầu tiên thì soát lại (log
 sync cảnh báo "số chia CHƯA ĐO" ngay khi shop có đơn ghi SGD/AED có tiền).
 
-**Nước nằm ở `config/talpha_rules.json → markets`**, mỗi nước một khối có `status`:
+**Nước nằm ở `config/talpha_rules.json → markets`**, cộng phần thêm / sửa / tắt ở `/admin` →
+Thị trường (lưu `data/thi_truong.json`, phủ lên file gốc ở mọi nơi đọc luật — 04/11/2026). Shop
+POS sinh từ chính các khối này. Mỗi nước một khối có `status`:
 `dang_ban` (đã nối shop, có tỷ giá và số chia — số tiền được tính), `sap_chay` (máy
 đã nhận ra trong tên campaign nên chi tiêu tách đúng nước, nhưng chưa kéo đơn, chưa
 tính tiền) hoặc `da_tat` (04/11/2026 — đã tắt: ngừng kéo đơn mới, không gọi POS, ẩn khỏi
@@ -260,6 +262,7 @@ Meta theo nước ở tên campaign); bảng gộp mọi nước (`vw_attributio
 | `ads-alerts` · `sync-health` | Cảnh báo spend, sức khoẻ sync | Bot Zalo |
 | `sheet-report` | Số từ file TỔNG TEAM — `?date=` một ngày, `?from&to=` cộng cả khoảng | Bot Zalo · tab Tổng quan |
 | `report-config` | Mốc gốc báo cáo cho bộ chọn ngày | Giao diện |
+| `thi-truong` | Thị trường (04/11/2026): GET mọi nước đã phủ + nguồn (config / sửa trên trang / thêm trên trang) + có key POS chưa; POST thêm / sửa / bật / tắt một nước (soát mã shop, mã campaign trùng nước khác, tỷ giá, số chia; bật bán thì gọi thử shop POS trước) → ghi `data/thi_truong.json` rồi tự khởi động lại; DELETE bỏ phần sửa trên trang của nước có trong config. Nước thêm trên trang không xoá được, chỉ tắt. Chỉ giám đốc | `/admin` → Thị trường |
 | `khoa` | Khoá kết nối (04/11/2026): GET trạng thái từng khoá (đã che, `?kiem=1` gọi thử), POST gọi thử khoá mới với Meta / POS / Pancake / 17TRACK rồi mới lưu vào `dashboard-ui/.env.khoa.local`, DELETE quay về `.env.local`. Chỉ giám đốc | `/admin` → Khoá kết nối |
 | `pnl-costs` | Giá vốn + phí ship ước tính của đơn đã chốt, theo ngày và nước; liệt kê mã chưa có giá | Tab P&L · Tổng quan |
 | `product-pnl` | P&L từng sản phẩm: doanh số chia theo số lượng, ads theo mã SP trong tên campaign | Tab P&L theo SP |

@@ -71,4 +71,25 @@ t("shop POS trùng nước khác, số chia lẻ, team lạ, thêm trùng tên �
     assert.ok(T.loiThiTruong({ ...thai(), key: "Singapore" }, LUAT, true).some((x) => /Đã có nước Singapore/.test(x)));
 });
 
+console.log("── Thị trường: form ⇄ file phủ ──");
+t("mở form từ luật: mã campaign + team đọc ngược từ market_aliases, access.teams", () => {
+    const sg = T.nhapTuLuat("Singapore", LUAT);
+    assert.deepStrictEqual(sg.tokens, ["SG"]);
+    assert.strictEqual(sg.team, "dong_nam_a");
+    assert.strictEqual(sg.rate_vnd, 20000);
+});
+t("sửa nước có trong config: CHỈ ghi ô đã sửa — ô khác vẫn theo file gốc", () => {
+    const sg = T.nhapTuLuat("Singapore", LUAT);
+    assert.deepStrictEqual(T.khoiPhuTuNhap(sg, LUAT), {});
+    assert.deepStrictEqual(T.khoiPhuTuNhap({ ...sg, rate_vnd: 19500 }, LUAT), { rate_vnd: 19500 });
+    assert.deepStrictEqual(T.khoiPhuTuNhap({ ...sg, tokens: ["SG", "sgp"], team: "dong_a" }, LUAT), { tokens: ["SGP"], team: "dong_a" });
+});
+t("thêm nước: ghi đủ; phủ lại rồi mở form ra đúng cái đã nhập", () => {
+    const khoi = T.khoiPhuTuNhap(thai(), LUAT);
+    assert.strictEqual(khoi.shop_label, "TH");
+    assert.deepStrictEqual(khoi.tokens, ["TH", "THAI"]);
+    const sau = T.phuLuat(BO.luat, { markets: { Thailand: khoi } });
+    assert.deepStrictEqual(T.nhapTuLuat("Thailand", sau), thai());
+});
+
 console.log(`${ok} phép thử thị trường qua.`);

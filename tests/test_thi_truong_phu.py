@@ -83,7 +83,7 @@ class TestNuocMoiVaoMoiNoi:
     def test_sync_keo_don_shop_moi(self):
         luat = phu_luat(json.loads((ROOT / "config" / "talpha_rules.json").read_text(encoding="utf-8")), THAI_LAN)
         ds = {s["label"]: s for s in shop_pos_tu_markets(luat["markets"], {"TALPHA_POSCAKE_TH_KEY": "k-th"})}
-        assert ds["TH"]["shop_id"] == "123456" and ds["TH"]["key"] == "k-th" and ds["TH"]["tat"] is False
+        assert ds["TH"]["shop_id"] == "123456" and ds["TH"]["key"] == "k-th" and ds["TH"]["keo"] is True
         assert {"TW", "SG", "AE", "JP"} <= set(ds)
 
     def test_view_bigquery_co_ty_gia_va_so_chia_nuoc_moi(self, tmp_path, monkeypatch):

@@ -269,10 +269,11 @@ def sync_all_orders(window_start=None) -> tuple[int, int]:
 
     failed_shops = []
     for shop in POS_SHOPS:
-        if shop.get("tat"):
-            # Nước đã tắt: không kéo đơn mới. Shop vẫn nằm trong POS_SHOPS để bước dựng lại
-            # bên dưới giữ đơn cũ của nó (xem SHOP_DA_TAT trong business_rules).
-            log.info(f"  {shop['label']}: nước đã tắt — không kéo đơn mới, giữ đơn cũ")
+        if not shop.get("keo", True):
+            # Nước đã tắt / sắp chạy: không kéo đơn mới. Shop vẫn nằm trong POS_SHOPS để bước dựng
+            # lại bên dưới giữ đơn cũ của nó (xem shop_pos_tu_markets trong business_rules).
+            ly_do = "đã tắt — không kéo đơn mới, giữ đơn cũ" if shop.get("trang_thai") == "da_tat" else "sắp chạy — chưa kéo đơn"
+            log.info(f"  {shop['label']}: nước {ly_do}")
             continue
         if not shop["key"]:
             log.warning(f"  Skipping {shop['label']} — no API key")
@@ -762,8 +763,8 @@ def test_connections():
 
     log.info("  POS shops:")
     for shop in POS_SHOPS:
-        if shop.get("tat"):
-            log.info(f"    {shop['label']}: nước đã tắt — không gọi POS")
+        if not shop.get("keo", True):
+            log.info(f"    {shop['label']}: nước {shop.get('trang_thai')} — không gọi POS")
         elif shop["key"]:
             pos = PoscakeClient(
                 api_key=shop["key"], shop_label=shop["label"],

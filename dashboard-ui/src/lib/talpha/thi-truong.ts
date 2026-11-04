@@ -77,6 +77,59 @@ export type ThiTruongNhap = {
     flag: string; tokens: string[]; team: string | null;
 };
 
+const teamCua = (key: string, luat: LuatCoThiTruong): string | null =>
+    Object.entries(luat.access?.teams || {}).find(([, t]) => laKhoi(t) && Array.isArray(t.markets) && (t.markets as string[]).includes(key))?.[0] || null;
+const soHoacNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+/** Một nước của luật (đã phủ) ở dạng ô nhập trên trang — để mở form sửa. */
+export function nhapTuLuat(key: string, luat: LuatCoThiTruong): ThiTruongNhap {
+    const v = (laKhoi(luat.markets?.[key]) ? luat.markets![key] : {}) as Record<string, unknown>;
+    const status = String(v.status || "dang_ban");
+    return {
+        key,
+        display: String(v.display || key),
+        shop_label: String(v.shop_label || ""),
+        currency: String(v.currency || ""),
+        currency_symbol: String(v.currency_symbol || v.currency || ""),
+        rate_vnd: soHoacNull(v.rate_vnd),
+        pos_money_divisor: soHoacNull(v.pos_money_divisor),
+        shop_id: String(v.shop_id || ""),
+        status: (["dang_ban", "sap_chay", "da_tat"].includes(status) ? status : "dang_ban") as ThiTruongNhap["status"],
+        orders_from: typeof v.orders_from === "string" ? v.orders_from : null,
+        flag: String(v.flag || ""),
+        tokens: Object.entries(luat.market_aliases || {})
+            .filter(([t, m]) => !t.startsWith("_") && m === key && (luat.camp_market_tokens || []).includes(t)).map(([t]) => t),
+        team: teamCua(key, luat),
+    };
+}
+
+/**
+ * Khối ghi vào file phủ cho một nước nhập trên trang. Nước có trong talpha_rules.json thì CHỈ ghi
+ * ô khác bản gốc — ô không sửa vẫn theo file gốc, sửa file gốc (qua git) vẫn có tác dụng. Nước
+ * thêm trên trang thì ghi đủ. Mã campaign chỉ ghi mã MỚI; team chỉ ghi khi khác team gốc.
+ */
+export function khoiPhuTuNhap(n: ThiTruongNhap, goc: LuatCoThiTruong): KhoiPhu {
+    // So với đúng cái form HIỆN cho bản gốc (đã điền mặc định: ký hiệu tiền = mã tiền…), không so
+    // với ô thô — không thì bấm Lưu mà chẳng sửa gì vẫn ghi ô mặc định vào file phủ.
+    const cu = laKhoi(goc.markets?.[n.key]) ? (nhapTuLuat(n.key, goc) as unknown as Record<string, unknown>) : null;
+    const o: Record<string, unknown> = {
+        display: n.display.trim(), shop_label: n.shop_label, currency: n.currency, currency_symbol: n.currency_symbol.trim(),
+        rate_vnd: n.rate_vnd, pos_money_divisor: n.pos_money_divisor, shop_id: n.shop_id, status: n.status,
+        orders_from: n.orders_from, flag: n.flag.trim(),
+    };
+    const trong = (x: unknown) => x === undefined || x === null || x === "";
+    const khoi: KhoiPhu = {};
+    for (const [k, v] of Object.entries(o)) {
+        if (cu ? JSON.stringify(cu[k]) === JSON.stringify(v) : trong(v)) continue;
+        khoi[k] = v;
+    }
+    const tokGoc = new Set(nhapTuLuat(n.key, goc).tokens);
+    const tokMoi = [...new Set(n.tokens.map((t) => t.trim().toUpperCase()).filter(Boolean))].filter((t) => !tokGoc.has(t));
+    if (tokMoi.length) khoi.tokens = tokMoi;
+    if (n.team && n.team !== teamCua(n.key, goc)) khoi.team = n.team;
+    return khoi;
+}
+
 /**
  * Lỗi của một nước nhập trên trang (rỗng = lưu được). `luat` là luật ĐÃ phủ hiện tại;
  * `laMoi` = thêm nước mới (khoá chưa có). Luật chặn đúng những thứ đã làm sai số thật:

@@ -1,17 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, Settings, Megaphone, UsersRound, KeyRound } from "lucide-react";
+import { ArrowLeft, Settings, Megaphone, UsersRound, KeyRound, Globe2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 import AdAccountsTab from "@/components/tabs/ad-accounts-tab";
 import UserManagementTab from "@/components/tabs/user-management-tab";
 import KhoaTab from "@/components/tabs/khoa-tab";
+import ThiTruongTab from "@/components/tabs/thi-truong-tab";
 
 const ADMIN_TABS = [
   { id: "ad-accounts", label: "TKQC Manager", icon: Megaphone },
   { id: "users", label: "Quản lý User", icon: UsersRound },
+  { id: "thi-truong", label: "Thị trường", icon: Globe2 },
   { id: "khoa", label: "Khoá kết nối", icon: KeyRound },
 ];
 
@@ -70,6 +72,7 @@ export default function AdminPage() {
         <div className="p-3 md:p-6">
           {activeTab === "ad-accounts" && <AdAccountsTab />}
           {activeTab === "users" && <UserManagementTab />}
+          {activeTab === "thi-truong" && <ThiTruongTab />}
           {activeTab === "khoa" && <KhoaTab />}
         </div>
       </main>
