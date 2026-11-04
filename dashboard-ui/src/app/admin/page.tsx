@@ -11,7 +11,7 @@ import KhoaTab from "@/components/tabs/khoa-tab";
 import ThiTruongTab from "@/components/tabs/thi-truong-tab";
 
 const ADMIN_TABS = [
-  { id: "ad-accounts", label: "TKQC Manager", icon: Megaphone },
+  { id: "ad-accounts", label: "TKQC", icon: Megaphone },
   { id: "users", label: "Quản lý User", icon: UsersRound },
   { id: "thi-truong", label: "Thị trường", icon: Globe2 },
   { id: "khoa", label: "Khoá kết nối", icon: KeyRound },

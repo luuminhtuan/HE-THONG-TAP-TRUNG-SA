@@ -267,8 +267,8 @@ def ghi_ads(conn, rows: list, bang: str, id_col: str) -> int:
 
 
 def ad_id_can_tra(conn, bang_don: str = "sale_order", toi_da: int = 600) -> list:
-    """ad_id nằm trên đơn mà chưa có trong fb_ads_data lẫn ad_dictionary — câu Postgres của
-    truy vấn đầu sync_ad_dictionary (X9)."""
+    """ad_id nằm trên đơn mà chưa có trong chi tiêu (mọi TKQC, fb_ads_tat_ca) lẫn ad_dictionary —
+    câu đầu của sync_ad_dictionary (X9)."""
     return [r[0] for r in conn.execute(f"""
         SELECT id FROM (
             SELECT DISTINCT CASE
@@ -279,6 +279,6 @@ def ad_id_can_tra(conn, bang_don: str = "sale_order", toi_da: int = 600) -> list
             FROM {_ten(bang_don)}
         ) can
         WHERE id IS NOT NULL
-          AND id NOT IN (SELECT ad_id FROM fb_ads_data WHERE ad_id IS NOT NULL)
+          AND id NOT IN (SELECT ad_id FROM fb_ads_tat_ca WHERE ad_id IS NOT NULL)
           AND id NOT IN (SELECT ad_id FROM ad_dictionary WHERE ad_id IS NOT NULL)
         LIMIT %s""", (int(toi_da),))]

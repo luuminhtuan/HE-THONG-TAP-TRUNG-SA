@@ -11,6 +11,7 @@ export const maxDuration = 90;
 // Đường dẫn do config-path.ts giữ — MỘT chỗ duy nhất biết cấu hình nằm ở đâu.
 import { TALPHA_YAML } from "@/lib/talpha/config-path";
 import { docKhoa } from "@/lib/talpha/khoa";
+import { tkqcBaoCao } from "@/lib/talpha/tkqc";
 const YAML_PATH = TALPHA_YAML();
 
 // ═══ RULE CHUNG: import từ src/lib/talpha/rules.ts (data = config/talpha_rules.json).
@@ -82,11 +83,11 @@ function addDaysStr(date: string, n: number): string {
 // account_id → IANA timezone name (Meta reports insights in the account's own tz).
 // Cached across requests — an account's timezone is effectively static.
 const accountTzCache: Record<string, string> = {};
-async function fetchAccountTimezones(token: string, accountIds: string[]): Promise<Record<string, string>> {
+async function fetchAccountTimezones(tokenCua: (accId: string) => string, accountIds: string[]): Promise<Record<string, string>> {
     await Promise.all(accountIds.map(async (accId) => {
         if (accountTzCache[accId]) return;
         try {
-            const url = `https://graph.facebook.com/v21.0/${accId}?fields=timezone_name&access_token=${token}`;
+            const url = `https://graph.facebook.com/v21.0/${accId}?fields=timezone_name&access_token=${tokenCua(accId)}`;
             const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
             if (!res.ok) { console.error(`Meta tz ${accId}: ${res.status}`); return; }
             const j = await res.json();
@@ -102,7 +103,7 @@ async function fetchAccountTimezones(token: string, accountIds: string[]): Promi
 // No USD→VND conversion needed for ads data
 
 interface YamlConfig {
-    meta_ads: { access_token: string; ad_account_ids: string[]; ad_account_names?: Record<string, string> };
+    meta_ads: { access_token: string };
     poscake: { shops: Array<{ name: string; api_url: string; api_key: string; shop_id: string }> };
 }
 
@@ -125,7 +126,7 @@ function loadConfig(): YamlConfig {
 }
 
 // ═══ META API: Fetch insights per ad for date range (with pagination) ═══
-async function fetchMetaAds(token: string, accountIds: string[], accountNames: Record<string, string>, activeOnly: boolean, fromDate: string, toDate: string, warnings: string[]) {
+async function fetchMetaAds(tokenCua: (accId: string) => string, accountIds: string[], accountNames: Record<string, string>, activeOnly: boolean, fromDate: string, toDate: string, warnings: string[]) {
     // inline_link_clicks = lượt bấm vào Messenger của camp tin nhắn. Ở Nhật Meta không báo số mess
     // nên tin Zalo mỗi giờ dùng nó để so camp với nhau (Sỹ Anh yêu cầu 12/10/2026).
     const fields = "campaign_name,campaign_id,adset_name,ad_name,ad_id,spend,impressions,inline_link_clicks,cpm,cpc,ctr,actions";
@@ -141,7 +142,7 @@ async function fetchMetaAds(token: string, accountIds: string[], accountNames: R
         const accName = accountNames[accId] || accId;
         let realError = "";   // lỗi gọi Meta — khác HẲN "chạm cap phân trang"
         try {
-            let url: string | null = `https://graph.facebook.com/v21.0/${accId}/insights?fields=${fields}&level=ad${timeRange}&limit=500${filtering}&access_token=${token}`;
+            let url: string | null = `https://graph.facebook.com/v21.0/${accId}/insights?fields=${fields}&level=ad${timeRange}&limit=500${filtering}&access_token=${tokenCua(accId)}`;
             let pageCount = 0;
             const MAX_PAGES = 10; // safety limit: 10 pages × 500 = 5000 ads max per account
 
@@ -395,13 +396,14 @@ export async function GET(request: Request) {
 
     try {
         const cfg = loadConfig();
-        const token = cfg.meta_ads.access_token;
-        const accountIds = cfg.meta_ads.ad_account_ids;
-        // Tên TKQC đọc từ talpha.yaml (ad_account_names) — nguồn duy nhất, không hard-code.
-        const accountNames = cfg.meta_ads.ad_account_names || {};
-        for (const id of accountIds) {
-            if (!accountNames[id]) console.warn(`talpha.yaml: TKQC ${id} chưa có tên trong ad_account_names — UI sẽ hiện raw id`);
-        }
+        // TKQC: danh bạ tự động (lib/talpha/tkqc.ts, 04/11/2026) — TK thuộc loại vào báo cáo mà token còn
+        // thấy, tên lấy từ Meta. Trước đó đọc talpha.yaml (ad_account_ids + ad_account_names gõ tay).
+        // Nhiều token Meta: mỗi TK gọi bằng token đã đọc được nó (tkqc.bien_token), thiếu thì token chính.
+        const tkqc = await tkqcBaoCao();
+        const accountIds = tkqc.map((t) => `act_${t.id}`);
+        const accountNames: Record<string, string> = Object.fromEntries(tkqc.map((t) => [`act_${t.id}`, t.ten || `act_${t.id}`]));
+        const bienCua = Object.fromEntries(tkqc.map((t) => [`act_${t.id}`, t.bien_token]));
+        const tokenCua = (accId: string) => (bienCua[accId] && docKhoa(bienCua[accId]!)) || cfg.meta_ads.access_token;
         // Shop POS từ talpha_rules.json → markets (cùng nguồn với Kho, 04/11/2026), bỏ nước đã tắt:
         // không gọi POS sống. Đơn cũ của nó vẫn có ở phần đọc kho số (không lọc shop).
         const shops = loadShops();
@@ -411,9 +413,9 @@ export async function GET(request: Request) {
 
         // Fetch in parallel (account timezones resolve alongside the main fetches)
         const [adsAll, ordersAll, accountTz] = await Promise.all([
-            fetchMetaAds(token, accountIds, accountNames, activeOnly, fromDate, toDate, warnings),
+            fetchMetaAds(tokenCua, accountIds, accountNames, activeOnly, fromDate, toDate, warnings),
             fetchPOSHybrid(shops, fetchFrom, fetchTo, todayUtc, warnings),
-            fetchAccountTimezones(token, accountIds),
+            fetchAccountTimezones(tokenCua, accountIds),
         ]);
 
         // Phân quyền theo team (05/10/2026): người xem một phần nước chỉ giữ quảng cáo của

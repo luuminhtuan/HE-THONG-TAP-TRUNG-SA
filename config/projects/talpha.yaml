@@ -101,6 +101,9 @@ meta_ads:
   # THẲNG từ Meta API (`/me/adaccounts`) bằng chính token đó, không chép tay; cả ba
   # đều múi giờ Bangkok. Token CŨ cũng đọc được cả ba, nên thứ từng làm chúng vắng
   # mặt trong mọi báo cáo chỉ là danh sách này.
+  # ── KHÔNG CÒN AI ĐỌC (04/11/2026) ── Danh sách TKQC nay TỰ ĐỘNG: mỗi vòng sync hỏi Meta token đọc được
+  # TKQC nào (/me/adaccounts), kéo chi tiêu của tất cả; loại từng TK (vào báo cáo hay không) chọn ở
+  # /admin → TKQC. Xem sync/core/tkqc.py. Danh sách dưới giữ làm lịch sử các TK đã qua.
   ad_account_ids:
     # - "act_256210853826298"   # Sỹ Anh Taiwan 4 — BỎ 03/11/2026 (token app mới không thấy; chi lần cuối 22/10)
     # - "act_620354173588998"   # ANTALO 4 - CHẠY VPCS + THUẾ — BỎ 28/10/2026 (Meta vô hiệu hoá, token mới không thấy)

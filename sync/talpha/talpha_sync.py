@@ -35,9 +35,9 @@ from sync.core.thi_truong import doc_luat
 from sync.core import pg_writer
 from sync.core.pos_client import PoscakeClient, PosFetchError
 from sync.core.partner_sheet import chuan_dong, doc_sheet
-from sync.core.meta_client import MetaAdsClient, TALPHA_AD_ACCOUNTS, MetaFetchError
+from sync.core.meta_client import MetaAdsClient, MetaFetchError
+from sync.core.tkqc import cac_token, tkqc_can_keo
 from sync.core.tk_loi import tach_tk_loi
-from sync.config_loader import get_active_accounts
 
 # ── Config ───────────────────────────────────────────────────────
 FB_TOKEN = (
@@ -93,25 +93,17 @@ def _pg():
             log.info(f"  [postgres] chạy migration: {', '.join(moi)}")
     return _pg_conn
 
-# ── Ad accounts: đọc từ ad_accounts.json qua config_loader ──────
-# Fallback: hard-code TALPHA_AD_ACCOUNTS trong meta_client (cảnh báo rõ).
-def _load_ad_accounts() -> list[dict]:
-    try:
-        accts = get_active_accounts('talpha')
-    except Exception as e:
-        log.warning(f"⚠️ Lỗi đọc ad_accounts.json ({e}) — FALLBACK hard-code "
-                    f"TALPHA_AD_ACCOUNTS ({len(TALPHA_AD_ACCOUNTS)} account). "
-                    f"Danh sách có thể THIẾU account mới!")
-        return TALPHA_AD_ACCOUNTS
-    if not accts:
-        log.warning(f"⚠️ ad_accounts.json không tìm thấy / rỗng — FALLBACK hard-code "
-                    f"TALPHA_AD_ACCOUNTS ({len(TALPHA_AD_ACCOUNTS)} account). "
-                    f"Danh sách có thể THIẾU account mới!")
-        return TALPHA_AD_ACCOUNTS
-    log.info(f"Ad accounts: {len(accts)} active từ ad_accounts.json")
-    return [{'id': a['id'], 'name': a.get('name', a['id'])} for a in accts]
+# ── TKQC: MỌI tài khoản token đọc được (04/11/2026) ──────────────
+# Không còn danh sách gõ tay ở talpha.yaml — xem sync/core/tkqc.py. Hỏi một lần mỗi vòng chạy.
+_ad_accounts_cache = None
 
-AD_ACCOUNTS = _load_ad_accounts()
+def _ad_accounts() -> list:
+    global _ad_accounts_cache
+    if _ad_accounts_cache is None:
+        tokens = cac_token()
+        _ad_accounts_cache = tkqc_can_keo(_pg(), tokens, doc_luat(repo=PROJECT_DIR)) if tokens else []
+        log.info(f"TKQC: {len(tokens)} token đọc được {len(_ad_accounts_cache)} tài khoản — kéo tất cả")
+    return _ad_accounts_cache
 
 # Cột của từng bảng khai bằng migration (db/migrations/), không khai ở đây.
 
@@ -370,13 +362,14 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
     `since`/`until`: chỉ định thẳng khoảng ngày, dùng để BACKFILL tháng cũ (kéo theo
     từng tháng cho nhẹ, tránh chạm rate limit của Meta).
     """
-    if not FB_TOKEN:
+    if not cac_token():
         log.error("TALPHA_META_ACCESS_TOKEN not set!")
         return 0, 0
 
     today = until or datetime.utcnow().strftime('%Y-%m-%d')
     since = since or (datetime.utcnow() - timedelta(days=days_back)).strftime('%Y-%m-%d')
-    meta  = MetaAdsClient(access_token=FB_TOKEN)
+    # Mỗi TKQC đọc bằng token đầu tiên thấy nó (nhiều BM / app — sync/core/tkqc.py).
+    client_cua = {}
 
     fields = (
         "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,"
@@ -390,13 +383,14 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
     )
     all_ads, all_adsets = [], []
     failed = []
-    for acct in AD_ACCOUNTS:
+    for acct in _ad_accounts():
         log.info(f"  {acct['name']} ({acct['id']})...")
         rows = None
         mat_quyen = False
         # Retry cả account (ngoài retry trong _request) — account lớn hay timeout/limit.
         for attempt in range(3):
             try:
+                meta = client_cua.setdefault(acct['token'], MetaAdsClient(access_token=acct['token']))
                 rows = meta.fetch_ads_insights(
                     account_id=acct['id'], date_start=since, date_stop=today,
                     fields=fields.split(','), level='ad',
@@ -427,6 +421,7 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
         # Adset-level (port từ engine runtime): BEST-EFFORT như runtime —
         # account fail chỉ log + bỏ qua, KHÔNG hủy cả lượt (fb_adset_data là bảng phụ).
         try:
+            meta = client_cua.setdefault(acct['token'], MetaAdsClient(access_token=acct['token']))
             rows2 = meta.fetch_ads_insights(
                 account_id=acct['id'], date_start=since, date_stop=today,
                 fields=adset_fields.split(','), level='adset',
@@ -440,8 +435,8 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
     # X2: append/rebuild nên account lỗi KHÔNG còn xoá được spend đã có — dòng của
     # account đó chỉ giữ bản cũ. Vẫn raise ở cuối để báo cảnh, nhưng ghi trước đã.
     if all_ads:
-        n_ads = pg_writer.ghi_ads(_pg(), all_ads, 'fb_ads_data', 'ad_id')
-        n_adsets = pg_writer.ghi_ads(_pg(), all_adsets, 'fb_adset_data', 'adset_id')
+        n_ads = pg_writer.ghi_ads(_pg(), all_ads, 'fb_ads_tat_ca', 'ad_id')
+        n_adsets = pg_writer.ghi_ads(_pg(), all_adsets, 'fb_adset_tat_ca', 'adset_id')
         log.info(f"  ads window {since}→{today} (cửa sổ chỉ làm mới, không xoá lịch sử)")
     else:
         log.warning("  Không fetch được insight ads từ bất kỳ account nào!")
@@ -452,7 +447,7 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
         # khi KHÔNG TK nào đọc được (token chết / app bị chặn). Xem sync/core/tk_loi.py. Dòng
         # "TKQC BỎ QUA …" dưới đây được daily_guarded.sh bóc thành nhãn TKQC_BO_QUA để bot Zalo
         # báo tên — đừng đổi chữ.
-        bo_qua, chan = tach_tk_loi(failed, len(AD_ACCOUNTS))
+        bo_qua, chan = tach_tk_loi(failed, len(_ad_accounts()))
         if bo_qua:
             log.warning(
                 f"  TKQC BỎ QUA (không đọc được, giữ số đã có): {[f['name'] for f in bo_qua]} "
@@ -546,13 +541,13 @@ def _tra_ad_dictionary(api: str, ids: list) -> int:
 
 
 def sync_campaign_data() -> int:
-    """Sync campaign budgets → fb_campaign_data."""
-    if not FB_TOKEN:
+    """Sync campaign budgets → fb_campaign_tat_ca (view fb_campaign_data lọc theo loại TKQC)."""
+    if not cac_token():
         log.error("TALPHA_META_ACCESS_TOKEN not set!")
         return 0
 
     all_campaigns = []
-    for acct in AD_ACCOUNTS:
+    for acct in _ad_accounts():
         acct_id = acct['id']
         try:
             resp = requests.get(
@@ -561,7 +556,7 @@ def sync_campaign_data() -> int:
                     'fields': 'id,name,status,effective_status,daily_budget,lifetime_budget,budget_remaining,objective,start_time,stop_time',
                     'effective_status': '["ACTIVE","PAUSED","ARCHIVED"]',
                     'limit': '500',
-                    'access_token': FB_TOKEN,
+                    'access_token': acct['token'],
                 },
                 timeout=60,
             )
@@ -593,8 +588,8 @@ def sync_campaign_data() -> int:
             log.error(f"  [{acct_id}] Campaign error: {e}")
         time.sleep(0.5)
 
-    n = pg_writer.thay_ca_bang(_pg(), 'fb_campaign_data', all_campaigns)
-    log.info(f"  fb_campaign_data: {n} rows")
+    n = pg_writer.thay_ca_bang(_pg(), 'fb_campaign_tat_ca', all_campaigns)
+    log.info(f"  fb_campaign_tat_ca: {n} rows")
     return n
 
 
@@ -640,14 +635,11 @@ def sync_partner_orders() -> int:
 
 def test_connections():
     """Kiểm tra token Meta + POS API keys trước khi sync thật."""
-    if FB_TOKEN:
-        r = requests.get(
-            f'https://graph.facebook.com/v21.0/me',
-            params={'access_token': FB_TOKEN}, timeout=10,
-        )
-        d = r.json()
-        log.info(f"  Meta token: {d.get('name', d.get('error', {}).get('message', '?'))}")
-        log.info(f"  Ad accounts: {len(AD_ACCOUNTS)}")
+    for bien, tok in cac_token():
+        d = requests.get('https://graph.facebook.com/v21.0/me', params={'access_token': tok}, timeout=10).json()
+        log.info(f"  {bien}: {d.get('name', d.get('error', {}).get('message', '?'))}")
+    if cac_token():
+        log.info(f"  Ad accounts: {len(_ad_accounts())}")
     else:
         log.warning("  Meta token: NOT SET")
 

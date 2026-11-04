@@ -210,7 +210,9 @@ chỉ hiện tab tài khoản được xem — `/api/talpha/me`).
 | | Sức khoẻ quảng cáo | `tabs/ad-health-tab.tsx` | `/api/query` |
 | 👥 Khách hàng | Khách hàng · Market Intel | `tabs/customer-tab.tsx` · `market-intel-tab.tsx` | `/api/query` |
 
-Ngoài shell còn `/login` và `/admin` (người dùng + TKQC).
+Ngoài shell còn `/login` và `/admin` (người dùng, TKQC, thị trường, khoá kết nối). **TKQC tự động** (04/11/2026):
+mọi TKQC các token Meta đọc được; chỉ loại "vào báo cáo" cộng vào số — `fb_ads_data` là view lọc theo loại,
+chi tiêu đủ mọi TK ở `fb_ads_tat_ca`. Xem `sync/core/tkqc.py`.
 
 **Mốc gốc 15/09/2026** (`talpha_rules.json → report_start_date`, Sỹ Anh chốt 25/09/2026):
 tab Tổng quan · P&L · P&L theo SP · Marketing · Chi phí quảng cáo không tính ngày trước mốc
@@ -358,7 +360,7 @@ dashboard-ui/            Next.js 16 + React 19 — toàn bộ giao diện và AP
   src/lib/talpha/          rule gán người, logic đối soát, kho JSON có khoá file
   src/lib/talpha/config-path.ts   MỘT chỗ biết cấu hình nằm ở đâu
 config/                  talpha_rules.json — NGUỒN RULE DUY NHẤT
-  projects/talpha.yaml     TKQC Meta + shop POS
+  projects/talpha.yaml     app Meta, múi giờ TKQC cũ (danh sách TKQC nay tự động — bảng tkqc)
 sync/                    engine sync POS + Meta → Postgres (bản DUY NHẤT)
   core/                    pos_client · meta_client · pg · pg_writer · pg_view · business_rules
 ops/deploy/              5 script dựng và cập nhật máy chủ

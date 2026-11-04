@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
+import { query } from "@/lib/db";
 import { RULES } from "@/lib/talpha/rules";
-import { REPO_ROOT } from "@/lib/talpha/config-path";
 import { readStoreFresh, updateStore } from "@/lib/talpha/store";
 import { MAX_UPLOAD_BYTES, tooBigMessage } from "@/lib/talpha/upload-limit";
 import {
@@ -51,13 +49,13 @@ function cfg() {
     return c;
 }
 
-/** Roster TKQC — thiếu thì engine tự bỏ qua kiểm tra TKQC lạ, không chết. */
-function roster(c: ReturnType<typeof cfg>) {
+/** Roster TKQC = danh bạ TKQC tự động (bảng tkqc, 04/11/2026 — trước đó file ad_accounts.json gõ tay):
+ *  mọi TKQC token từng thấy, kể cả loại ngoài báo cáo — vẫn là TK của công ty, thẻ trả cho nó không "lạ".
+ *  Kho số lỗi thì engine tự bỏ qua kiểm tra TKQC lạ, không chết. Giữ dạng {projects: {…: {accounts}}}. */
+async function roster() {
     try {
-        const rel = (c.ad_accounts as { roster_file?: string } | undefined)?.roster_file;
-        if (!rel) return null;
-        const p = path.join(REPO_ROOT, rel);
-        return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf-8")) : null;
+        const rows = await query<{ account_id: string; ten: string | null }>("SELECT account_id, ten FROM tkqc");
+        return { projects: { tkqc: { accounts: rows.map((r) => ({ id: `act_${r.account_id}`, name: r.ten || r.account_id })) } } };
     } catch {
         return null;
     }
@@ -86,7 +84,7 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({
                 kho: { fb: kho.fb.length, bank: kho.bank.length },
                 nguon: [...tomTatNguon(kho.fb, "fb"), ...tomTatNguon(kho.bank, "bank")],
-                tkqc_ten: tenTkqc(roster(cfg())),
+                tkqc_ten: tenTkqc(await roster()),
             });
         }
 
@@ -203,7 +201,7 @@ export async function POST(req: NextRequest) {
                 chua_du: true, nap, nguon,
                 kho: { fb: khoMoi.fb.length, bank: khoMoi.bank.length },
                 thieu: !khoMoi.fb.length ? "chi phí TKQC" : "sao kê thẻ",
-                tkqc_ten: tenTkqc(roster(c)),
+                tkqc_ten: tenTkqc(await roster()),
             });
         }
 
@@ -211,12 +209,12 @@ export async function POST(req: NextRequest) {
         const chay = reconcileRows(
             { ...doc2.fb, rows: khoMoi.fb },
             { ...doc2.bank, rows: khoMoi.bank },
-            c, { roster: roster(c), history: truoc.periods });
+            c, { roster: await roster(), history: truoc.periods });
 
         const result: Period = {
             ...chay, nap, nguon,
             kho: { fb: khoMoi.fb.length, bank: khoMoi.bank.length },
-            tkqc_ten: tenTkqc(roster(c)),
+            tkqc_ten: tenTkqc(await roster()),
         };
 
         await updateStore<Store>(STORE, EMPTY, (cur) => {

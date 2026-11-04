@@ -21,6 +21,7 @@ import yaml from "js-yaml";
 import { REPO_ROOT, TALPHA_YAML } from "./config-path";
 import { MARKET_DA_TAT, MESS_PANCAKE, RULES, SHOP2MKT, SHOP_POS } from "./rules";
 import { cheKhoa, docEnv, docGhiChu, suaEnv } from "./khoa-file";
+import { BIEN_TOKEN_META } from "./tkqc-luat";
 import { PANCAKE_API, hanToken } from "./pancake";
 import { getQuota, keyId } from "./track17";
 import { TRACK_MARKETS } from "./tracking";
@@ -89,12 +90,21 @@ export function danhSachKhoa(): KhoaDef[] {
     const cfg = yamlTho();
     const markets = RULES.markets as Record<string, { display?: string }>;
     const conChay = (key?: string | null) => !!key && !MARKET_DA_TAT.has(key);
+    const meta = tenBien(cfg.meta_ads?.access_token) || BIEN_TOKEN_META[0];
     const out: KhoaDef[] = [{
-        ten: tenBien(cfg.meta_ads?.access_token) || "TALPHA_META_ACCESS_TOKEN",
+        ten: meta,
         nhan: "Token Meta Ads",
-        dung_cho: "Chi tiêu quảng cáo mỗi giờ, Ads Command Center",
+        dung_cho: "Chi tiêu quảng cáo mỗi giờ, Ads Command Center — sync kéo MỌI TKQC token thấy",
         loai: "meta",
     }];
+    // Token phụ (tuỳ chọn): TKQC nằm ở BM / app khác mà token chính không thấy. Mỗi TK đọc bằng token
+    // ĐẦU TIÊN thấy nó (lib/talpha/tkqc.ts, sync/core/tkqc.py).
+    BIEN_TOKEN_META.slice(1).forEach((ten, i) => out.push({
+        ten,
+        nhan: `Token Meta ${i + 2} — BM / app khác (tuỳ chọn)`,
+        dung_cho: "Chỉ cần khi có TKQC mà token chính không thấy, vd TK của Business Manager cũ",
+        loai: "meta",
+    }));
     for (const s of SHOP_POS) {
         if (!conChay(s.name)) continue;
         out.push({
@@ -190,24 +200,29 @@ async function graph(duong: string, tok: string, q: Record<string, string> = {})
     return j;
 }
 
-/** Token sống, đọc được bao nhiêu TKQC trong danh sách sync. Đọc được ít nhất một là lưu được:
- *  TKQC chết thì sync bỏ qua TK đó (Sỹ Anh chốt 28/10/2026), không phải lỗi của token. */
-async function kiemMeta(tok: string): Promise<KetQuaKiem> {
+/** Token sống, đọc được bao nhiêu TKQC. Sync kéo MỌI TKQC token thấy (04/11/2026, lib/talpha/tkqc.ts), nên
+ *  token đọc được ít nhất một TK là lưu được; TKQC vào báo cáo đang chạy mà token mới không thấy thì cảnh báo
+ *  — lưu token đó là mất chi tiêu của các TK ấy. */
+async function kiemMeta(tok: string, bien: string): Promise<KetQuaKiem> {
     const me = await graph("me", tok, { fields: "id,name" });
     const tk = await graph("me/adaccounts", tok, { fields: "account_id", limit: "500" });
-    const docDuoc = new Set((tk.data || []).map((a: { account_id: string }) => `act_${a.account_id}`));
-    const can = (yamlTho().meta_ads?.ad_account_ids || []).map(String);
-    const thieu = can.filter((id) => !docDuoc.has(id));
+    const docDuoc = new Set((tk.data || []).map((a: { account_id: string }) => String(a.account_id)));
+    // Import muộn: tkqc.ts đọc khoá qua file này — import thẳng là vòng lặp module.
+    let dangBaoCao: { id: string; ten: string; bien_token: string | null }[] = [];
+    try {
+        dangBaoCao = await (await import("@/lib/talpha/tkqc")).tkqcBaoCao(false);
+    } catch { /* chưa có kho số / danh bạ — chỉ báo số TK đọc được */ }
+    // Chỉ so các TK mà CHÍNH biến này đang đọc — token phụ không thấy TK của token chính là đương nhiên.
+    const thieu = dangBaoCao.filter((t) => (t.bien_token || BIEN_TOKEN_META[0]) === bien && !docDuoc.has(t.id));
     let het: string | null = null;
     try {
         const exp = (await graph("debug_token", tok, { input_token: tok }))?.data?.expires_at;
         if (exp) het = new Date(exp * 1000).toISOString();
     } catch { /* không đọc được hạn thì thôi, token vẫn sống */ }
-    const n = can.length - thieu.length;
     return {
-        ok: can.length === 0 || n > 0,
-        chi_tiet: `${me.name || "Token"} đọc được ${n}/${can.length} TKQC trong danh sách sync`,
-        canh_bao: thieu.length ? `Không đọc được: ${thieu.join(", ")}` : undefined,
+        ok: docDuoc.size > 0,
+        chi_tiet: `${me.name || "Token"} đọc được ${docDuoc.size} TKQC — sync kéo tất cả`,
+        canh_bao: thieu.length ? `TKQC đang vào báo cáo mà token này KHÔNG thấy: ${thieu.map((t) => t.ten || t.id).join(", ")}` : undefined,
         het_han: het,
     };
 }
@@ -244,7 +259,7 @@ async function kiemTrack17(key: string): Promise<KetQuaKiem> {
 export async function kiemKhoa(d: KhoaDef, giaTri: string): Promise<KetQuaKiem> {
     if (!giaTri) return { ok: false, chi_tiet: "Chưa có khoá" };
     try {
-        if (d.loai === "meta") return await kiemMeta(giaTri);
+        if (d.loai === "meta") return await kiemMeta(giaTri, d.ten);
         if (d.loai === "pos") return await kiemPos(d, giaTri);
         if (d.loai === "pancake") return await kiemPancake(giaTri);
         return await kiemTrack17(giaTri);

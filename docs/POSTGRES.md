@@ -13,8 +13,11 @@ docker compose up -d          # Postgres + dashboard + lịch việc nền (lầ
 ```
 
 1. Mở **http://localhost:3200/admin** → **Khoá kết nối**: dán token Meta, key POS từng nước (Pancake,
-   17TRACK nếu có). Máy gọi thử khoá rồi mới lưu.
-2. Xong. Lịch việc nền đọc lại khoá trước mỗi việc — đầu giờ kế tiếp là có số. Muốn có ngay:
+   17TRACK nếu có). Máy gọi thử khoá rồi mới lưu. TKQC nằm ở nhiều Business Manager / app thì dán thêm
+   token vào ô "Token Meta 2", "Token Meta 3".
+2. **/admin → TKQC**: bấm "Quét TKQC ngay" — hiện mọi TKQC các token thấy. Chọn loại cho TK nào không
+   thuộc ANTALO (vd bán hạt giống trong nước); TK tiền khác VND tự vào loại "Khác".
+3. Xong. Lịch việc nền đọc lại khoá trước mỗi việc — đầu giờ kế tiếp là có số. Muốn có ngay:
    `docker compose restart lich` — bật lại là chạy ngay một vòng kéo số + dựng báo cáo tháng (tab Tổng
    quan / P&L / Marketer). Vòng báo cáo tự kéo lại cả tháng hiện tại (đơn 30 ngày, chi tiêu từ ngày 1);
    muốn có cả tháng trước: `docker compose run --rm sync python sync/talpha/talpha_sync.py --days 40`.
@@ -79,8 +82,10 @@ rồi mới ghi Sheet nếu có khoá. Một lần tính, ba nơi cùng số.
 | Bảng | Nội dung |
 |:--|:--|
 | `sale_order`, `order_items` (+ `_raw`) | đơn POS + dòng hàng |
-| `fb_ads_data`, `fb_adset_data` (+ `_raw`) | chi tiêu theo ad / adset × ngày (đã là VND) |
-| `fb_campaign_data`, `ad_dictionary` | ngân sách campaign; ad_id lạ trên đơn |
+| `fb_ads_tat_ca`, `fb_adset_tat_ca` (+ `_raw`) | chi tiêu MỌI TKQC theo ad / adset × ngày (đã là VND) |
+| `fb_ads_data`, `fb_adset_data`, `fb_campaign_data` | **VIEW** — chỉ TKQC loại vào báo cáo; đọc, không ghi |
+| `tkqc` | danh bạ TKQC tự động: tên, trạng thái Meta, tiền tệ, múi giờ, token đọc nó, **loại** (đổi ở /admin → TKQC) |
+| `fb_campaign_tat_ca`, `ad_dictionary` | ngân sách campaign; ad_id lạ trên đơn |
 | `partner_orders` | bảng đơn đối tác 3PL (cần khoá Google) |
 | `product_catalog` | danh mục SP — nối biến thể POS → mã SKU (giá vốn) |
 | `inventory_snapshot` | ảnh chụp tồn kho, dự phòng tab Kho (giữ 60 ngày) |

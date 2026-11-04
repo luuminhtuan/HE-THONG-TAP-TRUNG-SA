@@ -202,24 +202,24 @@ class TestGhiAds:
 
     def test_ban_moi_nhat_thang_ngay_ngoai_cua_so_giu_nguyen(self, pg):
         pg_writer.ghi_ads(pg, [self._ad("a", "2026-10-31", 100.0, "t1"), self._ad("a", "2026-11-01", 50.0, "t1")],
-                          "fb_ads_data", "ad_id")
-        n = pg_writer.ghi_ads(pg, [self._ad("a", "2026-11-01", 80.0, "t2")], "fb_ads_data", "ad_id")
+                          "fb_ads_tat_ca", "ad_id")
+        n = pg_writer.ghi_ads(pg, [self._ad("a", "2026-11-01", 80.0, "t2")], "fb_ads_tat_ca", "ad_id")
         assert n == 2
-        assert dict((str(d), s) for d, s in pg.execute("SELECT date, spend FROM fb_ads_data")) == {
+        assert dict((str(d), s) for d, s in pg.execute("SELECT date, spend FROM fb_ads_tat_ca")) == {
             "2026-10-31": 100.0, "2026-11-01": 80.0}
 
     def test_id_col_la_bi_chan(self, pg):
         with pytest.raises(ValueError):
-            pg_writer.ghi_ads(pg, [], "fb_ads_data", "date; DROP")
+            pg_writer.ghi_ads(pg, [], "fb_ads_tat_ca", "date; DROP")
 
 
 class TestThayCaBang:
     def test_thay_va_0_dong_thi_giu_bang_cu(self, pg):
-        pg_writer.thay_ca_bang(pg, "fb_campaign_data", [{"campaign_id": "1"}, {"campaign_id": "2"}])
-        pg_writer.thay_ca_bang(pg, "fb_campaign_data", [{"campaign_id": "3"}])
-        assert [r[0] for r in pg.execute("SELECT campaign_id FROM fb_campaign_data")] == ["3"]
-        pg_writer.thay_ca_bang(pg, "fb_campaign_data", [])
-        assert _dem(pg, "fb_campaign_data") == 1
+        pg_writer.thay_ca_bang(pg, "fb_campaign_tat_ca", [{"campaign_id": "1"}, {"campaign_id": "2"}])
+        pg_writer.thay_ca_bang(pg, "fb_campaign_tat_ca", [{"campaign_id": "3"}])
+        assert [r[0] for r in pg.execute("SELECT campaign_id FROM fb_campaign_tat_ca")] == ["3"]
+        pg_writer.thay_ca_bang(pg, "fb_campaign_tat_ca", [])
+        assert _dem(pg, "fb_campaign_tat_ca") == 1
 
     def test_partner_orders_ngay_trong_va_gio_utc(self, pg):
         pg_writer.thay_ca_bang(pg, "partner_orders", [{"order_no": "A1", "order_date": "", "ship_date": "2026-11-02",
@@ -233,6 +233,6 @@ class TestAdDictionary:
         pg_writer.ghi_don(pg, [_don(1, ad_id="111"), _don(2, p_utm_term="120200000000001", ad_id="222"),
                                _don(3, ad_id="333")], [])
         pg_writer.ghi_ads(pg, [{"ad_id": "111", "account_id": "1", "date": "2026-11-01", "sync_time": "t"}],
-                          "fb_ads_data", "ad_id")
+                          "fb_ads_tat_ca", "ad_id")
         pg_writer.them_dong(pg, "ad_dictionary", [{"ad_id": "333", "status": "ok"}])
         assert pg_writer.ad_id_can_tra(pg) == ["120200000000001"]

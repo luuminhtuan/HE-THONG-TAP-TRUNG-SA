@@ -94,12 +94,13 @@ ad_tz AS (
     SELECT ad_id_str, ANY_VALUE(tz) AS tz
     FROM (
         SELECT
-            CAST(ad_id AS text) AS ad_id_str,
-            -- SINH TỰ ĐỘNG từ config/projects/talpha.yaml (ad_account_timezones).
-            -- Thêm TKQC = khai múi giờ ở yaml rồi deploy lại view, KHÔNG sửa tay ở đây.
-            {AD_TZ_CASE} AS tz
-        FROM fb_ads_data
-        WHERE ad_id IS NOT NULL
+            CAST(f.ad_id AS text) AS ad_id_str,
+            -- Múi giờ Meta báo cho TKQC (bảng tkqc, sync ghi mỗi vòng); TKQC cũ chưa có trong bảng thì
+            -- theo config/projects/talpha.yaml (ad_account_timezones), sinh tự động lúc dựng view.
+            COALESCE(tk.mui_gio, {AD_TZ_CASE}) AS tz
+        FROM fb_ads_tat_ca f
+        LEFT JOIN tkqc tk ON tk.account_id = f.account_id
+        WHERE f.ad_id IS NOT NULL
     ) t
     GROUP BY ad_id_str
 ),

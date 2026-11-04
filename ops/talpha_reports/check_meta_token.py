@@ -35,10 +35,6 @@ ENV = _dau_tien(
     os.path.join(_RT, ".env"),
     os.path.join(_REPO, ".env"),
 )
-ACCOUNTS = _dau_tien(
-    os.path.join(_RT, "config", "ad_accounts.json"),
-    os.path.join(_REPO, "ops", "talpha_reports", "ad_accounts.json"),
-)
 API = "https://graph.facebook.com/v21.0"
 
 
@@ -107,14 +103,21 @@ def main():
             print("   ✅ không bao giờ hết hạn")
     print()
 
-    accounts = (json.load(open(ACCOUNTS))["projects"]["talpha"]["accounts"])
-    print(f"Thử đọc insights từng TKQC ({len(accounts)} cái):")
+    # Sync kéo MỌI TKQC token đọc được (sync/core/tkqc.py, 04/11/2026) — thử đúng danh sách đó.
+    ok, ds = get("me/adaccounts", access_token=tok, fields="account_id,name,currency", limit=200)
+    if not ok:
+        print(f"❌ Không đọc được danh sách TKQC: {ds.get('message','')[:150]}")
+        return 1
+    accounts = [{"id": f"act_{a['account_id']}", "name": a.get("name") or a["account_id"],
+                 "tien": a.get("currency")} for a in ds.get("data", [])]
+    print(f"Thử đọc insights từng TKQC token thấy ({len(accounts)} cái):")
     bad = []
     for a in accounts:
         ok, r = get(f"{a['id']}/insights", access_token=tok,
                     fields="spend", date_preset="yesterday", limit=1)
         if ok:
-            print(f"  ✅ {a['name']}")
+            print(f"  ✅ {a['name']}" + (f"   (tiền {a['tien']} — không vào báo cáo trừ khi đổi loại ở /admin → TKQC)"
+                                         if a.get("tien") and a["tien"] != "VND" else ""))
         else:
             bad.append(a["name"])
             print(f"  ❌ {a['name']} — {r.get('message','')[:90]}")
@@ -122,8 +125,8 @@ def main():
     print()
     if bad:
         print(f"❌ {len(bad)}/{len(accounts)} TKQC KHÔNG đọc được: {', '.join(bad)}")
-        print("→ Vào Business Settings → System users → Gán tài sản, thêm đúng các TKQC trên")
-        print("  với quyền tối thiểu 'Xem hiệu quả' (View Performance).")
+        print("→ TK bị Meta vô hiệu hoá thì sync tự bỏ qua. TK đang chạy mà đọc lỗi: Business Settings →")
+        print("  System users → Gán tài sản, cấp quyền tối thiểu 'Xem hiệu quả' (View Performance).")
         return 1
     print(f"✅ Đủ {len(accounts)}/{len(accounts)} TKQC. Chạy backfill được rồi.")
     return 0

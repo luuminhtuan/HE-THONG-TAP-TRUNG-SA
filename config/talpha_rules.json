@@ -748,7 +748,7 @@
       ]
     },
     "ad_accounts": {
-      "_mo_ta": "Roster TKQC hợp lệ. Trỏ sang file của dashboard để khỏi khai hai nơi.",
+      "_mo_ta": "Roster TKQC hợp lệ = danh bạ TKQC tự động (bảng tkqc, /admin → TKQC, 04/11/2026). roster_file không còn ai đọc.",
       "strict": true,
       "roster_file": "ops/talpha_reports/ad_accounts.json",
       "extra_allowed": [],
@@ -1826,6 +1826,20 @@
     "_note": "ID file Google Sheet 'TỔNG TEAM THÁNG n' KHAI TAY theo tháng — chỉ cần cho tháng nào không tìm được tự động (tháng 9/2026). Từ 01/10/2026 dashboard và format_all.py tự tìm file trong thư mục 'Tháng N' của report_drive bên dưới; khai ở đây thì ID này thắng.",
     "grand_by_month": {
       "2026-09": "1Ur-U71lxBvnb0ysRbzYhRPcgyLp3P78o2bvIJ9hIs8s"
+    }
+  },
+  "tkqc_loai": {
+    "_note": "04/11/2026 (Postgres): KHÔNG còn khai danh sách TKQC bằng tay ở talpha.yaml. Mỗi vòng sync hỏi Meta token đọc được TKQC nào (/me/adaccounts), kéo chi tiêu của TẤT CẢ vào bảng fb_ads_tat_ca, ghi danh bạ vào bảng tkqc. Mỗi TKQC một LOẠI: chỉ loại có vao_bao_cao = true mới vào báo cáo (view fb_ads_data → mọi tab, báo cáo tháng, bot). Đổi loại ở /admin → TKQC, có tác dụng ngay. TKQC mới thấy lần đầu nhận loại theo gan_san, không có thì theo tiền tệ: VND → mac_dinh, tiền khác → loai_tien_khac (chi tiêu Meta trả theo tiền của TK; engine coi là VND — TK Canada USD từng ra 110 đồng thay vì 109,77 USD, 20/09/2026).",
+    "mac_dinh": "antalo",
+    "loai_tien_khac": "khac",
+    "loai": {
+      "antalo": { "ten": "ANTALO — bán Đài, Singapore, UAE, Nhật", "vao_bao_cao": true },
+      "hat_giong": { "ten": "Hạt giống — bán trong nước", "vao_bao_cao": false },
+      "khac": { "ten": "Khác — không tính vào báo cáo", "vao_bao_cao": false }
+    },
+    "gan_san": {
+      "2332183394212686": "hat_giong",
+      "_2332183394212686_note": "Thai BM XUAN THAI 02 01 (việt): camp VN/THÁI/… bán hạt giống trong nước — máy cũ cố ý không khai (03/11/2026). Tên camp không ghi nước nên kéo vào báo cáo là tiền dồn hết về Đài."
     }
   },
   "report_drive": {

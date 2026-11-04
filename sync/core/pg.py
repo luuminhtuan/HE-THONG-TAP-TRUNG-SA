@@ -77,8 +77,8 @@ def dat_mat_khau_vai_doc(conn) -> bool:
     return True
 
 
-BANG_DEM = ("sale_order", "order_items", "fb_ads_data", "fb_adset_data",
-            "fb_campaign_data", "ad_dictionary", "partner_orders")
+BANG_DEM = ("sale_order", "order_items", "fb_ads_tat_ca", "fb_adset_tat_ca",
+            "fb_campaign_tat_ca", "ad_dictionary", "partner_orders")
 
 
 def dem_bang(conn) -> list:
@@ -88,6 +88,8 @@ def dem_bang(conn) -> list:
         cot = "synced_at::text" if b == "partner_orders" else "sync_time"
         n, moi_nhat = conn.execute(f"SELECT COUNT(*), MAX({cot}) FROM {b}").fetchone()
         out.append((b, n, moi_nhat))
+    n, moi_nhat = conn.execute("SELECT COUNT(*), MAX(thay_lan_cuoi)::text FROM tkqc").fetchone()
+    out.append(("tkqc", n, moi_nhat))
     return out
 
 

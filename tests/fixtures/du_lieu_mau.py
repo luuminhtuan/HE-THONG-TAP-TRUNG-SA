@@ -98,7 +98,7 @@ def main():
                                     "messaging_conversations_started": NGAU.randint(3, 25), "add_to_cart": 0,
                                     "cpm": 60000.0, "ctr": 2.0, "cpc": 3000.0, "frequency": 1.4,
                                     "project_id": "TALPHA", "sync_time": sync_time})
-    pg_writer.ghi_ads(conn, ads, "fb_ads_data", "ad_id")
+    pg_writer.ghi_ads(conn, ads, "fb_ads_tat_ca", "ad_id")
     adsets = {}
     for a in ads:
         k = (a["account_id"], a["adset_id"], a["date"])
@@ -109,8 +109,8 @@ def main():
         x["spend"] += a["spend"]
         x["impressions"] += a["impressions"]
         x["messaging_conversations_started"] += a["messaging_conversations_started"]
-    pg_writer.ghi_ads(conn, list(adsets.values()), "fb_adset_data", "adset_id")
-    pg_writer.thay_ca_bang(conn, "fb_campaign_data", camps)
+    pg_writer.ghi_ads(conn, list(adsets.values()), "fb_adset_tat_ca", "adset_id")
+    pg_writer.thay_ca_bang(conn, "fb_campaign_tat_ca", camps)
 
     # Đơn
     don, item = [], []

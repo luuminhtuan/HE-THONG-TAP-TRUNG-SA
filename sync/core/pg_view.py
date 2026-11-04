@@ -29,9 +29,10 @@ def _luat() -> dict:
     return doc_luat(str(RULES_FILE), str(REPO))
 
 
-def ad_tz_sql() -> str:
-    """CASE account_id → múi giờ của TKQC (talpha.yaml → meta_ads.ad_account_timezones). Đơn gom
-    ngày theo múi của TKQC để ngày POS khớp ngày Meta báo tiền."""
+def ad_tz_sql(cot: str = "f.account_id") -> str:
+    """CASE account_id → múi giờ của TKQC khai tay (talpha.yaml → meta_ads.ad_account_timezones) — DỰ PHÒNG
+    cho TKQC cũ mà bảng tkqc chưa có múi giờ; múi giờ chính lấy từ Meta (tkqc.mui_gio). Đơn gom ngày theo
+    múi của TKQC để ngày POS khớp ngày Meta báo tiền."""
     import yaml
     with open(YAML_FILE, encoding="utf-8") as f:
         tzs = (yaml.safe_load(f).get("meta_ads") or {}).get("ad_account_timezones") or {}
@@ -44,7 +45,7 @@ def ad_tz_sql() -> str:
         if not so.isdigit() or not re.match(r"^[A-Za-z_]+(/[A-Za-z0-9_+\-]+)+$", str(tz)):
             raise SystemExit(f"❌ mục múi giờ lạ: {aid} → {tz}")
         dong.append(f"                WHEN '{so}' THEN '{tz}'")
-    return ("CASE account_id\n" + "\n".join(dong) +
+    return (f"CASE {cot}\n" + "\n".join(dong) +
             "\n                ELSE 'Asia/Ho_Chi_Minh'  -- TKQC chưa khai trong talpha.yaml\n            END")
 
 
@@ -136,6 +137,20 @@ def test_campaign_re() -> str:
     return pat
 
 
+def tkqc_loai() -> tuple:
+    """(loại mặc định, danh sách loại vào báo cáo dạng SQL) — talpha_rules.json → tkqc_loai."""
+    cfg = _luat().get("tkqc_loai") or {}
+    loai = {k: v for k, v in (cfg.get("loai") or {}).items() if not k.startswith("_") and isinstance(v, dict)}
+    vao = [k for k, v in loai.items() if v.get("vao_bao_cao")]
+    mac_dinh = cfg.get("mac_dinh") or "antalo"
+    for k in vao + [mac_dinh]:
+        if not re.match(r"^[a-z0-9_]+$", k):
+            raise SystemExit(f"❌ tkqc_loai: tên loại lạ {k!r} — chỉ chữ thường, số, gạch dưới.")
+    if not vao:
+        raise SystemExit("❌ tkqc_loai: không loại nào vao_bao_cao — mọi báo cáo sẽ không có chi tiêu quảng cáo.")
+    return mac_dinh, ", ".join(f"'{k}'" for k in vao)
+
+
 def thresholds() -> dict:
     th = _luat().get("thresholds", {})
     if not th:
@@ -168,6 +183,9 @@ def render(ten: str) -> str:
     for token, ham in thay.items():
         if token in sql:
             sql = sql.replace(token, ham())
+    if "{TKQC_MAC_DINH}" in sql or "{TKQC_VAO_BAO_CAO}" in sql:
+        mac_dinh, vao = tkqc_loai()
+        sql = sql.replace("{TKQC_MAC_DINH}", mac_dinh).replace("{TKQC_VAO_BAO_CAO}", vao)
     if "{FX_CASE}" in sql or "{FX_KNOWN}" in sql:
         case, known = fx_sql()
         sql = sql.replace("{FX_CASE}", case).replace("{FX_KNOWN}", known)
@@ -197,8 +215,11 @@ def sinh_tat_ca() -> tuple:
 
 
 def dung_view(conn, ep: bool = False) -> bool:
-    """Dựng lại bộ view nếu luật đổi (hoặc ep=True). Trả True nếu đã dựng."""
+    """Dựng lại bộ view nếu luật đổi, hoặc có migration mới (view `SELECT f.*` chốt danh sách cột lúc
+    dựng — bảng thêm cột mà không dựng lại là view thiếu cột), hoặc ep=True. Trả True nếu đã dựng."""
     ds, van_tay = sinh_tat_ca()
+    mig = conn.execute("SELECT COALESCE(string_agg(ten, ',' ORDER BY ten), '') FROM schema_migrations").fetchone()[0]
+    van_tay = hashlib.sha256(f"{van_tay}|{mig}".encode("utf-8")).hexdigest()[:16]
     cu = conn.execute("SELECT van_tay FROM view_van_tay WHERE id = 1").fetchone()
     if cu and cu[0] == van_tay and not ep:
         return False

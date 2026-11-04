@@ -3,8 +3,8 @@
 Dashboard vận hành cho đội ANTALO (Tiểu Alpha): bán trang sức và mỹ phẩm qua Facebook Ads +
 chat-sale + COD ở **ba nước — Đài Loan, Singapore, UAE** (từ 15/09/2026), thêm **Nhật Bản**
 (mở 08/10/2026, shop POS nối 09/10/2026; vận đơn Japan Post qua 17TRACK từ 21/10/2026). Mỗi nước một shop
-POS Poscake (`config/talpha_rules.json → markets`); tài khoản quảng cáo Meta khai ở
-`config/projects/talpha.yaml`, chạy chung cho mọi nước.
+POS Poscake (`config/talpha_rules.json → markets`); tài khoản quảng cáo Meta TỰ ĐỘNG — mọi TKQC các token
+Meta đọc được (bảng `tkqc`, `/admin` → TKQC), chạy chung cho mọi nước.
 
 **Đọc `DASHBOARD_MAP.md` trước khi sửa bất cứ thứ gì.** Nó là bản đồ nghiệp vụ: tiền
 đi đường nào, số trên màn hình đến từ đâu, cái gì chạy ở đâu.
@@ -68,6 +68,12 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   "lãi thật bao nhiêu"; tab P&L của mục Báo cáo chỉ là số tạm tính.
 * **Sync**: `sync/talpha/talpha_sync.py` + `sync/core/`. Docker: lịch `ops/docker/lich.py` (cùng giờ các
   systemd timer của VPS).
+* **TKQC tự động** (04/11/2026): mỗi vòng sync hỏi Meta mọi token (Khoá kết nối: `TALPHA_META_ACCESS_TOKEN`,
+  `_2`, `_3` — nhiều BM / app) thấy TKQC nào, ghi bảng `tkqc`, kéo chi tiêu của TẤT CẢ vào `fb_ads_tat_ca`
+  (`sync/core/tkqc.py` ↔ `lib/talpha/tkqc.ts`). `fb_ads_data` / `fb_adset_data` / `fb_campaign_data` là VIEW
+  chỉ gồm TKQC loại vao_bao_cao (`talpha_rules.json → tkqc_loai`) — đọc tên cũ là tự đúng. Đổi loại ở
+  `/admin` → TKQC, có tác dụng ngay. **Đừng ghi thẳng vào `fb_ads_data`** — nó là view.
+  `talpha.yaml → ad_account_ids` và `ad_accounts.json` không còn ai đọc.
 * **Đăng nhập + phân quyền theo team** (05/10/2026): NextAuth v5 (`lib/auth.ts`); người dùng
   qua `lib/users.ts` (`config/users.json`, mỗi người `role` + `teams`). Luật ở
   `talpha_rules.json → access`, đọc qua `lib/talpha/access-rules.ts` (có test). Cửa chặn chung:
