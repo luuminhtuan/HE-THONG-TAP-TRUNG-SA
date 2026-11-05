@@ -8,13 +8,22 @@ trạng thái giao và tiền COD đối tác thu. Tab Theo dõi vận đơn / S
 Sỹ Anh chia sẻ bảng Singapore 25/09/2026 ("cập nhật vào database cho những lúc cần").
 
 Module này KHÔNG ghi kho số — chỉ đọc Sheet và chuẩn hoá dòng. Ghi là việc của
-talpha_sync.sync_partner_orders() qua bq_writer.load_truncate (LOAD JOB, không DML).
+talpha_sync.sync_partner_orders() (pg_writer.thay_ca_bang — thay cả bảng trong một transaction).
 Cấu hình (sheet nào, tên cột nào) ở config/talpha_rules.json → partner_orders.
+
+Hai cách đọc (05/11/2026): có khoá Google (GOOGLE_APPLICATION_CREDENTIALS) thì đọc bằng Sheets API — bảng
+để riêng tư, share cho tài khoản dịch vụ; không có khoá thì đọc qua link xuất CSV như bảng NAZA của Đài
+(dashboard-ui/src/lib/talpha/sheet-source.ts) — chỉ được khi bảng để "ai có link đều xem được".
 """
+import csv
+import io
+import os
 import re
 import logging
 import unicodedata
 from datetime import date
+
+import requests
 
 log = logging.getLogger(__name__)
 
@@ -119,9 +128,33 @@ def chuan_dong(values: list, column_map: dict, meta: dict, synced_at: str) -> li
     return ra
 
 
+def doc_sheet_cong_khai(sheet_id: str, gid: str = "0") -> list:
+    """Đọc tab qua link xuất CSV, KHÔNG cần khoá — cùng cách dashboard đọc bảng NAZA của Đài. Bảng để
+    riêng tư thì Google trả 401 / trang đăng nhập → báo lỗi rõ, không trả bảng rỗng (rỗng là xoá trắng
+    partner_orders)."""
+    r = requests.get(f"https://docs.google.com/spreadsheets/d/{sheet_id}/export",
+                     params={"format": "csv", "gid": gid}, timeout=60, headers={"User-Agent": "Mozilla/5.0"})
+    if r.status_code in (401, 403) or "csv" not in r.headers.get("Content-Type", ""):
+        raise RuntimeError(f"bảng {sheet_id} để riêng tư (HTTP {r.status_code}) — cần khoá Google, hoặc chủ bảng "
+                           f"bật 'ai có link đều xem được' như bảng NAZA của Đài")
+    r.raise_for_status()
+    rows = list(csv.reader(io.StringIO(r.content.decode("utf-8-sig"))))
+    # Sheets API bỏ ô trống cuối dòng và dòng trống cuối bảng — làm y vậy để chuan_dong nhận như nhau.
+    rows = [list(row) for row in rows]
+    for row in rows:
+        while row and row[-1] == "":
+            row.pop()
+    while rows and not rows[-1]:
+        rows.pop()
+    return rows
+
+
 def doc_sheet(sheet_id: str, gid: str = "0") -> list:
-    """Đọc cả tab (theo gid) bằng tài khoản dịch vụ trong GOOGLE_APPLICATION_CREDENTIALS.
-    Bảng phải CHIA SẺ quyền Người xem cho email tài khoản đó — không cần để công khai."""
+    """Đọc cả tab (theo gid). Có khoá Google thì đọc bằng tài khoản dịch vụ trong
+    GOOGLE_APPLICATION_CREDENTIALS (bảng CHIA SẺ quyền Người xem cho email tài khoản đó, không cần công
+    khai); không có khoá thì đọc qua link công khai (doc_sheet_cong_khai)."""
+    if not os.path.isfile(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or ""):
+        return doc_sheet_cong_khai(sheet_id, gid)
     import google.auth
     from google.auth.transport.requests import AuthorizedSession
 

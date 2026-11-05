@@ -610,11 +610,8 @@ def sync_partner_orders() -> int:
     if not sheets:
         log.info("  partner_orders: chưa khai bảng nào — bỏ qua")
         return 0
-    if not os.path.isfile(os.environ.get('GOOGLE_APPLICATION_CREDENTIALS') or ''):
-        # Không có khoá thì thư viện Google dò máy chủ metadata ~9 giây rồi báo lỗi khó hiểu.
-        log.warning("  partner_orders: chưa có khoá Google (bigquery_key.json ở gốc repo) — bỏ qua bảng "
-                    "đối tác, vận đơn Singapore / Nhật chưa có số")
-        return 0
+    # Không có khoá Google thì doc_sheet đọc qua link công khai như bảng NAZA của Đài (05/11/2026);
+    # bảng để riêng tư thì báo lỗi rõ và GIỮ bảng cũ.
     rows = []
     for sh in sheets:
         values = doc_sheet(sh["sheet_id"], str(sh.get("sheet_gid", "0")))
