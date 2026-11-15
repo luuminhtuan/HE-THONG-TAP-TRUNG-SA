@@ -5,6 +5,7 @@ import {
     attributeOrder, buildAdidOwner, resolveSale, normPosMarketer, PHONE_RULES, MARKET_DA_TAT, SHOP2MKT,
 } from "@/lib/talpha/rules";
 import { trackingFromLink } from "@/lib/talpha/cod-recon";
+import { homNayVN, locTheoNgayLenDon } from "@/lib/talpha/order-ledger";
 import {
     buildAlerts, carrierFor, countByStatus, fixTrack17Code, maLayHang, mergeStatus, planRegister, planTrack,
     trackMarket, TERMINAL, TRACK_CFG, TRACK_MARKETS,
@@ -272,18 +273,25 @@ export async function GET(req: NextRequest) {
     const a = await getAccess(req);
 
     try {
-        const { shipments: raw, store, lastImport } = await loadShipments(mk, from, to);
+        // Danh sách chỉ kiện lên đơn trong khoảng đang chọn (15/11/2026 — mặc định tháng này: hơn nghìn
+        // kiện một lượt là trang nặng). Cảnh báo, chữ trạng thái lạ, số mã chờ đăng ký vẫn tính trên MỌI
+        // kiện đã nạp: kiện tháng trước còn kẹt không được biến mất chỉ vì đang xem tháng này. Đơn POS Đài
+        // (chỉ đọc theo ngày) nạp lùi tới 60 ngày cho cảnh báo — như mặc định 60 ngày trước đây.
+        const homNay = homNayVN();
+        const tu60 = new Date(Date.parse(homNay) - 60 * 86_400_000).toISOString().slice(0, 10);
+        const { shipments: raw, store, lastImport } = await loadShipments(mk, from < tu60 ? from : tu60, to);
         // Nút WhatsApp kèm tin xác nhận đơn (29/09/2026, chỉ nước bật whatsapp — UAE) — gắn TRƯỚC
         // buildAlerts để cảnh báo mang theo luôn.
         const luat = PHONE_RULES[mk.code];
-        const shipments = raw.map((s) => ({
+        const tatCa = raw.map((s) => ({
             ...s,
             wa: luat ? waLink(s.phone, luat, tinXacNhan({
                 customer: s.customer, cod: s.cod_local, currency: mk.currency,
                 address: s.address || s.city, tracking: s.track17_code,
             })) : null,
         }));
-        const alerts = buildAlerts(shipments, new Date(), { staleDays: mk.stale_days });
+        const alerts = buildAlerts(tatCa, new Date(), { staleDays: mk.stale_days });
+        const shipments = locTheoNgayLenDon(tatCa, from, to, homNay);
         return NextResponse.json({
             from, to,
             market: { code: mk.code, label: mk.label, currency: mk.currency, provider: mk.provider, source: mk.source },
@@ -306,7 +314,7 @@ export async function GET(req: NextRequest) {
             counts: countByStatus(shipments),
             // Nước ngoài Đài: bảng đối tác nạp tự động nên không có lượt "Đọc bảng" để báo chữ
             // trạng thái lạ — báo ở đây, kẻo đơn mang chữ lạ lặng lẽ rơi khỏi mọi cảnh báo.
-            ...(mk.code !== "TW" ? { unknown_statuses: chuaKhai(shipments) } : {}),
+            ...(mk.code !== "TW" ? { unknown_statuses: chuaKhai(tatCa) } : {}),
             totals: {
                 shipments: shipments.length,
                 registered: shipments.filter((s) => s.registered).length,
@@ -314,8 +322,8 @@ export async function GET(req: NextRequest) {
                 // giao xong thì con số này không bao giờ về 0 và chẳng nói lên gì.
                 pending_register: mk.provider === "weship"
                     // WeShip không đăng ký — "chưa theo dõi" = có mã AWB mà chưa tra lần nào.
-                    ? shipments.filter((s) => s.track17_code && !s.registered).length
-                    : planRegister(shipments, new Date(), { staleDays: mk.stale_days }).eligible,
+                    ? tatCa.filter((s) => s.track17_code && !s.registered).length
+                    : planRegister(tatCa, new Date(), { staleDays: mk.stale_days }).eligible,
                 at_store_value: shipments
                     .filter((s) => s.status === "AvailableForPickup")
                     .reduce((n, s) => n + s.cod_local, 0),

@@ -388,4 +388,17 @@ t("hôm nay theo giờ Việt Nam: 23:30 UTC ngày 26 là sáng 27/10 ở VN", (
     assert.strictEqual(L.homNayVN(new Date("2026-10-27T16:59:00Z")), "2026-10-27");
 });
 
+t("danh sách đơn: mới nhất lên đầu, cùng ngày mã lớn trước, không ngày xuống cuối", () => {
+    const ds = [
+        { order_no: "T1465", order_date: "2026-08-25" },
+        { order_no: "T9", order_date: null, ship_date: null },
+        { order_no: "T1467", order_date: "2026-08-25" },
+        { order_no: "T1724", order_date: null, ship_date: "2026-09-17" },
+        { order_no: "T2001", order_date: "2026-11-14" },
+    ];
+    const truoc = JSON.stringify(ds);
+    assert.deepStrictEqual(L.xepMoiTruoc(ds).map((x) => x.order_no), ["T2001", "T1724", "T1467", "T1465", "T9"]);
+    assert.strictEqual(JSON.stringify(ds), truoc, "không được sửa mảng gốc");
+});
+
 console.log(`\n${pass} phép thử — tất cả đạt.`);

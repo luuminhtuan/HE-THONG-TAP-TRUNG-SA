@@ -562,7 +562,9 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                                 </tr>
                             </thead>
                             <tbody>
-                                {shipments.map((s) => (
+                                {/* Mới nhất lên đầu (15/11/2026): ngày lên đơn, cùng ngày mã đơn lớn trước. */}
+                                {[...shipments].sort((a, b) => String(b.order_date || "").localeCompare(String(a.order_date || ""))
+                                    || String(b.order_id).localeCompare(String(a.order_id), "vi", { numeric: true })).map((s) => (
                                     // Khoá = mã đơn + mã vận đơn: một mã vận đơn có thể nằm ở hai đơn (lỗi bảng đối tác).
                                     <tr key={`${s.order_id}|${s.tracking}`} className="border-b border-border/40 last:border-0 hover:bg-muted/40">
                                         <td className="px-3 py-2 font-mono text-xs">{s.order_id}</td>

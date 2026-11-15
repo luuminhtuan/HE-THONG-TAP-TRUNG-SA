@@ -630,7 +630,9 @@ function Bang({ tab, res }: { tab: string; res: Result }) {
     }
 
     if (tab === "fb_unmatched" || tab === "fb_failed") {
-        const rows = tab === "fb_unmatched" ? res.fb_unmatched : res.fb_failed;
+        // Mới nhất lên đầu (15/11/2026).
+        const rows = [...(tab === "fb_unmatched" ? res.fb_unmatched : res.fb_failed)]
+            .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
         if (!rows.length) return <Trong />;
         return (
             <table className="w-full text-sm">
@@ -655,7 +657,9 @@ function Bang({ tab, res }: { tab: string; res: Result }) {
         );
     }
 
-    const rows = tab === "bank_unmatched" ? res.bank_unmatched : res.other_ads;
+    // Mới nhất lên đầu (15/11/2026).
+    const rows = [...(tab === "bank_unmatched" ? res.bank_unmatched : res.other_ads)]
+        .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
     if (!rows.length) return <Trong />;
     return (
         <table className="w-full text-sm">

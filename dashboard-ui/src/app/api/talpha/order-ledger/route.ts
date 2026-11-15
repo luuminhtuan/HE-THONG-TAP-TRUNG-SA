@@ -3,7 +3,7 @@ import { readStoreFresh } from "@/lib/talpha/store";
 import { napSoDonDai } from "@/lib/talpha/so-don-dai";
 import {
     buildLedger, summarise, saoKeTreHan, locTheoNgayLenDon, homNayVN, CHU_KY_SAO_KE_NGAY,
-    maGocGiaoLai, maGocNaza, orderKey, trackKey,
+    maGocGiaoLai, maGocNaza, orderKey, trackKey, xepMoiTruoc,
     type OrderSource, type PaidLine, type FeeLine,
 } from "@/lib/talpha/order-ledger";
 import type { StatementRow } from "@/lib/talpha/cod-recon";
@@ -126,7 +126,9 @@ export async function GET(req: NextRequest) {
         : new Date().toISOString().slice(0, 10);
 
     try {
-        const { track, stm, orders, paid, fees, rows, extra } = await napSoDonDai(asOf);
+        const { track, stm, orders, paid, fees, rows: rowsGoc, extra } = await napSoDonDai(asOf);
+        // Mới nhất lên đầu (15/11/2026) — bảng NAZA để đơn cũ trên cùng; danh sách, thẻ, CSV cùng thứ tự này.
+        const rows = xepMoiTruoc(rowsGoc);
         // Việc do NGƯỜI ghi — tiền về tài khoản, đã đòi, đã bỏ qua. Kho riêng
         // với kho sao kê: nạp lại file thì số máy đọc phải tính lại, còn việc
         // người đã làm thì không được mất.

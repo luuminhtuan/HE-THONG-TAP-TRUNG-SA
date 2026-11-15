@@ -411,7 +411,10 @@ function CodNuocKhac({ code, nutNuoc, dateRange }: { code: string; nutNuoc?: Rea
     const moiNhat = ky[0];
     const laNaza = ky.some((k) => k.kieu === "naza");
     const ben = laNaza ? "NAZA" : "bên giao hàng";
-    const daGiao = d.don.filter((x) => x.nhom === "da_giao" && !x.da_tra);
+    // Mới nhất lên đầu (15/11/2026): ngày lên đơn, cùng ngày mã đơn lớn trước.
+    const daGiao = d.don.filter((x) => x.nhom === "da_giao" && !x.da_tra)
+        .sort((a, b) => String(b.order_date || "").localeCompare(String(a.order_date || ""))
+            || String(b.order_id).localeCompare(String(a.order_id), "vi", { numeric: true }));
     const capNhat = d.nguon.cap_nhat ? (() => {
         const x = new Date(d.nguon.cap_nhat);
         const p = (n: number) => String(n).padStart(2, "0");

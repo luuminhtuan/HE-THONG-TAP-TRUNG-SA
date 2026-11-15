@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, LogOut, Menu, Settings, X } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
-import { format, startOfMonth, subDays } from "date-fns";
+import { format, startOfMonth } from "date-fns";
 import DateRangePicker from "@/components/ui/date-range-picker";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import Link from "next/link";
@@ -34,13 +34,6 @@ import TALPHALaiLoTab from "./tabs/lai-lo-tab";
 
 /** Tham số mang theo khi chuyển tab: khoảng ngày đang chọn (from, to), nước đang chọn (market). */
 const THAM_SO_GIU = ["from", "to", "market"];
-
-/**
- * Tab VẬN HÀNH — mặc định 60 ngày gần nhất, không phải "tháng này": danh sách việc (kiện kẹt, đơn quá
- * hạn chờ đòi tiền) chỉ tính đơn trong khoảng ngày, mà đầu tháng thì đơn tháng trước vẫn đang đi /
- * chờ thu tiền. Mọi tab THỐNG KÊ còn lại mặc định tháng này (Sỹ Anh chốt 15/11/2026).
- */
-const TAB_VAN_HANH = new Set(["order-ledger", "tracking", "cod-recon"]);
 
 /** Hai tab này đọc cửa sổ thời gian cố định trong view — hiện bộ chọn ngày chỉ gây hiểu nhầm là lọc được. */
 const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon"]);
@@ -141,19 +134,19 @@ export default function TALPHADashboardShell() {
     }, []);
 
     // Khoảng ngày: ?from=&to= trên địa chỉ nếu có (người chọn / link gửi kèm) — áp cho mọi tab. Không có
-    // thì theo tab: thống kê = THÁNG NÀY (từ ngày 1 tới hôm nay), vận hành = 60 ngày gần nhất; cả hai
-    // không trước mốc gốc báo cáo.
+    // thì THÁNG NÀY (ngày 1 → hôm nay) cho MỌI tab, kể cả Sổ đơn / Vận đơn / Tiền COD về (Sỹ Anh chốt
+    // 15/11/2026: danh sách dài là trang nặng), không trước mốc gốc báo cáo. Việc cần làm của tháng trước
+    // không mất: cảnh báo vận đơn soát mọi kiện đã nạp, Đòi tiền NAZA / kỳ sao kê tính mọi đơn.
     const tuUrl = sp.get("from");
     const denUrl = sp.get("to");
-    const vanHanh = TAB_VAN_HANH.has(activeTab);
     const dateRange = useMemo(() => {
         const tu = tuUrl ? ngayDiaPhuong(tuUrl) : null;
         const den = denUrl ? ngayDiaPhuong(denUrl) : null;
         if (tu && den && tu <= den) return { from: tu, to: den };
         const homNay = new Date();
-        const tuMacDinh = vanHanh ? subDays(homNay, 59) : startOfMonth(homNay);
+        const tuMacDinh = startOfMonth(homNay);
         return { from: reportStart && tuMacDinh < reportStart ? reportStart : tuMacDinh, to: homNay };
-    }, [tuUrl, denUrl, reportStart, vanHanh]);
+    }, [tuUrl, denUrl, reportStart]);
     const setDateRange = (r: { from: Date; to: Date }) =>
         doiThamSo({ from: format(r.from, "yyyy-MM-dd"), to: format(r.to, "yyyy-MM-dd") });
 

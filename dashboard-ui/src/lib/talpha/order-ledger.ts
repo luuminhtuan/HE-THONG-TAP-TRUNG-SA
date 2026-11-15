@@ -123,6 +123,17 @@ export const FALLBACK_RMB_VND = Number((RULES as unknown as { cost_rate_rmb_vnd?
 // Chuẩn hoá khoá — phải giống hệt cod-recon.ts, lệch một chữ là hai bên
 // khoá khác nhau và không đơn nào ghép được.
 // ─────────────────────────────────────────────────────────────────────────
+/**
+ * Mới nhất lên đầu (15/11/2026 — mọi danh sách có thời gian xếp giảm dần): theo ngày lên đơn, không có
+ * thì ngày gửi hãng, cùng ngày thì mã đơn lớn trước (T1467 trên T1465). Đơn không có ngày xuống cuối.
+ * Trả MẢNG MỚI, không sửa mảng truyền vào.
+ */
+export function xepMoiTruoc<T extends { order_date?: string | null; ship_date?: string | null; order_no?: string | null }>(ds: T[]): T[] {
+    const ngay = (x: T) => String(x.order_date || x.ship_date || "");
+    return [...ds].sort((a, b) => ngay(b).localeCompare(ngay(a))
+        || String(b.order_no || "").localeCompare(String(a.order_no || ""), "vi", { numeric: true }));
+}
+
 export function trackKey(v?: string | null): string {
     const s = String(v ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     return /^\d+$/.test(s) ? s.replace(/^0+/, "") || s : s;
