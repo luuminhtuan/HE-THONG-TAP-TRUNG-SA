@@ -6,7 +6,6 @@ import { formatVNDCompact, formatMoney, formatNumber, marketName, cn } from "../
 import { useMarkets } from "../markets-context";
 import { tenPhamVi, useAccess } from "../access-context";
 import TabSkeleton from "@/components/ui/tab-skeleton";
-import CeoAssistant from "../ceo-assistant";
 import CeoSmartInsights from "./ceo-smart-insights";
 import {
     ReportHero, KpiRow, KpiTile, ResultCard, WaterfallList, BarStrip,
@@ -272,8 +271,7 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
 
             {/* ═══ 4. Cảnh báo & trợ lý — giữ nguyên module cũ ═══ */}
             <CeoSmartInsights roas={roas} margin={bien ?? 0} net={lai} revenue={t.doanh_so} />
-            {/* Trợ lý hỏi đáp chạy SQL trên mọi nước — chỉ giám đốc. */}
-            {me?.full && <CeoAssistant dateRange={dateRange} />}
+            {/* Hỏi AI đã thành trang riêng /talpha/ask-ai (menu 🤖 Hỏi AI, 15/11/2026). */}
 
             {/* ═══ 5. Xu hướng theo ngày ═══ */}
             <section className="rounded-xl border border-border bg-card p-5 shadow-sm">

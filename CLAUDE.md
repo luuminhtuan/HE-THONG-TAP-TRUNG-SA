@@ -80,7 +80,7 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   `src/proxy.ts` (Next 16, chạy Node). **Thêm route API mới thì khai vào `API_RULES`** — không
   khai là chỉ giám đốc gọi được. Route gộp nhiều nước phải tự lọc theo `getAccess()`.
   Bot/việc nền gọi API bằng header `x-talpha-token` (chìa ở `data/.internal_token`).
-* **Khoá kết nối** (04/11/2026): token Meta, key POS từng shop, token Pancake, key 17TRACK nhập ở
+* **Khoá kết nối** (04/11/2026): token Meta, key POS từng shop, token Pancake, key 17TRACK, khoá Gemini (15/11) nhập ở
   `/admin` → Khoá kết nối — máy gọi thử khoá rồi mới lưu. Lưu ở bảng `api_credentials` (15/11/2026),
   MÃ HOÁ bằng pgcrypto với chìa `TALPHA_ENCRYPTION_KEY` (đổi chìa = phải nhập lại mọi khoá), thắng khoá
   cùng tên trong `.env.local`. Dashboard đọc qua `docKhoa()` (`lib/talpha/khoa.ts`) — **đừng đọc

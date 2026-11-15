@@ -94,7 +94,7 @@ export function moiTruongKhoa(): Record<string, string | undefined> {
 
 // ─── Danh sách khoá ─────────────────────────────────────────────────
 
-export type LoaiKhoa = "meta" | "pos" | "pancake" | "track17";
+export type LoaiKhoa = "meta" | "pos" | "pancake" | "track17" | "gemini";
 export type KhoaDef = {
     ten: string;
     nhan: string;
@@ -161,6 +161,13 @@ export function danhSachKhoa(): KhoaDef[] {
         nhan: "Key 17TRACK",
         dung_cho: nuoc17 ? `Theo dõi vận đơn ${nuoc17}` : "Chưa nước nào theo dõi vận đơn qua 17TRACK",
         loai: "track17",
+    });
+    // Khoá Gemini (15/11/2026) — trước đọc thẳng GEMINI_API_KEY trong .env.local, không nhập trên trang được.
+    out.push({
+        ten: "GEMINI_API_KEY",
+        nhan: "Khoá Gemini (AI)",
+        dung_cho: "Ô “Hỏi dashboard” ở Báo cáo → Tổng quan (chỉ giám đốc thấy). Lấy miễn phí ở aistudio.google.com/apikey",
+        loai: "gemini",
     });
     return out;
 }
@@ -277,6 +284,17 @@ async function kiemPancake(tok: string): Promise<KetQuaKiem> {
     return { ok: true, chi_tiet: `Đọc được ${n} page`, het_han: hetHan };
 }
 
+/** Liệt kê model — miễn phí, không tốn lượt hỏi. Khoá đi ở header, không nằm trên địa chỉ (log). */
+async function kiemGemini(key: string): Promise<KetQuaKiem> {
+    const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
+        { headers: { "x-goog-api-key": key }, cache: "no-store", signal: AbortSignal.timeout(HET_GIO) });
+    const j = await r.json().catch(() => null);
+    if (!r.ok) throw new Error(`Google từ chối: ${j?.error?.message || `HTTP ${r.status}`}`);
+    const n = ((j?.models || []) as { supportedGenerationMethods?: string[] }[])
+        .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent")).length;
+    return { ok: true, chi_tiet: `Gọi được Gemini — ${n} model trả lời được` };
+}
+
 /** Hỏi quota — miễn phí, không trừ lượt đăng ký nào. */
 async function kiemTrack17(key: string): Promise<KetQuaKiem> {
     const q = await getQuota({ id: keyId(key), label: "khoá này", key });
@@ -290,6 +308,7 @@ export async function kiemKhoa(d: KhoaDef, giaTri: string): Promise<KetQuaKiem> 
         if (d.loai === "meta") return await kiemMeta(giaTri, d.ten);
         if (d.loai === "pos") return await kiemPos(d, giaTri);
         if (d.loai === "pancake") return await kiemPancake(giaTri);
+        if (d.loai === "gemini") return await kiemGemini(giaTri);
         return await kiemTrack17(giaTri);
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);

@@ -18,6 +18,7 @@ export const ALL_TABS = [
     "ad-spend", "ads-command", "ad-health",
     "ads-recon",
     "customers", "market-intel",
+    "ask-ai",
 ] as const;
 
 /**
@@ -28,8 +29,9 @@ export const ALL_TABS = [
  */
 export const CHUA_LOC_THEO_NUOC = new Set<string>();
 
-/** Tab chỉ giám đốc: soát tiền ra của thẻ trả TKQC chung cả công ty. */
-export const CHI_GIAM_DOC = new Set(["ads-recon"]);
+/** Tab chỉ giám đốc: soát tiền ra của thẻ trả TKQC chung cả công ty; Hỏi AI (15/11/2026) — AI truy vấn
+ *  số MỌI nước, route /api/talpha/ceo-ask chưa lọc theo team. */
+export const CHI_GIAM_DOC = new Set(["ads-recon", "ask-ai"]);
 
 type TeamCfg = { name: string; markets: string[]; leader?: string };
 type RoleCfg = { label: string; desc?: string; full?: boolean; tabs?: string[] };

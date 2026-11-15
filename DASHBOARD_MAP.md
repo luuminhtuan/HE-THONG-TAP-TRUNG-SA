@@ -219,6 +219,7 @@ người ta đã gửi nhau hết mở được.**
 | | Ads Command Center | `app/talpha/ads-command-center/page.tsx` | `/api/talpha/realtime` |
 | | Sức khoẻ quảng cáo | `tabs/ad-health-tab.tsx` | `/api/query` |
 | 👥 Khách hàng | Khách hàng · Market Intel | `tabs/customer-tab.tsx` · `market-intel-tab.tsx` | `/api/query` |
+| 🤖 Hỏi AI (15/11/2026, chỉ giám đốc) | Hỏi AI — `/talpha/ask-ai` | `tabs/ask-ai-tab.tsx` | `/api/talpha/ceo-ask` (Gemini viết SQL chỉ đọc; model chọn ở Khoá kết nối → tab Gemini) |
 
 Ngoài shell còn `/login` và `/admin` (người dùng, TKQC, thị trường, khoá kết nối). **TKQC tự động** (04/11/2026):
 mọi TKQC các token Meta đọc được; chỉ loại "vào báo cáo" cộng vào số — `fb_ads_data` là view lọc theo loại,
@@ -291,7 +292,7 @@ trong chuỗi) bị từ chối; vai `talpha_doc_nuoc` của họ cũng chỉ đ
 | `ads-recon` | Đối soát chi phí TKQC với sao kê thẻ | Giao diện |
 | `cod-actions` | Đánh dấu đã đòi / đã nhận tiền | Giao diện |
 | `ad-spend` · `marketer-perf` · `product-costs` · `targets` | Số phụ trợ cho tab | Giao diện |
-| `ceo-ask` | Hỏi đáp bằng LLM → sinh SQL | Giao diện |
+| `ceo-ask` | Trang 🤖 Hỏi AI (`/talpha/ask-ai`, chỉ giám đốc — trước là ô ở Tổng quan): Gemini viết SQL, chạy bằng vai CHỈ ĐỌC rồi trả lời. Khoá + model ở Khoá kết nối → tab Gemini; model treo / hết quota / bị gỡ thì tự đổi model (`lib/talpha/gemini-models.ts`, 15/11/2026) | Giao diện |
 | `export-report` | Nút "Xuất Sheet" → chạy đúng `format_all.py` của vòng ghi Sheet mỗi giờ (cùng python, cùng khoá `/root/talpha_reports/.lock`; vòng :20 đang chạy thì trả 409). Sửa 30/10/2026 | Giao diện |
 | `sync-inventory` | Ghi snapshot tồn kho làm dự phòng cho tab Kho | `talpha-snapshot.timer` mỗi giờ :40 → `snapshot_cron.sh` |
 | `ads-alerts` · `sync-health` | Cảnh báo spend, sức khoẻ sync | Bot Zalo |
@@ -299,7 +300,7 @@ trong chuỗi) bị từ chối; vai `talpha_doc_nuoc` của họ cũng chỉ đ
 | `sheet-report` | Số từ file TỔNG TEAM — `?date=` một ngày, `?from&to=` cộng cả khoảng | Bot Zalo · tab Tổng quan |
 | `report-config` | Mốc gốc báo cáo cho bộ chọn ngày | Giao diện |
 | `thi-truong` | Thị trường (04/11/2026): GET mọi nước đã phủ + nguồn (config / sửa trên trang / thêm trên trang) + có key POS chưa; POST thêm / sửa / bật / tắt một nước, kèm `key_pos` thì gọi thử shop rồi lưu luôn key POS (mã hoá, bảng `api_credentials` — 15/11/2026, khỏi sang Khoá kết nối; chỉ đổi key thì không khởi động lại) (soát mã shop, mã campaign trùng nước khác, tỷ giá, số chia; bật bán thì gọi thử shop POS trước) → ghi bảng `market_overrides` rồi tự khởi động lại; `?overrides=1` trả phần phủ + vân tay cho bot; DELETE bỏ phần sửa trên trang của nước có trong config; nước thêm trên trang thì XOÁ HẲN (kèm key POS) nhưng chỉ khi chưa có đơn trong `sale_order` và chưa có chi tiêu Meta của camp mang mã nước đó (15/11/2026, cho nước tạo nhầm) — có số rồi thì chỉ tắt được. Chỉ giám đốc | `/admin` → Thị trường |
-| `khoa` | Khoá kết nối (04/11/2026): GET trạng thái từng khoá (đã che, `?kiem=1` gọi thử), POST gọi thử khoá mới với Meta / POS / Pancake / 17TRACK rồi mới lưu vào bảng `api_credentials` (mã hoá), DELETE quay về `.env.local`. Chỉ giám đốc | `/admin` → Khoá kết nối |
+| `khoa` | Khoá kết nối (04/11/2026): GET trạng thái từng khoá (đã che, `?kiem=1` gọi thử), POST gọi thử khoá mới với Meta / POS / Pancake / 17TRACK / Gemini rồi mới lưu vào bảng `api_credentials` (mã hoá), DELETE quay về `.env.local`. Trang chia tab theo loại khoá (`/admin/credentials?tab=meta|pos|pancake|track17|gemini`, 15/11/2026). Chỉ giám đốc | `/admin` → Khoá kết nối |
 | `pnl-costs` | Giá vốn + phí ship ước tính của đơn đã chốt, theo ngày và nước; liệt kê mã chưa có giá | Tab P&L · Tổng quan |
 | `lai-lo` | Lãi lỗ đủ mọi khoản theo nước (`lib/talpha/lai-lo.ts` hàm thuần + test, nạp kiện ở `lai-lo-nguon.ts`). Doanh số + ads đọc TỔNG TEAM qua `lib/talpha/sheet-tong-team.ts` (chung với `sheet-report`); kiện Đài qua `lib/talpha/so-don-dai.ts` (chung với `order-ledger`). Route tự cắt nước theo team; chi phí chung chia theo doanh số MỌI nước | Tab Lãi lỗ |
 | `lai-lo/van-hanh` | POST thêm/sửa · DELETE xoá một khoản chi phí vận hành — chỉ người xem hết (giám đốc) | Tab Lãi lỗ |

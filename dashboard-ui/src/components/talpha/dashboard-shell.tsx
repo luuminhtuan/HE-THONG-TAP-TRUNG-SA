@@ -31,6 +31,7 @@ import TALPHAOrderLedgerTab from "./tabs/order-ledger-tab";
 import TALPHATrackingTab from "./tabs/tracking-tab";
 import TALPHAAdsReconTab from "./tabs/ads-recon-tab";
 import TALPHALaiLoTab from "./tabs/lai-lo-tab";
+import AskAiTab from "./tabs/ask-ai-tab";
 
 /** Tham số mang theo khi chuyển tab: khoảng ngày đang chọn (from, to), nước đang chọn (market). */
 const THAM_SO_GIU = ["from", "to", "market"];
@@ -347,6 +348,7 @@ export default function TALPHADashboardShell() {
                     {duocXem("ads-recon") && <TALPHAAdsReconTab />}
                     {duocXem("customers") && <TALPHACustomerTab dateRange={dateRange} projectId="TALPHA" />}
                     {duocXem("market-intel") && <TALPHAMarketIntelTab dateRange={dateRange} projectId="TALPHA" />}
+                    {duocXem("ask-ai") && <AskAiTab dateRange={dateRange} />}
                     </>}
                 </div>
             </main>

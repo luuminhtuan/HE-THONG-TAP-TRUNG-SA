@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { KeyRound, Loader2, AlertCircle, CheckCircle2, XCircle, RefreshCw, Eye, EyeOff, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KhoaCoMat } from "./key-reveal";
+import { useThamSoUrl } from "@/components/talpha/url-state";
+import ChonModelGemini from "./gemini-model-picker";
 
 // Khoá kết nối (04/11/2026) — giám đốc dán khoá mới khi token Meta, Pancake, key POS chết.
 // Máy chủ gọi thử khoá với dịch vụ thật rồi mới lưu; khoá thật không bao giờ về trình duyệt.
@@ -24,6 +26,16 @@ type Khoa = {
     kiem?: Kiem;
 };
 
+/** Tab theo loại khoá (15/11/2026 — trước dồn chung một trang, khó tìm). Tab đang mở nằm trên địa chỉ
+ *  (?tab=pos) để gửi link thẳng tới đúng chỗ. */
+const NHOM: { id: string; nhan: string; giai: string }[] = [
+    { id: "meta", nhan: "Meta Ads", giai: "Token đọc chi tiêu quảng cáo. Sync kéo mọi TKQC mà các token này thấy; TK nằm ở Business Manager / app khác thì thêm token 2, 3." },
+    { id: "pos", nhan: "POS Poscake", giai: "Mỗi nước một shop, một key — lấy ở POS → Cài đặt → Nâng cao → Kết nối bên thứ ba → Webhook/API. Sửa được cả ở Quản trị → Thị trường." },
+    { id: "pancake", nhan: "Pancake", giai: "Đếm tin nhắn ở nước Meta không báo số tin nhắn (Nhật). Token tài khoản Pancake sống khoảng 90 ngày." },
+    { id: "track17", nhan: "17TRACK", giai: "Theo dõi hành trình vận đơn Đài, Singapore, Nhật. Nhiều tài khoản thì quota cộng dồn." },
+    { id: "gemini", nhan: "Gemini (AI)", giai: "Ô “Hỏi dashboard” ở Báo cáo → Tổng quan, chỉ giám đốc thấy. Câu hỏi và kết quả truy vấn được gửi sang Google để trả lời." },
+];
+
 const NGUON: Record<Khoa["nguon"], string> = {
     trang: "nhập trên trang",
     env: "từ .env.local",
@@ -37,6 +49,8 @@ function hanDung(iso: string): { chu: string; gap: boolean } {
 }
 
 export default function KhoaTab() {
+    const [tabUrl, datTab] = useThamSoUrl("tab");
+    const tab = NHOM.some((n) => n.id === tabUrl) ? tabUrl! : NHOM[0].id;
     const [ds, setDs] = useState<Khoa[]>([]);
     const [kiem, setKiem] = useState<Record<string, Kiem>>({});
     const [loading, setLoading] = useState(true);
@@ -131,7 +145,7 @@ export default function KhoaTab() {
                 <div className="max-w-2xl">
                     <h2 className="text-lg font-bold text-foreground">Khoá kết nối</h2>
                     <p className="text-sm text-slate-400">
-                        Khoá chết thì dán khoá mới vào đây. Máy gọi thử khoá với Meta, POS, Pancake, 17TRACK
+                        Khoá chết thì dán khoá mới vào đây. Máy gọi thử khoá với Meta, POS, Pancake, 17TRACK, Gemini
                         trước, gọi được mới lưu. Dashboard dùng khoá mới ngay; sync và Sheet dùng từ vòng chạy
                         đầu giờ kế tiếp. Deploy không đè khoá nhập ở đây.
                     </p>
@@ -153,8 +167,33 @@ export default function KhoaTab() {
                 </div>
             )}
 
+            {/* Tab theo loại khoá: đỏ = có khoá gọi thử bị từ chối, vàng = còn thiếu khoá. */}
+            <div className="flex w-full max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-muted/40 p-1 sm:w-fit">
+                {NHOM.map((n) => {
+                    const cua = ds.filter((k) => k.loai === n.id);
+                    const chet = cua.some((k) => kiem[k.ten] && !kiem[k.ten].ok && k.nguon !== "thieu");
+                    // Meta: token 2, 3 là tuỳ chọn — chỉ báo thiếu khi không có token nào. POS: mỗi nước một key, thiếu là thiếu.
+                    const thieu = n.id === "pos" ? cua.some((k) => k.nguon === "thieu") : cua.length > 0 && cua.every((k) => k.nguon === "thieu");
+                    return (
+                        <button key={n.id} type="button" onClick={() => datTab(n.id)}
+                            className={cn(
+                                "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all",
+                                tab === n.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                            )}>
+                            {n.nhan}
+                            <span className="text-xs text-muted-foreground">{cua.length}</span>
+                            {(chet || thieu) && (
+                                <span className={cn("h-1.5 w-1.5 rounded-full", chet ? "bg-rose-500" : "bg-amber-500")}
+                                    title={chet ? "Có khoá gọi thử bị từ chối" : "Còn thiếu khoá"} />
+                            )}
+                        </button>
+                    );
+                })}
+            </div>
+            <p className="max-w-3xl text-sm text-muted-foreground">{NHOM.find((n) => n.id === tab)?.giai}</p>
+
             <div className="grid gap-3 lg:grid-cols-2">
-                {ds.map((k) => {
+                {ds.filter((k) => k.loai === tab).map((k) => {
                     const kq = kiem[k.ten];
                     const han = kq?.het_han ? hanDung(kq.het_han) : null;
                     const sua = dangSua === k.ten;
@@ -268,6 +307,12 @@ export default function KhoaTab() {
                     );
                 })}
             </div>
+
+            {/* Chọn model Gemini (15/11/2026) — danh sách đi theo khoá: thay / bỏ khoá thì tải lại. */}
+            {tab === "gemini" && (() => {
+                const g = ds.find((k) => k.ten === "GEMINI_API_KEY");
+                return <ChonModelGemini phienKhoa={`${g?.nguon}|${g?.che}|${g?.cap_nhat}`} />;
+            })()}
         </div>
     );
 }

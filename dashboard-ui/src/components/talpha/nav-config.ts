@@ -80,6 +80,8 @@ export const NAV_GROUPS: NavGroup[] = [
             { id: "market-intel", label: "Market Intel", slug: "market-intel" },
         ],
     },
+    // Hỏi AI (15/11/2026) — trước là một ô nhỏ ở cuối Tổng quan. Chỉ giám đốc (CHI_GIAM_DOC).
+    { id: "hoi-ai", emoji: "🤖", label: "Hỏi AI", tabs: [{ id: "ask-ai", label: "Hỏi AI", slug: "ask-ai" }] },
 ];
 
 /** Đường dẫn → tab, tab → (nhãn, đường dẫn, mục). */

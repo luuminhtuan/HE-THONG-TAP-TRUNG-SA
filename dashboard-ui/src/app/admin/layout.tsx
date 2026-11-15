@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import AdminShell from "@/components/admin/admin-shell";
 
 // Khung Quản trị dùng chung cho /admin và /admin/<mục> (15/11/2026): nằm ở layout nên chuyển mục chỉ
@@ -5,7 +6,10 @@ import AdminShell from "@/components/admin/admin-shell";
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
     return (
         <>
-            <AdminShell />
+            {/* Suspense: trang Khoá kết nối đọc tham số trên địa chỉ (?tab=…, useSearchParams). */}
+            <Suspense fallback={null}>
+                <AdminShell />
+            </Suspense>
             {children}
         </>
     );
