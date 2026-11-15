@@ -28,6 +28,10 @@ sys.path.insert(0, PROJECT_DIR)
 
 from dotenv import load_dotenv
 load_dotenv(os.path.join(PROJECT_DIR, '.env'))
+# Khoá nhập ở /admin → Khoá kết nối (bảng api_credentials) thắng khoá cùng tên trong .env — nạp
+# TRƯỚC khi đọc FB_TOKEN bên dưới.
+from sync.core.khoa import nap_khoa_vao_env
+nap_khoa_vao_env()
 
 # ── sync/core imports ────────────────────────────────────────────
 from sync.core.business_rules import STATUS_CATEGORY_MAP, quy_doi_don_ngoai_te, shop_pos_tu_markets

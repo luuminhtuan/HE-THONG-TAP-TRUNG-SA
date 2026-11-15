@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import bcrypt from "bcryptjs";
-import { loadUsers, withUsersLock, isEnvMode, type UserRecord, type UserRole } from "@/lib/users";
+import { loadUsers, withUsersLock, type UserRecord, type UserRole } from "@/lib/users";
 import { accessFromSession } from "@/lib/talpha/access";
 import { ROLES, TEAMS } from "@/lib/talpha/access-rules";
 
-// Đọc/ghi users.json đi qua lib/users.ts — nơi duy nhất giữ KHOÁ FILE.
+// Đọc/ghi người dùng đi qua lib/users.ts — bảng Postgres `users`, ghi trong transaction có khoá.
 // Bản trước tự đọc tự ghi ở đây, không khoá, và ghi thụt lề 2 trong khi bản kia
 // ghi thụt lề 4: hai người sửa cùng lúc là mất một bản ghi.
 
 // Quản lý người dùng: admin kỹ thuật HOẶC giám đốc. Hỏi lại kho người dùng chứ không tin
 // vai trò ghi trong cookie — người vừa bị hạ quyền không còn sửa được ai.
-function canManageUsers(session: unknown): boolean {
-    return !!accessFromSession(session as Parameters<typeof accessFromSession>[0])?.full;
+async function canManageUsers(session: unknown): Promise<boolean> {
+    return !!(await accessFromSession(session as Parameters<typeof accessFromSession>[0]))?.full;
 }
 
 /** Vai trò phải là vai khai ở access.roles; team phải là team khai ở access.teams (hoặc "*"). */
@@ -28,20 +28,11 @@ function kiemVaiTeam(role: unknown, teams: unknown): { loi: string } | { role?: 
     return { role: (role || undefined) as UserRole | undefined, teams: ds.includes("*") ? ["*"] : ds };
 }
 
-/** Chặn chung cho mọi thao tác GHI: phải có quyền, và phải ghi được. */
+/** Chặn chung cho mọi thao tác GHI: phải có quyền. */
 async function guardWrite() {
     const session = await auth();
-    if (!session || !canManageUsers(session)) {
+    if (!session || !(await canManageUsers(session))) {
         return { session: null, res: NextResponse.json({ error: "Unauthorized" }, { status: 403 }) };
-    }
-    if (isEnvMode()) {
-        return {
-            session,
-            res: NextResponse.json(
-                { error: "Máy chủ đang chạy chế độ chỉ đọc (USERS_JSON) — sửa biến môi trường rồi khởi động lại" },
-                { status: 503 },
-            ),
-        };
     }
     return { session, res: null };
 }
@@ -49,10 +40,10 @@ async function guardWrite() {
 // ─── GET: danh sách người dùng (ẩn mật khẩu) ───
 export async function GET() {
     const session = await auth();
-    if (!session || !canManageUsers(session)) {
+    if (!session || !(await canManageUsers(session))) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
-    return NextResponse.json(loadUsers().map(({ password: _bo, ...rest }) => rest));
+    return NextResponse.json((await loadUsers()).map(({ password: _bo, ...rest }) => rest));
 }
 
 // ─── POST: thêm người dùng ───

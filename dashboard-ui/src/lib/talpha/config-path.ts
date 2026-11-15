@@ -43,11 +43,11 @@ export function configPathBatBuoc(...doan: string[]): string {
 export const RULES_JSON = () => configPathBatBuoc("talpha_rules.json");
 
 /**
- * `data/thi_truong.json` — nước thêm / sửa / tắt ở /admin → Thị trường, PHỦ lên talpha_rules.json
- * (04/11/2026, xem lib/talpha/thi-truong.ts). Ngoài git; chưa ai nhập thì file không có.
- * TALPHA_THI_TRUONG trỏ chỗ khác (test).
+ * Nước thêm / sửa / tắt ở /admin → Thị trường nằm ở bảng market_overrides (15/11/2026 — trước đó file
+ * data/thi_truong.json). Test đặt TALPHA_THI_TRUONG trỏ vào một FILE phủ để không đọc kho của máy
+ * đang chạy test; không đặt = đọc kho.
  */
-export const THI_TRUONG_JSON = () => process.env.TALPHA_THI_TRUONG || path.join(REPO_ROOT, "data", "thi_truong.json");
+export const THI_TRUONG_FILE_TEST = (): string | null => process.env.TALPHA_THI_TRUONG || null;
 
 /** `config/projects/talpha.yaml` — danh sách TKQC Meta và shop POS. */
 export const TALPHA_YAML = () => configPathBatBuoc("projects", "talpha.yaml");

@@ -7,9 +7,9 @@ Lịch việc nền trong docker compose (04/11/2026) — thay các systemd time
   05:10         làm tươi danh mục sản phẩm               sync/talpha/sync_product_catalog.py
   06:00, 21:30  nạp bảng đối tác + đồng bộ vận đơn       ops/deploy/tracking-import.sh
 
-Giờ là giờ Việt Nam. Khoá (Meta, POS, Pancake, 17TRACK) đọc LẠI từ dashboard-ui/.env.khoa.local trước
-MỖI việc — khoá vừa nhập ở /admin → Khoá kết nối có tác dụng từ việc kế tiếp, không phải khởi động lại
-container. Việc nào đang chạy thì lượt sau của chính nó bỏ qua (không chồng hai lượt). Mới bật container
+Giờ là giờ Việt Nam. Khoá (Meta, POS, Pancake, 17TRACK) đọc LẠI từ bảng api_credentials (15/11/2026 —
+trước đó file .env.khoa.local) trước MỖI việc — khoá vừa nhập ở /admin → Khoá kết nối có tác dụng từ
+việc kế tiếp, không phải khởi động lại container. Việc nào đang chạy thì lượt sau của chính nó bỏ qua (không chồng hai lượt). Mới bật container
 thì chạy ngay một vòng kéo số + báo cáo, khỏi chờ tới đầu giờ.
 """
 import os
@@ -55,11 +55,15 @@ def doc_env(duong: str) -> dict:
 
 def moi_truong() -> dict:
     env = dict(os.environ)
-    # .env.local trước, Khoá kết nối sau — khoá nhập trên trang thắng (như docKhoa của dashboard).
-    for f in ("dashboard-ui/.env.local", "dashboard-ui/.env.khoa.local"):
-        for k, v in doc_env(os.path.join(REPO, f)).items():
-            if k not in ("DATABASE_URL", "TALPHA_DOC_PASSWORD"):   # compose quyết định kho số
-                env[k] = v
+    # .env.local trước, Khoá kết nối (bảng api_credentials) sau — khoá nhập trên trang thắng (như
+    # docKhoa của dashboard).
+    for k, v in doc_env(os.path.join(REPO, "dashboard-ui/.env.local")).items():
+        if k not in ("DATABASE_URL", "TALPHA_DOC_PASSWORD", "TALPHA_ENCRYPTION_KEY"):   # compose quyết định
+            env[k] = v
+    if REPO not in sys.path:
+        sys.path.insert(0, REPO)
+    from sync.core.khoa import nap_khoa_vao_env
+    nap_khoa_vao_env(env)
     return env
 
 

@@ -5,7 +5,8 @@
 // Golden-test 29/07: các hàm này ≡ format_all.py trên 502 campaign + 18 tên POS thật.
 // ═══════════════════════════════════════════════════════════════════
 import fs from "fs";
-import { RULES_JSON, THI_TRUONG_JSON } from "./config-path";
+import { RULES_JSON, THI_TRUONG_FILE_TEST } from "./config-path";
+import { truyVanDongBo } from "./db-dong-bo";
 import { phuLuat, type FilePhu } from "./thi-truong";
 
 /** "da_tat" (04/11/2026): ngừng kéo số mới, GIỮ tỷ giá / số chia / đơn cũ — xem MARKET_DA_TAT. */
@@ -45,22 +46,33 @@ type Rules = {
 };
 type ProductCost = { name: string; cost_price_rmb?: number; cost_price_vnd: number };
 
-/** File thị trường nhập ở /admin (data/thi_truong.json). Chưa có = chưa ai nhập. Hỏng thì KÊU và
- *  dùng bản gốc — một file phủ gõ hỏng không được làm sập cả dashboard. */
-function docFilePhu(): FilePhu | null {
-    const p = THI_TRUONG_JSON();
-    if (!fs.existsSync(p)) return null;
+/** Thị trường nhập ở /admin → Thị trường: bảng market_overrides (15/11/2026 — trước đó file
+ *  data/thi_truong.json). Chưa ai nhập = null. Kho lỗi thì KÊU và dùng bản gốc — không làm sập cả
+ *  dashboard. TALPHA_THI_TRUONG (chỉ test) trỏ vào một FILE phủ thay cho bảng. */
+function docPhuLucKhoiDong(): FilePhu | null {
+    const tep = THI_TRUONG_FILE_TEST();
+    if (tep) {
+        if (!fs.existsSync(tep)) return null;
+        try { return JSON.parse(fs.readFileSync(tep, "utf-8")); }
+        catch (e) { console.error(`rules: ${tep} hỏng định dạng — bỏ qua thị trường nhập trên trang:`, e); return null; }
+    }
+    if (!process.env.DATABASE_URL) return null;
     try {
-        return JSON.parse(fs.readFileSync(p, "utf-8"));
+        const rows = truyVanDongBo<{ market_key: string; settings: Record<string, unknown> }>(
+            "SELECT market_key, settings FROM market_overrides ORDER BY market_key");
+        return rows.length ? { markets: Object.fromEntries(rows.map((r) => [r.market_key, r.settings])) } : null;
     } catch (e) {
-        console.error(`rules: ${p} hỏng định dạng — bỏ qua thị trường nhập trên trang:`, e);
+        console.error("rules: KHÔNG đọc được market_overrides — chạy bằng luật gốc, bỏ qua thị trường nhập trên trang:", e);
         return null;
     }
 }
 
+/** Phần phủ đã nạp lúc khởi động — thi-truong-luu.ts so với kho để biết luật đang chạy đã cũ chưa. */
+export const PHU_LUC_KHOI_DONG: FilePhu | null = docPhuLucKhoiDong();
+
 /** Luật gốc (talpha_rules.json) ĐÃ phủ thị trường nhập trên trang — mọi thứ bên dưới sinh từ đây.
  *  Đọc một lần lúc khởi động: lưu thị trường trên trang xong thì dashboard tự khởi động lại. */
-export const RULES: Rules = phuLuat(JSON.parse(fs.readFileSync(RULES_JSON(), "utf-8")), docFilePhu());
+export const RULES: Rules = phuLuat(JSON.parse(fs.readFileSync(RULES_JSON(), "utf-8")), PHU_LUC_KHOI_DONG);
 
 // ── Tỷ giá & thị trường ──
 // Nước sắp chạy có tỷ giá null → 0 ở đây: doanh thu của nó

@@ -23,11 +23,10 @@ export async function POST(req: Request) {
             return NextResponse.json(null, { status: 400 });
         }
 
-        // Nguồn danh sách: lib/users.ts (biến USERS_JSON trên máy chủ, hoặc
-        // config/users.json khi chạy trong repo). Không đọc file ở đây nữa.
-        const users = loadUsers();
+        // Nguồn danh sách: lib/users.ts (bảng Postgres `users`).
+        const users = await loadUsers();
         if (!users.length) {
-            console.error("Không đọc được danh sách người dùng — kiểm USERS_JSON / config/users.json");
+            console.error("Không đọc được danh sách người dùng — bảng users trống hoặc kho lỗi");
             return NextResponse.json(null, { status: 500 });
         }
 

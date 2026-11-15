@@ -22,6 +22,9 @@ REPO = Path(__file__).resolve().parents[2]
 THU_MUC_VIEW = REPO / "db" / "views"
 RULES_FILE = REPO / "config" / "talpha_rules.json"
 YAML_FILE = REPO / "config" / "projects" / "talpha.yaml"
+# Bảng vai chỉ đọc (/api/query, "CEO hỏi") KHÔNG được thấy — cùng danh sách REVOKE của migration 0006.
+BANG_RIENG = ("app_documents", "market_overrides", "market_monthly_reports", "users",
+              "api_credentials", "file_imports")
 
 
 def _luat() -> dict:
@@ -232,6 +235,12 @@ def dung_view(conn, ep: bool = False) -> bool:
         # chỉ được đúng những view mà scopeQuery (access-rules.ts) lọc được theo nước.
         conn.execute("DO $$ BEGIN EXECUTE format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO talpha_doc', "
                      "current_schema()); END $$")
+        # …trừ bảng riêng (migration 0006): mật khẩu, khoá kết nối, sao kê tiền.
+        co = [r[0] for r in conn.execute(
+            "SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename = ANY(%s)",
+            (list(BANG_RIENG),))]
+        if co:
+            conn.execute(f"REVOKE ALL ON {', '.join(co)} FROM talpha_doc, talpha_doc_nuoc")
         conn.execute("GRANT SELECT ON vw_orders_std, vw_fb_ads_std, vw_ad_windows TO talpha_doc_nuoc")
         conn.execute(
             "INSERT INTO view_van_tay (id, van_tay, dung_luc) VALUES (1, %s, now()) "

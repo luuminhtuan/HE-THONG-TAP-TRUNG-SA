@@ -19,11 +19,11 @@ export function publicMode(): boolean {
 
 type SessionLike = { user?: { id?: string | null; email?: string | null } | null } | null | undefined;
 
-export function accessFromSession(session: SessionLike): Access | null {
+export async function accessFromSession(session: SessionLike): Promise<Access | null> {
     const id = session?.user?.id || null;
     const email = (session?.user?.email || "").toLowerCase();
     if (!id && !email) return null;
-    const users = loadUsers();
+    const users = await loadUsers();
     const u = (id && users.find((x) => x.id === id)) || (email && users.find((x) => x.email.toLowerCase() === email)) || null;
     if (!u || u.status === "pending") return null;
     return accessForUser(u);
@@ -37,7 +37,7 @@ export function accessFromSession(session: SessionLike): Access | null {
 export async function getAccess(req: Request, session?: SessionLike): Promise<Access | null> {
     if (isInternalRequest(req)) return fullAccess("internal", "Hệ thống");
     const s = session !== undefined ? session : await auth();
-    const a = accessFromSession(s);
+    const a = await accessFromSession(s);
     if (a) return a;
     return publicMode() ? fullAccess("public", "Chế độ mở") : null;
 }

@@ -35,12 +35,10 @@ const { slotAction, toMin, canDinhChinh, hanDinhChinh } = require("./schedule");
 const { toZalo, chiaTin } = require("./zalo_text");
 const { MARKETERS, DISPLAY, NUOC, chonNhomTheoTen, trangCuaCamp, campaignMarket } = require("./rules");
 const { buildTinGio, messThayTuPancake } = require("./tin_gio");
-const { duongDanPhu } = require("./thi_truong");
+const { layVanTay, vanTayDaNap } = require("./thi_truong");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
-// Số theo nước × người do format_all.py ghi (cùng máy chủ): /opt/talpha/data/bao_cao_nuoc.
-const BAN_DIR = process.env.TALPHA_BAN_NUOC_DIR || path.join(DIR, "..", "..", "data", "bao_cao_nuoc");
 const ARGS = process.argv.slice(2);
 const DRY = ARGS.includes("--dry-run");
 const DR = CFG.dailyReport || {};
@@ -119,10 +117,17 @@ async function fetchStale() {
     } catch (e) { log("Đọc tuổi sync lỗi:", e.message); return null; }
 }
 
-// Bảng số theo nước × người của một tháng — đọc lại mỗi lần (vòng ghi Sheet mỗi giờ thay file).
-function docBan(thang) {
-    try { return JSON.parse(fs.readFileSync(path.join(BAN_DIR, `${thang}.json`), "utf8")); }
-    catch { return null; }
+// Bảng số theo nước × người của một tháng — format_all.py ghi mỗi giờ vào bảng
+// market_monthly_reports (15/11/2026, trước đó file data/bao_cao_nuoc); bot hỏi qua dashboard mỗi lần.
+async function docBan(thang) {
+    try {
+        const r = await fetch(`${CFG.dashboardBaseUrl}/api/talpha/ban-nuoc?thang=${encodeURIComponent(thang)}`,
+            { signal: AbortSignal.timeout(30_000) });
+        return r.ok ? await r.json() : null;
+    } catch (e) {
+        log("Đọc bản số theo nước lỗi:", e.message);
+        return null;
+    }
 }
 
 // /api/talpha/realtime hỏi thẳng Meta + POS live (chậm, có rate-limit): bốn nước của CÙNG một
@@ -655,16 +660,14 @@ async function chayDichVu() {
 
     // Thị trường nhập ở /admin → Thị trường đổi (thêm, sửa, tắt nước): luật nạp lúc khởi động đã cũ.
     // Thoát lúc KHÔNG đang gửi để pm2 dựng lại bot với luật mới (04/11/2026, xem thi_truong.js).
-    const mocThiTruong = mtimeThiTruong();
-    setInterval(() => {
-        if (dangRa || mtimeThiTruong() === mocThiTruong) return;
+    const mocThiTruong = vanTayDaNap();
+    setInterval(async () => {
+        if (dangRa) return;
+        const moi = await layVanTay();
+        if (moi === null || moi === mocThiTruong) return;
         log("Thị trường nhập trên trang đã đổi — khởi động lại để nạp luật mới.");
         process.exit(0);
     }, 60 * 1000);
-}
-
-function mtimeThiTruong() {
-    try { return fs.statSync(duongDanPhu()).mtimeMs; } catch { return 0; }
 }
 
 async function main() {

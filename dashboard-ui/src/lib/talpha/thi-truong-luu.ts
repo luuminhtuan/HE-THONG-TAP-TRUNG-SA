@@ -1,66 +1,77 @@
 // ═══════════════════════════════════════════════════════════════════
-// Thị trường nhập ở /admin → Thị trường (04/11/2026) — phần ĐỤNG ĐĨA: đọc mới nhất, ghi file phủ.
+// Thị trường nhập ở /admin → Thị trường (04/11/2026) — phần ĐỤNG KHO: đọc mới nhất, ghi phần phủ.
 // Phần thuần (phủ, soát, tính khối ghi) ở lib/talpha/thi-truong.ts.
 //
-// RULES trong rules.ts đọc MỘT lần lúc khởi động, và hàng chục hằng số khắp dashboard sinh từ nó.
-// Nên lưu xong thì dashboard tự khởi động lại (pm2 dựng lại tiến trình) thay vì vá từng hằng số;
-// trang này luôn đọc thẳng từ đĩa để thấy ngay cái vừa lưu.
+// Phần phủ nằm ở bảng market_overrides (15/11/2026 — trước đó file data/thi_truong.json), mỗi nước
+// một dòng. RULES trong rules.ts đọc MỘT lần lúc khởi động, và hàng chục hằng số khắp dashboard sinh
+// từ nó. Nên lưu xong thì dashboard tự khởi động lại (pm2 / docker dựng lại tiến trình) thay vì vá
+// từng hằng số; trang này luôn đọc thẳng từ kho để thấy ngay cái vừa lưu.
 // ═══════════════════════════════════════════════════════════════════
 import fs from "fs";
-import path from "path";
-import { RULES_JSON, THI_TRUONG_JSON } from "./config-path";
+import { query } from "@/lib/db";
+import { RULES_JSON } from "./config-path";
+import { PHU_LUC_KHOI_DONG } from "./rules";
 import { phuLuat, type FilePhu, type KhoiPhu } from "./thi-truong";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const lockfile = require("proper-lockfile");
-
-/** Lúc tiến trình này khởi động — file phủ mới hơn mốc này = luật đang chạy đã cũ. */
-const LUC_KHOI_DONG = Date.now();
 
 export function docGoc(): Record<string, unknown> {
     return JSON.parse(fs.readFileSync(RULES_JSON(), "utf-8"));
 }
 
-export function docFilePhu(): FilePhu {
-    const p = THI_TRUONG_JSON();
-    if (!fs.existsSync(p)) return { markets: {} };
-    return JSON.parse(fs.readFileSync(p, "utf-8"));   // hỏng thì ném — trang báo lỗi, không ghi đè mất
+type Dong = { market_key: string; settings: KhoiPhu; updated_at: string; updated_by: string | null };
+
+/** Phần phủ trong kho, cùng dạng file phủ cũ. updated_at / updated_by = lần sửa gần nhất. */
+export async function docFilePhu(): Promise<FilePhu> {
+    const rows = await query<Dong>(
+        "SELECT market_key, settings, updated_at, updated_by FROM market_overrides ORDER BY market_key");
+    const moiNhat = rows.reduce<Dong | null>((m, r) => (!m || r.updated_at > m.updated_at ? r : m), null);
+    return {
+        markets: Object.fromEntries(rows.map((r) => [r.market_key, r.settings])),
+        updated_at: moiNhat?.updated_at,
+        updated_by: moiNhat?.updated_by ?? undefined,
+    };
 }
 
-/** Luật mới nhất trên đĩa (gốc + file phủ) — có thể mới hơn RULES đang chạy. */
-export function luatMoiNhat(): Record<string, unknown> {
-    return phuLuat(docGoc(), docFilePhu());
+/** Luật mới nhất (gốc + phần phủ trong kho) — có thể mới hơn RULES đang chạy. */
+export async function luatMoiNhat(): Promise<Record<string, unknown>> {
+    return phuLuat(docGoc(), await docFilePhu());
 }
 
-/** File phủ đã đổi sau khi tiến trình này khởi động: dashboard đang chạy bằng luật cũ. */
-export function choKhoiDongLai(): boolean {
-    try { return fs.statSync(THI_TRUONG_JSON()).mtimeMs > LUC_KHOI_DONG; } catch { return false; }
-}
-
-/** Đặt (`khoi`) hoặc bỏ (`null`) khối của một nước trong file phủ. Ghi dưới khoá file, đổi tên một phát. */
-export async function luuKhoiPhu(key: string, khoi: KhoiPhu | null, ai: string): Promise<void> {
-    const p = THI_TRUONG_JSON();
-    fs.mkdirSync(path.dirname(p), { recursive: true });
-    if (!fs.existsSync(p)) fs.writeFileSync(p, JSON.stringify({ markets: {} }, null, 2) + "\n", { flag: "a" });
-    const release = await lockfile.lock(p, { retries: { retries: 5, minTimeout: 100, maxTimeout: 1000 }, stale: 10000 });
-    try {
-        const raw = fs.readFileSync(p, "utf-8").trim();
-        const phu: FilePhu = raw ? JSON.parse(raw) : { markets: {} };
-        const markets = { ...(phu.markets || {}) };
-        if (khoi === null || !Object.keys(khoi).length) delete markets[key];
-        else markets[key] = khoi;
-        const moi: FilePhu = {
-            ...phu,
-            markets,
-            updated_at: new Date().toISOString(),
-            updated_by: ai,
-        };
-        // Ghi ra file tạm rồi đổi tên: sync, bot đọc lúc nào cũng gặp file trọn vẹn.
-        const tam = `${p}.${process.pid}.tmp`;
-        fs.writeFileSync(tam, JSON.stringify(moi, null, 2) + "\n");
-        fs.renameSync(tam, p);
-    } finally {
-        await release();
+/** JSON với khoá xếp theo thứ tự — so hai bản phủ không phụ thuộc thứ tự khoá. */
+function chuoiOnDinh(v: unknown): string {
+    if (Array.isArray(v)) return `[${v.map(chuoiOnDinh).join(",")}]`;
+    if (v && typeof v === "object") {
+        return `{${Object.keys(v as object).sort()
+            .map((k) => `${JSON.stringify(k)}:${chuoiOnDinh((v as Record<string, unknown>)[k])}`).join(",")}}`;
     }
+    return JSON.stringify(v ?? null);
+}
+
+/** Dấu vân tay của phần phủ — bot so dấu này để biết phải khởi động lại. */
+export function vanTayPhu(phu: FilePhu | null): string {
+    return chuoiOnDinh((phu && phu.markets) || {});
+}
+
+/** Phần phủ trong kho khác phần đã nạp lúc khởi động: dashboard đang chạy bằng luật cũ. */
+export async function choKhoiDongLai(): Promise<boolean> {
+    try {
+        return vanTayPhu(await docFilePhu()) !== vanTayPhu(PHU_LUC_KHOI_DONG);
+    } catch {
+        return false;
+    }
+}
+
+/** Đặt (`khoi`) hoặc bỏ (`null`) phần sửa của một nước. */
+export async function luuKhoiPhu(key: string, khoi: KhoiPhu | null, ai: string): Promise<void> {
+    if (khoi === null || !Object.keys(khoi).length) {
+        await query("DELETE FROM market_overrides WHERE market_key = @key", { key });
+        return;
+    }
+    await query(
+        `INSERT INTO market_overrides (market_key, settings, updated_at, updated_by)
+         VALUES (@key, @settings::jsonb, now(), @ai)
+         ON CONFLICT (market_key) DO UPDATE
+           SET settings = EXCLUDED.settings, updated_at = now(), updated_by = EXCLUDED.updated_by`,
+        { key, settings: JSON.stringify(khoi), ai });
 }
 
 /**

@@ -27,6 +27,9 @@ from sync.core.thi_truong import doc_luat  # noqa: E402
 # Chạy tay ở máy dev thì đọc .env cạnh script hoặc theo cwd.
 load_dotenv()
 load_dotenv(os.path.join(os.getcwd(), ".env"))
+# Key POS nhập ở /admin → Khoá kết nối (bảng api_credentials) thắng key cùng tên trong .env.
+from sync.core.khoa import nap_khoa_vao_env  # noqa: E402
+nap_khoa_vao_env()
 
 POS_API = "https://pos.pages.fm/api/v1"
 TABLE = "product_catalog"

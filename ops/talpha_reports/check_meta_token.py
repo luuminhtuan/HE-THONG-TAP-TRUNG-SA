@@ -40,6 +40,8 @@ API = "https://graph.facebook.com/v21.0"
 
 def load_env(path):
     out = {}
+    if not path or not os.path.isfile(path):
+        return out
     with open(path, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             line = line.strip()
@@ -62,16 +64,18 @@ def get(path, **params):
 
 
 def main():
-    env = load_env(ENV)
+    env = {**load_env(ENV), **{k: v for k, v in os.environ.items() if k == "TALPHA_META_ACCESS_TOKEN"}}
     nguon = ENV
-    # Khoá nhập ở /admin → Khoá kết nối (04/11/2026) thắng khoá cùng tên trong .env.local —
-    # đúng thứ tự systemd nạp cho sync (drop-in khoa.conf trong vps-setup.sh).
-    khoa = os.path.join(_REPO, "dashboard-ui", ".env.khoa.local")
-    if os.path.isfile(khoa):
-        tren_trang = load_env(khoa)
+    # Khoá nhập ở /admin → Khoá kết nối (bảng api_credentials, 15/11/2026) thắng khoá cùng tên trong
+    # .env.local — đúng thứ tự sync đọc (sync/core/khoa.py).
+    if os.environ.get("DATABASE_URL"):
+        sys.path.insert(0, _REPO)
+        from sync.core.khoa import nap_khoa_vao_env
+        tren_trang = {}
+        nap_khoa_vao_env(tren_trang)
         env.update(tren_trang)
         if tren_trang.get("TALPHA_META_ACCESS_TOKEN"):
-            nguon = khoa
+            nguon = "kho số (api_credentials)"
     tok = env.get("TALPHA_META_ACCESS_TOKEN", "")
     if not tok:
         print("❌ .env không có TALPHA_META_ACCESS_TOKEN")

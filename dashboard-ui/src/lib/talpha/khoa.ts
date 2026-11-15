@@ -6,59 +6,90 @@
 // deploy; máy khác không có file đó thì không chạy được. Nay giám đốc dán khoá mới ở
 // /admin → Khoá kết nối, máy gọi thử khoá trước rồi mới lưu.
 //
-// Lưu ở dashboard-ui/.env.khoa.local (ngoài git, chỉ root đọc), TÁCH khỏi .env.local vì
-// from-mac.sh chép .env.local của Mac đè lên máy chủ mỗi lần deploy — khoá nhập trên trang
-// mà nằm trong đó thì lần deploy sau mất. Khoá trên trang thắng biến môi trường:
-//   • Dashboard đọc file mỗi lượt gọi (nhớ theo mtime) → khoá mới có hiệu lực ngay.
-//   • Sync, vòng ghi Sheet, danh mục SP: systemd nạp file này SAU .env.local (drop-in do
-//     vps-setup.sh dựng) → có hiệu lực từ lần chạy kế tiếp.
+// Lưu ở bảng Postgres `api_credentials` (15/11/2026, migration 0006 — trước đó file
+// dashboard-ui/.env.khoa.local), MÃ HOÁ bằng pgcrypto với chìa TALPHA_ENCRYPTION_KEY: bản sao lưu
+// database hay câu SQL đọc nhầm bảng chỉ thấy chuỗi đã mã hoá; hai vai chỉ đọc của /api/query và
+// "CEO hỏi" không được đọc bảng này. Khoá trên trang thắng biến môi trường (.env.local):
+//   • Dashboard nạp bảng một lần (lượt đọc đầu), nạp lại ngay sau mỗi lần lưu và mỗi 5 phút.
+//   • Sync, vòng ghi báo cáo, danh mục SP, lịch Docker đọc bảng lúc bắt đầu mỗi việc
+//     (sync/core/khoa.py) → có hiệu lực từ lần chạy kế tiếp.
 //
 // Code cần khoá thì gọi docKhoa(), đừng đọc process.env thẳng.
 // ═══════════════════════════════════════════════════════════════════
 import fs from "fs";
-import path from "path";
 import yaml from "js-yaml";
-import { REPO_ROOT, TALPHA_YAML } from "./config-path";
+import { query } from "@/lib/db";
+import { TALPHA_YAML } from "./config-path";
+import { truyVanDongBo } from "./db-dong-bo";
 import { MARKET_DA_TAT, MESS_PANCAKE, RULES, SHOP2MKT, SHOP_POS } from "./rules";
-import { cheKhoa, docEnv, docGhiChu, suaEnv } from "./khoa-file";
+import { cheKhoa } from "./khoa-file";
 import { BIEN_TOKEN_META } from "./tkqc-luat";
 import { PANCAKE_API, hanToken } from "./pancake";
 import { getQuota, keyId } from "./track17";
 import { TRACK_MARKETS } from "./tracking";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const lockfile = require("proper-lockfile");
 
-export const FILE_KHOA = path.join(REPO_ROOT, "dashboard-ui", ".env.khoa.local");
+const BIEN_CHIA = "TALPHA_ENCRYPTION_KEY";
+const chiaMaHoa = () => (process.env[BIEN_CHIA] || "").trim();
+const SQL_DOC = `SELECT name, public.pgp_sym_decrypt(encrypted_value, $1) AS value, note, updated_at, updated_by
+                 FROM api_credentials`;
+const LAM_MOI_SAU = 5 * 60_000;
 
-const DAU_FILE = [
-    "# Khoá kết nối nhập ở /admin → Khoá kết nối. Dashboard tự ghi file này — đừng sửa tay.",
-    "# Ngoài git, deploy không đè. Khoá ở đây thắng khoá cùng tên trong .env.local.",
-    "",
-].join("\n");
+type BanGhi = { value: string; note: string | null; updated_at: string; updated_by: string | null };
+type Dong = BanGhi & { name: string };
 
-let nho: { mtime: number; text: string; map: Map<string, string> } | null = null;
+let nho: { map: Map<string, BanGhi>; luc: number } | null = null;
+let loiLuc = 0;
+let dangLamMoi = false;
+let daBaoThieu = false;
 
-function docFile(): { text: string; map: Map<string, string> } {
-    try {
-        const mtime = fs.statSync(FILE_KHOA).mtimeMs;
-        if (!nho || nho.mtime !== mtime) {
-            const text = fs.readFileSync(FILE_KHOA, "utf8");
-            nho = { mtime, text, map: docEnv(text) };
+const thanhMap = (rows: Dong[]) => new Map(rows.map(({ name, ...r }) => [name, r]));
+
+/** Nạp lại bảng khoá (không chặn). */
+async function lamMoi(): Promise<void> {
+    const chia = chiaMaHoa();
+    if (!chia || !process.env.DATABASE_URL) return;
+    const rows = await query<Dong>(SQL_DOC.replace("$1", "@chia"), { chia });
+    nho = { map: thanhMap(rows), luc: Date.now() };
+}
+
+/** Khoá trong kho. Lượt đầu đọc đồng bộ (docKhoa không await được); sau đó làm mới nền mỗi 5 phút. */
+function khoaTrongKho(): Map<string, BanGhi> {
+    if (nho) {
+        if (Date.now() - nho.luc > LAM_MOI_SAU && !dangLamMoi) {
+            dangLamMoi = true;
+            lamMoi().catch((e) => console.error("khoa: làm mới bảng api_credentials lỗi:", e))
+                .finally(() => { dangLamMoi = false; });
         }
-        return nho;
-    } catch {
-        return { text: "", map: new Map() };   // chưa ai nhập khoá trên trang
+        return nho.map;
+    }
+    const chia = chiaMaHoa();
+    if (!process.env.DATABASE_URL || !chia) {
+        if (!daBaoThieu && process.env.DATABASE_URL) {
+            console.error(`khoa: chưa đặt ${BIEN_CHIA} — không giải mã được khoá trong kho, dùng khoá trong .env.local`);
+            daBaoThieu = true;
+        }
+        return new Map();
+    }
+    if (Date.now() - loiLuc < 30_000) return new Map();   // kho vừa lỗi — đừng chặn mỗi lượt gọi
+    try {
+        nho = { map: thanhMap(truyVanDongBo<Dong>(SQL_DOC, [chia])), luc: Date.now() };
+        return nho.map;
+    } catch (e) {
+        loiLuc = Date.now();
+        console.error("khoa: KHÔNG đọc được bảng api_credentials — dùng khoá trong .env.local:", e);
+        return new Map();
     }
 }
 
-/** Khoá đang dùng: nhập trên trang trước, rồi biến môi trường (.env.local). */
+/** Khoá đang dùng: nhập trên trang (kho) trước, rồi biến môi trường (.env.local). */
 export function docKhoa(ten: string): string {
-    return (docFile().map.get(ten) ?? process.env[ten] ?? "").trim();
+    return (khoaTrongKho().get(ten)?.value ?? process.env[ten] ?? "").trim();
 }
 
 /** Toàn bộ môi trường đã phủ khoá nhập trên trang — cho hàm nhận cả bảng (17TRACK nhiều khoá). */
 export function moiTruongKhoa(): Record<string, string | undefined> {
-    return { ...process.env, ...Object.fromEntries(docFile().map) };
+    const kho = Object.fromEntries([...khoaTrongKho()].map(([k, v]) => [k, v.value]));
+    return { ...process.env, ...kho };
 }
 
 // ─── Danh sách khoá ─────────────────────────────────────────────────
@@ -148,10 +179,9 @@ export type TrangThaiKhoa = Omit<KhoaDef, "shop"> & {
 
 /** Khoá nào đang dùng, lấy từ đâu — giá trị đã che, không bao giờ trả khoá thật. */
 export function trangThaiKhoa(): TrangThaiKhoa[] {
-    const f = docFile();
-    const ghiChu = docGhiChu(f.text);
+    const kho = khoaTrongKho();
     return danhSachKhoa().map(({ shop, ...d }) => {
-        const trang = f.map.get(d.ten) || "";
+        const trang = kho.get(d.ten)?.value || "";
         const env = (process.env[d.ten] || "").trim();
         const v = trang || env;
         return {
@@ -160,29 +190,27 @@ export function trangThaiKhoa(): TrangThaiKhoa[] {
             nguon: trang ? "trang" : env ? "env" : "thieu",
             che: cheKhoa(v),
             do_dai: v.length,
-            cap_nhat: trang ? ghiChu.get(d.ten) || null : null,
+            cap_nhat: trang ? kho.get(d.ten)?.note || null : null,
             env_khac: !!trang && !!env && env !== trang,
         };
     });
 }
 
-/** Đặt hoặc bỏ (`null`) một khoá trên trang. Ghi dưới khoá file, đổi tên một phát. */
-export async function luuKhoa(ten: string, giaTri: string | null, ghiChu: string): Promise<void> {
-    if (!fs.existsSync(FILE_KHOA)) fs.writeFileSync(FILE_KHOA, DAU_FILE, { mode: 0o600, flag: "a" });
-    const release = await lockfile.lock(FILE_KHOA, {
-        retries: { retries: 5, minTimeout: 100, maxTimeout: 1000 },
-        stale: 10000,
-    });
-    try {
-        const cu = fs.readFileSync(FILE_KHOA, "utf8");
-        // Ghi ra file tạm rồi đổi tên: systemd và lượt đọc khác không bao giờ gặp file ghi dở.
-        const tam = `${FILE_KHOA}.${process.pid}.tmp`;
-        fs.writeFileSync(tam, suaEnv(cu || DAU_FILE, ten, giaTri, ghiChu), { mode: 0o600 });
-        fs.renameSync(tam, FILE_KHOA);
-        nho = null;
-    } finally {
-        await release();
+/** Đặt hoặc bỏ (`null`) một khoá trên trang (bảng api_credentials, mã hoá), rồi nạp lại bản nhớ. */
+export async function luuKhoa(ten: string, giaTri: string | null, ghiChu: string, ai = ""): Promise<void> {
+    if (giaTri === null) {
+        await query("DELETE FROM api_credentials WHERE name = @ten", { ten });
+    } else {
+        const chia = chiaMaHoa();
+        if (!chia) throw new Error(`Chưa đặt ${BIEN_CHIA} trên máy chủ — không mã hoá được khoá để lưu`);
+        await query(
+            `INSERT INTO api_credentials (name, encrypted_value, note, updated_at, updated_by)
+             VALUES (@ten, public.pgp_sym_encrypt(@giaTri, @chia), @ghiChu, now(), @ai)
+             ON CONFLICT (name) DO UPDATE SET encrypted_value = EXCLUDED.encrypted_value, note = EXCLUDED.note,
+               updated_at = now(), updated_by = EXCLUDED.updated_by`,
+            { ten, giaTri, chia, ghiChu: ghiChu || null, ai: ai || null });
     }
+    await lamMoi();
 }
 
 // ─── Gọi thử khoá ──────────────────────────────────────────────────

@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Globe2, Plus, Pencil, Power, RotateCcw, Loader2, AlertCircle, CheckCircle2, X, KeyRound } from "lucide-react";
+import { Globe2, Plus, Pencil, Power, RotateCcw, Loader2, AlertCircle, CheckCircle2, X, KeyRound, Eye, EyeOff, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { KhoaCoMat, layKhoa } from "./xem-khoa";
 
 // Thị trường (04/11/2026) — giám đốc thêm nước, sửa tỷ giá, tắt / bật nước ngay trên dashboard.
-// Lưu ở data/thi_truong.json (ngoài git, deploy không đè), phủ lên talpha_rules.json ở cả dashboard,
-// sync, Sheet, bot — xem lib/talpha/thi-truong.ts. Tắt nước = ngừng kéo số mới, GIỮ lịch sử.
+// Lưu ở bảng market_overrides (deploy không đè), phủ lên talpha_rules.json ở cả dashboard, sync,
+// Sheet, bot — xem lib/talpha/thi-truong.ts. Tắt nước = ngừng kéo số mới, GIỮ lịch sử.
+// Key POS của shop nhập ngay trong form (15/11/2026): máy gọi thử shop rồi lưu key MÃ HOÁ vào bảng
+// api_credentials — cùng chỗ với Khoá kết nối, khỏi sang trang đó rồi quay lại.
 
 type TrangThai = "dang_ban" | "sap_chay" | "da_tat";
 type Nuoc = {
@@ -14,13 +17,16 @@ type Nuoc = {
     rate_vnd: number | null; pos_money_divisor: number | null; shop_id: string; status: TrangThai;
     orders_from: string | null; flag: string; tokens: string[]; team: string | null;
     nguon: "config" | "sua_tren_trang" | "them_tren_trang"; bien_key: string | null; co_key: boolean;
+    /** Key đang dùng, đã che (••••b699) — không bao giờ có key thật. */
+    che_key: string;
 };
 type DuLieu = {
     markets: Nuoc[]; teams: { key: string; name: string }[];
     cho_khoi_dong_lai: boolean; updated_at: string | null; updated_by: string | null;
 };
 type Form = Record<"key" | "display" | "shop_label" | "currency" | "currency_symbol" | "rate_vnd" | "pos_money_divisor"
-    | "shop_id" | "status" | "orders_from" | "flag" | "tokens" | "team", string>;
+    | "shop_id" | "status" | "orders_from" | "flag" | "tokens" | "team" | "key_pos", string>;
+type KhoiDongLai = "tu_dong" | "tay" | "khong_can";
 
 const TRANG_THAI: Record<TrangThai, { nhan: string; mau: string; giai: string }> = {
     dang_ban: { nhan: "ĐANG BÁN", mau: "bg-emerald-500/15 text-emerald-500", giai: "Kéo đơn mỗi giờ, tính tiền, hiện ở mọi màn." },
@@ -35,13 +41,14 @@ const NGUON: Record<Nuoc["nguon"], string> = {
 
 const FORM_TRONG: Form = {
     key: "", display: "", shop_label: "", currency: "", currency_symbol: "", rate_vnd: "", pos_money_divisor: "",
-    shop_id: "", status: "sap_chay", orders_from: "", flag: "", tokens: "", team: "",
+    shop_id: "", status: "sap_chay", orders_from: "", flag: "", tokens: "", team: "", key_pos: "",
 };
 const formTu = (n: Nuoc): Form => ({
     key: n.key, display: n.display, shop_label: n.shop_label, currency: n.currency, currency_symbol: n.currency_symbol,
     rate_vnd: n.rate_vnd === null ? "" : String(n.rate_vnd),
     pos_money_divisor: n.pos_money_divisor === null ? "" : String(n.pos_money_divisor),
     shop_id: n.shop_id, status: n.status, orders_from: n.orders_from || "", flag: n.flag, tokens: n.tokens.join(", "), team: n.team || "",
+    key_pos: "",   // key thật không bao giờ về trình duyệt — trống = giữ key đang có
 });
 const fmt = (n: number) => n.toLocaleString("vi-VN");
 
@@ -49,7 +56,7 @@ export default function ThiTruongTab() {
     const [dl, setDl] = useState<DuLieu | null>(null);
     const [error, setError] = useState("");
     const [thongBao, setThongBao] = useState("");
-    const [form, setForm] = useState<{ laMoi: boolean; f: Form } | null>(null);
+    const [form, setForm] = useState<{ laMoi: boolean; f: Form; cheKey: string; bienKey: string } | null>(null);
     const [dangLuu, setDangLuu] = useState(false);
     const [loiForm, setLoiForm] = useState<string[]>([]);
 
@@ -66,18 +73,23 @@ export default function ThiTruongTab() {
     }, []);
     useEffect(() => { tai(); }, [tai]);
 
-    const daLuu = (j: DuLieu & { khoi_dong_lai: "tu_dong" | "tay" }) => {
+    const daLuu = (j: DuLieu & { khoi_dong_lai: KhoiDongLai; luu_key?: boolean; da_xoa?: string }) => {
         setDl(j);
+        const dau = j.da_xoa ? `Đã xoá ${j.da_xoa} (kèm key POS).`
+            : j.luu_key ? "Đã lưu (key POS gọi thử được shop, đã cất mã hoá)." : "Đã lưu.";
         setThongBao(j.khoi_dong_lai === "tu_dong"
-            ? "Đã lưu. Dashboard đang khởi động lại để áp dụng — tải lại trang sau khoảng 15 giây."
-            : "Đã lưu. Khởi động lại dashboard (dừng rồi chạy lại npm run dev) để áp dụng.");
+            ? `${dau} Dashboard đang khởi động lại để áp dụng — tải lại trang sau khoảng 15 giây.`
+            : j.khoi_dong_lai === "khong_can"
+                ? `${dau} Sync dùng key mới từ vòng kế tiếp.`
+                : `${dau} Khởi động lại dashboard (dừng rồi chạy lại npm run dev) để áp dụng.`);
     };
 
     const gui = async (f: Form, laMoi: boolean): Promise<string[] | null> => {
+        const { key_pos, ...nuoc } = f;
         const r = await fetch("/api/talpha/thi-truong", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ nuoc: f, la_moi: laMoi }),
+            body: JSON.stringify({ nuoc, la_moi: laMoi, key_pos: key_pos.trim() || undefined }),
         });
         const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
         if (!r.ok) return j.loi || [j.error || `HTTP ${r.status}`];
@@ -111,7 +123,11 @@ export default function ThiTruongTab() {
     };
 
     const boSua = async (n: Nuoc) => {
-        if (!confirm(`Bỏ mọi chỗ đã sửa trên trang của ${n.display}, quay về đúng config?`)) return;
+        const hoi = n.nguon === "them_tren_trang"
+            ? `Xoá hẳn ${n.display}? Chỉ xoá được nước chưa có đơn, chưa có chi tiêu quảng cáo — máy soát trước khi xoá. Key POS của nước này cũng bị xoá. Không hoàn tác được.`
+            : `Bỏ mọi chỗ đã sửa trên trang của ${n.display}, quay về đúng config?`;
+        if (!confirm(hoi)) return;
+        setError("");
         const r = await fetch(`/api/talpha/thi-truong?key=${encodeURIComponent(n.key)}`, { method: "DELETE" });
         const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
         if (!r.ok) setError(j.error || `HTTP ${r.status}`);
@@ -140,7 +156,7 @@ export default function ThiTruongTab() {
                     </p>
                 </div>
                 <button
-                    onClick={() => { setForm({ laMoi: true, f: { ...FORM_TRONG } }); setLoiForm([]); }}
+                    onClick={() => { setForm({ laMoi: true, f: { ...FORM_TRONG }, cheKey: "", bienKey: "" }); setLoiForm([]); }}
                     className="flex items-center gap-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-lg shadow-indigo-500/25"
                 >
                     <Plus className="h-4 w-4" />
@@ -200,6 +216,10 @@ export default function ThiTruongTab() {
                             <dd className="text-right tabular-nums text-slate-300">{n.pos_money_divisor ?? "chưa đo"}</dd>
                             <dt className="text-slate-500">Shop POS</dt>
                             <dd className="text-right font-mono text-slate-300">{n.shop_id || "chưa có"}</dd>
+                            <dt className="text-slate-500">Key POS</dt>
+                            <dd className={cn("min-w-0 text-right font-mono", n.co_key ? "text-slate-300" : "text-slate-500")}>
+                                {n.co_key && n.bien_key ? <KhoaCoMat ten={n.bien_key} che={n.che_key} /> : "chưa có"}
+                            </dd>
                             <dt className="text-slate-500">Mã campaign</dt>
                             <dd className="truncate text-right font-mono text-slate-300">{n.tokens.join(" · ") || "—"}</dd>
                         </dl>
@@ -207,13 +227,13 @@ export default function ThiTruongTab() {
                         {n.shop_id && n.status !== "da_tat" && !n.co_key && (
                             <p className="flex items-center gap-1.5 text-xs text-amber-500">
                                 <KeyRound className="h-3 w-3 shrink-0" />
-                                Chưa có key POS — nhập ở Khoá kết nối (ô &ldquo;Key POS {n.display}&rdquo;).
+                                Chưa có key POS — bấm Sửa rồi dán key vào ô &ldquo;Key POS&rdquo;.
                             </p>
                         )}
 
                         <div className="flex flex-wrap gap-2">
                             <button
-                                onClick={() => { setForm({ laMoi: false, f: formTu(n) }); setLoiForm([]); }}
+                                onClick={() => { setForm({ laMoi: false, f: formTu(n), cheKey: n.co_key ? n.che_key : "", bienKey: n.bien_key || "" }); setLoiForm([]); }}
                                 className="flex items-center gap-1.5 rounded-lg border border-white/[0.1] px-3 py-1.5 text-xs font-medium text-foreground hover:bg-white/[0.06]"
                             >
                                 <Pencil className="h-3 w-3" /> Sửa
@@ -234,6 +254,12 @@ export default function ThiTruongTab() {
                                 <button onClick={() => boSua(n)}
                                     className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/[0.06] hover:text-foreground">
                                     <RotateCcw className="h-3 w-3" /> Bỏ sửa trên trang
+                                </button>
+                            )}
+                            {n.nguon === "them_tren_trang" && (
+                                <button onClick={() => boSua(n)} title="Chỉ xoá được nước chưa có đơn, chưa có chi tiêu"
+                                    className="ml-auto flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-rose-500 hover:bg-rose-500/10">
+                                    <Trash2 className="h-3 w-3" /> Xoá
                                 </button>
                             )}
                         </div>
@@ -263,10 +289,25 @@ function O({ nhan, giai, children }: { nhan: string; giai?: string; children: Re
 const O_NHAP = "w-full rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-sm text-foreground placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none disabled:opacity-60";
 
 function FormNuoc({ form, teams, dangLuu, loi, doi, luu, huy }: {
-    form: { laMoi: boolean; f: Form }; teams: { key: string; name: string }[]; dangLuu: boolean; loi: string[];
+    form: { laMoi: boolean; f: Form; cheKey: string; bienKey: string }; teams: { key: string; name: string }[]; dangLuu: boolean; loi: string[];
     doi: (f: Form) => void; luu: () => void; huy: () => void;
 }) {
-    const { laMoi, f } = form;
+    const { laMoi, f, cheKey, bienKey } = form;
+    const [hienKey, setHienKey] = useState(false);
+    const [dangLayKey, setDangLayKey] = useState(false);
+    const [loiKey, setLoiKey] = useState("");
+    // Con mắt: ô trống mà nước đã có key → lấy key đang dùng điền vào ô (lưu lại y nguyên = không đổi gì).
+    const batMat = async () => {
+        if (hienKey) { setHienKey(false); return; }
+        setLoiKey("");
+        if (!f.key_pos && cheKey && bienKey) {
+            setDangLayKey(true);
+            try { doi({ ...f, key_pos: await layKhoa(bienKey) }); }
+            catch (e) { setLoiKey(e instanceof Error ? e.message : "Không xem được key"); return; }
+            finally { setDangLayKey(false); }
+        }
+        setHienKey(true);
+    };
     const o = (k: keyof Form) => ({
         id: `tt-${k}`,
         value: f[k],
@@ -316,8 +357,24 @@ function FormNuoc({ form, teams, dangLuu, loi, doi, luu, huy }: {
                         <option value="100">100 — lưu xu</option>
                     </select>
                 </O>
-                <O nhan="Shop POS (mã số)" giai="Key của shop nhập ở Khoá kết nối — ô Key POS hiện ra sau khi lưu.">
+                <O nhan="Shop POS (mã số)" giai="Mã số shop trên Poscake. Key của shop dán ở ô Key POS ngay bên cạnh.">
                     <input {...o("shop_id")} inputMode="numeric" placeholder="1022091930" className={cn(O_NHAP, "font-mono")} />
+                </O>
+                <O nhan="Key POS"
+                    giai={cheKey
+                        ? `Đang dùng key ${cheKey}. Để trống là giữ nguyên; dán key mới là thay.`
+                        : "Lấy ở POS → Cài đặt → Nâng cao → Kết nối bên thứ ba → Webhook/API. Lưu là máy gọi thử shop bằng key này; key được mã hoá, không hiện lại."}>
+                    <span className="relative block">
+                        <input {...o("key_pos")} type={hienKey ? "text" : "password"} autoComplete="off" spellCheck={false}
+                            placeholder={cheKey ? `Giữ ${cheKey}` : "Dán key API của shop"} className={cn(O_NHAP, "pr-10 font-mono")} />
+                        <button type="button" onClick={batMat} disabled={dangLayKey}
+                            aria-label={hienKey ? "Che key" : cheKey && !f.key_pos ? "Xem key đang dùng" : "Hiện key"}
+                            title={hienKey ? "Che key" : cheKey && !f.key_pos ? "Xem key đang dùng" : "Hiện key"}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-foreground disabled:opacity-50">
+                            {dangLayKey ? <Loader2 className="h-4 w-4 animate-spin" /> : hienKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                    </span>
+                    {loiKey && <span className="block text-[11px] text-rose-400">{loiKey}</span>}
                 </O>
                 <O nhan="Tính đơn từ ngày" giai="Đơn tạo trước ngày này (giờ VN) không kéo về. Bỏ trống = không chặn.">
                     <input {...o("orders_from")} type="date" className={O_NHAP} />

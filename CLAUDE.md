@@ -75,23 +75,31 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   `/admin` → TKQC, có tác dụng ngay. **Đừng ghi thẳng vào `fb_ads_data`** — nó là view.
   `talpha.yaml → ad_account_ids` và `ad_accounts.json` không còn ai đọc.
 * **Đăng nhập + phân quyền theo team** (05/10/2026): NextAuth v5 (`lib/auth.ts`); người dùng
-  qua `lib/users.ts` (`config/users.json`, mỗi người `role` + `teams`). Luật ở
+  qua `lib/users.ts` (bảng `users`, mỗi người `role` + `teams`). Luật ở
   `talpha_rules.json → access`, đọc qua `lib/talpha/access-rules.ts` (có test). Cửa chặn chung:
   `src/proxy.ts` (Next 16, chạy Node). **Thêm route API mới thì khai vào `API_RULES`** — không
   khai là chỉ giám đốc gọi được. Route gộp nhiều nước phải tự lọc theo `getAccess()`.
   Bot/việc nền gọi API bằng header `x-talpha-token` (chìa ở `data/.internal_token`).
 * **Khoá kết nối** (04/11/2026): token Meta, key POS từng shop, token Pancake, key 17TRACK nhập ở
-  `/admin` → Khoá kết nối — máy gọi thử khoá rồi mới lưu. Lưu ở `dashboard-ui/.env.khoa.local`
-  (ngoài git, `from-mac.sh` không đè), thắng khoá cùng tên trong `.env.local`. Dashboard đọc qua
-  `docKhoa()` (`lib/talpha/khoa.ts`) — **đừng đọc `process.env` thẳng cho khoá**; sync, Sheet,
-  danh mục SP nhận qua drop-in systemd `khoa.conf` (VPS) hoặc lịch Docker đọc lại file trước mỗi việc.
+  `/admin` → Khoá kết nối — máy gọi thử khoá rồi mới lưu. Lưu ở bảng `api_credentials` (15/11/2026),
+  MÃ HOÁ bằng pgcrypto với chìa `TALPHA_ENCRYPTION_KEY` (đổi chìa = phải nhập lại mọi khoá), thắng khoá
+  cùng tên trong `.env.local`. Dashboard đọc qua `docKhoa()` (`lib/talpha/khoa.ts`) — **đừng đọc
+  `process.env` thẳng cho khoá**; Python gọi `nap_khoa_vao_env()` (`sync/core/khoa.py`) lúc bắt đầu.
 * **Thị trường trên trang** (04/11/2026): `/admin` → Thị trường thêm nước, sửa tỷ giá, tắt / bật nước.
-  Lưu ở `data/thi_truong.json` (ngoài git), PHỦ lên `talpha_rules.json` ở cả dashboard
+  Lưu ở bảng `market_overrides` (15/11/2026), PHỦ lên `talpha_rules.json` ở cả dashboard
   (`lib/talpha/thi-truong.ts`), sync / Sheet / view (`sync/core/thi_truong.py`) và bot
   (`ops/zalo-alerts/thi_truong.js`) — ba bản chạy chung `tests/fixtures/thi_truong_phu.json`, sửa
   luật phủ thì sửa cả ba. Shop POS sinh từ `markets` (`talpha.yaml → poscake` không còn ai đọc).
   Chỉ nước `dang_ban` được kéo đơn / gọi POS; `da_tat` giữ lịch sử. Lưu xong dashboard và bot tự
   khởi động lại (pm2 / docker); vòng sync đầu giờ tự dựng lại view khi tỷ giá / số chia đổi.
+* **Dữ liệu người dùng nhập nằm trong Postgres** (15/11/2026, migration 0006, tên bảng tiếng Anh):
+  `app_documents` (sao kê COD, việc đối soát, thanh toán QC, vận đơn, chi phí vận hành — đọc/ghi qua
+  `lib/talpha/store.ts`), `market_overrides`, `market_monthly_reports` (số nước × người cho bot, bot
+  đọc qua `/api/talpha/ban-nuoc`), `users`, `api_credentials`. File cũ (`data/*.json`, `users.json`,
+  `.env.khoa.local`) được `sync/core/nhap_file.py` chép vào MỘT lần ở bước migrate (sổ `file_imports`)
+  rồi không ai đọc nữa. Vai chỉ đọc (`/api/query`, "CEO hỏi") bị REVOKE khỏi các bảng này —
+  `pg_view.py → BANG_RIENG`; thêm bảng riêng mới thì thêm vào đó. Còn là file: luật gốc
+  `config/talpha_rules.json` (git) và chìa nội bộ `data/.internal_token`.
 
 ## Nguyên tắc cứng — vi phạm là số sai hoặc mất dữ liệu
 

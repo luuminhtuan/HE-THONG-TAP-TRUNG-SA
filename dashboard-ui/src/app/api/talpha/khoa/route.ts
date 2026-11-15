@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 //   POST {ten, gia_tri} → gọi thử khoá mới với dịch vụ thật, gọi được mới lưu
 //   DELETE ?ten=     → bỏ khoá nhập trên trang, quay về khoá trong .env.local
 //
-// Xem lib/talpha/khoa.ts: lưu ở đâu, vì sao không ghi vào .env.local.
+// Xem lib/talpha/khoa.ts: lưu ở bảng api_credentials (mã hoá), vì sao không ghi vào .env.local.
 
 export async function GET(req: NextRequest) {
     const ds = trangThaiKhoa();
@@ -42,7 +42,12 @@ export async function POST(req: NextRequest) {
     }
     const a = await getAccess(req);
     const luc = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", dateStyle: "short", timeStyle: "short" });
-    await luuKhoa(ten, giaTri, `${a?.email || a?.name || "?"} lưu lúc ${luc}`);
+    const ai = a?.email || a?.name || "?";
+    try {
+        await luuKhoa(ten, giaTri, `${ai} lưu lúc ${luc}`, ai);
+    } catch (e) {
+        return NextResponse.json({ error: `Chưa lưu — ${e instanceof Error ? e.message : e}` }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, kiem, khoa: trangThaiKhoa() });
 }
 

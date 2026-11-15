@@ -50,8 +50,8 @@ Nguyên tắc: **đọc xong tin là làm được ngay**, không mở dashboard
 * Ngày đông khách: tin vận đơn tự tách thành 2–3 tin Zalo (khung 1800 ký tự).
 * Mỗi nước một nhóm, một mốc riêng: nước này hỏng không kéo nước kia. Trong một nhóm, tin ads
   luôn đứng trước tin vận đơn cùng mốc.
-* **Số ads theo nước** đọc `data/bao_cao_nuoc/<tháng>.json` — `format_all.py` ghi ngay sau khi
-  ghi file TỔNG TEAM, cùng bộ ô, nên tổng người trong nước = đúng tab nước của Sheet, và có xếp
+* **Số ads theo nước** đọc bảng `market_monthly_reports` qua `/api/talpha/ban-nuoc` (15/11/2026 —
+  trước đó file `data/bao_cao_nuoc/<tháng>.json`) — `format_all.py` ghi ngay sau khi ghi bảng TỔNG TEAM, cùng bộ ô, nên tổng người trong nước = đúng tab nước của Sheet, và có xếp
   hạng người TRONG nước (file TỔNG TEAM không có: tab người gộp mọi nước). Chưa có file (hoặc cũ
   hơn vòng ghi Sheet OK gần nhất quá 45') → đọc tab nước của TỔNG TEAM, tin ghi rõ thiếu xếp hạng.
 * ▲▼ trưa/chiều nhớ theo nước: `state.json → soMoc["TW|13:00"]`. Mốc ghi `state.json → moc["ads:TW:sang"]`.

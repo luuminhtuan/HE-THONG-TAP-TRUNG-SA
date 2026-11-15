@@ -92,4 +92,19 @@ t("thêm nước: ghi đủ; phủ lại rồi mở form ra đúng cái đã nh�
     assert.deepStrictEqual(T.nhapTuLuat("Thailand", sau), thai());
 });
 
+console.log("── Thị trường: camp thuộc nước nào (soát trước khi xoá nước) ──");
+t("cùng kết quả campaignMarket của rules.ts trên luật đang chạy", () => {
+    const luat = { market_aliases: R.RULES.market_aliases, camp_market_tokens: R.RULES.camp_market_tokens };
+    for (const ten of ["TW/SAnh/001/ABC", "SG/Thai/x", "Thuong/JP/abc", "ae/loc", "khong ma nuoc", "", "Thuong/SG/TW"]) {
+        const m = R.campaignMarket(ten);
+        assert.strictEqual(T.nuocCuaCamp(ten, luat), m.source === "mac_dinh" ? null : m.market, ten);
+    }
+});
+t("nước vừa thêm trên trang (chưa khởi động lại) đã nhận camp mang mã của nó", () => {
+    const sau = T.phuLuat(BO.luat, { markets: { Thailand: { display: "Thái Lan", shop_label: "TH", tokens: ["TH", "THAI"] } } });
+    assert.strictEqual(T.nuocCuaCamp("TH/SAnh/001", sau), "Thailand");
+    assert.strictEqual(T.nuocCuaCamp("Thuong/thai/abc", sau), "Thailand");
+    assert.strictEqual(T.nuocCuaCamp("TH/SAnh/001", BO.luat), null);
+});
+
 console.log(`${ok} phép thử thị trường qua.`);

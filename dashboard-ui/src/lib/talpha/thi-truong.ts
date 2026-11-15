@@ -31,6 +31,19 @@ type LuatCoThiTruong = {
 };
 
 /**
+ * Nước của một campaign theo `luat` truyền vào — CÙNG cách campaignMarket (rules.ts): ô nào trong
+ * tên (tách bằng "/") là mã nước thì lấy, ô trái nhất thắng. null = không ô nào là mã nước (rules.ts
+ * khi đó tính về nước mặc định). Dùng khi cần luật MỚI NHẤT (vd soát trước khi xoá nước vừa thêm),
+ * còn lại dùng campaignMarket.
+ */
+export function nuocCuaCamp(ten: string | null | undefined, luat: LuatCoThiTruong): string | null {
+    const aliases = luat.market_aliases || {};
+    const ma: Record<string, string> = Object.fromEntries(
+        (luat.camp_market_tokens || []).map((t) => [String(t).toUpperCase(), aliases[t]]));
+    return String(ten || "").split("/").map((x) => ma[x.trim().toUpperCase()]).find(Boolean) || null;
+}
+
+/**
  * Phủ file thị trường lên luật gốc. Không sửa `luat` truyền vào.
  * Mỗi nước: ô trong file phủ đè ô cùng tên của bản gốc, ô không nhắc tới giữ nguyên.
  * Mã campaign đang thuộc nước KHÁC không bị giành — chi tiêu nước đó không được nhảy sang nước mới.

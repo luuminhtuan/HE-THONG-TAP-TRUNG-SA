@@ -2,14 +2,17 @@
 Thị trường nhập ở /admin → Thị trường (04/11/2026) — phủ lên config/talpha_rules.json.
 
 talpha_rules.json nằm trong git, mà máy chủ lấy code bằng `reset --hard origin/main` — sửa nó trên
-trang là lần deploy sau mất. Nên nước thêm / sửa / tắt trên trang nằm ở file PHỦ ngoài git
-(<repo>/data/thi_truong.json), và mọi nơi đọc luật phủ file đó lên bản gốc. Bản này cho Python
-(sync, view Postgres, vòng ghi báo cáo); bản dashboard ở dashboard-ui/src/lib/talpha/thi-truong.ts,
-bản bot ở ops/zalo-alerts/thi_truong.js. Ba bản phải ra CÙNG kết quả — bộ dữ liệu chung
-tests/fixtures/thi_truong_phu.json.
+trang là lần deploy sau mất. Nên nước thêm / sửa / tắt trên trang nằm ở bảng PHỦ `market_overrides`
+(15/11/2026 — trước đó file data/thi_truong.json), và mọi nơi đọc luật phủ bảng đó lên bản gốc. Bản
+này cho Python (sync, view Postgres, vòng ghi báo cáo); bản dashboard ở
+dashboard-ui/src/lib/talpha/thi-truong.ts, bản bot ở ops/zalo-alerts/thi_truong.js. Ba bản phải ra
+CÙNG kết quả — bộ dữ liệu chung tests/fixtures/thi_truong_phu.json.
 
-Mỗi lần chạy (mỗi vòng sync, mỗi vòng ghi Sheet) là một tiến trình mới nên đọc lại file phủ —
+Mỗi lần chạy (mỗi vòng sync, mỗi vòng ghi Sheet) là một tiến trình mới nên đọc lại bảng phủ —
 lưu trên trang xong thì vòng kế tiếp dùng ngay.
+
+TALPHA_THI_TRUONG (chỉ cho test) trỏ vào một FILE phủ thay cho bảng — test soát luật của repo,
+không phải thị trường ai đó nhập trên máy đang chạy test.
 """
 import copy
 import json
@@ -23,15 +26,8 @@ REPO = Path(__file__).resolve().parents[2]
 CHI_O_FILE_PHU = ("tokens", "team")
 
 
-def duong_dan_phu(repo=None) -> str:
-    """data/thi_truong.json của repo; TALPHA_THI_TRUONG trỏ chỗ khác (test)."""
-    return os.environ.get("TALPHA_THI_TRUONG") or str(Path(repo or REPO) / "data" / "thi_truong.json")
-
-
-def doc_phu(repo=None):
-    """File phủ, hoặc None nếu chưa ai nhập. Hỏng thì KÊU và bỏ qua — một file gõ hỏng không được
-    làm sập cả vòng sync."""
-    p = duong_dan_phu(repo)
+def _doc_file_phu(p: str):
+    """File phủ của test (TALPHA_THI_TRUONG). Không có file = chưa ai nhập."""
     if not os.path.isfile(p):
         return None
     try:
@@ -40,6 +36,30 @@ def doc_phu(repo=None):
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  {p} hỏng định dạng ({e}) — bỏ qua thị trường nhập trên trang", file=sys.stderr)
         return None
+
+
+def doc_phu_tu_kho(conn) -> dict:
+    """{"markets": {nước: khối}} từ bảng market_overrides — cùng dạng file phủ cũ."""
+    rows = conn.execute("SELECT market_key, settings FROM market_overrides ORDER BY market_key").fetchall()
+    return {"markets": {k: v for k, v in rows}}
+
+
+def doc_phu(repo=None):
+    """Phần phủ, hoặc None nếu chưa ai nhập. Kho lỗi thì KÊU và bỏ qua — không được làm sập cả
+    vòng sync (chạy bằng luật gốc, và dòng cảnh báo nằm trong log của vòng đó)."""
+    tep = os.environ.get("TALPHA_THI_TRUONG")
+    if tep:
+        return _doc_file_phu(tep)
+    if not (os.environ.get("DATABASE_URL") or "").strip():
+        return None
+    try:
+        from sync.core.pg import ket_noi
+        with ket_noi() as conn:
+            phu = doc_phu_tu_kho(conn)
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️  không đọc được market_overrides ({e}) — bỏ qua thị trường nhập trên trang", file=sys.stderr)
+        return None
+    return phu if phu["markets"] else None
 
 
 def phu_luat(luat: dict, phu) -> dict:

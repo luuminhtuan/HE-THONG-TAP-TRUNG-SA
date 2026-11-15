@@ -11,8 +11,10 @@
 # MÁY THỬ / MÁY NỘI BỘ: dashboard bỏ đăng nhập (DASHBOARD_PUBLIC) và mật khẩu Postgres là mặc định.
 # Cổng chỉ mở cho chính máy này (127.0.0.1). Đưa ra internet thì phải bật đăng nhập và đổi mật khẩu.
 #
-# Khoá Meta / POS / Pancake / 17TRACK nhập ở /admin → Khoá kết nối — ghi vào
-# dashboard-ui/.env.khoa.local (ngoài git); việc nền đọc lại file đó trước mỗi lần chạy.
+# MỌI dữ liệu người dùng nhập nằm trong Postgres (15/11/2026, migration 0006): sao kê, vận đơn, thị
+# trường, người dùng, và khoá Meta / POS / Pancake / 17TRACK nhập ở /admin → Khoá kết nối (bảng
+# api_credentials, MÃ HOÁ bằng TALPHA_ENCRYPTION_KEY — đổi chìa này là khoá cũ không giải mã được nữa,
+# phải nhập lại). File cũ (data/*.json, .env.khoa.local) được chép vào kho một lần ở bước migrate.
 # ═══════════════════════════════════════════════════════════════════════════════════════
 name: talpha
 
@@ -27,11 +29,11 @@ x-python: &python
   env_file:
     - path: dashboard-ui/.env.local
       required: false
-    - path: dashboard-ui/.env.khoa.local   # sau .env.local: khoá nhập trên trang thắng
-      required: false
   environment:
     DATABASE_URL: postgresql://talpha:talpha@db:5432/talpha
     TALPHA_DOC_PASSWORD: ${TALPHA_DOC_PASSWORD:-chi-doc-may-thu}
+    # Chìa mã hoá khoá kết nối trong kho (sync/core/khoa.py) — PHẢI trùng với dashboard bên dưới.
+    TALPHA_ENCRYPTION_KEY: ${TALPHA_ENCRYPTION_KEY:-may-thu-doi-chia-nay-khi-dua-ra-ngoai}
     TALPHA_RULES: /app/config/talpha_rules.json
     TALPHA_REPO: /app
     TALPHA_APP_DIR: /app
@@ -76,6 +78,7 @@ services:
     environment:
       DATABASE_URL: postgresql://talpha:talpha@db:5432/talpha
       TALPHA_DOC_PASSWORD: ${TALPHA_DOC_PASSWORD:-chi-doc-may-thu}
+      TALPHA_ENCRYPTION_KEY: ${TALPHA_ENCRYPTION_KEY:-may-thu-doi-chia-nay-khi-dua-ra-ngoai}
       AUTH_URL: http://localhost:${DASHBOARD_PORT:-3200}
       NEXTAUTH_URL: http://localhost:${DASHBOARD_PORT:-3200}
       AUTH_SECRET: chi-dung-tren-may-thu-docker

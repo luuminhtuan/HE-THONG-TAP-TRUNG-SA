@@ -17,7 +17,7 @@ import calendar as _cal
 # "Tháng N" trên Drive. Trước đây GRAND_KEY + <nước>_files.json là MỘT bộ ID cố định: 01/10/2026
 # sang tháng không ai đổi ID, 16 file tháng 9 bị xoá sạch rồi ghi số tháng 10.
 import report_files as _rf
-import talpha_paths   # repo_dir(): nơi ghi data/bao_cao_nuoc cho bot Zalo
+import talpha_paths   # repo_dir(): gốc repo, để import sync.core (kho số, khoá kết nối)
 import pancake_mess   # tin nhắn Nhật từ Pancake — Meta không báo mess ở Nhật (09/10/2026)
 _T=_rf.ngay_chot(os.environ.get('TALPHA_REPORT_MONTH'))
 _HERE=os.path.dirname(os.path.abspath(__file__))
@@ -77,8 +77,10 @@ GRAND_KEY=BO.get('grand') or ""
 DAYS=[datetime.date(_T.year,_T.month,d) for d in range(1,_cal.monthrange(_T.year,_T.month)[1]+1)]  # đủ ngày tháng hiện tại
 sys.path.insert(0, talpha_paths.repo_dir())
 from sync.core.pg import ket_noi
+from sync.core.khoa import nap_khoa_vao_env
 from psycopg.rows import namedtuple_row
 from psycopg.types.json import Jsonb
+nap_khoa_vao_env()   # token Pancake (mess Nhật) nhập ở /admin → Khoá kết nối — bảng api_credentials
 pg=ket_noi()
 def Q(sql):
     """Chạy một câu SELECT, trả các dòng đọc được theo tên cột (r.campaign_name…)."""
@@ -462,8 +464,9 @@ if GHI_SHEET and GRAND_KEY and not GRAND_KEY.endswith("placeholder"):
     write_file(GRAND_KEY,TABS_TONG,title=f"TỔNG TEAM THÁNG {_T.month}"); n+=1; print(f"[{n}] GRAND TỔNG THÁNG: {len(TABS_TONG)} tab")
 # ── SỐ THEO NƯỚC × NGƯỜI cho bot Zalo (Sỹ Anh chốt 08/10/2026: mỗi nước một nhóm "ADS + VẬN
 # ĐƠN") ── File TỔNG TEAM chỉ có tab nước (gộp người) và tab người (gộp nước); bảng xếp hạng
-# người TRONG một nước không có ở đâu. Ghi ra data/bao_cao_nuoc/<tháng>.json NGAY SAU bảng
-# TỔNG TEAM, cùng một bộ ô `cell` → tổng người trong nước = đúng tab nước.
+# người TRONG một nước không có ở đâu. Ghi vào bảng market_monthly_reports (15/11/2026 — trước đó
+# file data/bao_cao_nuoc/<tháng>.json) NGAY SAU bảng TỔNG TEAM, cùng một bộ ô `cell` → tổng người
+# trong nước = đúng tab nước. Bot đọc qua /api/talpha/ban-nuoc.
 # Chỉ người trong team (như tab nước), "(không gán)" để riêng; người ngoài team bỏ. Hỏng thì
 # chỉ log — không bao giờ làm chết vòng ghi Sheet.
 try:
@@ -477,12 +480,12 @@ try:
         for _ng in _m.values():
             for _o in _ng.values():
                 for _k in ("ads","doanh_so","ds_giao_tc"): _o[_k]=round(_o[_k])
-    _thu=os.path.join(talpha_paths.repo_dir(),"data","bao_cao_nuoc"); os.makedirs(_thu,exist_ok=True)
-    _f=os.path.join(_thu,f"{_T.year}-{_T.month:02d}.json"); _tam=f"{_f}.{os.getpid()}.tmp"
-    with open(_tam,"w",encoding="utf-8") as _fh:
-        json.dump({"thang":f"{_T.year}-{_T.month:02d}","ghi_luc":datetime.datetime.utcnow().isoformat()+"Z",
-                   "khong_gan":UNASSIGNED,"nuoc":_ban},_fh,ensure_ascii=False)
-    os.replace(_tam,_f); print(f"BAN NUOC: {_f} ({', '.join(sorted(_ban))})")
+    _thang_ban=f"{_T.year}-{_T.month:02d}"
+    pg.execute("INSERT INTO market_monthly_reports (month, content, written_at) VALUES (%s, %s, now()) "
+               "ON CONFLICT (month) DO UPDATE SET content = EXCLUDED.content, written_at = now()",
+               (_thang_ban, Jsonb({"thang":_thang_ban,"ghi_luc":datetime.datetime.utcnow().isoformat()+"Z",
+                                   "khong_gan":UNASSIGNED,"nuoc":_ban})))
+    print(f"BAN NUOC: market_monthly_reports {_thang_ban} ({', '.join(sorted(_ban))})")
 except Exception as _e:
     print(f"CANH BAO: khong ghi duoc so theo nuoc cho bot Zalo: {_e}")
 # ── FILE TEST mỗi marketer (chung mọi thị trường, tab theo page) ──

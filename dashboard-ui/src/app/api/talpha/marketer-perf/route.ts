@@ -4,7 +4,7 @@ import {
     RULES, DISPLAY, UNASSIGNED, MESS_PANCAKE,
     attributeOrder, buildAdidOwner, campaignMarket, parseCampaign, isTestCampaign,
 } from "@/lib/talpha/rules";
-import { messPancakeTuBan } from "@/lib/talpha/ban-nuoc";
+import { messPancakeTuBan } from "@/lib/talpha/ban-nuoc-kho";
 import { getAccess } from "@/lib/talpha/access";
 import { canMarket, seesAllMarkets } from "@/lib/talpha/access-rules";
 
@@ -131,7 +131,7 @@ export async function GET(req: NextRequest) {
             agg.set(key, b);
         }
         // Mess Nhật = số Pancake trong bản số theo nước (cùng số Sheet) — 13/10/2026.
-        const pk = messPancakeTuBan(from, to, (k) => !hep || (!!a && canMarket(a, k)));
+        const pk = await messPancakeTuBan(from, to, (k) => !hep || (!!a && canMarket(a, k)));
         for (const [nv, n] of Object.entries(pk.theoNguoi)) {
             const key = nv in RULES.marketers ? nv : UNASSIGNED;
             const b = agg.get(key) || emptyBucket();

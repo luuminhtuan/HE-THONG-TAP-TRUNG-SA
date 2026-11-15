@@ -1,23 +1,14 @@
 /**
  * TALPHA — MỘT chỗ duy nhất đọc/ghi danh sách người dùng.
  *
- * Hai chế độ, chọn theo môi trường:
- *   • `USERS_JSON` có giá trị  → danh sách nằm trong biến môi trường, CHỈ ĐỌC.
- *     Đây là chế độ đang chạy trên máy chủ: /opt/talpha KHÔNG có config/users.json,
- *     toàn bộ tài khoản nằm trong .env.local. Thêm/sửa người dùng = sửa biến đó
- *     rồi restart, nút "Thêm người dùng" trên /admin sẽ báo 503 — đúng như thiết kế.
- *   • Không có `USERS_JSON` → đọc/ghi file `config/users.json` ở gốc repo, CÓ KHOÁ FILE.
+ * Bảng Postgres `users` (15/11/2026, migration 0006 — trước đó file config/users.json, hoặc biến
+ * USERS_JSON chỉ đọc trên máy chủ). Hai nguồn cũ được chép vào bảng một lần ở bước migrate
+ * (sync/core/nhap_file.py). Thêm / sửa / xoá người dùng ở /admin → Quản lý User, có hiệu lực ngay.
  *
- * ⚠️ 11/09/2026: trước đây logic này bị chép làm BA bản — `lib/users.ts` (có khoá,
- * không ai gọi), `api/users/route.ts` (KHÔNG khoá, ghi thụt lề 2) và
- * `api/auth/validate/route.ts` (chỉ đọc). Hai bản ghi khác nhau cùng sửa một file
- * mà không bản nào giữ khoá: hai người sửa user cùng lúc là mất một bản ghi, và
- * file đổi thụt lề qua lại mỗi lần ghi. Nay mọi route đều đi qua đây.
+ * Cột `username` là tên đăng nhập; phía code vẫn gọi là `email` (tên ô cũ của users.json) để các
+ * route, phiên đăng nhập, phân quyền không phải đổi.
  */
-import fs from "fs";
-import { configPath } from "@/lib/talpha/config-path";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const lockfile = require("proper-lockfile");
+import { giaoDich, query } from "@/lib/db";
 
 /** Vai trò và tab mỗi vai thấy: config/talpha_rules.json → access.roles. */
 export type UserRole = "admin" | "director" | "leader" | "marketer" | "sale";
@@ -37,58 +28,61 @@ export interface UserRecord {
     status?: "active" | "pending";
 }
 
-const USERS_PATH = configPath("users.json");
+type Dong = {
+    id: string; username: string; name: string; password_hash: string; role: UserRole;
+    teams: string[] | null; projects: string[] | null; status: "active" | "pending";
+};
 
-/** Danh sách nằm trong biến môi trường (máy chủ) ⇒ không ghi được. */
-export function isEnvMode(): boolean {
-    return !!process.env.USERS_JSON;
+const COT = "id, username, name, password_hash, role, teams, projects, status";
+
+function tuDong(d: Dong): UserRecord {
+    return {
+        id: d.id, email: d.username, name: d.name, password: d.password_hash, role: d.role,
+        projects: d.projects || [], teams: d.teams || [], status: d.status,
+    };
 }
 
-/** Đọc danh sách người dùng. Lỗi đọc/parse → mảng rỗng (login sẽ trả 401, không sập). */
-export function loadUsers(): UserRecord[] {
-    if (isEnvMode()) {
-        try {
-            return JSON.parse(process.env.USERS_JSON!);
-        } catch (e) {
-            console.error("USERS_JSON không parse được:", e);
-            return [];
-        }
-    }
+/** Đọc danh sách người dùng. Kho lỗi → mảng rỗng (login trả 401 / 500, không sập). */
+export async function loadUsers(): Promise<UserRecord[]> {
     try {
-        return JSON.parse(fs.readFileSync(USERS_PATH, "utf-8"));
+        return (await query<Dong>(`SELECT ${COT} FROM users ORDER BY created_at, id`)).map(tuDong);
     } catch (e) {
-        console.error("Không đọc được", USERS_PATH, e);
+        console.error("Không đọc được bảng users:", e);
         return [];
     }
 }
 
-/** Thụt lề 4 — giữ nguyên kiểu file đang có, đừng để mỗi lần ghi lại đổi cả file. */
-function saveUsers(users: UserRecord[]) {
-    fs.writeFileSync(USERS_PATH, JSON.stringify(users, null, 4) + "\n", "utf-8");
-}
-
 /**
- * Sửa danh sách người dùng dưới KHOÁ FILE — đọc, gọi callback, ghi lại.
- * Chế độ USERS_JSON thì ném lỗi: không có file để ghi.
+ * Sửa danh sách người dùng trong MỘT transaction có khoá bảng — đọc, gọi callback, ghi lại phần
+ * khác đi (thêm / sửa / xoá). Hai người sửa cùng lúc thì người sau chờ người trước xong.
  */
 export async function withUsersLock(
     callback: (users: UserRecord[]) => UserRecord[] | Promise<UserRecord[]>,
 ): Promise<UserRecord[]> {
-    if (isEnvMode()) {
-        throw new Error(
-            "Không ghi được người dùng ở chế độ USERS_JSON (máy chủ). " +
-            "Sửa biến USERS_JSON trong .env.local rồi khởi động lại dashboard.",
-        );
-    }
-    const release = await lockfile.lock(USERS_PATH, {
-        retries: { retries: 5, minTimeout: 100, maxTimeout: 1000 },
-        stale: 10000,
+    return giaoDich(async (q) => {
+        await q("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE");
+        const cu = ((await q(`SELECT ${COT} FROM users ORDER BY created_at, id`)) as Dong[]).map(tuDong);
+        // Callback được phép sửa thẳng phần tử (users[idx].name = …) — giữ bản chụp để so.
+        const chup = new Map(cu.map((u) => [u.id, JSON.stringify(u)]));
+        const moi = await callback(cu.map((u) => ({ ...u })));
+        const conLai = new Set(moi.map((u) => u.id));
+        for (const id of chup.keys()) {
+            if (!conLai.has(id)) await q("DELETE FROM users WHERE id = @id", { id });
+        }
+        for (const u of moi) {
+            if (chup.get(u.id) === JSON.stringify(u)) continue;
+            await q(
+                `INSERT INTO users (id, username, name, password_hash, role, teams, projects, status)
+                 VALUES (@id, @username, @name, @password, @role, @teams::jsonb, @projects::jsonb, @status)
+                 ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, name = EXCLUDED.name,
+                   password_hash = EXCLUDED.password_hash, role = EXCLUDED.role, teams = EXCLUDED.teams,
+                   projects = EXCLUDED.projects, status = EXCLUDED.status, updated_at = now()`,
+                {
+                    id: u.id, username: u.email, name: u.name, password: u.password, role: u.role,
+                    teams: JSON.stringify(u.teams || []), projects: JSON.stringify(u.projects || []),
+                    status: u.status === "pending" ? "pending" : "active",
+                });
+        }
+        return moi;
     });
-    try {
-        const updated = await callback(loadUsers());
-        saveUsers(updated);
-        return updated;
-    } finally {
-        await release();
-    }
 }

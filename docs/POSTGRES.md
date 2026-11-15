@@ -135,5 +135,27 @@ khoá thật: `docker compose down -v && docker compose up -d`.
   máy chủ), đặt `DATABASE_URL` cho dashboard + các systemd service, sửa `ops/deploy/vps-*-setup.sh`. Chưa làm.
 * **Dữ liệu cũ trên BigQuery** chưa chép sang (chốt 04/11/2026: tính sau). Đơn POS và chi tiêu Meta kéo lại
   được bằng `python sync/talpha/talpha_sync.py --full` và `--days N`; ảnh chụp tồn kho cũ thì không.
-* `data/*.json` (tiền COD, thanh toán QC, vận đơn), danh bạ TKQC, thị trường vẫn là file — dồn vào Postgres
-  là bước sau.
+* ~~`data/*.json`, thị trường, người dùng, khoá vẫn là file~~ — xong 15/11/2026 (migration 0006, xem
+  mục dưới).
+
+## Dữ liệu người dùng nhập — cũng trong Postgres (15/11/2026)
+
+| Bảng | Thay cho | Đọc / ghi ở |
+|:--|:--|:--|
+| `app_documents` | `data/<kho>.json` — sao kê COD, việc đối soát, thanh toán QC, vận đơn, chi phí vận hành | `lib/talpha/store.ts` |
+| `market_overrides` | `data/thi_truong.json` | `lib/talpha/thi-truong-luu.ts`, `rules.ts`, `sync/core/thi_truong.py`, bot qua `/api/talpha/thi-truong?phu=1` |
+| `market_monthly_reports` | `data/bao_cao_nuoc/<tháng>.json` | `format_all.py` ghi; `lib/talpha/ban-nuoc.ts`, bot qua `/api/talpha/ban-nuoc` |
+| `users` | `config/users.json` / `USERS_JSON` | `lib/users.ts` |
+| `api_credentials` | `dashboard-ui/.env.khoa.local` — MÃ HOÁ (pgcrypto) bằng `TALPHA_ENCRYPTION_KEY` | `lib/talpha/khoa.ts`, `sync/core/khoa.py` |
+| `file_imports` | — sổ file cũ nào đã chép vào kho | `sync/core/nhap_file.py` |
+
+Bước `migrate` chép mỗi file cũ vào kho MỘT lần (không ghi đè dòng đã có, không xoá file) — chép lần
+hai sẽ làm sống lại thứ người dùng đã xoá trên trang. Sau đó file cũ chỉ còn là bản lưu.
+
+`TALPHA_ENCRYPTION_KEY` phải giống nhau ở dashboard và các container Python (compose đặt sẵn một chìa
+cho máy thử). Mất / đổi chìa là khoá trong kho không giải mã được nữa — nhập lại ở /admin → Khoá kết
+nối. Hai vai chỉ đọc không được đọc các bảng này (REVOKE ở migration 0006 và `pg_view.py → BANG_RIENG`).
+
+Khi chuyển máy chủ VPS sang Postgres: đặt `TALPHA_ENCRYPTION_KEY` (chìa thật, giữ kín) cho dashboard + các
+service Python, rồi chạy migrate trong `/opt/talpha` — sao kê, vận đơn, `users.json`, `.env.khoa.local`
+của máy chủ tự vào kho. Drop-in `khoa.conf` của `vps-setup.sh` khi đó không cần nữa.

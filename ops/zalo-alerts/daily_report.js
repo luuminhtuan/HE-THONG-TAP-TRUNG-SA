@@ -398,7 +398,7 @@ function ghepChiTietCamp(dong, { camps, cfg, canhBaoCamp, opts }) {
 // tin · xếp hạng · chi tiết MỌI camp tên đầy đủ), nhưng chỉ số + camp của MỘT nước.
 //
 // Số lấy ở đâu:
-//   1. data/bao_cao_nuoc/<tháng>.json — format_all.py ghi NGAY SAU khi ghi file TỔNG TEAM, cùng
+//   1. bản số theo nước (bảng market_monthly_reports) — format_all.py ghi NGAY SAU bảng TỔNG TEAM, cùng
 //      bộ ô: { nuoc: { Taiwan: { "2026-10-08": { Loc: {ads, mess, don, doanh_so, ds_giao_tc} …
 //      "(không gán)": {…} } } } }. Cộng người trong team = đúng tab nước của Sheet, và có luôn
 //      xếp hạng người TRONG nước — thứ file TỔNG TEAM không có (tab người gộp mọi nước).
@@ -421,7 +421,7 @@ const CAC_KHOAN = ["ads", "mess", "don", "doanh_so", "ds_giao_tc"];
  * nguoi null = không có xếp hạng (đang đọc tab nước của Sheet).
  */
 async function soMotNuoc(cfg, dateStr, n, opts, f) {
-    const ban = opts.docBan ? opts.docBan(dateStr.slice(0, 7)) : null;
+    const ban = opts.docBan ? await opts.docBan(dateStr.slice(0, 7)) : null;
     const banCu = ban && opts.stale && opts.stale.lastOkTs != null && ban.ghi_luc
         && Date.parse(ban.ghi_luc) < opts.stale.lastOkTs - 45 * 60000;
     if (ban && !banCu) {
@@ -443,7 +443,7 @@ async function soMotNuoc(cfg, dateStr, n, opts, f) {
 
 /**
  * @param opts.nuoc        mã nước: TW · SG · AE · JP
- * @param opts.docBan      (thang "YYYY-MM") → nội dung data/bao_cao_nuoc/<thang>.json, hoặc null
+ * @param opts.docBan      (thang "YYYY-MM") → bản số theo nước của tháng (bảng market_monthly_reports), hoặc null
  * @param opts.layRealtime (dateStr) → Promise<{campaigns}> — bot dùng chung một lượt cho bốn nước
  * Còn lại như buildMarketerReports: label, intraday, stale, tieuDe, nguon, soCungGio, khongSoCaNgay, log, fetch.
  * @returns { tinGop, teamMessage, tinNguoi(ten), nguoi, so, chuaDu, label }

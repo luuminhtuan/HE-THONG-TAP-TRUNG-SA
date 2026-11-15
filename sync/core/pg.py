@@ -90,6 +90,14 @@ def dem_bang(conn) -> list:
         out.append((b, n, moi_nhat))
     n, moi_nhat = conn.execute("SELECT COUNT(*), MAX(thay_lan_cuoi)::text FROM tkqc").fetchone()
     out.append(("tkqc", n, moi_nhat))
+    # Dữ liệu người dùng nhập (migration 0006) — cột "sync gần nhất" là lần sửa gần nhất.
+    for b, cot in (("app_documents", "updated_at"), ("market_overrides", "updated_at"),
+                   ("market_monthly_reports", "written_at"), ("users", "updated_at"),
+                   ("api_credentials", "updated_at")):
+        if conn.execute("SELECT to_regclass(%s)", (b,)).fetchone()[0] is None:
+            continue
+        n, moi_nhat = conn.execute(f"SELECT COUNT(*), MAX({cot})::text FROM {b}").fetchone()
+        out.append((b, n, moi_nhat))
     return out
 
 
@@ -99,6 +107,11 @@ def main(argv) -> int:
         if lenh == "migrate":
             moi = chay_migrations(conn)
             print("Đã chạy: " + ", ".join(moi) if moi else "Không còn migration nào chưa chạy.")
+            # File cũ (data/*.json, users.json, .env.khoa.local) → bảng — mỗi file một lần (nhap_file.py).
+            from sync.core.nhap_file import chep_tat_ca
+            chep = chep_tat_ca(conn)
+            if chep:
+                print("Đã chép vào kho: " + ", ".join(chep))
             if not dat_mat_khau_vai_doc(conn):
                 print("Chưa đặt TALPHA_DOC_PASSWORD — 4 tab dùng /api/query (Marketing, Sức khoẻ QC, "
                       "Khách hàng, Market Intel) sẽ báo chưa cấu hình.")
@@ -109,7 +122,7 @@ def main(argv) -> int:
             print("Đã dựng lại bộ view." if dung_view(conn, ep="--ep" in argv) else "View đang khớp luật.")
         elif lenh == "dem":
             for b, n, moi_nhat in dem_bang(conn):
-                print(f"  {b:<18} {n:>8} dòng   sync gần nhất: {moi_nhat or '—'}")
+                print(f"  {b:<22} {n:>8} dòng   sync gần nhất: {moi_nhat or '—'}")
         else:
             print(f"Lệnh lạ {lenh!r} — dùng: migrate | dem", file=sys.stderr)
             return 2

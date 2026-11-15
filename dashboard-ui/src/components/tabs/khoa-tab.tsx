@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { KeyRound, Loader2, AlertCircle, CheckCircle2, XCircle, RefreshCw, Eye, EyeOff, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { KhoaCoMat } from "./xem-khoa";
 
 // Khoá kết nối (04/11/2026) — giám đốc dán khoá mới khi token Meta, Pancake, key POS chết.
 // Máy chủ gọi thử khoá với dịch vụ thật rồi mới lưu; khoá thật không bao giờ về trình duyệt.
@@ -183,7 +184,7 @@ export default function KhoaTab() {
                             </div>
 
                             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
-                                {k.che && <span className="font-mono text-slate-300">{k.che}</span>}
+                                {k.che && <KhoaCoMat ten={k.ten} che={k.che} />}
                                 {k.do_dai > 0 && <span>{k.do_dai} ký tự</span>}
                                 <span>{NGUON[k.nguon]}</span>
                                 {k.cap_nhat && <span className="text-slate-500">{k.cap_nhat}</span>}
