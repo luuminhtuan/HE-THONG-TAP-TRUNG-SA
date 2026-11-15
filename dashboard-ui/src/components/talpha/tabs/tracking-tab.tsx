@@ -563,7 +563,8 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                             </thead>
                             <tbody>
                                 {shipments.map((s) => (
-                                    <tr key={s.tracking} className="border-b border-border/40 last:border-0 hover:bg-muted/40">
+                                    // Khoá = mã đơn + mã vận đơn: một mã vận đơn có thể nằm ở hai đơn (lỗi bảng đối tác).
+                                    <tr key={`${s.order_id}|${s.tracking}`} className="border-b border-border/40 last:border-0 hover:bg-muted/40">
                                         <td className="px-3 py-2 font-mono text-xs">{s.order_id}</td>
                                         <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{s.tracking}</td>
                                         <td className="px-3 py-2">

@@ -426,7 +426,9 @@ function KhoiDoiNaza({ ds, canNhan, chiTiet, onXong }: {
                     </p>
                     <ul className="divide-y divide-border/60 border-t border-border/70">
                         {ds.map((p) => (
-                            <li key={p.tracking || p.order_no} className="px-3.5 py-2 md:px-4">
+                            /* Khoá = mã đơn + mã vận đơn: bảng NAZA có mã vận đơn gán cho HAI đơn (vd 18008693
+                               của T1465 và T1467) — chỉ lấy mã vận đơn là React báo trùng khoá. */
+                            <li key={`${p.order_no}|${p.tracking}`} className="px-3.5 py-2 md:px-4">
                                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[13px]">
                                     <b className="text-foreground">{p.order_no}</b>
                                     <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-bold text-rose-700 dark:bg-rose-500/15 dark:text-rose-300">

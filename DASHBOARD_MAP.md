@@ -226,7 +226,7 @@ chi tiêu đủ mọi TK ở `fb_ads_tat_ca`. Xem `sync/core/tkqc.py`.
 
 **Mốc gốc 15/09/2026** (`talpha_rules.json → report_start_date`, Sỹ Anh chốt 25/09/2026):
 tab Tổng quan · P&L · P&L theo SP · Marketing · Chi phí quảng cáo không tính ngày trước mốc
-(`FLOOR_TABS` trong shell) — bộ chọn ngày mặc định từ mốc, chọn sớm hơn thì tự kéo về. Tab
+(`FLOOR_TABS` trong shell) — chọn sớm hơn mốc thì tự kéo về. **Khoảng ngày mặc định** (15/11/2026, Sỹ Anh chốt): tab thống kê = **tháng này** (ngày 1 → hôm nay); ba tab vận hành Sổ đơn, Vận đơn, Tiền COD về = 60 ngày gần nhất (`TAB_VAN_HANH`), vì việc cần xử lý chỉ tính đơn trong khoảng mà đầu tháng đơn tháng trước còn đang đi / chờ thu tiền. Đã chọn ngày (`?from=&to=`) thì áp cho mọi tab. Tab
 vận hành (Sổ đơn, Tiền COD về, Vận đơn, Kho, Khách hàng) không chặn: đơn cũ còn chờ thu tiền.
 
 **Tổng quan đọc bảng số TỔNG TEAM, không tự tính** (`bao_cao_tab` — format_all.py ghi cùng lúc với
