@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════════
 // Khoá kết nối nhập ở /admin (04/11/2026) — phần THUẦN: soát khoá vừa dán, che khoá.
 // Phần đụng kho và mạng ở lib/talpha/khoa.ts (bảng api_credentials, 15/11/2026 — trước đó file
-// .env.khoa.local; đọc file cũ để chép vào kho nay ở sync/core/nhap_file.py). Có test:
+// .env.khoa.local; đọc file cũ để chép vào kho nay ở sync/core/file_import.py). Có test:
 // tests/khoa.test.cjs.
 // ═══════════════════════════════════════════════════════════════════
 

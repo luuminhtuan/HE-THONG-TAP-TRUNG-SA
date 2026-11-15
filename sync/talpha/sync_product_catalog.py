@@ -28,7 +28,7 @@ from sync.core.thi_truong import doc_luat  # noqa: E402
 load_dotenv()
 load_dotenv(os.path.join(os.getcwd(), ".env"))
 # Key POS nhập ở /admin → Khoá kết nối (bảng api_credentials) thắng key cùng tên trong .env.
-from sync.core.khoa import nap_khoa_vao_env  # noqa: E402
+from sync.core.credentials import nap_khoa_vao_env  # noqa: E402
 nap_khoa_vao_env()
 
 POS_API = "https://pos.pages.fm/api/v1"

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, LogOut, Menu, Settings, X } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -10,6 +11,8 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import Link from "next/link";
 import { AccessProvider, type Me } from "./access-context";
 import NutCaiApp from "./cai-app";
+import { useDoiThamSo } from "./url-state";
+import { NAV_GROUPS, TAB_INFO, TAB_THEO_SLUG, type NavGroup } from "./nav-config";
 
 import TALPHACeoOverviewTab from "./tabs/ceo-overview-tab";
 import TALPHAAdsCommandTab from "./tabs/ads-command-tab";
@@ -28,82 +31,8 @@ import TALPHATrackingTab from "./tabs/tracking-tab";
 import TALPHAAdsReconTab from "./tabs/ads-recon-tab";
 import TALPHALaiLoTab from "./tabs/lai-lo-tab";
 
-/**
- * Điều hướng gom về 5 mục theo đúng cấu trúc AUUS1 (Báo cáo · Sản phẩm ·
- * Marketer · Quảng cáo · Khách hàng). 9 tab cũ không mất tab nào — tab nào cùng
- * chủ đề thì nằm chung một mục và chọn bằng hàng pill ở đầu vùng nội dung.
- */
-interface NavTab { id: string; label: string }
-interface NavGroup { id: string; emoji: string; label: string; tabs: NavTab[] }
-
-const NAV_GROUPS: NavGroup[] = [
-    {
-        id: "bao-cao", emoji: "📋", label: "Báo cáo",
-        tabs: [
-            { id: "overview", label: "Tổng quan" },
-            { id: "pnl", label: "P&L" },
-            { id: "product-pnl", label: "P&L theo SP" },
-        ],
-    },
-    // Sổ đơn hàng gánh mọi việc THEO TỪNG ĐƠN — kể cả đòi NAZA tiền đơn quá hạn.
-    //
-    // Bản đầu tách Đơn hàng / Đối soát, người dùng phải nhảy qua nhảy lại: thấy
-    // một đơn quá hạn ở tab Đối soát rồi lại sang tab Đơn hàng tra tên khách và
-    // số điện thoại để đi đòi. Cùng một đơn, hai màn hình. Vì thế khi tách mục
-    // Kế toán (07/10/2026) phần đòi tiền theo đơn Ở LẠI đây (khung "Đòi tiền
-    // NAZA" trong Sổ đơn), chỉ phần tiền theo KỲ sang Kế toán.
-    // "Danh sách đơn" đã BỎ, gộp vào Sổ đơn hàng.
-    //
-    // Hai tab đó chỉ khác nhau ở nguồn: tab cũ đọc POS (200 đơn, mà chỉ 5 đơn
-    // có trạng thái giao đúng), Sổ đơn hàng đọc file đối tác (656 đơn, đủ vòng
-    // đời tiền). Ba cột riêng của tab cũ thì: Marketer nay đã có trong Sổ,
-    // Sale rỗng cho MỌI đơn vì sale_assignment chưa khai, còn Doanh thu VND
-    // tính từ POS nên chỉ đúng cho 5 đơn — Sổ tính lại từ tiền 3PL trả thật.
-    {
-        id: "don-hang", emoji: "🧾", label: "Đơn hàng",
-        tabs: [
-            { id: "order-ledger", label: "Sổ đơn hàng" },
-            { id: "tracking", label: "Theo dõi vận đơn" },
-        ],
-    },
-    // KẾ TOÁN (Sỹ Anh chốt 07/10/2026): hai màn cùng trả lời "tiền thật có khớp không", cùng
-    // một cách làm — tải file sao kê, máy soát, gõ số ngân hàng vào — và cùng tính theo KỲ.
-    //   • Tiền COD về: tiền VÀO — sao kê NAZA từng kỳ, đối chiếu ngân hàng, tỷ giá. Leader
-    //     xem + tải sao kê + nhập tiền về cho nước mình; leader và giám đốc kiểm soát chung,
-    //     không có vai trò kế toán riêng. Sale (Thương) không vào mục này.
-    //   • Thanh toán quảng cáo: tiền RA — file thanh toán TKQC đối chiếu sao kê thẻ. Thẻ và
-    //     TKQC chạy chung cả công ty, không chia được theo team → chỉ giám đốc (CHI_GIAM_DOC).
-    // Không gọi là "Chi phí quảng cáo": trùng tên tab trong mục Quảng cáo (tiêu bao nhiêu,
-    // ROAS) — trùng tên là sớm muộn có người đem số đối soát đi tính ROAS.
-    //   • Lãi lỗ (04/11/2026) đứng ĐẦU mục: kết quả kinh doanh đủ mọi khoản — doanh số → doanh
-    //     thu (kiện giao thật, kiện đang đi theo tỉ lệ giao) → giá vốn → chi phí 3PL → chi phí
-    //     khai thác (ads + vận hành) → lợi nhuận sau cùng. Mọi vai xem, chỉ nước của team mình.
-    {
-        id: "ke-toan", emoji: "💼", label: "Kế toán",
-        tabs: [
-            { id: "lai-lo", label: "Lãi lỗ" },
-            { id: "cod-recon", label: "Tiền COD về" },
-            { id: "ads-recon", label: "Thanh toán quảng cáo" },
-        ],
-    },
-    { id: "san-pham", emoji: "📦", label: "Sản phẩm", tabs: [{ id: "products", label: "Sản phẩm & Kho" }] },
-    { id: "marketer", emoji: "👤", label: "Marketer", tabs: [{ id: "marketing", label: "Marketing & Ads" }] },
-    {
-        id: "quang-cao", emoji: "🎯", label: "Quảng cáo",
-        tabs: [
-            { id: "ad-spend", label: "Chi phí quảng cáo" },
-            { id: "ads-command", label: "Ads Command Center" },
-            { id: "ad-health", label: "Sức khoẻ quảng cáo" },
-        ],
-    },
-    {
-        id: "khach-hang", emoji: "👥", label: "Khách hàng",
-        tabs: [
-            { id: "customers", label: "Khách hàng" },
-            { id: "market-intel", label: "Market Intel" },
-        ],
-    },
-];
+/** Tham số mang theo khi chuyển tab: khoảng ngày đang chọn (from, to), nước đang chọn (market). */
+const THAM_SO_GIU = ["from", "to", "market"];
 
 /** Hai tab này đọc cửa sổ thời gian cố định trong view — hiện bộ chọn ngày chỉ gây hiểu nhầm là lọc được. */
 const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon"]);
@@ -130,17 +59,18 @@ function ngayDiaPhuong(s: string): Date | null {
 }
 
 export default function TALPHADashboardShell() {
-    const [activeGroup, setActiveGroup] = useState("bao-cao");
-    const [activeTab, setActiveTab] = useState("overview");
+    // Tab đang xem nằm ở ĐƯỜNG DẪN (/talpha/order-ledger), khoảng ngày ở tham số ?from=&to= (15/11/2026)
+    // — tải lại trang hay gửi link là mở đúng chỗ đang xem. Xem components/talpha/url-state.ts.
+    const pathname = usePathname();
+    const sp = useSearchParams();
+    const router = useRouter();
+    const doiThamSo = useDoiThamSo();
+    const tabUrl = TAB_THEO_SLUG[pathname.split("/")[2] || ""] || null;
     // Người đang xem — tab nào hiện, nút nước nào có (phân quyền theo team, 05/10/2026).
     const [me, setMe] = useState<Me | null>(null);
     const [meLoi, setMeLoi] = useState<string | null>(null);
     // Điện thoại (Sỹ Anh yêu cầu 05/10/2026): menu trái thành ngăn kéo, mở bằng nút ☰.
     const [menuMo, setMenuMo] = useState(false);
-    const [dateRange, setDateRange] = useState<{ from: Date; to: Date }>({
-        from: subDays(new Date(), 59),
-        to: new Date(),
-    });
     // Mốc gốc báo cáo. Chờ nạp xong mới dựng tab, để tab không truy vấn hai lần (một lần
     // với 60 ngày mặc định, một lần sau khi kéo về mốc).
     const [reportStart, setReportStart] = useState<Date | null>(null);
@@ -150,7 +80,10 @@ export default function TALPHADashboardShell() {
         let dung = false;
         fetch("/api/talpha/me")
             .then(async r => {
-                if (r.status === 401) { window.location.href = "/login?callbackUrl=/talpha"; return null; }
+                if (r.status === 401) {
+                    window.location.href = `/login?callbackUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+                    return null;
+                }
                 const d = await r.json();
                 if (!r.ok) throw new Error(d?.error || `HTTP ${r.status}`);
                 return d as Me;
@@ -158,9 +91,6 @@ export default function TALPHADashboardShell() {
             .then(d => {
                 if (dung || !d) return;
                 setMe(d);
-                // Mở trang ở tab ĐẦU TIÊN người này thấy — sale không có tab Tổng quan.
-                const dau = nhomDuocXem(d)[0];
-                if (dau && !d.tabs.includes("overview")) { setActiveGroup(dau.id); setActiveTab(dau.tabs[0].id); }
             })
             .catch(e => { if (!dung) setMeLoi(String(e?.message || e)); });
         return () => { dung = true; };
@@ -168,6 +98,25 @@ export default function TALPHADashboardShell() {
 
     // Menu chỉ còn mục có ít nhất một tab người này được xem.
     const groups = useMemo(() => (me ? nhomDuocXem(me) : []), [me]);
+
+    // Tab trên đường dẫn mà người này không được xem (hoặc vào /talpha trần) → tab ĐẦU TIÊN họ thấy
+    // (sale không có Tổng quan), và sửa luôn địa chỉ cho khớp.
+    const tabDau = groups[0]?.tabs[0]?.id ?? "overview";
+    const activeTab = tabUrl && (!me || me.tabs.includes(tabUrl)) ? tabUrl : tabDau;
+    const activeGroup = TAB_INFO[activeTab]?.nhom ?? "bao-cao";
+
+    /** Đường dẫn của một tab, mang theo khoảng ngày + nước đang chọn. */
+    const hrefTab = useCallback((id: string) => {
+        const q = new URLSearchParams();
+        for (const k of THAM_SO_GIU) { const v = sp.get(k); if (v) q.set(k, v); }
+        const s = q.toString();
+        return `/talpha/${TAB_INFO[id]?.slug ?? ""}${s ? `?${s}` : ""}`;
+    }, [sp]);
+
+    useEffect(() => {
+        if (me && groups.length && tabUrl !== activeTab) router.replace(hrefTab(activeTab));
+    }, [me, groups.length, tabUrl, activeTab, hrefTab, router]);
+
 
     useEffect(() => {
         let dung = false;
@@ -177,13 +126,26 @@ export default function TALPHADashboardShell() {
                 if (dung) return;
                 const moc = d.report_start_date ? ngayDiaPhuong(d.report_start_date) : null;
                 setReportStart(moc);
-                // Mở trang là thấy đúng khoảng báo cáo: từ mốc gốc tới hôm nay.
-                if (moc) setDateRange(r => (r.from < moc ? { from: moc, to: r.to < moc ? moc : r.to } : r));
             })
             .catch(() => {})
             .finally(() => { if (!dung) setConfigLoaded(true); });
         return () => { dung = true; };
     }, []);
+
+    // Khoảng ngày: ?from=&to= trên địa chỉ nếu có (người chọn / link gửi kèm); không có thì 60 ngày gần
+    // nhất nhưng không trước mốc gốc — mở trang là thấy đúng khoảng báo cáo.
+    const tuUrl = sp.get("from");
+    const denUrl = sp.get("to");
+    const dateRange = useMemo(() => {
+        const tu = tuUrl ? ngayDiaPhuong(tuUrl) : null;
+        const den = denUrl ? ngayDiaPhuong(denUrl) : null;
+        if (tu && den && tu <= den) return { from: tu, to: den };
+        const homNay = new Date();
+        const tu60 = subDays(homNay, 59);
+        return { from: reportStart && tu60 < reportStart ? reportStart : tu60, to: homNay };
+    }, [tuUrl, denUrl, reportStart]);
+    const setDateRange = (r: { from: Date; to: Date }) =>
+        doiThamSo({ from: format(r.from, "yyyy-MM-dd"), to: format(r.to, "yyyy-MM-dd") });
 
     const onFloorTab = FLOOR_TABS.has(activeTab);
     // Khoảng ngày thật đưa cho tab: tab báo cáo luôn bị kéo về mốc, kể cả khi người dùng
@@ -198,12 +160,6 @@ export default function TALPHADashboardShell() {
         [groups, activeGroup],
     );
     const duocXem = (tab: string) => !!me && me.tabs.includes(tab) && activeTab === tab;
-
-    const selectGroup = (g: NavGroup) => {
-        setActiveGroup(g.id);
-        setActiveTab(g.tabs[0].id);
-        setMenuMo(false);
-    };
 
     // Ruột thanh trái — dùng chung cho cột cố định (máy tính) và ngăn kéo (điện thoại).
     const noiDungMenu = (
@@ -231,9 +187,10 @@ export default function TALPHADashboardShell() {
 
                 <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-3">
                     {groups.map(g => (
-                        <button
+                        <Link
                             key={g.id}
-                            onClick={() => selectGroup(g)}
+                            href={hrefTab(g.tabs[0].id)}
+                            onClick={() => setMenuMo(false)}
                             className={cn(
                                 "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
                                 activeGroup === g.id
@@ -243,7 +200,7 @@ export default function TALPHADashboardShell() {
                         >
                             <span aria-hidden>{g.emoji}</span>
                             {g.label}
-                        </button>
+                        </Link>
                     ))}
                 </nav>
 
@@ -341,9 +298,9 @@ export default function TALPHADashboardShell() {
                     {group.tabs.length > 1 && (
                         <div className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-muted/40 p-1">
                             {group.tabs.map(t => (
-                                <button
+                                <Link
                                     key={t.id}
-                                    onClick={() => setActiveTab(t.id)}
+                                    href={hrefTab(t.id)}
                                     className={cn(
                                         "shrink-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-all",
                                         activeTab === t.id
@@ -352,7 +309,7 @@ export default function TALPHADashboardShell() {
                                     )}
                                 >
                                     {t.label}
-                                </button>
+                                </Link>
                             ))}
                         </div>
                     )}

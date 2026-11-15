@@ -4,7 +4,7 @@ import {
     RULES, DISPLAY, UNASSIGNED, MESS_PANCAKE,
     attributeOrder, buildAdidOwner, campaignMarket, parseCampaign, isTestCampaign,
 } from "@/lib/talpha/rules";
-import { messPancakeTuBan } from "@/lib/talpha/ban-nuoc-kho";
+import { messPancakeTuBan } from "@/lib/talpha/market-report-store";
 import { getAccess } from "@/lib/talpha/access";
 import { canMarket, seesAllMarkets } from "@/lib/talpha/access-rules";
 

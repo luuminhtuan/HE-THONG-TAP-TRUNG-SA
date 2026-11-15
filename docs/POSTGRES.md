@@ -143,11 +143,11 @@ khoá thật: `docker compose down -v && docker compose up -d`.
 | Bảng | Thay cho | Đọc / ghi ở |
 |:--|:--|:--|
 | `app_documents` | `data/<kho>.json` — sao kê COD, việc đối soát, thanh toán QC, vận đơn, chi phí vận hành | `lib/talpha/store.ts` |
-| `market_overrides` | `data/thi_truong.json` | `lib/talpha/thi-truong-luu.ts`, `rules.ts`, `sync/core/thi_truong.py`, bot qua `/api/talpha/thi-truong?phu=1` |
-| `market_monthly_reports` | `data/bao_cao_nuoc/<tháng>.json` | `format_all.py` ghi; `lib/talpha/ban-nuoc.ts`, bot qua `/api/talpha/ban-nuoc` |
+| `market_overrides` | `data/thi_truong.json` | `lib/talpha/thi-truong-luu.ts`, `rules.ts`, `sync/core/thi_truong.py`, bot qua `/api/talpha/thi-truong?overrides=1` |
+| `market_monthly_reports` | `data/bao_cao_nuoc/<tháng>.json` | `format_all.py` ghi; `lib/talpha/ban-nuoc.ts`, bot qua `/api/talpha/market-report` |
 | `users` | `config/users.json` / `USERS_JSON` | `lib/users.ts` |
-| `api_credentials` | `dashboard-ui/.env.khoa.local` — MÃ HOÁ (pgcrypto) bằng `TALPHA_ENCRYPTION_KEY` | `lib/talpha/khoa.ts`, `sync/core/khoa.py` |
-| `file_imports` | — sổ file cũ nào đã chép vào kho | `sync/core/nhap_file.py` |
+| `api_credentials` | `dashboard-ui/.env.khoa.local` — MÃ HOÁ (pgcrypto) bằng `TALPHA_ENCRYPTION_KEY` | `lib/talpha/khoa.ts`, `sync/core/credentials.py` |
+| `file_imports` | — sổ file cũ nào đã chép vào kho | `sync/core/file_import.py` |
 
 Bước `migrate` chép mỗi file cũ vào kho MỘT lần (không ghi đè dòng đã có, không xoá file) — chép lần
 hai sẽ làm sống lại thứ người dùng đã xoá trên trang. Sau đó file cũ chỉ còn là bản lưu.

@@ -3,7 +3,7 @@ Dữ liệu file → Postgres (15/11/2026, migration 0006): khoá kết nối m�
 thị trường đọc từ bảng phủ, vai chỉ đọc không thấy bảng riêng.
 
 Chạy: DATABASE_URL=postgresql://talpha:talpha@127.0.0.1:5433/talpha \\
-      TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/test_du_lieu_vao_kho.py -q
+      TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/test_db_storage.py -q
 (cần Postgres — tự bỏ qua khi không nối được; dựng schema tạm rồi xoá, không đụng bảng thật)
 """
 import json
@@ -16,9 +16,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sync.core import khoa as khoa_mod  # noqa: E402
-from sync.core.khoa import doc_khoa, ghi_khoa, nap_khoa_vao_env  # noqa: E402
-from sync.core.nhap_file import chep_tat_ca, doc_file_khoa  # noqa: E402
+from sync.core import credentials as khoa_mod  # noqa: E402
+from sync.core.credentials import doc_khoa, ghi_khoa, nap_khoa_vao_env  # noqa: E402
+from sync.core.file_import import chep_tat_ca, doc_file_khoa  # noqa: E402
 from sync.core.thi_truong import doc_phu_tu_kho  # noqa: E402
 
 

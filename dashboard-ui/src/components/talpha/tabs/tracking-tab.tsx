@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { RefreshCw, AlertTriangle, Store, PackageX, Clock, Download, Upload, FileSpreadsheet, ShieldAlert, Copy, Phone, Truck } from "lucide-react";
 import TabSkeleton, { ErrorState } from "@/components/ui/tab-skeleton";
+import { useThamSoUrl } from "../url-state";
 import { formatNumber, cn } from "../utils";
 import WaLink from "@/components/talpha/wa-link";
 
@@ -160,6 +161,8 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
     // (chỉ còn nước của team) trước — mở cứng "TW" thì leader UAE đụng ngay sổ Đài, máy chủ
     // từ chối, màn lỗi che mất nút đổi nước.
     const [market, setMarket] = useState("");
+    // Nước đang xem nằm trên địa chỉ (?market=SG, 15/11/2026) — tải lại / gửi link là mở đúng nước.
+    const [marketUrl, datMarketUrl] = useThamSoUrl("market");
     const [markets, setMarkets] = useState<{ code: string; label: string }[]>([]);
     const [currency, setCurrency] = useState("NT$");
     // Nguồn trạng thái: 17TRACK (Đài, Singapore) hay tra thẳng trang WeShip (UAE, 28/09/2026).
@@ -177,9 +180,12 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                 // Nước đầu tiên còn bán, theo thứ tự khai trong config — không ưu tiên cứng Đài,
                 // để tắt Đài (04/11/2026) thì tab mở ở nước kế tiếp.
                 const codes = (d.markets || []).filter((m) => (m.status || "dang_ban") === "dang_ban").map((m) => m.code);
-                setMarket(codes[0] || "TW");
+                const muon = (marketUrl || "").toUpperCase();
+                setMarket(codes.includes(muon) ? muon : codes[0] || "TW");
             })
             .catch(() => setMarket("TW"));
+        // Chỉ chọn nước lúc mở tab; đổi nước sau đó đi qua doiNuoc.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const load = useCallback(async () => {
@@ -204,7 +210,7 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
     const doiNuoc = (code: string) => {
         if (code === market) return;
         setShipments([]); setAlerts([]); setSyncMsg(""); setImportMsg(""); setUnknownStatuses([]);
-        setPublicWarning(""); setTab("alerts"); setLv("all"); setMarket(code);
+        setPublicWarning(""); setTab("alerts"); setLv("all"); setMarket(code); datMarketUrl(code);
     };
 
     useEffect(() => { load(); }, [load]);

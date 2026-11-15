@@ -11,7 +11,7 @@ Mỗi file chỉ chép MỘT lần (sổ `file_imports`): sau đó kho là bản
 Chép lại lần hai sẽ làm sống lại thứ người dùng đã xoá trên trang (vd khoá đã bỏ). Dòng đã có
 trong kho KHÔNG bị ghi đè. File không bị xoá.
 
-  python -m sync.core.nhap_file          # như bước migrate
+  python -m sync.core.file_import          # như bước migrate
 """
 import json
 import os
@@ -142,7 +142,7 @@ def chep_khoa(conn, repo: Path) -> list:
     nguon = "dashboard-ui/.env.khoa.local"
     if not p.is_file() or _da_chep(conn, nguon):
         return []
-    from sync.core.khoa import chia_ma_hoa, ghi_khoa
+    from sync.core.credentials import chia_ma_hoa, ghi_khoa
     if not chia_ma_hoa():
         # Không đánh dấu: đặt chìa xong, lần migrate sau tự chép.
         print("⚠️  có dashboard-ui/.env.khoa.local nhưng chưa đặt TALPHA_ENCRYPTION_KEY — chưa chép khoá vào kho",

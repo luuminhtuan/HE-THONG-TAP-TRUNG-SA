@@ -12,7 +12,7 @@
 // "CEO hỏi" không được đọc bảng này. Khoá trên trang thắng biến môi trường (.env.local):
 //   • Dashboard nạp bảng một lần (lượt đọc đầu), nạp lại ngay sau mỗi lần lưu và mỗi 5 phút.
 //   • Sync, vòng ghi báo cáo, danh mục SP, lịch Docker đọc bảng lúc bắt đầu mỗi việc
-//     (sync/core/khoa.py) → có hiệu lực từ lần chạy kế tiếp.
+//     (sync/core/credentials.py) → có hiệu lực từ lần chạy kế tiếp.
 //
 // Code cần khoá thì gọi docKhoa(), đừng đọc process.env thẳng.
 // ═══════════════════════════════════════════════════════════════════
@@ -20,7 +20,7 @@ import fs from "fs";
 import yaml from "js-yaml";
 import { query } from "@/lib/db";
 import { TALPHA_YAML } from "./config-path";
-import { truyVanDongBo } from "./db-dong-bo";
+import { truyVanDongBo } from "./db-sync";
 import { MARKET_DA_TAT, MESS_PANCAKE, RULES, SHOP2MKT, SHOP_POS } from "./rules";
 import { cheKhoa } from "./khoa-file";
 import { BIEN_TOKEN_META } from "./tkqc-luat";

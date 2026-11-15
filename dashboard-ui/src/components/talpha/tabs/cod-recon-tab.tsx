@@ -12,6 +12,7 @@ import {
     ResponsiveContainer, ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine,
 } from "recharts";
 import TabSkeleton, { ErrorState } from "@/components/ui/tab-skeleton";
+import { useThamSoUrl } from "../url-state";
 import { formatNumber, cn } from "../utils";
 import { TWD, VND, type DonChoTien } from "./ledger-shared";
 import ThanhNhapBangDon, { bangDaCu, nhanNapGon, type NhapBangDon } from "@/components/talpha/nhap-bang-don";
@@ -145,7 +146,7 @@ function tinLech(p: Period, lang: "vi" | "zh"): string {
  * mới dựng màn và mở ở nước đầu tiên được xem (xem cùng chỗ ở order-ledger-tab.tsx).
  */
 export default function TALPHACodReconTab(props: Props) {
-    const [nuoc, setNuoc] = useState("TW");
+    const [nuocUrl, datNuocUrl] = useThamSoUrl("market");
     const [ds, setDs] = useState<{ code: string; display: string }[] | null>(null);
     useEffect(() => {
         fetch("/api/talpha/markets").then((r) => r.json())
@@ -153,16 +154,18 @@ export default function TALPHACodReconTab(props: Props) {
                 // Nước đã tắt VẪN có ở đây (04/11/2026): tắt rồi đối tác còn chuyển tiền đơn cũ về vài tuần.
                 const list = (d.markets || []).filter((m) => m.status !== "sap_chay").map((m) => ({ code: m.code, display: m.display }));
                 setDs(list);
-                setNuoc((n) => (list.length && !list.some((m) => m.code === n) ? list[0].code : n));
             })
             .catch(() => setDs([]));   // không lấy được danh sách nước thì vẫn hiện màn Đài như cũ
     }, []);
     if (ds === null) return <TabSkeleton />;
+    // Nước đang xem nằm trên địa chỉ (?market=SG, 15/11/2026) — tải lại / gửi link là mở đúng nước.
+    // Mã lạ hoặc nước ngoài team → nước đầu tiên được xem.
+    const nuoc = nuocUrl && ds.some((m) => m.code === nuocUrl.toUpperCase()) ? nuocUrl.toUpperCase() : (ds[0]?.code ?? "TW");
     // Nút chọn nước nằm CÙNG hàng với thanh công cụ (07/10/2026, cùng kiểu Sổ đơn hàng).
     const nutNuoc = ds.length > 1 ? (
         <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1">
             {ds.map((m) => (
-                <button key={m.code} onClick={() => setNuoc(m.code)}
+                <button key={m.code} onClick={() => datNuocUrl(m.code)}
                     className={cn("rounded-md px-3.5 py-1 text-sm font-medium transition-colors",
                         nuoc === m.code ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
                     {m.display}

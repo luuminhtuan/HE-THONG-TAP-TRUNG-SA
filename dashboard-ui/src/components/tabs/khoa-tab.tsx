@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { KeyRound, Loader2, AlertCircle, CheckCircle2, XCircle, RefreshCw, Eye, EyeOff, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { KhoaCoMat } from "./xem-khoa";
+import { KhoaCoMat } from "./key-reveal";
 
 // Khoá kết nối (04/11/2026) — giám đốc dán khoá mới khi token Meta, Pancake, key POS chết.
 // Máy chủ gọi thử khoá với dịch vụ thật rồi mới lưu; khoá thật không bao giờ về trình duyệt.

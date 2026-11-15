@@ -4,7 +4,7 @@
  *
  * Một chỗ chứa duy nhất: bảng Postgres `app_documents` (15/11/2026, migration 0006), mỗi kho một
  * dòng, nội dung jsonb đúng như file data/<kho>.json trước đây (file cũ được chép vào ở bước
- * migrate — sync/core/nhap_file.py). Deploy code không còn đụng tới dữ liệu này: lần chép data/ từ
+ * migrate — sync/core/file_import.py). Deploy code không còn đụng tới dữ liệu này: lần chép data/ từ
  * Mac đè máy chủ suýt mất một kỳ sao kê ngày 12/09/2026.
  *
  * Mọi nơi khác trong hệ thống chỉ thấy đúng các hàm readStoreFresh / updateStore.

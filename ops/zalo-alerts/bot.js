@@ -121,7 +121,7 @@ async function fetchStale() {
 // market_monthly_reports (15/11/2026, trước đó file data/bao_cao_nuoc); bot hỏi qua dashboard mỗi lần.
 async function docBan(thang) {
     try {
-        const r = await fetch(`${CFG.dashboardBaseUrl}/api/talpha/ban-nuoc?thang=${encodeURIComponent(thang)}`,
+        const r = await fetch(`${CFG.dashboardBaseUrl}/api/talpha/market-report?month=${encodeURIComponent(thang)}`,
             { signal: AbortSignal.timeout(30_000) });
         return r.ok ? await r.json() : null;
     } catch (e) {

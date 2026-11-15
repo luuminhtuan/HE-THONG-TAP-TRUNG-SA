@@ -3,7 +3,7 @@
  *
  * Bảng Postgres `users` (15/11/2026, migration 0006 — trước đó file config/users.json, hoặc biến
  * USERS_JSON chỉ đọc trên máy chủ). Hai nguồn cũ được chép vào bảng một lần ở bước migrate
- * (sync/core/nhap_file.py). Thêm / sửa / xoá người dùng ở /admin → Quản lý User, có hiệu lực ngay.
+ * (sync/core/file_import.py). Thêm / sửa / xoá người dùng ở /admin → Quản lý User, có hiệu lực ngay.
  *
  * Cột `username` là tên đăng nhập; phía code vẫn gọi là `email` (tên ô cũ của users.json) để các
  * route, phiên đăng nhập, phân quyền không phải đổi.

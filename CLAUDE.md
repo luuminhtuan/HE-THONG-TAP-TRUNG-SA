@@ -84,7 +84,7 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   `/admin` → Khoá kết nối — máy gọi thử khoá rồi mới lưu. Lưu ở bảng `api_credentials` (15/11/2026),
   MÃ HOÁ bằng pgcrypto với chìa `TALPHA_ENCRYPTION_KEY` (đổi chìa = phải nhập lại mọi khoá), thắng khoá
   cùng tên trong `.env.local`. Dashboard đọc qua `docKhoa()` (`lib/talpha/khoa.ts`) — **đừng đọc
-  `process.env` thẳng cho khoá**; Python gọi `nap_khoa_vao_env()` (`sync/core/khoa.py`) lúc bắt đầu.
+  `process.env` thẳng cho khoá**; Python gọi `nap_khoa_vao_env()` (`sync/core/credentials.py`) lúc bắt đầu.
 * **Thị trường trên trang** (04/11/2026): `/admin` → Thị trường thêm nước, sửa tỷ giá, tắt / bật nước.
   Lưu ở bảng `market_overrides` (15/11/2026), PHỦ lên `talpha_rules.json` ở cả dashboard
   (`lib/talpha/thi-truong.ts`), sync / Sheet / view (`sync/core/thi_truong.py`) và bot
@@ -95,8 +95,8 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
 * **Dữ liệu người dùng nhập nằm trong Postgres** (15/11/2026, migration 0006, tên bảng tiếng Anh):
   `app_documents` (sao kê COD, việc đối soát, thanh toán QC, vận đơn, chi phí vận hành — đọc/ghi qua
   `lib/talpha/store.ts`), `market_overrides`, `market_monthly_reports` (số nước × người cho bot, bot
-  đọc qua `/api/talpha/ban-nuoc`), `users`, `api_credentials`. File cũ (`data/*.json`, `users.json`,
-  `.env.khoa.local`) được `sync/core/nhap_file.py` chép vào MỘT lần ở bước migrate (sổ `file_imports`)
+  đọc qua `/api/talpha/market-report`), `users`, `api_credentials`. File cũ (`data/*.json`, `users.json`,
+  `.env.khoa.local`) được `sync/core/file_import.py` chép vào MỘT lần ở bước migrate (sổ `file_imports`)
   rồi không ai đọc nữa. Vai chỉ đọc (`/api/query`, "CEO hỏi") bị REVOKE khỏi các bảng này —
   `pg_view.py → BANG_RIENG`; thêm bảng riêng mới thì thêm vào đó. Còn là file: luật gốc
   `config/talpha_rules.json` (git) và chìa nội bộ `data/.internal_token`.

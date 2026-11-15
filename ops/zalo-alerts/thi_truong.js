@@ -3,7 +3,7 @@
 //
 // talpha_rules.json nằm trong git (máy chủ lấy code bằng `reset --hard`), nên nước thêm / sửa / tắt
 // trên trang nằm ở bảng PHỦ market_overrides trong Postgres (15/11/2026 — trước đó file
-// data/thi_truong.json). Bot không nối Postgres: hỏi dashboard GET /api/talpha/thi-truong?phu=1 bằng
+// data/thi_truong.json). Bot không nối Postgres: hỏi dashboard GET /api/talpha/thi-truong?overrides=1 bằng
 // chìa nội bộ. Bản này cho bot; bản dashboard ở dashboard-ui/src/lib/talpha/thi-truong.ts, bản Python
 // ở sync/core/thi_truong.py. Ba bản phải ra CÙNG kết quả — bộ dữ liệu chung
 // tests/fixtures/thi_truong_phu.json (thi_truong.test.js).
@@ -19,7 +19,7 @@ const CHI_O_FILE_PHU = new Set(["tokens", "team"]);
 const laKhoi = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Route trả phần phủ + dấu vân tay (dashboard đọc bảng market_overrides). */
-const urlPhu = () => `${require("./config").dashboardBaseUrl}/api/talpha/thi-truong?phu=1`;
+const urlPhu = () => `${require("./config").dashboardBaseUrl}/api/talpha/thi-truong?overrides=1`;
 
 /** Dấu vân tay của phần phủ đã nạp lúc khởi động — null nếu không hỏi được dashboard. */
 let vanTayLucNap = null;
@@ -39,7 +39,7 @@ function docFilePhu(p) {
 function docPhu() {
     if (process.env.TALPHA_THI_TRUONG) return docFilePhu(process.env.TALPHA_THI_TRUONG);
     try {
-        const out = execFileSync(process.execPath, [path.join(__dirname, "goi_api_dong_bo.js"), urlPhu()],
+        const out = execFileSync(process.execPath, [path.join(__dirname, "fetch_sync.js"), urlPhu()],
             { timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] });
         const j = JSON.parse(out.toString("utf8"));
         vanTayLucNap = typeof j.van_tay === "string" ? j.van_tay : null;

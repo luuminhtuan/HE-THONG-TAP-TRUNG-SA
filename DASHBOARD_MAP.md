@@ -194,6 +194,15 @@ tới chúng.
 Vào `/` → `proxy.ts` kiểm đăng nhập → `/talpha` → `components/talpha/dashboard-shell.tsx` (menu
 chỉ hiện tab tài khoản được xem — `/api/talpha/me`).
 
+**Mỗi tab một địa chỉ** (15/11/2026): `/talpha/<slug>` — slug = mã tab (`overview`, `order-ledger`,
+`tracking`, `cod-recon`…), riêng Lãi lỗ là `income-statement`; khai ở `components/talpha/nav-config.ts`.
+Khoảng ngày và nước đang chọn nằm ở tham số `?from=YYYY-MM-DD&to=YYYY-MM-DD&market=SG` (Sổ đơn, Vận
+đơn, Tiền COD về đọc `market`), chuyển tab mang theo — tải lại hay gửi link là mở đúng chỗ đang xem.
+Quản trị: `/admin/ad-accounts` · `/admin/users` · `/admin/markets` · `/admin/credentials`. Khung trang
+nằm ở layout (`app/talpha/(dashboard)/layout.tsx`, `app/admin/layout.tsx`) nên chuyển tab không dựng
+lại khung; `/talpha/ads-command-center` nằm ngoài nhóm, vẫn là trang riêng. **Đổi slug là link cũ
+người ta đã gửi nhau hết mở được.**
+
 | Nhóm | Tab | Component | Số từ đâu |
 |:--|:--|:--|:--|
 | 📋 Báo cáo | Tổng quan | `tabs/ceo-overview-tab.tsx` | `/api/talpha/sheet-report?from&to` (đọc thẳng file TỔNG TEAM) + `targets` |
@@ -288,7 +297,7 @@ trong chuỗi) bị từ chối; vai `talpha_doc_nuoc` của họ cũng chỉ đ
 | `ads-alerts` · `sync-health` | Cảnh báo spend, sức khoẻ sync | Bot Zalo |
 | `sheet-report` | Số từ file TỔNG TEAM — `?date=` một ngày, `?from&to=` cộng cả khoảng | Bot Zalo · tab Tổng quan |
 | `report-config` | Mốc gốc báo cáo cho bộ chọn ngày | Giao diện |
-| `thi-truong` | Thị trường (04/11/2026): GET mọi nước đã phủ + nguồn (config / sửa trên trang / thêm trên trang) + có key POS chưa; POST thêm / sửa / bật / tắt một nước, kèm `key_pos` thì gọi thử shop rồi lưu luôn key POS (mã hoá, bảng `api_credentials` — 15/11/2026, khỏi sang Khoá kết nối; chỉ đổi key thì không khởi động lại) (soát mã shop, mã campaign trùng nước khác, tỷ giá, số chia; bật bán thì gọi thử shop POS trước) → ghi bảng `market_overrides` rồi tự khởi động lại; `?phu=1` trả phần phủ + vân tay cho bot; DELETE bỏ phần sửa trên trang của nước có trong config; nước thêm trên trang thì XOÁ HẲN (kèm key POS) nhưng chỉ khi chưa có đơn trong `sale_order` và chưa có chi tiêu Meta của camp mang mã nước đó (15/11/2026, cho nước tạo nhầm) — có số rồi thì chỉ tắt được. Chỉ giám đốc | `/admin` → Thị trường |
+| `thi-truong` | Thị trường (04/11/2026): GET mọi nước đã phủ + nguồn (config / sửa trên trang / thêm trên trang) + có key POS chưa; POST thêm / sửa / bật / tắt một nước, kèm `key_pos` thì gọi thử shop rồi lưu luôn key POS (mã hoá, bảng `api_credentials` — 15/11/2026, khỏi sang Khoá kết nối; chỉ đổi key thì không khởi động lại) (soát mã shop, mã campaign trùng nước khác, tỷ giá, số chia; bật bán thì gọi thử shop POS trước) → ghi bảng `market_overrides` rồi tự khởi động lại; `?overrides=1` trả phần phủ + vân tay cho bot; DELETE bỏ phần sửa trên trang của nước có trong config; nước thêm trên trang thì XOÁ HẲN (kèm key POS) nhưng chỉ khi chưa có đơn trong `sale_order` và chưa có chi tiêu Meta của camp mang mã nước đó (15/11/2026, cho nước tạo nhầm) — có số rồi thì chỉ tắt được. Chỉ giám đốc | `/admin` → Thị trường |
 | `khoa` | Khoá kết nối (04/11/2026): GET trạng thái từng khoá (đã che, `?kiem=1` gọi thử), POST gọi thử khoá mới với Meta / POS / Pancake / 17TRACK rồi mới lưu vào bảng `api_credentials` (mã hoá), DELETE quay về `.env.local`. Chỉ giám đốc | `/admin` → Khoá kết nối |
 | `pnl-costs` | Giá vốn + phí ship ước tính của đơn đã chốt, theo ngày và nước; liệt kê mã chưa có giá | Tab P&L · Tổng quan |
 | `lai-lo` | Lãi lỗ đủ mọi khoản theo nước (`lib/talpha/lai-lo.ts` hàm thuần + test, nạp kiện ở `lai-lo-nguon.ts`). Doanh số + ads đọc TỔNG TEAM qua `lib/talpha/sheet-tong-team.ts` (chung với `sheet-report`); kiện Đài qua `lib/talpha/so-don-dai.ts` (chung với `order-ledger`). Route tự cắt nước theo team; chi phí chung chia theo doanh số MỌI nước | Tab Lãi lỗ |

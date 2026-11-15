@@ -67,10 +67,10 @@ def main():
     env = {**load_env(ENV), **{k: v for k, v in os.environ.items() if k == "TALPHA_META_ACCESS_TOKEN"}}
     nguon = ENV
     # Khoá nhập ở /admin → Khoá kết nối (bảng api_credentials, 15/11/2026) thắng khoá cùng tên trong
-    # .env.local — đúng thứ tự sync đọc (sync/core/khoa.py).
+    # .env.local — đúng thứ tự sync đọc (sync/core/credentials.py).
     if os.environ.get("DATABASE_URL"):
         sys.path.insert(0, _REPO)
-        from sync.core.khoa import nap_khoa_vao_env
+        from sync.core.credentials import nap_khoa_vao_env
         tren_trang = {}
         nap_khoa_vao_env(tren_trang)
         env.update(tren_trang)

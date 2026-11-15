@@ -77,7 +77,7 @@ GRAND_KEY=BO.get('grand') or ""
 DAYS=[datetime.date(_T.year,_T.month,d) for d in range(1,_cal.monthrange(_T.year,_T.month)[1]+1)]  # đủ ngày tháng hiện tại
 sys.path.insert(0, talpha_paths.repo_dir())
 from sync.core.pg import ket_noi
-from sync.core.khoa import nap_khoa_vao_env
+from sync.core.credentials import nap_khoa_vao_env
 from psycopg.rows import namedtuple_row
 from psycopg.types.json import Jsonb
 nap_khoa_vao_env()   # token Pancake (mess Nhật) nhập ở /admin → Khoá kết nối — bảng api_credentials
@@ -466,7 +466,7 @@ if GHI_SHEET and GRAND_KEY and not GRAND_KEY.endswith("placeholder"):
 # ĐƠN") ── File TỔNG TEAM chỉ có tab nước (gộp người) và tab người (gộp nước); bảng xếp hạng
 # người TRONG một nước không có ở đâu. Ghi vào bảng market_monthly_reports (15/11/2026 — trước đó
 # file data/bao_cao_nuoc/<tháng>.json) NGAY SAU bảng TỔNG TEAM, cùng một bộ ô `cell` → tổng người
-# trong nước = đúng tab nước. Bot đọc qua /api/talpha/ban-nuoc.
+# trong nước = đúng tab nước. Bot đọc qua /api/talpha/market-report.
 # Chỉ người trong team (như tab nước), "(không gán)" để riêng; người ngoài team bỏ. Hỏng thì
 # chỉ log — không bao giờ làm chết vòng ghi Sheet.
 try:

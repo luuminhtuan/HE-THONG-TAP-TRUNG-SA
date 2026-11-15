@@ -107,8 +107,8 @@ def main(argv) -> int:
         if lenh == "migrate":
             moi = chay_migrations(conn)
             print("Đã chạy: " + ", ".join(moi) if moi else "Không còn migration nào chưa chạy.")
-            # File cũ (data/*.json, users.json, .env.khoa.local) → bảng — mỗi file một lần (nhap_file.py).
-            from sync.core.nhap_file import chep_tat_ca
+            # File cũ (data/*.json, users.json, .env.khoa.local) → bảng — mỗi file một lần (file_import.py).
+            from sync.core.file_import import chep_tat_ca
             chep = chep_tat_ca(conn)
             if chep:
                 print("Đã chép vào kho: " + ", ".join(chep))

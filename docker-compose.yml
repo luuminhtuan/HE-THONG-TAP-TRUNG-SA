@@ -32,7 +32,7 @@ x-python: &python
   environment:
     DATABASE_URL: postgresql://talpha:talpha@db:5432/talpha
     TALPHA_DOC_PASSWORD: ${TALPHA_DOC_PASSWORD:-chi-doc-may-thu}
-    # Chìa mã hoá khoá kết nối trong kho (sync/core/khoa.py) — PHẢI trùng với dashboard bên dưới.
+    # Chìa mã hoá khoá kết nối trong kho (sync/core/credentials.py) — PHẢI trùng với dashboard bên dưới.
     TALPHA_ENCRYPTION_KEY: ${TALPHA_ENCRYPTION_KEY:-may-thu-doi-chia-nay-khi-dua-ra-ngoai}
     TALPHA_RULES: /app/config/talpha_rules.json
     TALPHA_REPO: /app

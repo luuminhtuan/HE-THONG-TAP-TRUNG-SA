@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { format } from "date-fns";
 import { Check, ChevronDown, Copy, HandCoins } from "lucide-react";
 import TabSkeleton, { ErrorState } from "@/components/ui/tab-skeleton";
+import { useThamSoUrl } from "../url-state";
 import { formatNumber, cn } from "../utils";
 import {
     TWD, VND, RMB, d6, STRIPE, PIN_TINT, rowCls, statusCls, mkCls, tinDoiTien, demTyLeGiao,
@@ -53,7 +54,7 @@ function Tick({ on, title }: { on: boolean; title: string }) {
  * UAE mở tab là đụng ngay sổ Đài, máy chủ từ chối, màn lỗi che mất nút đổi nước.
  */
 export default function TALPHAOrderLedgerTab(props: Props) {
-    const [nuoc, setNuoc] = useState("TW");
+    const [nuocUrl, datNuocUrl] = useThamSoUrl("market");
     const [ds, setDs] = useState<{ code: string; display: string }[] | null>(null);
     // Nước của team đang bán nhưng chưa có sổ (chưa khai hãng vận chuyển — Nhật 09/10/2026).
     const [chuaCoSo, setChuaCoSo] = useState<string[]>([]);
@@ -68,11 +69,13 @@ export default function TALPHAOrderLedgerTab(props: Props) {
                 const list = dangBan.filter((m) => m.co_van_don !== false).map((m) => ({ code: m.code, display: m.display }));
                 setChuaCoSo(dangBan.filter((m) => m.co_van_don === false).map((m) => m.display));
                 setDs(list);
-                setNuoc((n) => (list.length && !list.some((m) => m.code === n) ? list[0].code : n));
             })
             .catch(() => setDs([]));   // không lấy được danh sách nước thì vẫn hiện sổ Đài như cũ
     }, []);
     if (ds === null) return <TabSkeleton />;
+    // Nước đang xem nằm trên địa chỉ (?market=SG, 15/11/2026) — tải lại / gửi link là mở đúng nước.
+    // Mã lạ hoặc nước ngoài team → nước đầu tiên được xem.
+    const nuoc = nuocUrl && ds.some((m) => m.code === nuocUrl.toUpperCase()) ? nuocUrl.toUpperCase() : (ds[0]?.code ?? "TW");
     // Team chỉ có nước chưa có sổ: nói thẳng, đừng mở sổ Đài (máy chủ sẽ từ chối, màn lỗi khó hiểu).
     if (!ds.length && chuaCoSo.length) {
         return (
@@ -86,7 +89,7 @@ export default function TALPHAOrderLedgerTab(props: Props) {
     const nutNuoc = ds.length > 1 ? (
         <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1">
             {ds.map((m) => (
-                <button key={m.code} onClick={() => setNuoc(m.code)}
+                <button key={m.code} onClick={() => datNuocUrl(m.code)}
                     className={cn("rounded-md px-3.5 py-1 text-sm font-medium transition-colors",
                         nuoc === m.code ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
                     {m.display}

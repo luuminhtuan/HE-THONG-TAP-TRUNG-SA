@@ -8,7 +8,7 @@
 // từ kho số (số Meta) mà cần mess Nhật thì lấy ở đây cho khớp Sheet (Sỹ Anh 13/10/2026).
 // ═══════════════════════════════════════════════════════════════════
 // Phần THUẦN (có test, tests/pancake.test.cjs). Phần đọc kho (docBan, messPancakeTuBan) ở
-// ./ban-nuoc-kho.ts — tách riêng để bản build test không kéo theo lib/db.ts.
+// ./market-report-store.ts — tách riêng để bản build test không kéo theo lib/db.ts.
 
 export type BanNuoc = {
     thang: string; ghi_luc?: string | null; khong_gan?: string;

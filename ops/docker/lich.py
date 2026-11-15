@@ -62,7 +62,7 @@ def moi_truong() -> dict:
             env[k] = v
     if REPO not in sys.path:
         sys.path.insert(0, REPO)
-    from sync.core.khoa import nap_khoa_vao_env
+    from sync.core.credentials import nap_khoa_vao_env
     nap_khoa_vao_env(env)
     return env
 

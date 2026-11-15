@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(PROJECT_DIR, '.env'))
 # Khoá nhập ở /admin → Khoá kết nối (bảng api_credentials) thắng khoá cùng tên trong .env — nạp
 # TRƯỚC khi đọc FB_TOKEN bên dưới.
-from sync.core.khoa import nap_khoa_vao_env
+from sync.core.credentials import nap_khoa_vao_env
 nap_khoa_vao_env()
 
 # ── sync/core imports ────────────────────────────────────────────

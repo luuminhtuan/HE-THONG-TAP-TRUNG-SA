@@ -194,7 +194,7 @@ export const API_RULES: Record<string, ApiRule> = {
     // Chỉ bot gọi (cảnh báo spend cả công ty, chưa tách nước) — không tab nào dùng.
     "/api/talpha/ads-alerts": { full: true },
     // Số nước × người của một tháng (bảng market_monthly_reports) — bot Zalo đọc thay file cũ.
-    "/api/talpha/ban-nuoc": { full: true },
+    "/api/talpha/market-report": { full: true },
     "/api/talpha/ads-recon": { full: true },
     "/api/talpha/ceo-ask": { full: true },
     "/api/talpha/export-report": { full: true },

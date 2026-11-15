@@ -10,7 +10,7 @@
 --                             key 17TRACK) — MÃ HOÁ bằng pgcrypto, chìa ở biến TALPHA_ENCRYPTION_KEY
 --   file_imports            ← sổ "file nào đã chép vào kho" — mỗi file chỉ chép MỘT lần
 --
--- File cũ được chép vào ở bước `migrate` (sync/core/nhap_file.py), không xoá file.
+-- File cũ được chép vào ở bước `migrate` (sync/core/file_import.py), không xoá file.
 -- Luật gốc config/talpha_rules.json VẪN ở git (có lịch sử, test chạy trên nó, view dựng từ nó).
 -- ═══════════════════════════════════════════════════════════════════════════════════════
 

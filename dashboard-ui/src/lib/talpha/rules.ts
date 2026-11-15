@@ -6,7 +6,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import fs from "fs";
 import { RULES_JSON, THI_TRUONG_FILE_TEST } from "./config-path";
-import { truyVanDongBo } from "./db-dong-bo";
+import { truyVanDongBo } from "./db-sync";
 import { phuLuat, type FilePhu } from "./thi-truong";
 
 /** "da_tat" (04/11/2026): ngừng kéo số mới, GIỮ tỷ giá / số chia / đơn cũ — xem MARKET_DA_TAT. */

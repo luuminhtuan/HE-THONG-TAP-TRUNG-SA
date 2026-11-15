@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Globe2, Plus, Pencil, Power, RotateCcw, Loader2, AlertCircle, CheckCircle2, X, KeyRound, Eye, EyeOff, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { KhoaCoMat, layKhoa } from "./xem-khoa";
+import { KhoaCoMat, layKhoa } from "./key-reveal";
 
 // Thị trường (04/11/2026) — giám đốc thêm nước, sửa tỷ giá, tắt / bật nước ngay trên dashboard.
 // Lưu ở bảng market_overrides (deploy không đè), phủ lên talpha_rules.json ở cả dashboard, sync,

@@ -66,7 +66,8 @@ export default auth(async (req) => {
     const a = await getAccess(req, req.auth);
     if (!a) {
         const loginUrl = new URL("/login", req.url);
-        loginUrl.searchParams.set("callbackUrl", pathname);
+        // Giữ cả tham số (?market=SG&from=…): link gửi cho người chưa đăng nhập, đăng nhập xong vẫn mở đúng chỗ.
+        loginUrl.searchParams.set("callbackUrl", pathname + req.nextUrl.search);
         return NextResponse.redirect(loginUrl);
     }
     const veTrangChinh = () => NextResponse.redirect(new URL("/talpha", req.url));

@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // Thị trường (04/11/2026) — trang /admin → Thị trường. Chỉ giám đốc (API_RULES: full).
 //
 //   GET                       → mọi nước (đã phủ), lấy từ đâu, có key POS chưa, danh sách team
-//   GET ?phu=1                → chỉ phần phủ + dấu vân tay — cho bot Zalo (chìa nội bộ) nạp luật
+//   GET ?overrides=1          → chỉ phần phủ + dấu vân tay — cho bot Zalo (chìa nội bộ) nạp luật
 //   POST {nuoc, la_moi, key_pos?} → thêm / sửa / bật / tắt một nước; có key_pos (15/11/2026) thì gọi thử
 //                             shop bằng key đó rồi lưu luôn key (bảng api_credentials, mã hoá) — khỏi
 //                             sang Khoá kết nối; bật bán thì gọi thử shop POS trước
@@ -80,7 +80,7 @@ function docNhap(b: Record<string, unknown>): ThiTruongNhap {
 
 export async function GET(req: NextRequest) {
     try {
-        if (req.nextUrl.searchParams.get("phu") === "1") {
+        if (req.nextUrl.searchParams.get("overrides") === "1") {
             const phu = await docFilePhu();
             return NextResponse.json({ phu, van_tay: vanTayPhu(phu) });
         }
