@@ -148,6 +148,7 @@ khoá thật: `docker compose down -v && docker compose up -d`.
 | `users` | `config/users.json` / `USERS_JSON` | `lib/users.ts` |
 | `api_credentials` | `dashboard-ui/.env.khoa.local` — MÃ HOÁ (pgcrypto) bằng `TALPHA_ENCRYPTION_KEY` | `lib/talpha/khoa.ts`, `sync/core/credentials.py` |
 | `file_imports` | — sổ file cũ nào đã chép vào kho | `sync/core/file_import.py` |
+| `job_runs` · `refresh_requests` | — (migration 0007) sổ lượt việc nền + yêu cầu "Cập nhật ngay" | `ops/docker/lich.py` qua `sync/core/job_log.py`; dashboard đọc ở `/api/talpha/refresh` |
 
 Bước `migrate` chép mỗi file cũ vào kho MỘT lần (không ghi đè dòng đã có, không xoá file) — chép lần
 hai sẽ làm sống lại thứ người dùng đã xoá trên trang. Sau đó file cũ chỉ còn là bản lưu.

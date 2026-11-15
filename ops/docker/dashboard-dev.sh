@@ -16,4 +16,11 @@ if [ ! -f "$MOC" ] || [ "$(cat "$MOC")" != "$MOI" ]; then
     echo "$MOI" > "$MOC"
 fi
 
+# DASHBOARD_MODE=prod (15/11/2026, file .env ở gốc repo): bản dựng sẵn — dùng khi mở cho người khác qua
+# Cloudflare Tunnel. Sửa code thì `docker compose restart dashboard` để dựng lại (1–3 phút).
+if [ "${DASHBOARD_MODE:-dev}" = "prod" ]; then
+    echo "Dựng bản production (next build)…"
+    node_modules/.bin/next build
+    exec node_modules/.bin/next start -H 0.0.0.0 -p 3000
+fi
 exec node_modules/.bin/next dev -H 0.0.0.0 -p 3000

@@ -9,7 +9,10 @@
 #   docker compose --profile zalo up -d zalo   # bot Zalo (ghép nick trước: xem docs/POSTGRES.md)
 #
 # MÁY THỬ / MÁY NỘI BỘ: dashboard bỏ đăng nhập (DASHBOARD_PUBLIC) và mật khẩu Postgres là mặc định.
-# Cổng chỉ mở cho chính máy này (127.0.0.1). Đưa ra internet thì phải bật đăng nhập và đổi mật khẩu.
+# Cổng chỉ mở cho chính máy này (127.0.0.1). Đưa ra internet (Cloudflare Tunnel…) thì đặt trong file .env
+# ở gốc repo (ngoài git): DASHBOARD_PUBLIC=false (bật đăng nhập — tạo tài khoản ở /admin/users TRƯỚC),
+# AUTH_SECRET=<chuỗi ngẫu nhiên> (chìa mặc định dưới đây nằm công khai trong repo — ai biết là giả được
+# phiên đăng nhập), DASHBOARD_MODE=prod (next build + next start: nhanh, không lộ màn lỗi của bản dev).
 #
 # MỌI dữ liệu người dùng nhập nằm trong Postgres (15/11/2026, migration 0006): sao kê, vận đơn, thị
 # trường, người dùng, và khoá Meta / POS / Pancake / 17TRACK nhập ở /admin → Khoá kết nối (bảng
@@ -79,11 +82,12 @@ services:
       DATABASE_URL: postgresql://talpha:talpha@db:5432/talpha
       TALPHA_DOC_PASSWORD: ${TALPHA_DOC_PASSWORD:-chi-doc-may-thu}
       TALPHA_ENCRYPTION_KEY: ${TALPHA_ENCRYPTION_KEY:-may-thu-doi-chia-nay-khi-dua-ra-ngoai}
-      AUTH_URL: http://localhost:${DASHBOARD_PORT:-3200}
-      NEXTAUTH_URL: http://localhost:${DASHBOARD_PORT:-3200}
-      AUTH_SECRET: chi-dung-tren-may-thu-docker
+      # Không đặt AUTH_URL: đăng nhập theo đúng địa chỉ người dùng mở (localhost hay link tunnel).
+      AUTH_SECRET: ${AUTH_SECRET:-chi-dung-tren-may-thu-docker}
       AUTH_TRUST_HOST: "true"
-      DASHBOARD_PUBLIC: "true"
+      DASHBOARD_PUBLIC: ${DASHBOARD_PUBLIC:-true}
+      # dev = next dev (sửa code là thấy ngay) · prod = next build rồi next start
+      DASHBOARD_MODE: ${DASHBOARD_MODE:-dev}
       NEXT_PUBLIC_DEPLOYMENT_MODE: talpha
       NEXT_PUBLIC_APP_NAME: TALPHA
       NEXT_TELEMETRY_DISABLED: "1"

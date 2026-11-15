@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
+import { docLoiFetch } from "@/lib/talpha/refresh-status";
 
 export const dynamic = "force-dynamic";
 
@@ -34,18 +35,8 @@ async function accountHealth() {
     }
 }
 
-// Tên TKQC / shop đọc lỗi trong vòng chạy — daily_guarded.sh đặt đầu `detail` theo nhãn
-// "TKQC_LOI=a; b || SHOP_LOI=… || MAT_QUYEN=… || TKQC_BO_QUA=…". Không có nhãn = vòng đó
-// không mục nào lỗi. bo_qua (28/10/2026): TK đọc lỗi mà vẫn còn TK khác đọc được — sync bỏ qua,
-// vòng vẫn OK và vẫn ghi Sheet; chỉ trả tên ra để bot nhắc gỡ TK chết.
-function docLoiFetch(detail: unknown) {
-    const s = String(detail || "");
-    const lay = (nhan: string) => {
-        const m = new RegExp(`${nhan}=([^|]*)`).exec(s);
-        return m ? m[1].split(";").map((x) => x.trim()).filter(Boolean) : [];
-    };
-    return { tkqc: lay("TKQC_LOI"), shops: lay("SHOP_LOI"), mat_quyen: lay("MAT_QUYEN"), bo_qua: lay("TKQC_BO_QUA") };
-}
+// Tên TKQC / shop đọc lỗi trong vòng chạy: docLoiFetch (lib/talpha/refresh-status.ts — dùng chung với
+// đèn trạng thái cập nhật trên dashboard).
 
 // Trạng thái chuỗi sync Sheet (Mac, launchd mỗi giờ). Bot WhatsApp poll route này
 // để cảnh báo khi sync FAIL hoặc IM LẶNG quá lâu (chống sự cố "chết câm" 22-29/6).

@@ -162,6 +162,8 @@ export const API_RULES: Record<string, ApiRule> = {
     "/api/talpha/markets": { tabs: "*" },
     "/api/talpha/report-config": { tabs: "*" },
     "/api/talpha/sync-health": { tabs: "*" },
+    // Đèn "Cập nhật lúc…" + nút "Cập nhật ngay" trên thanh đầu — ai đăng nhập cũng xem, bấm được (15/11/2026).
+    "/api/talpha/refresh": { tabs: "*" },
 
     "/api/talpha/sheet-report": { tabs: ["overview", "pnl", "marketing"] },
     "/api/talpha/pnl-costs": { tabs: ["overview", "pnl"] },

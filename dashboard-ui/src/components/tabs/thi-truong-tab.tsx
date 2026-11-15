@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Globe2, Plus, Pencil, Power, RotateCcw, Loader2, AlertCircle, CheckCircle2, X, KeyRound, Eye, EyeOff, Trash2 } from "lucide-react";
+import { Globe2, Plus, Pencil, Power, RotateCcw, Loader2, AlertCircle, CheckCircle2, X, KeyRound, Eye, EyeOff, Trash2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { KhoaCoMat, layKhoa } from "./key-reveal";
 
@@ -313,13 +313,28 @@ function FormNuoc({ form, teams, dangLuu, loi, doi, luu, huy }: {
         value: f[k],
         onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => doi({ ...f, [k]: e.target.value }),
     });
+    // Esc là đóng (trừ lúc đang lưu — đóng giữa chừng không biết đã lưu hay chưa).
+    useEffect(() => {
+        const phim = (e: KeyboardEvent) => { if (e.key === "Escape" && !dangLuu) huy(); };
+        window.addEventListener("keydown", phim);
+        return () => window.removeEventListener("keydown", phim);
+    }, [dangLuu, huy]);
+    // Popup cùng kiểu form Thêm User (15/11/2026): khung tối, tiêu đề đứng yên, chỉ phần ô nhập cuộn,
+    // nút Huỷ / Lưu dính đáy. Class `dark` đổi màu chữ / ô nhập bên trong sang bảng màu tối kể cả khi
+    // trang đang sáng; [color-scheme:dark] cho thanh cuộn và danh sách chọn tối theo.
     return (
-        <div className="space-y-4 rounded-xl border border-indigo-500/30 bg-indigo-500/[0.04] p-4">
-            <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-foreground">{laMoi ? "Thêm thị trường" : `Sửa ${f.display || f.key}`}</h3>
-                <button onClick={huy} aria-label="Đóng" className="rounded p-1 text-slate-400 hover:text-foreground"><X className="h-4 w-4" /></button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div role="dialog" aria-modal="true" aria-labelledby="tt-tieu-de"
+                className="dark mx-3 flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#24211C] text-foreground shadow-2xl [color-scheme:dark]">
+            <div className="flex shrink-0 items-center justify-between border-b border-white/[0.06] px-6 py-4">
+                <h3 id="tt-tieu-de" className="text-lg font-bold text-white">{laMoi ? "Thêm thị trường" : `Sửa ${f.display || f.key}`}</h3>
+                <button onClick={huy} disabled={dangLuu} aria-label="Đóng"
+                    className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50">
+                    <X className="h-5 w-5" />
+                </button>
             </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                 <O nhan="Tên khoá" giai="Chữ không dấu, viết hoa chữ đầu (vd Thailand). Không đổi được sau khi lưu.">
                     <input {...o("key")} disabled={!laMoi} placeholder="Thailand" className={O_NHAP} />
                 </O>
@@ -388,20 +403,22 @@ function FormNuoc({ form, teams, dangLuu, loi, doi, luu, huy }: {
                 </O>
             </div>
             {loi.length > 0 && (
-                <ul className="space-y-1 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-400">
+                <ul className="space-y-1 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs text-red-400">
                     {loi.map((x) => <li key={x}>{x}</li>)}
                 </ul>
             )}
-            <div className="flex gap-2">
-                <button onClick={luu} disabled={dangLuu}
-                    className="flex items-center gap-1.5 rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600 disabled:opacity-50">
-                    {dangLuu && <Loader2 className="h-4 w-4 animate-spin" />}
-                    {dangLuu ? "Đang soát…" : "Lưu"}
-                </button>
+            </div>
+            <div className="flex shrink-0 items-center justify-end gap-3 border-t border-white/[0.06] px-6 py-4">
                 <button onClick={huy} disabled={dangLuu}
-                    className="rounded-lg px-4 py-2 text-sm font-medium text-slate-400 hover:bg-white/[0.06] hover:text-foreground">
+                    className="rounded-xl px-4 py-2.5 text-sm font-medium text-slate-400 transition-colors hover:bg-white/[0.06] hover:text-white">
                     Huỷ
                 </button>
+                <button onClick={luu} disabled={dangLuu}
+                    className="flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 transition-colors hover:bg-indigo-600 disabled:opacity-50">
+                    {dangLuu ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    {dangLuu ? "Đang soát…" : laMoi ? "Thêm thị trường" : "Lưu"}
+                </button>
+            </div>
             </div>
         </div>
     );

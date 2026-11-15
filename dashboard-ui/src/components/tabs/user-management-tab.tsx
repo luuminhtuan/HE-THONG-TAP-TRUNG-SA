@@ -343,8 +343,10 @@ export default function UserManagementTab() {
             {/* Create/Edit Form Modal */}
             {showForm && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                    <div className="mx-3 max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-[#24211C] shadow-2xl">
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
+                    {/* Khung tối: tiêu đề đứng yên, chỉ phần ô nhập cuộn, nút Hủy / Tạo dính đáy (15/11/2026).
+                        [color-scheme:dark]: trang đang sáng mà khung tối thì trình duyệt vẽ thanh cuộn trắng. */}
+                    <div className="mx-3 flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#24211C] shadow-2xl [color-scheme:dark]">
+                        <div className="flex shrink-0 items-center justify-between px-6 py-4 border-b border-white/[0.06]">
                             <h3 className="text-lg font-bold text-white">
                                 {editingUser
                                     ? `Sửa: ${editingUser.name}`
@@ -358,7 +360,7 @@ export default function UserManagementTab() {
                             </button>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                        <form onSubmit={handleSubmit} className="min-h-0 flex-1 space-y-5 overflow-y-auto p-6 pb-0">
                             {formError && (
                                 <div className="flex items-center gap-2 rounded-xl bg-red-500/10 border border-red-500/20 px-4 py-3 text-sm text-red-400">
                                     <AlertCircle className="h-4 w-4 flex-shrink-0" />
@@ -509,8 +511,8 @@ export default function UserManagementTab() {
                                 </div>
                             )}
 
-                            {/* Submit */}
-                            <div className="flex items-center justify-end gap-3 pt-2">
+                            {/* Submit — dính đáy khung, luôn thấy dù form dài */}
+                            <div className="sticky bottom-0 -mx-6 flex items-center justify-end gap-3 border-t border-white/[0.06] bg-[#24211C] px-6 py-4">
                                 <button
                                     type="button"
                                     onClick={resetForm}

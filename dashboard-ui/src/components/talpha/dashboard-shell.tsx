@@ -12,6 +12,7 @@ import Link from "next/link";
 import { AccessProvider, type Me } from "./access-context";
 import NutCaiApp from "./cai-app";
 import { useDoiThamSo } from "./url-state";
+import TrangThaiCapNhatNut from "./refresh-status";
 import { NAV_GROUPS, TAB_INFO, TAB_THEO_SLUG, type NavGroup } from "./nav-config";
 
 import TALPHACeoOverviewTab from "./tabs/ceo-overview-tab";
@@ -290,6 +291,8 @@ export default function TALPHADashboardShell() {
                                 Tính từ {format(reportStart, "dd/MM/yyyy")}
                             </span>
                         )}
+                        {/* Số cập nhật lúc nào / đang cập nhật / lỗi + nút "Cập nhật ngay" (15/11/2026). */}
+                        {me && <TrangThaiCapNhatNut />}
                         {!IGNORES_DATE_RANGE.has(activeTab) && (
                             <DateRangePicker
                                 value={onFloorTab ? tabRange : dateRange}

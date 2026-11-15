@@ -78,6 +78,9 @@ const nextConfig = {
         return config;
     },
     reactStrictMode: false,
+    // Mở dashboard `next dev` ra ngoài bằng Cloudflare Tunnel (15/11/2026): Next chặn tài nguyên dev
+    // (/_next/*) gọi từ tên miền lạ — khai tên miền tunnel tạm. Bản `next start` không cần.
+    allowedDevOrigins: ["*.trycloudflare.com"],
 };
 
 export default nextConfig;

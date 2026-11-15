@@ -11,16 +11,24 @@ Giờ là giờ Việt Nam. Khoá (Meta, POS, Pancake, 17TRACK) đọc LẠI t�
 trước đó file .env.khoa.local) trước MỖI việc — khoá vừa nhập ở /admin → Khoá kết nối có tác dụng từ
 việc kế tiếp, không phải khởi động lại container. Việc nào đang chạy thì lượt sau của chính nó bỏ qua (không chồng hai lượt). Mới bật container
 thì chạy ngay một vòng kéo số + báo cáo, khỏi chờ tới đầu giờ.
+
+Mỗi lượt ghi vào bảng job_runs, và mỗi 15 giây nhặt yêu cầu "Cập nhật ngay" (refresh_requests) bấm trên
+dashboard (15/11/2026, sync/core/job_log.py) — người dùng thấy đang cập nhật / cập nhật lúc nào, và tự
+chạy được mà không cần gõ lệnh.
 """
 import os
 import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 REPO = "/app"
+if REPO not in sys.path:
+    sys.path.insert(0, REPO)
+from sync.core import job_log  # noqa: E402
 VN = ZoneInfo("Asia/Ho_Chi_Minh")
 VIEC = [
     # (tên, phút, giờ trong ngày — None là mỗi giờ, lệnh)
@@ -67,6 +75,27 @@ def moi_truong() -> dict:
     return env
 
 
+def chay_va_ghi(ten: str, lenh: list, ai: str = "lịch", env: dict | None = None):
+    """Chạy một việc (chờ xong), in log ra như cũ, ghi lượt vào job_runs kèm 40 dòng log cuối. Trả rc."""
+    id_luot = job_log.bat_dau(ten, ai)
+    bat_dau = time.time()
+    print(f"{datetime.now(VN):%F %T} [{ten}] bắt đầu ({ai})", flush=True)
+    duoi: deque = deque(maxlen=40)
+    try:
+        p = subprocess.Popen(lenh, cwd=REPO, env=env or moi_truong(), stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True, errors="replace")
+        for dong in p.stdout:
+            print(dong, end="", flush=True)
+            duoi.append(dong)
+        rc = p.wait()
+    except Exception as e:   # noqa: BLE001
+        rc = f"lỗi {e}"
+        duoi.append(str(rc))
+    print(f"{datetime.now(VN):%F %T} [{ten}] xong rc={rc} sau {time.time() - bat_dau:.0f}s", flush=True)
+    job_log.xong(id_luot, rc, "".join(duoi))
+    return rc
+
+
 def chay(ten: str, lenh: list):
     if _dang_chay.get(ten):
         print(f"{datetime.now(VN):%F %T} [{ten}] lượt trước còn chạy — bỏ lượt", flush=True)
@@ -74,14 +103,45 @@ def chay(ten: str, lenh: list):
 
     def _lam():
         _dang_chay[ten] = True
-        bat_dau = time.time()
-        print(f"{datetime.now(VN):%F %T} [{ten}] bắt đầu", flush=True)
         try:
-            rc = subprocess.run(lenh, cwd=REPO, env=moi_truong()).returncode
-        except Exception as e:   # noqa: BLE001
-            rc = f"lỗi {e}"
-        print(f"{datetime.now(VN):%F %T} [{ten}] xong rc={rc} sau {time.time() - bat_dau:.0f}s", flush=True)
-        _dang_chay[ten] = False
+            chay_va_ghi(ten, lenh)
+        finally:
+            _dang_chay[ten] = False
+
+    threading.Thread(target=_lam, daemon=True).start()
+
+
+def bo_moc_bao_cao():
+    """daily_guarded.sh bỏ lượt nếu lượt trước chưa quá 50 phút — lượt có chủ đích thì xoá mốc trước."""
+    try:
+        os.remove(os.path.join(REPO, "ops", "talpha_reports", "last_run_epoch"))
+    except FileNotFoundError:
+        pass
+
+
+def cap_nhat_ngay():
+    """Yêu cầu "Cập nhật ngay" từ dashboard: kéo số rồi dựng báo cáo, như vòng :00 + :20 gộp lại.
+    Chỉ nhận khi không việc kéo số / báo cáo nào đang chạy (yêu cầu cứ chờ trong bảng)."""
+    if _dang_chay.get("sync") or _dang_chay.get("bao_cao") or _dang_chay.get("cap_nhat"):
+        return
+    yc = job_log.nhan_yeu_cau()
+    if not yc:
+        return
+    ai = f"bấm tay: {yc[1] or '?'}"
+
+    def _lam():
+        for k in ("cap_nhat", "sync", "bao_cao"):
+            _dang_chay[k] = True
+        ok = False
+        try:
+            rc_sync = chay_va_ghi("sync", ["python", "sync/talpha/talpha_sync.py"], ai)
+            bo_moc_bao_cao()
+            rc_bc = chay_va_ghi("bao_cao", ["bash", "ops/talpha_reports/daily_guarded.sh"], ai)
+            ok = rc_sync == 0 and rc_bc == 0
+        finally:
+            job_log.xong_yeu_cau(ok)
+            for k in ("cap_nhat", "sync", "bao_cao"):
+                _dang_chay[k] = False
 
     threading.Thread(target=_lam, daemon=True).start()
 
@@ -89,17 +149,16 @@ def chay(ten: str, lenh: list):
 def main():
     os.makedirs(os.environ.get("TALPHA_REPORTS_DIR", "/app/logs/bao_cao"), exist_ok=True)
     print(f"Lịch việc nền bật lúc {datetime.now(VN):%F %T} (giờ VN): " + ", ".join(v[0] for v in VIEC), flush=True)
+    # Lượt nào còn ghi "đang chạy" là của lần bật trước, đã bị ngắt giữa chừng.
+    job_log.don_luot_treo()
     # Vòng đầu ngay khi bật: kéo số rồi dựng báo cáo (báo cáo đợi sync xong).
-    subprocess.run(["python", "sync/talpha/talpha_sync.py"], cwd=REPO, env=moi_truong())
+    chay_va_ghi("sync", ["python", "sync/talpha/talpha_sync.py"], "khởi động")
     env = moi_truong()
     env["TALPHA_FORCE_FORMAT"] = "1"   # vòng đầu: ghi báo cáo cả khi sync báo lỗi (chưa nhập khoá)
     # daily_guarded.sh bỏ lượt nếu lượt trước chưa quá 50 phút — bật lại container (vừa nhập khoá) thì
     # phải dựng báo cáo ngay, nên xoá mốc trước.
-    try:
-        os.remove(os.path.join(REPO, "ops", "talpha_reports", "last_run_epoch"))
-    except FileNotFoundError:
-        pass
-    subprocess.run(["bash", "ops/talpha_reports/daily_guarded.sh"], cwd=REPO, env=env)
+    bo_moc_bao_cao()
+    chay_va_ghi("bao_cao", ["bash", "ops/talpha_reports/daily_guarded.sh"], "khởi động", env)
     # Vòng khởi động đã kéo số + dựng báo cáo: bật đúng phút :00 / :20 thì đừng chạy lại lượt phút đó.
     luc_bat = datetime.now(VN).strftime("%Y-%m-%d %H:%M")
     da_chay = {("sync", luc_bat), ("bao_cao", luc_bat)}
@@ -112,6 +171,7 @@ def main():
                 chay(ten, lenh)
         if len(da_chay) > 500:
             da_chay = {x for x in da_chay if x[1] == moc}
+        cap_nhat_ngay()
         time.sleep(15)
 
 

@@ -2,7 +2,8 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, Settings, Megaphone, UsersRound, KeyRound, Globe2 } from "lucide-react";
+import { ArrowLeft, Settings, Megaphone, UsersRound, KeyRound, Globe2, LogOut } from "lucide-react";
+import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { ADMIN_SECTIONS, type AdminSectionId } from "./admin-sections";
@@ -72,6 +73,17 @@ export default function AdminShell() {
             </Link>
           ))}
         </nav>
+        {/* Đăng xuất (15/11/2026) — trước chỉ có ở menu dashboard. Chế độ mở (chưa bật đăng nhập) thì
+            bấm cũng chỉ về trang đăng nhập rồi vào lại thẳng. */}
+        <div className="hidden border-t border-border p-3 md:block">
+          <button
+            type="button"
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <LogOut className="h-4 w-4" /> Đăng xuất
+          </button>
+        </div>
       </aside>
 
       {/* Main Content */}
