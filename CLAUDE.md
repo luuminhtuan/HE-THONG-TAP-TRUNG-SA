@@ -159,3 +159,4 @@ live, gom đơn theo giờ VN vs timezone từng TKQC. Đừng "fix cho khớp" 
 | `ops/pm2/README.md` | pm2 và systemd timer |
 | `ops/talpha_reports/README.md` | Đường ống báo cáo Google Sheets |
 | `docs/POSTGRES.md` | Kho số Postgres, chạy bằng docker compose, bảng dịch SQL BigQuery → Postgres |
+| `docs/ZALO_BOT.md` | Bot Zalo: lịch gửi, nguồn số từng tin, đính chính khi số chưa đủ, vận hành |
