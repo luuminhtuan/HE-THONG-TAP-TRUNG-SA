@@ -23,6 +23,8 @@ async function runService() {
     enableServiceMode(runCommand);   // từ đây mỗi lần đăng nhập đều bật lại bộ nhận lệnh
     log(`Dashboard base: ${CFG.dashboardBaseUrl}${process.env.TALPHA_DASHBOARD_URL ? " (env TALPHA_DASHBOARD_URL)" : ""}`);
     loadZalo();
+    // Nạp nhóm từng nước TRƯỚC khi ghi trạng thái lên trang — không thì lượt ghi đầu báo "chưa có nhóm" tới nhịp tim sau.
+    loadGroups();
     // Trang /admin → Khoá kết nối → Zalo điều khiển bot (ghép nick bằng QR, chọn nhóm, gửi thử) — bật NGAY, kể cả
     // khi chưa ghép: đó chính là lúc cần ghép từ trang (bot_control.js, 16/11/2026).
     startControl();
