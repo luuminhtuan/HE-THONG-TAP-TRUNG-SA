@@ -12,9 +12,9 @@ một shop POS Poscake, một team riêng; tài khoản quảng cáo Meta tự �
 | [docs/POSTGRES.md](docs/POSTGRES.md) | Kho số Postgres, docker compose, bảng dịch SQL BigQuery → Postgres |
 | [docs/](docs/) | Đối soát COD, quy ước tên campaign, bot Zalo, dựng máy chủ |
 
-> **`main` là bản Postgres từ 16/11/2026**, chạy cả hệ thống bằng `docker compose`. **Máy chủ VPS `139.180.131.21`
-> vẫn chạy bản BigQuery cũ** (bản cuối: nhánh `bk_main_26_11_16`) cho tới khi dựng Postgres trên đó — `from-mac.sh`
-> tự dừng (bước 0c) nếu máy chủ chưa có Postgres, để production không sập.
+> **Bản Postgres** (`main` từ 16/11/2026): máy dev chạy bằng `docker compose`; **máy chủ VPS `139.180.131.21` chạy bản
+> này từ tối 16/11/2026** (Postgres có sẵn của máy + pm2 + systemd — `docs/DEPLOY_VPS.md`). Bản BigQuery cuối: nhánh
+> `bk_main_26_11_16`.
 
 ---
 

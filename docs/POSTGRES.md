@@ -174,9 +174,8 @@ khoá thật: `docker compose down -v && docker compose up -d`.
 
 ## Còn lại
 
-* **Máy chủ VPS** vẫn chạy bản BigQuery cũ (nhánh `bk_main_26_11_16`) dù `main` đã là bản Postgres (16/11/2026).
-  Chuyển máy chủ = cài Postgres (hoặc chạy compose trên máy chủ), đặt `DATABASE_URL` cho dashboard + các systemd
-  service, sửa `ops/deploy/vps-*-setup.sh`. Chưa làm — `from-mac.sh` bước 0c chặn deploy tới khi máy chủ có Postgres.
+* ~~Máy chủ VPS còn chạy BigQuery~~ — chuyển xong tối 16/11/2026 (`docs/DEPLOY_VPS.md` → "Bản Postgres trên máy chủ";
+  dựng: `ops/deploy/vps-postgres-setup.sh`).
 * **Dữ liệu cũ trên BigQuery** chưa chép sang (chốt 04/11/2026: tính sau). Đơn POS và chi tiêu Meta kéo lại
   được bằng `python sync/talpha/talpha_sync.py --full` và `--days N`; ảnh chụp tồn kho cũ thì không.
 * ~~`data/*.json`, thị trường, người dùng, khoá vẫn là file~~ — xong 15/11/2026 (xem mục dưới).

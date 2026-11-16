@@ -53,11 +53,12 @@ ssh root@139.180.131.21 'bash /opt/talpha/ops/talpha_reports/deploy_runtime.sh -
 
 `from-mac.sh` chép `dashboard-ui/.env.local` của Mac đè lên máy chủ — so hai bản trước khi chạy.
 
-**`main` là bản Postgres từ 16/11/2026 (gộp nhánh `refactor/english-standard`), máy chủ VPS VẪN chạy bản BigQuery**
-(commit cũ của nó). Bản này cần máy chủ có Postgres + `DATABASE_URL` trước — các script `ops/deploy/vps-*-setup.sh`
-chưa dựng phần đó. `from-mac.sh` bước **0c** tự DỪNG khi `dashboard-ui/.env.local` chưa có `DATABASE_URL` hoặc máy
-chủ không nối được Postgres đó — đừng tìm cách vượt: deploy bản này lên máy chủ chưa có Postgres là production sập.
-Bản BigQuery cuối cùng: nhánh `bk_main_26_11_16` (= `17def2c`).
+**Máy chủ VPS chạy bản Postgres từ tối 16/11/2026** (`main` = nhánh `refactor/english-standard`): Postgres 16 có sẵn
+của máy, pm2 + systemd như cũ, không Docker — chi tiết + cách quay lui: `docs/DEPLOY_VPS.md` → "Bản Postgres trên máy
+chủ". `dashboard-ui/.env.local` của MÁY CHỦ giữ `DATABASE_URL` + `TALPHA_ENCRYPTION_KEY` — `from-mac.sh` KHÔNG đè nó
+nữa (`--push-env` mới đè); deploy bằng `from-mac.sh` bản cũ (chưa pull) là đè mất chìa → bản lưu ở
+`/root/talpha-secrets/`. Bước **0c** dừng deploy khi máy chủ không có / không nối được Postgres. Bản BigQuery cuối:
+nhánh `bk_main_26_11_16` (= `17def2c`).
 
 ## Kiến trúc
 

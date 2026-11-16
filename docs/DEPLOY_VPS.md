@@ -7,7 +7,29 @@
 Máy chủ hiện tại: **`139.180.131.21`** (Vultr) — **CentOS Stream 9**, 1 CPU,
 951MB RAM, 2,3GB swap, 17GB đĩa trống.
 
-**Đang chạy: http://139.180.131.21:3000**
+**Đang chạy: https://139.180.131.21** (bản POSTGRES từ tối 16/11/2026 — xem mục ngay dưới)
+
+## Bản Postgres trên máy chủ (16/11/2026)
+
+Chuyển từ BigQuery sang kho số Postgres, chạy THẲNG trên máy (không Docker — 1GB RAM không gánh nổi hai Postgres):
+
+| Phần | Trên máy chủ |
+|:--|:--|
+| Kho số | Postgres **16** có sẵn của máy (dùng chung với `banbot`), database + role `talpha`, đăng nhập bằng mật khẩu qua 127.0.0.1 (dòng riêng trong `pg_hba.conf`). `pgcrypto` từ gói `postgresql-contrib` |
+| Khoá | `dashboard-ui/.env.local` của MÁY CHỦ giữ `DATABASE_URL`, `TALPHA_ENCRYPTION_KEY`, `TALPHA_READONLY_PASSWORD` (sinh trên máy chủ). Bản lưu: `/root/talpha-secrets/`. Mất chìa mã hoá = mọi khoá đã lưu phải nhập lại |
+| Python | `/opt/talpha/.venv` = Python 3.12 + psycopg (venv cũ 3.9 của BigQuery: `.venv-bigquery`) |
+| Việc nền | systemd như cũ; drop-in `talpha-*.service.d/talpha-rules.conf` đặt `TALPHA_RULES` = luật trong repo (đừng để đọc `~/talpha_reports/talpha_rules.json` — bản chép thời BigQuery, khoá cũ); `talpha-report.service.d/postgres.conf` chạy `ops/talpha_reports/daily_guarded.sh` trong repo |
+| Dashboard / bot | pm2 như cũ (`talpha-dashboard`, `talpha-zalo-alerts`). Bot giữ phiên, nhóm, trạng thái trong database |
+
+Dựng lại từ đầu trên máy khác: `bash ops/deploy/vps-postgres-setup.sh prepare` (pgcrypto, pg_hba, role + database, khoá,
+venv) → code + `npm ci` + build → `python -m sync.core.pg migrate` (chép `data/*.json`, `config/users.json` vào kho) →
+`vps-postgres-setup.sh units`. Lần chuyển 16/11: database lấy từ máy Mac (bản `docker compose`), khoá mã hoá lại bằng chìa
+của máy chủ, rồi migrate chép dữ liệu người dùng của máy chủ vào; đổi bản dashboard dừng 7 giây.
+
+**Quay lui về BigQuery** (bản cuối `17def2c`, nhánh `bk_main_26_11_16`; mọi thứ cũ ở `/root/talpha-backup-20261116-pg/`):
+`git reset --hard 17def2c`, đổi `.venv` ↔ `.venv-bigquery`, chép `.env.local` + `data/` + `users.json` + file bot từ bản lưu,
+xoá drop-in `talpha-*.service.d/{talpha-rules,postgres}.conf` + `daemon-reload`, dựng lại dashboard, `pm2 restart`.
+Dữ liệu nhập trên bản Postgres sau 16/11 không có ở bản BigQuery.
 
 ---
 
