@@ -7,12 +7,17 @@
 // quả rồi trả lời. Một câu mất 5–40 giây (Gemini nghĩ + vài lượt truy vấn, model quá tải thì đổi model)
 // nên màn chờ phải nói đang làm gì và đã chờ bao lâu. Lịch sử hỏi giữ trong phiên trình duyệt
 // (sessionStorage) để chuyển tab rồi quay lại không mất.
+//
+// Khoá AI riêng (16/11/2026): khoá mặc định hết lượt thì người hỏi dán khoá Gemini khác ở nút "Khoá AI".
+// Khoá chỉ nằm trong localStorage của TRÌNH DUYỆT NÀY (máy khác / trình duyệt khác không thấy, không
+// dùng chung), gửi kèm từng câu hỏi; xoá đi là quay về khoá mặc định. Xem lib/talpha/gemini-key.ts.
 // ═══════════════════════════════════════════════════════════════════
 import { Fragment, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { format } from "date-fns";
 import ReactMarkdown from "react-markdown";
-import { Bot, ChevronDown, Database, Loader2, RotateCcw, Send, Trash2 } from "lucide-react";
+import { Bot, Check, ChevronDown, Database, Eye, EyeOff, KeyRound, Loader2, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { cn } from "../utils";
+import { GEMINI_KEY_HEADER, GEMINI_KEY_STORAGE, cheKhoa, laKhoaGeminiHopLe, type NguonKhoaGemini } from "@/lib/talpha/gemini-key";
 
 type Luot = {
     id: string;
@@ -25,8 +30,124 @@ type Luot = {
     tra_loi?: string;
     queries?: string[];
     model?: string;
+    nguon_khoa?: NguonKhoaGemini;
     loi?: string;
 };
+
+/** localStorage có thể ném lỗi (chặn dữ liệu trang, chế độ riêng tư) — đọc / ghi đều bọc lại. */
+function docKhoaRieng(): string {
+    try { return localStorage.getItem(GEMINI_KEY_STORAGE) || ""; } catch { return ""; }
+}
+
+// ─── Ô khoá AI riêng của trình duyệt này ──────────────────────────────────────
+function OKhoaAi({ khoa, onDoi, onDong }: { khoa: string; onDoi: (k: string) => void; onDong: () => void }) {
+    const [nhap, setNhap] = useState("");
+    const [hien, setHien] = useState(false);
+    const [dang, setDang] = useState(false);
+    const [loi, setLoi] = useState("");
+    const [bao, setBao] = useState("");
+
+    const luu = async () => {
+        const k = nhap.trim();
+        setLoi(""); setBao("");
+        if (!laKhoaGeminiHopLe(k)) { setLoi("Khoá không đúng dạng — khoá Gemini thường bắt đầu bằng AIza…"); return; }
+        setDang(true);
+        try {
+            // Kiểm khoá trước khi lưu: khoá sai thì không lưu, người hỏi khỏi tưởng đã đổi được.
+            const r = await fetch("/api/talpha/ceo-ask/check-key", { method: "POST", headers: { [GEMINI_KEY_HEADER]: k } });
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+            try { localStorage.setItem(GEMINI_KEY_STORAGE, k); }
+            catch { throw new Error("Trình duyệt đang chặn lưu dữ liệu trang (chế độ riêng tư?) — không lưu được khoá."); }
+            onDoi(k);
+            setNhap("");
+            setHien(false);
+            setBao(`Đã lưu trên trình duyệt này — khoá gọi được ${j.so_model} model${j.model ? `, câu hỏi sau dùng ${j.model}` : ""}.`);
+        } catch (e) {
+            setLoi(e instanceof Error ? e.message : String(e));
+        } finally {
+            setDang(false);
+        }
+    };
+
+    const xoa = () => {
+        try { localStorage.removeItem(GEMINI_KEY_STORAGE); } catch { /* đã không có */ }
+        onDoi("");
+        setLoi("");
+        setBao("Đã xoá — từ câu hỏi sau dùng lại khoá mặc định của hệ thống.");
+    };
+
+    return (
+        <div className="space-y-3 rounded-xl border border-border bg-card p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <KeyRound className="h-4 w-4 text-indigo-500" /> Khoá Gemini riêng của trình duyệt này
+                    </p>
+                    <p className="mt-1 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                        Khoá mặc định hết lượt thì dán khoá Gemini khác vào đây. Khoá <b className="font-medium text-foreground">chỉ lưu trên
+                        trình duyệt này</b> — máy khác, trình duyệt khác không thấy và không dùng chung. Có khoá ở đây thì mọi câu hỏi
+                        dùng khoá này; xoá đi thì dùng lại khoá mặc định. Hạn mức Google tính theo project: khoá mới tạo trong
+                        cùng project vẫn hết lượt.
+                    </p>
+                </div>
+                <button type="button" onClick={onDong} aria-label="Đóng"
+                    className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+                    <X className="h-4 w-4" />
+                </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Đang dùng:</span>
+                {khoa ? (
+                    <>
+                        <span className="rounded-md bg-indigo-500/10 px-2 py-1 font-mono text-indigo-600 dark:text-indigo-300">Khoá riêng {cheKhoa(khoa)}</span>
+                        <button type="button" onClick={xoa}
+                            className="flex items-center gap-1 rounded-md px-2 py-1 font-medium text-rose-600 hover:bg-rose-500/10 dark:text-rose-400">
+                            <Trash2 className="h-3 w-3" /> Xoá, dùng khoá mặc định
+                        </button>
+                    </>
+                ) : (
+                    <span className="rounded-md bg-muted px-2 py-1 font-medium text-foreground">Khoá mặc định của hệ thống</span>
+                )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[16rem] flex-1">
+                    <input
+                        type={hien ? "text" : "password"}
+                        value={nhap}
+                        onChange={(e) => { setNhap(e.target.value); setLoi(""); setBao(""); }}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !dang) luu(); }}
+                        placeholder={khoa ? "Dán khoá mới để thay (AIza…)" : "Dán khoá Gemini (AIza…)"}
+                        autoComplete="off"
+                        spellCheck={false}
+                        data-1p-ignore
+                        data-lpignore="true"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2 pr-9 font-mono text-sm text-foreground placeholder:font-sans placeholder:text-muted-foreground focus:border-indigo-500 focus:outline-none"
+                    />
+                    <button type="button" onClick={() => setHien((v) => !v)} aria-label={hien ? "Ẩn khoá" : "Xem khoá"}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                        {hien ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                </div>
+                <button type="button" onClick={luu} disabled={dang || !nhap.trim()}
+                    className="flex h-9 items-center gap-1.5 rounded-lg bg-indigo-500 px-3 text-xs font-semibold text-white hover:bg-indigo-600 disabled:opacity-50">
+                    {dang ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                    {dang ? "Đang kiểm khoá…" : "Kiểm tra & lưu"}
+                </button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+                Lấy khoá ở{" "}
+                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline dark:text-indigo-300">
+                    aistudio.google.com/apikey
+                </a>.
+            </p>
+            {bao && <p className="text-xs text-emerald-600 dark:text-emerald-400">{bao}</p>}
+            {loi && <p className="text-xs text-rose-600 dark:text-rose-400">{loi}</p>}
+        </div>
+    );
+}
 
 const GOI_Y = [
     "Tháng này mỗi nước bao nhiêu đơn, doanh số bao nhiêu?",
@@ -137,8 +258,25 @@ export default function AskAiTab({ dateRange }: { dateRange?: { from: Date; to: 
     const [cauHoi, setCauHoi] = useState("");
     const [bayGio, setBayGio] = useState(() => Date.now());
     const [moSql, setMoSql] = useState<Record<string, boolean>>({});
+    const [khoaRieng, setKhoaRieng] = useState("");
+    const [moKhoa, setMoKhoa] = useState(false);
     const cuoiRef = useRef<HTMLDivElement>(null);
     const oNhapRef = useRef<HTMLTextAreaElement>(null);
+    const dauRef = useRef<HTMLDivElement>(null);
+
+    // Khoá riêng đọc sau khi gắn trang (localStorage không có lúc dựng ở máy chủ). Tab khác của cùng trình
+    // duyệt đổi / xoá khoá thì tab này theo luôn.
+    useEffect(() => {
+        setKhoaRieng(docKhoaRieng());
+        const nghe = (e: StorageEvent) => { if (e.key === GEMINI_KEY_STORAGE || e.key === null) setKhoaRieng(docKhoaRieng()); };
+        window.addEventListener("storage", nghe);
+        return () => window.removeEventListener("storage", nghe);
+    }, []);
+
+    const moOKhoa = () => {
+        setMoKhoa(true);
+        dauRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
 
     const dangCho = luot.some((x) => x.trang_thai === "dang");
     const tu = dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : undefined;
@@ -170,14 +308,18 @@ export default function AskAiTab({ dateRange }: { dateRange?: { from: Date; to: 
         setBayGio(Date.now());
         const capNhat = (p: Partial<Luot>) => setLuot((ds) => ds.map((x) => (x.id === id ? { ...x, ...p } : x)));
         try {
+            // Đọc lại localStorage ngay lúc hỏi: vừa đổi khoá ở tab khác vẫn dùng đúng khoá mới nhất.
+            const khoa = docKhoaRieng();
             const r = await fetch("/api/talpha/ceo-ask", {
-                method: "POST", headers: { "Content-Type": "application/json" },
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...(khoa ? { [GEMINI_KEY_HEADER]: khoa } : {}) },
                 body: JSON.stringify({ question: hoiGi, from: tu, to: den }),
             });
             const j = await r.json().catch(() => ({ error: `Máy chủ trả lỗi (HTTP ${r.status})` }));
             const giay = Math.round((Date.now() - batDau) / 1000);
-            if (!r.ok) capNhat({ trang_thai: "loi", loi: j.error || `HTTP ${r.status}`, giay });
-            else capNhat({ trang_thai: "xong", tra_loi: j.answer || "", queries: j.queries || [], model: j.model, giay });
+            const nguon_khoa: NguonKhoaGemini = j.key_source || (khoa ? "trinh_duyet" : "mac_dinh");
+            if (!r.ok) capNhat({ trang_thai: "loi", loi: j.error || `HTTP ${r.status}`, giay, nguon_khoa });
+            else capNhat({ trang_thai: "xong", tra_loi: j.answer || "", queries: j.queries || [], model: j.model, giay, nguon_khoa });
         } catch {
             capNhat({ trang_thai: "loi", loi: "Không gửi được — kiểm mạng rồi hỏi lại.", giay: Math.round((Date.now() - batDau) / 1000) });
         } finally {
@@ -189,7 +331,7 @@ export default function AskAiTab({ dateRange }: { dateRange?: { from: Date; to: 
 
     return (
         <div className="mx-auto flex max-w-4xl flex-col gap-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div ref={dauRef} className="flex scroll-mt-4 flex-wrap items-start justify-between gap-3">
                 <div>
                     <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
                         <Bot className="h-5 w-5 text-indigo-500" /> Hỏi AI về số liệu
@@ -200,13 +342,26 @@ export default function AskAiTab({ dateRange }: { dateRange?: { from: Date; to: 
                         Đổi model ở Quản trị → Khoá kết nối → tab Gemini.
                     </p>
                 </div>
-                {luot.length > 0 && !dangCho && (
-                    <button type="button" onClick={() => setLuot([])}
-                        className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
-                        <Trash2 className="h-3.5 w-3.5" /> Xoá cuộc hỏi
+                <div className="flex flex-wrap items-center gap-1">
+                    <button type="button" onClick={() => (moKhoa ? setMoKhoa(false) : moOKhoa())} aria-expanded={moKhoa}
+                        title={khoaRieng ? "Đang hỏi bằng khoá Gemini riêng lưu trên trình duyệt này" : "Đang hỏi bằng khoá Gemini mặc định của hệ thống"}
+                        className={cn("flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                            khoaRieng
+                                ? "bg-indigo-500/10 text-indigo-600 hover:bg-indigo-500/15 dark:text-indigo-300"
+                                : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+                        <KeyRound className="h-3.5 w-3.5" />
+                        Khoá AI: {khoaRieng ? <span className="font-mono">riêng {cheKhoa(khoaRieng)}</span> : "mặc định"}
                     </button>
-                )}
+                    {luot.length > 0 && !dangCho && (
+                        <button type="button" onClick={() => setLuot([])}
+                            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+                            <Trash2 className="h-3.5 w-3.5" /> Xoá cuộc hỏi
+                        </button>
+                    )}
+                </div>
             </div>
+
+            {moKhoa && <OKhoaAi khoa={khoaRieng} onDoi={setKhoaRieng} onDong={() => setMoKhoa(false)} />}
 
             {luot.length === 0 && (
                 <div className="rounded-xl border border-dashed border-border bg-card/50 p-5">
@@ -257,10 +412,16 @@ export default function AskAiTab({ dateRange }: { dateRange?: { from: Date; to: 
                                     {x.trang_thai === "loi" && (
                                         <div className="space-y-2">
                                             <p className="text-sm text-rose-600 dark:text-rose-400">{x.loi}</p>
-                                            <button type="button" onClick={() => hoi(x.hoi)} disabled={dangCho}
-                                                className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-300">
-                                                <RotateCcw className="h-3 w-3" /> Hỏi lại
-                                            </button>
+                                            <div className="flex flex-wrap items-center gap-4">
+                                                <button type="button" onClick={() => hoi(x.hoi)} disabled={dangCho}
+                                                    className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline disabled:opacity-50 dark:text-indigo-300">
+                                                    <RotateCcw className="h-3 w-3" /> Hỏi lại
+                                                </button>
+                                                <button type="button" onClick={moOKhoa}
+                                                    className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:underline dark:text-indigo-300">
+                                                    <KeyRound className="h-3 w-3" /> {x.nguon_khoa === "trinh_duyet" ? "Đổi khoá AI riêng" : "Dùng khoá AI riêng"}
+                                                </button>
+                                            </div>
                                         </div>
                                     )}
                                     {x.trang_thai === "xong" && (
@@ -268,6 +429,7 @@ export default function AskAiTab({ dateRange }: { dateRange?: { from: Date; to: 
                                             <TraLoi text={x.tra_loi || "Chưa lấy được câu trả lời — thử hỏi cụ thể hơn."} />
                                             <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 pt-2 text-[11px] text-muted-foreground">
                                                 {x.model && <span className="font-mono">{x.model}</span>}
+                                                {x.nguon_khoa && <span>{x.nguon_khoa === "trinh_duyet" ? "khoá riêng" : "khoá mặc định"}</span>}
                                                 {x.giay != null && <span>{x.giay} giây</span>}
                                                 {x.tu && x.den && <span>khoảng {x.tu} → {x.den}</span>}
                                                 {(x.queries?.length ?? 0) > 0 && (

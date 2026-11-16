@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Type } from "@google/genai";
 import { queryChiDoc } from "@/lib/db";
@@ -5,6 +6,7 @@ import { buildSystemPrompt } from "@/lib/talpha/ceo-ask-prompt";
 import { checkSql, cleanSql } from "@/lib/talpha/ceo-ask-sql";
 import { docKhoa } from "@/lib/talpha/khoa";
 import { thuTuModel } from "@/lib/talpha/gemini-models";
+import { GEMINI_KEY_HEADER, laKhoaGeminiHopLe, type NguonKhoaGemini } from "@/lib/talpha/gemini-key";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -12,6 +14,23 @@ export const maxDuration = 60;
 // Google Gemini. Model chọn ở Quản trị → Khoá kết nối → tab Gemini; chưa chọn thì tự lấy model "flash"
 // mới nhất khoá đó dùng được (lib/talpha/gemini-models.ts — 15/11/2026, trước gõ cứng gemini-2.5-flash
 // và chết khi Google khai tử model). Hết quota / quá tải / model bị gỡ thì thử model kế tiếp.
+//
+// Khoá (16/11/2026): trình duyệt có khoá RIÊNG (dán ở trang Hỏi AI, lưu localStorage, gửi kèm header
+// x-gemini-key) thì dùng khoá đó cho câu hỏi này; không có thì khoá mặc định của hệ thống. Khoá riêng
+// không lưu, không ghi log — xem lib/talpha/gemini-key.ts.
+
+/** Chỗ người hỏi đổi khoá, theo khoá đang dùng — để câu báo lỗi chỉ đúng nút. */
+const CHO_DOI_KHOA: Record<NguonKhoaGemini, string> = {
+    trinh_duyet: "bấm “Khoá AI” ở đầu trang Hỏi AI để dán khoá khác (hoặc xoá để quay về khoá mặc định)",
+    mac_dinh: "dán khoá Gemini riêng ở nút “Khoá AI” đầu trang Hỏi AI (chỉ lưu trên trình duyệt của bạn), " +
+        "hoặc giám đốc đổi khoá mặc định ở Quản trị → Khoá kết nối → tab Gemini",
+};
+const TEN_KHOA: Record<NguonKhoaGemini, string> = { trinh_duyet: "Khoá Gemini riêng trên trình duyệt này", mac_dinh: "Khoá Gemini mặc định của hệ thống" };
+
+/** Google từ chối chính cái khoá (sai, hết hạn, bị thu hồi, project chưa bật Gemini API). */
+const laKhoaSai = (e: any) =>
+    /API key not valid|API_KEY_INVALID|API key expired|PERMISSION_DENIED|has not been used in project|SERVICE_DISABLED/i
+        .test(String(e?.message || e));
 
 /** Model này không dùng được lúc này — bị gỡ (404 "no longer available to new users"), không hỗ trợ, hoặc
  *  TREO không trả lời (15/11/2026: gemini-3.8-flash treo quá 60 giây trong khi 3.5-flash trả lời 1,6 giây).
@@ -26,7 +45,7 @@ function laModelKhongCo(e: any): boolean {
  * trả phí đọc tưởng code sai. Google ghi rõ: "Quota exceeded for metric: …generate_content_free_tier_requests,
  * limit: 20, model: gemini-3.6-flash … Please retry in 17h30m9s".
  */
-function loiHanMuc(m: string): string {
+function loiHanMuc(m: string, nguon: NguonKhoaGemini): string {
     if (!laHetQuota(m)) return "Gemini đang quá tải, thử hỏi lại sau vài giây.";
     const metric = /Quota exceeded for metric:\s*([\w./-]+)/i.exec(m)?.[1] || "";
     const gioiHan = /limit:\s*(\d+)/i.exec(m)?.[1];
@@ -36,21 +55,26 @@ function loiHanMuc(m: string): string {
         ? ` Mở lại sau khoảng ${cho[1] ? `${cho[1]} giờ ` : ""}${cho[2] ? `${cho[2]} phút` : ""}.`.replace(" .", ".") : "";
     const theoNgay = /per.?day|PerDay|requests per day/i.test(m);
     const moTa = `${theoNgay ? "hết hạn mức trong ngày" : "vượt hạn mức số lượt"}${gioiHan ? ` (${gioiHan} lượt${theoNgay ? "/ngày" : ""}${model ? ` cho ${model}` : ""})` : ""}`;
+    // Hạn mức Google tính theo PROJECT: khoá mới tạo trong cùng project vẫn hết lượt.
     if (/free_tier/i.test(metric) || /Free Tier/i.test(m)) {
-        return `Google đang tính khoá Gemini này ở mức MIỄN PHÍ (free tier) và đã ${moTa}.${choChu} ` +
+        return `${TEN_KHOA[nguon]} đang ở mức MIỄN PHÍ (free tier) và đã ${moTa}.${choChu} ` +
             "Gói trả phí của ứng dụng Gemini (Google AI Pro / Ultra) không áp dụng cho API — phải bật thanh toán (billing) " +
-            "cho đúng project chứa khoá ở aistudio.google.com → API keys, hoặc tạo khoá trong project đã bật rồi dán lại ở " +
-            "Quản trị → Khoá kết nối → tab Gemini.";
+            "cho đúng project chứa khoá ở aistudio.google.com → API keys, hoặc dùng khoá của project khác. " +
+            `Muốn hỏi tiếp ngay: ${CHO_DOI_KHOA[nguon]}.`;
     }
-    return `Gemini báo khoá đã ${moTa}${metric ? ` — hạn mức ${metric}` : ""}.${choChu} Xem mức đang dùng ở ai.dev/rate-limit.`;
+    return `${TEN_KHOA[nguon]} đã ${moTa}${metric ? ` — hạn mức ${metric}` : ""}.${choChu} ` +
+        `Xem mức đang dùng ở ai.dev/rate-limit. Muốn hỏi tiếp ngay: ${CHO_DOI_KHOA[nguon]}.`;
 }
 
 /** Một lượt gọi model tối đa chừng này — quá là coi model đang treo, sang model kế. */
 const HET_GIO_MOT_LUOT = 30_000;
 /** Cả câu hỏi tối đa chừng này (mọi lượt gọi, mọi model). */
 const HET_GIO_CA_CAU = 100_000;
-/** Model vừa treo / vừa bị gỡ: bỏ qua 30 phút để câu hỏi sau khỏi chờ lại (nhớ trong tiến trình). */
+/** Model vừa treo / vừa bị gỡ / hết quota: bỏ qua 30 phút để câu hỏi sau khỏi chờ lại (nhớ trong tiến
+ *  trình). Khoá "<vân tay khoá>|<model>": hạn mức là của từng khoá — khoá riêng của một người hết lượt
+ *  không được làm người khác (khoá mặc định) bỏ model đó, và ngược lại. */
 const modelTamBo = new Map<string, number>();
+const vanTayKhoa = (k: string) => createHash("sha256").update(k).digest("hex").slice(0, 12);
 const TAM_BO_MS = 30 * 60_000;
 /** Hết quota của khoá (429 / RESOURCE_EXHAUSTED) — thử lại trong vài giây cũng vậy. */
 const laHetQuota = (e: any) => /\b429\b|RESOURCE_EXHAUSTED|exceeded your current quota/i.test(String(e?.message || e));
@@ -208,16 +232,22 @@ async function runAgent(ai: GoogleGenAI, model: string, question: string, from: 
 }
 
 export async function POST(request: Request) {
+    // Khoá riêng của trình duyệt (header) thắng khoá mặc định. Khoá mặc định nhập ở Quản trị → Khoá kết
+    // nối → tab Gemini (bảng api_credentials, 15/11/2026); docKhoa còn đọc GEMINI_API_KEY trong .env.local.
+    const khoaRieng = (request.headers.get(GEMINI_KEY_HEADER) || "").trim();
+    if (khoaRieng && !laKhoaGeminiHopLe(khoaRieng)) {
+        return NextResponse.json({ error: `Khoá Gemini riêng trên trình duyệt này không đúng dạng — ${CHO_DOI_KHOA.trinh_duyet}.` }, { status: 400 });
+    }
+    const nguon: NguonKhoaGemini = khoaRieng ? "trinh_duyet" : "mac_dinh";
     try {
-        // Khoá Gemini nhập ở Quản trị → Khoá kết nối → tab Gemini (bảng api_credentials, 15/11/2026);
-        // docKhoa còn đọc GEMINI_API_KEY trong .env.local nếu chưa nhập trên trang.
-        const apiKey = docKhoa("GEMINI_API_KEY") || docKhoa("GOOGLE_API_KEY");
+        const apiKey = khoaRieng || docKhoa("GEMINI_API_KEY") || docKhoa("GOOGLE_API_KEY");
         if (!apiKey) {
             return NextResponse.json(
-                { error: "Chưa có khoá Gemini — nhập ở Quản trị → Khoá kết nối → tab Gemini (AI). Lấy miễn phí ở aistudio.google.com/apikey." },
+                { error: "Chưa có khoá Gemini mặc định — giám đốc nhập ở Quản trị → Khoá kết nối → tab Gemini, hoặc dán khoá riêng ở nút “Khoá AI” đầu trang Hỏi AI. Lấy khoá ở aistudio.google.com/apikey." },
                 { status: 400 }
             );
         }
+        const tamBoKhoa = (m: string) => `${vanTayKhoa(apiKey)}|${m}`;
         const { question, from, to } = await request.json();
         if (!question || !String(question).trim()) {
             return NextResponse.json({ error: "Thiếu câu hỏi" }, { status: 400 });
@@ -229,7 +259,7 @@ export async function POST(request: Request) {
         const ai = new GoogleGenAI({ apiKey });
         const MODELS = await thuTuModel(apiKey);
         if (!MODELS.length) {
-            return NextResponse.json({ error: "Không lấy được danh sách model Gemini của khoá này — kiểm khoá ở Quản trị → Khoá kết nối → tab Gemini." }, { status: 400 });
+            return NextResponse.json({ error: `Không lấy được danh sách model của ${TEN_KHOA[nguon].charAt(0).toLowerCase() + TEN_KHOA[nguon].slice(1)} — khoá có thể sai hoặc đã bị thu hồi; ${CHO_DOI_KHOA[nguon]}.` }, { status: 400 });
         }
 
         // Fallback chain: thử lần lượt từng model; hết quota/quá tải (transient) thì
@@ -239,7 +269,7 @@ export async function POST(request: Request) {
         let lastErr: any;
         const batDau = Date.now();
         // Model đang bị tạm bỏ xếp xuống cuối (vẫn thử nếu mọi model khác hỏng).
-        const conHan = (m: string) => (modelTamBo.get(m) ?? 0) > Date.now();
+        const conHan = (m: string) => (modelTamBo.get(tamBoKhoa(m)) ?? 0) > Date.now();
         const thuTu = [...MODELS.filter((m) => !conHan(m)), ...MODELS.filter(conHan)];
         for (const model of thuTu) {
             if (Date.now() - batDau > HET_GIO_CA_CAU) break;
@@ -250,17 +280,22 @@ export async function POST(request: Request) {
             } catch (e: any) {
                 lastErr = e;
                 if (!isTransient(e) && !laModelKhongCo(e)) throw e;
-                modelTamBo.set(model, Date.now() + tamBoBaoLau(e));
-                console.warn(`ceo-ask: ${model} — ${String(e?.message || e).slice(0, 200)}`);
+                modelTamBo.set(tamBoKhoa(model), Date.now() + tamBoBaoLau(e));
+                console.warn(`ceo-ask (${nguon === "trinh_duyet" ? "khoá trình duyệt" : "khoá mặc định"}): ${model} — ${String(e?.message || e).slice(0, 200)}`);
                 console.warn(`ceo-ask: model ${model} ${laModelKhongCo(e) ? "không còn dùng được" : "hết quota/quá tải"}, thử model kế tiếp`);
             }
         }
         if (!result) throw lastErr || new Error("Không model nào khả dụng");
 
         const answer = result.answer || "Xin lỗi, tôi chưa lấy được câu trả lời. Thử hỏi lại cụ thể hơn nhé.";
-        return NextResponse.json({ answer, queries: result.queries, model: usedModel });
+        return NextResponse.json({ answer, queries: result.queries, model: usedModel, key_source: nguon });
     } catch (e: any) {
-        console.error("ceo-ask error", e);
+        console.error(`ceo-ask error (${nguon === "trinh_duyet" ? "khoá trình duyệt" : "khoá mặc định"}):`, String(e?.message || e).slice(0, 500));
+        if (laKhoaSai(e)) {
+            return NextResponse.json({
+                error: `${TEN_KHOA[nguon]} bị Google từ chối (sai, hết hạn hoặc project chưa bật Gemini API) — ${CHO_DOI_KHOA[nguon]}.`,
+            }, { status: 400 });
+        }
         if (laModelKhongCo(e)) {
             return NextResponse.json({
                 error: /HET_GIO_MODEL|DEADLINE/i.test(String(e?.message || e))
@@ -269,7 +304,7 @@ export async function POST(request: Request) {
             }, { status: 503 });
         }
         if (isTransient(e)) {
-            return NextResponse.json({ error: loiHanMuc(String(e?.message || e)) }, { status: 503 });
+            return NextResponse.json({ error: loiHanMuc(String(e?.message || e), nguon) }, { status: 503 });
         }
         return NextResponse.json({ error: e?.message || "Internal error" }, { status: 500 });
     }

@@ -61,12 +61,19 @@ export async function luuModelDaChon(model: string | null, ai: string): Promise<
 }
 
 /** Model ceo-ask thử lần lượt: model đã chọn → TALPHA_AI_MODEL (nếu có) → các model nên dùng của
- *  khoá này. Không lấy được danh sách từ Google thì vẫn còn model đã chọn / biến môi trường. */
+ *  khoá này. Không lấy được danh sách từ Google thì vẫn còn model đã chọn / biến môi trường.
+ *  Lấy được danh sách thì bỏ model đã chọn mà khoá này không gọi được — khoá riêng của trình duyệt
+ *  (lib/talpha/gemini-key.ts) có thể ở project khác, không có model giám đốc chọn cho khoá mặc định. */
 export async function thuTuModel(key: string): Promise<string[]> {
     const chon = (await docModelDaChon()).gemini_model || null;
     const env = (process.env.TALPHA_AI_MODEL || "").split(",").map((s) => s.trim()).filter(Boolean);
     let tuDong: string[] = [];
-    try { tuDong = xepModelNenDung(await layModelGemini(key)).slice(0, 4); }
-    catch (e) { console.error("gemini-models: không lấy được danh sách model:", e); }
-    return [...new Set([chon, ...env, ...tuDong].filter((x): x is string => !!x))];
+    let coModel: Set<string> | null = null;
+    try {
+        const ds = await layModelGemini(key);
+        coModel = new Set(ds.map((m) => m.id));
+        tuDong = xepModelNenDung(ds).slice(0, 4);
+    } catch (e) { console.error("gemini-models: không lấy được danh sách model:", e instanceof Error ? e.message : e); }
+    const muon = [chon, ...env].filter((x): x is string => !!x && (!coModel || coModel.has(x)));
+    return [...new Set([...muon, ...tuDong])];
 }

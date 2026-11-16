@@ -219,7 +219,7 @@ người ta đã gửi nhau hết mở được.**
 | | Ads Command Center | `app/talpha/ads-command-center/page.tsx` | `/api/talpha/realtime` |
 | | Sức khoẻ quảng cáo | `tabs/ad-health-tab.tsx` | `/api/query` |
 | 👥 Khách hàng | Khách hàng · Market Intel | `tabs/customer-tab.tsx` · `market-intel-tab.tsx` | `/api/query` |
-| 🤖 Hỏi AI (15/11/2026, chỉ giám đốc) | Hỏi AI — `/talpha/ask-ai` | `tabs/ask-ai-tab.tsx` | `/api/talpha/ceo-ask` (Gemini viết SQL chỉ đọc; model chọn ở Khoá kết nối → tab Gemini) |
+| 🤖 Hỏi AI (15/11/2026, chỉ giám đốc) | Hỏi AI — `/talpha/ask-ai` | `tabs/ask-ai-tab.tsx` | `/api/talpha/ceo-ask` (Gemini viết SQL chỉ đọc; model chọn ở Khoá kết nối → tab Gemini). Nút "Khoá AI" (16/11/2026): khoá Gemini riêng chỉ lưu localStorage của trình duyệt đó, có thì thắng khoá mặc định — `lib/talpha/gemini-key.ts` |
 
 Ngoài shell còn `/login` và `/admin` (người dùng, TKQC, thị trường, khoá kết nối). **TKQC tự động** (04/11/2026):
 mọi TKQC các token Meta đọc được; chỉ loại "vào báo cáo" cộng vào số — `fb_ads_data` là view lọc theo loại,
@@ -292,7 +292,7 @@ trong chuỗi) bị từ chối; vai `talpha_doc_nuoc` của họ cũng chỉ đ
 | `ads-recon` | Đối soát chi phí TKQC với sao kê thẻ | Giao diện |
 | `cod-actions` | Đánh dấu đã đòi / đã nhận tiền | Giao diện |
 | `ad-spend` · `marketer-perf` · `product-costs` · `targets` | Số phụ trợ cho tab | Giao diện |
-| `ceo-ask` | Trang 🤖 Hỏi AI (`/talpha/ask-ai`, chỉ giám đốc — trước là ô ở Tổng quan): Gemini viết SQL, chạy bằng vai CHỈ ĐỌC rồi trả lời. Khoá + model ở Khoá kết nối → tab Gemini; model treo / hết quota / bị gỡ thì tự đổi model (`lib/talpha/gemini-models.ts`, 15/11/2026) | Giao diện |
+| `ceo-ask` | Trang 🤖 Hỏi AI (`/talpha/ask-ai`, chỉ giám đốc — trước là ô ở Tổng quan): Gemini viết SQL, chạy bằng vai CHỈ ĐỌC rồi trả lời. Khoá + model ở Khoá kết nối → tab Gemini; model treo / hết quota / bị gỡ thì tự đổi model (`lib/talpha/gemini-models.ts`, 15/11/2026). Header `x-gemini-key` = khoá riêng của trình duyệt (16/11/2026): dùng cho đúng câu đó, không lưu, không ghi log; "model tạm bỏ" nhớ theo từng khoá. `ceo-ask/check-key` kiểm khoá riêng trước khi trang lưu | Giao diện |
 | `export-report` | Nút "Xuất Sheet" → chạy đúng `format_all.py` của vòng ghi Sheet mỗi giờ (cùng python, cùng khoá `/root/talpha_reports/.lock`; vòng :20 đang chạy thì trả 409). Sửa 30/10/2026 | Giao diện |
 | `sync-inventory` | Ghi snapshot tồn kho làm dự phòng cho tab Kho | `talpha-snapshot.timer` mỗi giờ :40 → `snapshot_cron.sh` |
 | `ads-alerts` · `sync-health` | Cảnh báo spend, sức khoẻ sync | Bot Zalo |

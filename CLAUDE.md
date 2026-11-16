@@ -85,6 +85,9 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   MÃ HOÁ bằng pgcrypto với chìa `TALPHA_ENCRYPTION_KEY` (đổi chìa = phải nhập lại mọi khoá), thắng khoá
   cùng tên trong `.env.local`. Dashboard đọc qua `docKhoa()` (`lib/talpha/khoa.ts`) — **đừng đọc
   `process.env` thẳng cho khoá**; Python gọi `nap_khoa_vao_env()` (`sync/core/credentials.py`) lúc bắt đầu.
+  Ngoại lệ có chủ đích (16/11/2026): trang Hỏi AI cho dán khoá Gemini RIÊNG, chỉ lưu localStorage của trình
+  duyệt đó, gửi kèm từng câu hỏi (header `x-gemini-key`) và thắng khoá mặc định — máy chủ không lưu, không
+  ghi log khoá này (`lib/talpha/gemini-key.ts`).
 * **Thị trường trên trang** (04/11/2026): `/admin` → Thị trường thêm nước, sửa tỷ giá, tắt / bật nước.
   Lưu ở bảng `market_overrides` (15/11/2026), PHỦ lên `talpha_rules.json` ở cả dashboard
   (`lib/talpha/thi-truong.ts`), sync / Sheet / view (`sync/core/thi_truong.py`) và bot
