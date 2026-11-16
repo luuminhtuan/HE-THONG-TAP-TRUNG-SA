@@ -1,38 +1,41 @@
 ---
 paths:
-  - "sql/**/*.sql"
+  - "db/**/*.sql"
 ---
-# SQL Conventions — FAOS v6 BigQuery
+# Quy ước SQL — Postgres TALPHA
 
-## Dialect
-- Google BigQuery Standard SQL (KHONG dung Legacy SQL)
-- Luon bat dau voi `-- Purpose: {mo ta}` comment
+Luật an toàn dữ liệu và bẫy ra số sai: `postgres-data-rules.md` (đọc trước). File này chỉ là cách viết.
 
-## Join Safety (CRITICAL)
-- **LUON** `LOWER(TRIM())` truoc khi join string fields
-- **LUON** dung deduplicated subquery khi JOIN voi dim tables:
-  ```sql
-  LEFT JOIN (
-    SELECT LOWER(TRIM(key_col)) AS key, ANY_VALUE(val_col) AS val
-    FROM dim_table GROUP BY 1
-  ) t ON LOWER(TRIM(main.field)) = t.key
-  ```
-- **KHONG BAO GIO** direct join voi dim tables (risk nhan doi rows)
+## Phương ngữ
 
-## Counting
-- Dung `COUNT(DISTINCT id)` hoac `COUNT(DISTINCT order_id)` khi dem don
-- Dung `SUM(DISTINCT ...)` can than — thuong sai, prefer subquery
+- Postgres 17. Hàm giữ nghĩa cũ có sẵn: `safe_divide`, `safe_ts`, `safe_json`, `ngay_theo_mui`.
+- Viết lại câu cũ thời BigQuery thì theo bảng dịch trong `docs/POSTGRES.md`
+  (`IFNULL` → `COALESCE`, `COUNTIF(c)` → `COUNT(*) FILTER (WHERE c)`, `x IN UNNEST(@ds)` → `x = ANY(@ds)`…).
 
-## Currency
-- `sale_order.total_price` luu theo **bani** (chia 100 de ra RON)
-- Luon ghi comment khi chia: `total_price / 100 AS revenue_ron`
+## Migration (`db/migrations/`)
 
-## Naming
-- Views: `vw_fact_{topic}` hoac `vw_dim_{topic}`
-- Tables: snake_case (`sale_order`, `fb_ads_data`)
-- Columns: snake_case, descriptive (`created_at`, `total_price`)
+- Tên `NNNN_ten_tieng_anh.sql`, số kế tiếp. Mỗi file một transaction.
+- Chỉ THÊM file. Không sửa, không đổi tên file đã chạy.
+- Bảng hai tầng (đơn, dòng hàng, quảng cáo): thêm cột thì thêm cho cả `<bảng>` lẫn `<bảng>_raw`.
 
-## Safety
-- **TUYET DOI KHONG** chay DELETE/DROP/TRUNCATE tren production
-- Test queries voi `LIMIT 10` truoc khi chay full
-- Luon co WHERE clause khi UPDATE
+## View (`db/views/`)
+
+- Tên file `NN_vw_ten.sql`, số đầu quyết định thứ tự dựng (view sau đọc view trước).
+- Mở đầu bằng khối chú thích tiếng Việt: view trả lời câu hỏi gì, ai đọc, luật nào đúc vào.
+- Giá trị lấy từ luật dùng chỗ giữ chỗ (`{MONEY_DIV_CASE}`…) do `sync/core/pg_view.py` thay — không gõ
+  tỷ giá, số chia, giá vốn vào file.
+- Sửa `vw_orders_std` hoặc `vw_fb_ads_std` là đụng gần như cả dashboard — soát mọi chỗ đọc.
+
+## Đặt tên
+
+- Bảng, cột, view, hàm: `snake_case` tiếng Anh, chữ thường. Bảng/cột cũ tên Việt (`tkqc`,
+  `bao_cao_tab`…) đổi bằng migration mới, không sửa tay.
+- Cột tiền ghi rõ đơn vị ở đuôi: `revenue_vnd`, `cost_price_rmb`.
+- Alias cột trong SELECT cũng `snake_case` (Postgres hạ chữ thường alias không nháy).
+
+## Đếm và nối
+
+- Đếm đơn: `COUNT(DISTINCT order_uid)`.
+- JOIN với bảng tra (danh mục, map): gom về một dòng mỗi khoá trước (`GROUP BY` / `DISTINCT ON`)
+  rồi mới JOIN, để khỏi nhân dòng.
+- Thử câu mới với khoảng ngày nhỏ trước, rồi mới chạy cả tháng.

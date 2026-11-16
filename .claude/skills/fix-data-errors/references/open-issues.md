@@ -1,20 +1,28 @@
-# Sổ lỗi số liệu đang mở — nhóm section X
+# Sổ lỗi số liệu — nhóm section X
 
-> Đo lần cuối 04/08/2026. Mỗi lần chạm vào lỗi nào, cập nhật lại số đo + trạng thái.
+> Đo lần cuối 04/08/2026 trên **BigQuery** `cty-507710.TALPHA_Dataset`, khi còn sáu shop GCC
+> (SA/AE/KW/OM/QA/BH) + Đài. Mỗi lần chạm vào lỗi nào, cập nhật lại số đo + trạng thái.
 > Mức: 🔴 đang mất/sai dữ liệu thật · 🟡 sai số hiển thị · ⚪ nợ kỹ thuật.
+>
+> **Từ 04/11/2026 có nhánh `kho-postgres`** — kho số Postgres, chạy bằng `docker compose`. Production
+> (`main`, VPS) vẫn BigQuery. Mỗi phép "Đo lại" dưới đây có bản Postgres đi kèm (bỏ tiền tố dataset,
+> dịch cú pháp theo `docs/POSTGRES.md`). Dữ liệu cũ trên BigQuery **chưa chép sang Postgres** — khung
+> ngày tháng 6–8/2026 trong các phép đo không có trên Postgres, đổi sang khung ngày gần đây.
+> Cơ chế ghi raw chỉ thêm + dựng lại (X1, X2, X8) trên Postgres nằm ở `sync/core/pg_writer.py`, trong
+> MỘT transaction.
 
-| Mã | Lỗi | Mức | Trạng thái |
-|---|---|---|---|
-| X1 | Smart Stop cắt cụt `sale_order` mỗi vòng sync | 🔴 | **ĐÓNG 04/08** (3 chu kỳ verify) |
-| X2 | `fb_ads_data` xoá sạch tháng cũ khi sang tháng mới | 🔴 | **ĐÓNG 05/08** (T5-T7 khớp Meta 0,00%) |
-| X3 | `order_items` thiếu giá + phủ 61% → COGS chỉ 20,7% | 🟡 | ĐANG MỞ |
-| X4 | `product_catalog` bẩn — tên SP lọt vào cột `sku` | 🟡 | ĐANG MỞ |
-| X5 | `vw_orders_std.cogs_vnd` luôn = 0 (2 đường COGS) | ⚪ | ĐANG MỞ |
-| X6 | `sale_order` trùng id | ⚪ | ĐÓNG THEO X1 (rebuild dedupe theo id) |
-| X7 | Tab Marketing & Ads liệt kê sai danh sách team | 🟡 | ĐÃ ĐÓNG 04/08 |
-| X8 | `order_id` không duy nhất — POS đánh số riêng từng shop | 🔴 | ĐÃ ĐÓNG 05/08 |
-| X9 | POS ghi ADSET id vào ô `ad_id` — 999 đơn không nối được campaign | 🟡 | ĐÃ SỬA 06/08 |
-| X13 | Shop Đài lưu NGUYÊN TWD nhưng view chia 100 như GCC — tiền TW tụt 100 lần | 🔴 | **ĐÃ SỬA 20/08** (view + Sheet + realtime) |
+| Mã | Lỗi | Mức | Trạng thái | Nhánh Postgres |
+|---|---|---|---|---|
+| X1 | Smart Stop cắt cụt `sale_order` mỗi vòng sync | 🔴 | **ĐÓNG 04/08** (3 chu kỳ verify) | Cơ chế mang sang: `ghi_don` (raw chỉ thêm + dựng lại) |
+| X2 | `fb_ads_data` xoá sạch tháng cũ khi sang tháng mới | 🔴 | **ĐÓNG 05/08** (T5-T7 khớp Meta 0,00%) | Cơ chế mang sang: `ghi_ads` vào `fb_ads_tat_ca_raw`; `fb_ads_data` nay là VIEW |
+| X3 | `order_items` thiếu giá + phủ 61% → COGS chỉ 20,7% | 🟡 | ĐANG MỞ | Chưa soát lại sau khi chuyển Postgres (04/11/2026) |
+| X4 | `product_catalog` bẩn — tên SP lọt vào cột `sku` | 🟡 | XỬ LÝ Ở TẦNG VIEW (E2, `00_vw_product_catalog_std.sql`) — bảng thô vẫn giữ sku gốc | Chưa soát lại sau khi chuyển Postgres (04/11/2026) |
+| X5 | `vw_orders_std.cogs_vnd` luôn = 0 (2 đường COGS) | ⚪ | ĐÃ SỬA (E2 — view đọc giá vốn từ rules file, xem chú thích đầu `02_vw_orders_std.sql`) | Chưa soát lại sau khi chuyển Postgres (04/11/2026) |
+| X6 | `sale_order` trùng id | ⚪ | ĐÓNG THEO X1 (rebuild dedupe theo id) | Dựng lại theo `(shop_id, id)` — `DISTINCT ON` trong `pg_writer.py` |
+| X7 | Tab Marketing & Ads liệt kê sai danh sách team | 🟡 | ĐÃ ĐÓNG 04/08 | — |
+| X8 | `order_id` không duy nhất — POS đánh số riêng từng shop | 🔴 | ĐÃ ĐÓNG 05/08 | Khoá `(shop_id, id)` + `order_uid` mang sang |
+| X9 | POS ghi ADSET id vào ô `ad_id` — 999 đơn không nối được campaign | 🟡 | ĐÃ SỬA 06/08 | Chưa soát lại sau khi chuyển Postgres (04/11/2026) |
+| X13 | Shop Đài lưu NGUYÊN TWD nhưng view chia 100 như GCC — tiền TW tụt 100 lần | 🔴 | **ĐÃ SỬA 20/08** (view + Sheet + realtime) | `pos_money_divisor` đúc vào view bằng `pg_view.money_divisor_sql()` |
 
 ---
 
@@ -48,6 +56,11 @@ grep -oE "orders [0-9]+" ~/talpha_reports/daily_$(date +%Y%m%d).log | tail -8
 ```sql
 SELECT shop_label, COUNT(*) n, MIN(SUBSTR(inserted_at,1,10)) don_cu_nhat
 FROM `cty-507710.TALPHA_Dataset.sale_order` GROUP BY 1 ORDER BY 1
+```
+Postgres (`inserted_at` lưu dạng chuỗi như BigQuery; log vòng chạy: `docker compose logs lich`):
+```sql
+SELECT shop_label, COUNT(*) n, MIN(substr(inserted_at, 1, 10)) don_cu_nhat
+FROM sale_order GROUP BY 1 ORDER BY 1;
 ```
 `don_cu_nhat` lùi theo số page (SA 24/07, AE 29/07…) thay vì đứng ở mốc đầu tháng
 = đang bị cắt.
@@ -144,6 +157,11 @@ chạy 01/08). `fb_adset_data` dính y hệt.
 SELECT FORMAT_DATE('%Y-%m', date) thang, COUNT(*) dong,
        MIN(CAST(date AS STRING)) tu, MAX(CAST(date AS STRING)) den
 FROM `cty-507710.TALPHA_Dataset.fb_ads_data` GROUP BY 1 ORDER BY 1
+```
+Postgres (`fb_ads_data` là VIEW chỉ TKQC vào báo cáo — đo đủ mọi TKQC thì đọc `fb_ads_tat_ca`):
+```sql
+SELECT to_char(date, 'YYYY-MM') thang, COUNT(*) dong, MIN(date)::text tu, MAX(date)::text den
+FROM fb_ads_data GROUP BY 1 ORDER BY 1;
 ```
 
 **ĐÃ SỬA 05/08 — commit `eca62b2`**, áp cho CẢ repo lẫn runtime. Cùng khuôn X1:
@@ -245,6 +263,16 @@ hai dòng doanh thu và tra giá vốn trượt:
 SELECT sku, COUNT(*) n FROM `cty-507710.TALPHA_Dataset.product_catalog`
 WHERE NOT REGEXP_CONTAINS(sku, r'^[0-9A-Za-z\-_.]{1,12}$') GROUP BY 1 ORDER BY 2 DESC
 ```
+Postgres — bảng thô, rồi tầng view đã chuẩn hoá (`has_sku_code = false` = không bóc được mã):
+```sql
+SELECT sku, COUNT(*) n FROM product_catalog
+WHERE sku !~ '^[0-9A-Za-z._-]{1,12}$' GROUP BY 1 ORDER BY 2 DESC;
+SELECT COUNT(*) FILTER (WHERE NOT has_sku_code) khong_ma, COUNT(*) tat_ca FROM vw_product_catalog_std;
+```
+
+**Đã xử lý ở tầng view (E2)**: `db/views/00_vw_product_catalog_std.sql` bóc mã 4 bậc (sku đúng dạng →
+3 số đầu sku → mã đầu tên SP → mã cuối tên SP); không ra mã thì `sku_code` NULL, không tra nhầm giá
+vốn. Sync catalog vẫn ghi sku gốc của POS. *Chưa soát lại sau khi chuyển Postgres.*
 
 **Hướng sửa**: chuẩn hoá lúc sync catalog (sku rỗng/không đúng dạng → lấy mã từ
 `product_name` prefix "153 - ..." nếu có, còn không thì để NULL + đếm riêng, đừng
@@ -264,6 +292,12 @@ Nguy hiểm ở chỗ: ai query thẳng view sẽ tưởng lãi = doanh thu (COG
 vốn từ rules file như tab, để mọi consumer dùng chung một định nghĩa.
 
 **Đo lại**: `SELECT COUNTIF(cogs_vnd>0), COUNT(*) FROM vw_orders_std WHERE order_date >= …`
+· Postgres: `SELECT COUNT(*) FILTER (WHERE cogs_vnd > 0), COUNT(*), AVG(cogs_coverage) FROM vw_orders_std WHERE order_date >= '…';`
+
+**Đã sửa theo hướng (b) — E2**: view tính `cogs_vnd` từ bảng giá vốn sinh từ `config/talpha_rules.json`
+(cùng nguồn với tab P&L theo SP), tra theo `sku_code` đã chuẩn hoá (X4), kèm cột `cogs_coverage`
+(0..1 theo số lượng item đã khai giá vốn) — xem chú thích đầu `db/views/02_vw_orders_std.sql`.
+`cogs_vnd` là giá vốn TỪNG PHẦN: luôn đọc kèm `cogs_coverage`. *Chưa soát lại sau khi chuyển Postgres.*
 
 ---
 
@@ -289,6 +323,12 @@ Q0 đã làm.
 ```sql
 SELECT COUNT(*) n_rows, COUNT(DISTINCT id) n_ids, COUNT(*)-COUNT(DISTINCT id) trung
 FROM `cty-507710.TALPHA_Dataset.sale_order`
+```
+Postgres — đếm theo khoá đúng `(shop_id, id)` (X8; đếm theo `id` trần sẽ báo trùng oan giữa các shop):
+```sql
+SELECT COUNT(*) n_rows, COUNT(DISTINCT (shop_id, id)) n_don,
+       COUNT(*) - COUNT(DISTINCT (shop_id, id)) trung
+FROM sale_order;
 ```
 
 ---
@@ -321,12 +361,19 @@ trước khi SUM (lỗi X6).
 **Đo lại** (đây là phép đo dùng cho cả trước/sau):
 ```bash
 curl -s "http://localhost:3000/api/talpha/marketer-perf?from=2026-06-06&to=2026-08-04"
+# nhánh kho-postgres chạy bằng docker compose: http://localhost:3200, khung ngày gần đây
 ```
 ```sql
 -- tag POS thô: dùng để phát hiện biến thể tên mới
 SELECT marketer_name, COUNTIF(is_confirmed) gtc, COUNT(*) tat_ca
 FROM `cty-507710.TALPHA_Dataset.vw_orders_std`
 WHERE order_date BETWEEN '2026-06-06' AND '2026-08-04' GROUP BY 1 ORDER BY 2 DESC
+```
+Postgres:
+```sql
+SELECT marketer_name, COUNT(*) FILTER (WHERE is_confirmed) gtc, COUNT(*) tat_ca
+FROM vw_orders_std
+WHERE order_date BETWEEN '…' AND '…' GROUP BY 1 ORDER BY 2 DESC;
 ```
 
 **Verify đã đóng (04/08)**: 10 dòng → **7 dòng đúng roster** + `(không gán)`.
@@ -379,6 +426,7 @@ chất mà tầng raw sinh ra để bảo vệ.
 SELECT COUNT(*) n, COUNT(DISTINCT order_uid) uid, COUNT(DISTINCT order_id) oid
 FROM `cty-507710.TALPHA_Dataset.vw_orders_std`
 ```
+Postgres: cùng câu, bỏ tiền tố — `FROM vw_orders_std;`
 `uid` phải = `n`. Nếu `oid < uid` thì đó là số đơn sẽ bị đếm thiếu nếu ai đó dùng nhầm cột.
 
 **Verify đã đóng 05/08**: 94.566 dòng · `order_uid` duy nhất 94.566 · `order_id` duy nhất
@@ -440,6 +488,15 @@ WHERE order_date BETWEEN '2026-06-22' AND '2026-08-20'
   AND is_confirmed AND marketer_group != 'external'
 GROUP BY 1 ORDER BY revenue_vnd DESC
 ```
+Postgres (chia bằng `safe_divide` — chia hai số nguyên là chia nguyên):
+```sql
+SELECT market, COUNT(DISTINCT order_uid) orders, ROUND(SUM(revenue_vnd), 0) revenue_vnd,
+       ROUND(safe_divide(SUM(revenue_vnd), COUNT(DISTINCT order_uid)), 0) aov_vnd
+FROM vw_orders_std
+WHERE order_date BETWEEN '…' AND '…'
+  AND is_confirmed AND marketer_group != 'external'
+GROUP BY 1 ORDER BY 3 DESC;
+```
 
 **KHÔNG phải tỷ giá.** `markets.Taiwan.rate_vnd = 800` mang ghi chú "tạm 800, xác nhận
 khi thêm shop POS Đài" nên rất dễ nghi oan nó. Tỷ giá TWD→VND thật là 780–800 ⇒ sai số
@@ -484,7 +541,10 @@ gõ `/100` cứng: `format_all.py` (Sheet — file TAIWAN cũng đang tụt 100 
 
 Biên TW: −3277,6% → **+66,2%** (rev 138,4tr − ads 46,7tr − ship 0).
 
-**CÒN MỞ — phí ship TW = 0.** `shipping_fees` chưa có khoá `TW` nên `shippingVND()` trả 0
+**Nay `config/talpha_rules.json → shipping_fees.TW` đã có** (NAZA, xem `docs/TALPHA_METRIC_RULES.md` dòng
+*Phí 3PL*) — đoạn dưới là trạng thái lúc 20/08, giữ làm lịch sử.
+
+**(20/08) CÒN MỞ — phí ship TW = 0.** `shipping_fees` chưa có khoá `TW` nên `shippingVND()` trả 0
 ⇒ biên TW đang **cao hơn thực tế**. Đối tác 3PL đọc được từ POS: **BÌNH AN EXP** (212 đơn)
 · **NAZA** (64 đơn); `partner.total_fee` POS trả 0 nên KHÔNG suy ra được biểu phí — phải
 hỏi CEO (packing · delivery · cod_pct/cod_flat, tệ TWD) rồi khai vào `shipping_fees.TW`
@@ -492,14 +552,12 @@ của rules file **và** `SHIPPING_FEES` trong `dashboard-ui/src/components/talp
 
 ---
 
-## Đang chờ — KHÔNG phải lỗi, đừng đụng vào
+## Từng chờ — nay đã xong (giữ để phiên sau không đào lại)
 
-- **B1 cutover sync**: cần 7 ngày shadow PASS liên tiếp, đếm từ 03/08 (03 ✅, 04 ✅
-  → sớm nhất 10/08). Kèm `sync_month.py` còn REPO path cũ, sửa cùng đợt cutover.
-  ⚠️ X1 nằm trong phạm vi sync — sửa X1 phải đồng bộ với kế hoạch B1, đừng để bản
-  repo và runtime lệch thêm.
-- **F3 deploy key**: chờ user dán vào GitHub thì `/opt/talpha` mới thành git repo.
-  Tới lúc đó deploy vẫn phải `rsync -az --delete` (chạy `--dry-run --itemize-changes`
-  trước) — bẫy "rsync không xoá file đã bỏ" đã dính 3 lần: daily.sh, ecosystem, A6.
-- **Van chống dội 6h của bot B5**: đang bịt bớt cảnh báo — phải gỡ ngay sau khi X1
-  đóng, nếu không detector lại thành trang trí.
+- ~~**B1 cutover sync**~~ — **XONG 11/09/2026**: chỉ còn `sync/talpha/talpha_sync.py`; `sync_month.py`
+  nạp nó qua `$TALPHA_REPO` và dừng ngay nếu nạp nhầm bản khác.
+- ~~**F3 deploy key**~~ — **XONG 11/09/2026**: `/opt/talpha` là bản git clone, deploy bằng
+  `ops/deploy/from-mac.sh` (máy chủ mượn khoá GitHub của Mac qua `ssh -A`). Không rsync tay nữa —
+  bẫy "rsync không xoá file đã bỏ" đã dính 3 lần: daily.sh, ecosystem, A6.
+- ~~**Van chống dội 6h của bot B5**~~ — **gỡ 04/08** (commit 772ff6b, xem X1). Bot WhatsApp chứa nó
+  đã xoá 30/10/2026; cảnh báo nay qua bot Zalo.

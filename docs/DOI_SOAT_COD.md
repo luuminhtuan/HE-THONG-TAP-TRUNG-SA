@@ -7,15 +7,17 @@
 
 ## Số trên màn cập nhật lúc nào
 
-Màn Đối soát COD **không đọc POS hay BigQuery**. Mọi con số của nó — "Tiền về",
-"Việc hôm nay", bảng từng kỳ — dựng từ đúng hai kho file trên máy chủ:
+Màn Đối soát COD **không gọi POS live**. Mọi con số của nó — "Tiền về", "Việc hôm nay", bảng
+từng kỳ — dựng từ hai kho người dùng nạp (bảng Postgres `app_documents`, mỗi kho một dòng; trước
+15/11/2026 là file `data/<kho>.json` trên máy chủ) cộng đơn đã giao trong kho số:
 
 | Kho | Nội dung | Ai làm nó đổi |
 |---|---|---|
-| `data/tracking.json` | Bảng đơn của đối tác: đơn, khách, COD, trạng thái giao | **Việc nền 6h sáng** (`talpha-tracking.timer`), hoặc bấm “Đọc bảng đối tác” ở tab Theo dõi vận đơn |
-| `data/cod_statements.json` | Sao kê NAZA từng kỳ | **Kéo file .xlsx** vào ô trên cùng của tab — NAZA gửi qua chat, máy không có chỗ nào tự lấy |
+| `tracking` | Bảng đơn của đối tác: đơn, khách, COD, trạng thái giao | **Việc nền 6h sáng** (`talpha-tracking.timer` / lịch docker), hoặc bấm “Đọc bảng đối tác” ở tab Theo dõi vận đơn |
+| `cod_statements` | Sao kê NAZA từng kỳ | **Kéo file .xlsx** vào ô trên cùng của tab — NAZA gửi qua chat, máy không có chỗ nào tự lấy |
+| Kho số `vw_orders_std` + `sale_order` | Đơn POS giao thành công có COD — gộp với bảng đối tác (xem mục *Nguồn đơn* bên dưới) | Vòng sync mỗi giờ |
 
-Hai timer còn lại (`talpha-sync`, `talpha-report`) **không đụng** hai kho này.
+Vòng sync và vòng báo cáo **không đụng** hai kho `tracking`, `cod_statements`.
 
 Hệ quả phải nhớ:
 
@@ -272,7 +274,8 @@ Sỹ Anh: "Singapore và UAE không có chỗ để up file giống Đài Loan �
 Singapore / UAE** + kéo thả file vào màn, như Đài. Route `cod-recon/market?market=SG|AE`
 (POST tải · DELETE xoá kỳ), đọc + khớp ở `lib/talpha/cod-statement-market.ts` (có test).
 
-* **Kho riêng từng nước** — `data/cod_statements_sg.json`, `data/cod_statements_ae.json`.
+* **Kho riêng từng nước** — dòng `cod_statements_sg`, `cod_statements_ae` của bảng `app_documents`
+  (trước 15/11/2026 là file `data/cod_statements_<sg|ae>.json`).
   Không đụng kho Đài (sổ TWD, luật "cùng ngày là cùng kỳ").
 * **Chưa có file mẫu nước nào**, nên nhận hai kiểu:
   * sao kê **NAZA** (.xlsx ba sheet) — chỉ lấy dòng của nước đang mở (`国家名称 = 新加坡`,
@@ -316,7 +319,7 @@ giống Đài"). Sổ dựng ở `lib/talpha/cod-so-nuoc.ts` (có test, số l�
 * ① Việc hôm nay (khối `KhoiViec` dùng chung với Đài): trả lệch · đơn lạ · phí cao hơn bảng giá ·
   nhập tiền về · tiền về lệch · thiếu sao kê kỳ mới. "Đã hỏi NAZA" / "Bỏ qua" ghi **cả nhóm** một lần
   bấm (`done_keys`).
-* ② Bảng các kỳ: phải nhận · **thực nhận** (nhập số ngân hàng, kho `data/cod_actions_<sg|ae>.json`,
+* ② Bảng các kỳ: phải nhận · **thực nhận** (nhập số ngân hàng, kho `cod_actions_<sg|ae>` trong `app_documents`,
   route `cod-recon/market/actions`, cùng luật ghi với Đài — `lib/talpha/cod-actions-store.ts`) ·
   lệch (ngưỡng 50.000đ) · tình trạng. Kỳ âm: "Âm · đã trừ ở Đài", không cần nhập.
 * ③ Kỳ đang mở: luồng tiền S$ → ¥ → đ đọc thẳng các dòng trừ ở sheet TỔNG; máy soát A (phép tính,
@@ -366,12 +369,16 @@ Mỗi lần NAZA gửi sao kê:
 
 ## Nguồn đơn: POS hay file đối tác
 
-Đối soát cần biết "đơn nào đã giao, thu bao nhiêu". Nguồn chuẩn là POS qua
-BigQuery, nhưng **chưa có key Poscake** nên kho đó đang trống.
+Đối soát cần biết "đơn nào đã giao, thu bao nhiêu". Có hai nguồn trả lời câu đó: đơn POS trong
+kho số (`vw_orders_std` giao thành công, `cod > 0`) và **file đơn tổng** của đối tác (đã nạp qua tab
+Theo dõi vận đơn). Hai nguồn lệch nhau xa vì đội không cập nhật trạng thái lên POS kịp — lúc mới
+nối POS chỉ có 5 đơn giao thành công có COD, file đối tác có 361.
 
-Nên hệ thống lấy tạm từ **file đơn tổng** (đã nạp qua tab Theo dõi vận đơn):
-361 đơn đã giao có COD. Màn hình hiện rõ nhãn *"Đơn đọc từ file đối tác"* —
-không giả vờ là số POS. Có key Poscake thì tự đổi sang POS, không phải sửa gì.
+Nên route `cod-recon` **GỘP hai nguồn, không chọn một**: trùng mã vận đơn thì lấy theo POS (có
+marketer, có sale), đơn POS chưa biết thì lấy từ file đối tác. Màn hình nói rõ đang đọc từ đâu —
+chỉ file đối tác thì ghi *"Đang đối soát với N đơn đọc từ FILE ĐỐI TÁC, không phải từ POS"*, cả hai
+thì ghi số đơn mỗi nguồn. (Bản trước chỉ lấy file đối tác KHI kho số trống; tới lúc POS có vài đơn
+thì bỏ luôn file đối tác và đối soát tụt từ 316 đơn khớp xuống 0.)
 
 ---
 

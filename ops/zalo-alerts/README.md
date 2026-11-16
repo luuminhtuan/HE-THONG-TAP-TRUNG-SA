@@ -13,7 +13,7 @@ Pancake** + đơn, doanh số POS — theo từng page (camp nối page bằng t
 nhóm Nhật cũng lấy số mess từ Pancake (`nhomNuoc.messPancake`). Gõ `/gio` trong nhóm, hoặc
 `node bot.js --dry-run --gio --nuoc JP` để in thử. Cấu hình: `config.json → moiGio`.
 Nhật (mở 08/10/2026, shop POS nối 09/10/2026): tin ads đủ đơn / DS như các nước khác; vận đơn từ
-13/10/2026 (bảng đối tác "BS UP DATA JAPAN" + 17TRACK hãng Sagawa, giao tận nhà như Singapore). Nước nào còn `sap_chay` (chưa shop) thì tin chỉ có tiền ads + tin nhắn.
+13/10/2026 (bảng đối tác "BS UP DATA JAPAN" + 17TRACK; hãng Japan Post 10021 từ 21/10/2026 — 17TRACK từ chối mã Sagawa khai lúc đầu). Nước nào còn `sap_chay` (chưa shop) thì tin chỉ có tiền ads + tin nhắn.
 (Lịch sử: 15/09/2026 chỉ gửi mốc 8h30 vào một nhóm ads; thêm dần 13:00 · 18:00 · 22:00.)
 
 | Khi nào | Tin |
@@ -79,7 +79,7 @@ node bot.js --vandon toi                               # gửi ngay tin vận đ
 | `/baocao Lộc` · `/baocao homqua Lộc` | Số + camp của một người Ở NƯỚC CỦA NHÓM |
 | `/baocao team` | Chỉ phần số đầu tin, không kèm camp |
 | `/canhbao` | Camp của nước đó tiêu ≥ 300k mà 0 tin nhắn (Meta trực tiếp) |
-| `/vandon` · `/vd` | Vận đơn mới nhất của nước của nhóm (khuôn tin sáng). Nhóm Nhật: báo chưa theo dõi |
+| `/vandon` · `/vd` | Vận đơn mới nhất của nước của nhóm (khuôn tin sáng) |
 | `/bot` | Cách dùng |
 
 Mọi lệnh chỉ trả số của **nước của nhóm** — gõ `/vandon sg` trong nhóm UAE vẫn ra UAE.
@@ -99,12 +99,12 @@ gõ `/baocao` ở đó bot im, không lộ số ra ngoài.
 
 Cùng máy chủ với dashboard, gọi `http://localhost:3000`:
 
-* **Số đầu bài** mọi tin: `/api/talpha/sheet-report` — đọc thẳng file Google Sheet
-  **TỔNG TEAM THÁNG n**, đúng file CEO xem. Tin và Sheet không lệch được.
+* **Số đầu bài** mọi tin: `/api/talpha/sheet-report` — đọc bảng `bao_cao_tab`, nơi `format_all.py`
+  ghi các tab **TỔNG TEAM THÁNG n** cùng lúc với file Google Sheet CEO xem. Tin và Sheet không lệch được.
 * **Chi tiết từng campaign**: `/api/talpha/realtime` (Meta + POS live). Chủ campaign tính
   **đúng luật của Sheet** (`rules.js → chuCamp`), nên cộng lại khớp số đầu bài. Route lỗi thì
   tin vẫn đi, chỉ thiếu phần campaign.
-* **`/canhbao`**: `/api/talpha/ads-alerts` (BigQuery).
+* **`/canhbao`**: `/api/talpha/realtime` (Meta + POS live) — `buildCanhBaoNuoc` bắt camp đốt tiền không ra tin nhắn.
 * **Tuổi số**: `/api/talpha/sync-health` — sync đứng thì tin tự in `⚠️ SỐ CHƯA ĐỦ`.
 
 ## Gửi tạm rồi tự đính chính (22/09/2026)
@@ -233,11 +233,11 @@ Chạy thử từ máy Mac: `TALPHA_DASHBOARD_URL=http://139.180.131.21:3000 nod
 | `zalo.js` | Phiên, gửi, nghe tin qua zca-js |
 | `daily_report.js` · `van_don.js` | Dựng nội dung tin (hàm thuần, có test) — `buildBaoCaoNuoc` là tin ads một nước |
 | `tin_gio.js` | Tin mỗi giờ + số mess Pancake (ghép camp · page · đơn theo tên page; hàm thuần, có test) |
-| `ads_alerts.js` | Cảnh báo ads gộp mọi nước (BigQuery) — bot không dùng từ 08/10/2026, giữ lại cùng test |
+| `ads_alerts.js` | Cảnh báo ads gộp mọi nước (qua `/api/talpha/ads-alerts`) — bot không dùng từ 08/10/2026, giữ lại cùng test |
 | `zalo_text.js` | Chữ đậm/nghiêng → style Zalo, chia tin dài |
 | `rules.js` | Đọc `config/talpha_rules.json` — thiếu file là dừng, không dùng bảng dự phòng. `NUOC`, `nuocTuTenNhom`: mã nước ↔ tên nhóm |
 | `schedule.js` | "Mốc này gửi bây giờ không" — chép từ bot WhatsApp |
 
 ```bash
-npm test        # 7 bộ test, không gọi mạng, không cần đăng nhập
+npm test        # 8 bộ test, không gọi mạng, không cần đăng nhập
 ```

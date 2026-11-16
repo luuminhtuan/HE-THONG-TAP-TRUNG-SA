@@ -2,14 +2,20 @@
 
 > Bổ sung cho SKILL.md §3. Mỗi mục: hiện trạng + hậu quả nếu không biết.
 > Khi một mục đã được fix, cập nhật file này.
+>
+> **Đọc trước:** phần lớn file viết lúc audit 29/07/2026 — thời BigQuery, sáu shop GCC, bot WhatsApp,
+> máy Mac còn chạy runtime. Nay: production (`main`, VPS) vẫn BigQuery; nhánh `kho-postgres`
+> (04/11/2026) là Postgres + docker compose, TKQC tự động (bảng `tkqc`), dữ liệu người dùng nhập ở
+> bảng `app_documents`, khoá kết nối ở bảng `api_credentials` (mã hoá). Bot WhatsApp đã xoá
+> 30/10/2026 — bot Zalo thay. Mục nào không ghi "nay" là **chưa soát lại sau khi chuyển Postgres**.
 
 ## 1. Config trùng lặp — con số ở nhiều nơi
 
 | Rule | Các nơi định nghĩa | Trạng thái lệch (29/07) |
 |---|---|---|
-| 14 TKQC | `config/projects/talpha.yaml` (14) · `sync/core/meta_client.py` (14) · `runtime/config/ad_accounts.json` (14) · `ops/talpha_reports/ad_accounts.json` (14) · `realtime/route.ts` ACCOUNT_NAMES (14) · `ads-command-center/page.tsx` ACCOUNT_NAMES (~~11~~ → **đã fix 14, 29/07**) · runtime fallback hard-code (**10**) | vẫn phải sửa đủ mọi chỗ khi thêm TKQC |
+| 14 TKQC — **nay (nhánh `kho-postgres`): tự động, bảng `tkqc`, đổi loại ở `/admin` → TKQC; `talpha.yaml → ad_account_ids` chỉ còn là lịch sử; `ops/talpha_reports/ad_accounts.json` chỉ bản dòng lệnh đối soát QC đọc** | `config/projects/talpha.yaml` (14) · `sync/core/meta_client.py` (14) · `runtime/config/ad_accounts.json` (14) · `ops/talpha_reports/ad_accounts.json` (14) · `realtime/route.ts` ACCOUNT_NAMES (14) · `ads-command-center/page.tsx` ACCOUNT_NAMES (~~11~~ → **đã fix 14, 29/07**) · runtime fallback hard-code (**10**) | vẫn phải sửa đủ mọi chỗ khi thêm TKQC |
 | Tỷ giá | **Nguồn chuẩn từ 29/07: `config/talpha_rules.json`** (7 thị trường có TW) — format_all + realtime + ads-alerts đọc từ đây. CÒN LỆCH: `talpha.yaml` §12 (không TW), `src/lib/constants.ts` (USD 25500), `utils.ts` client (không TW → tab BQ đơn TW nhân nhầm 6850), view `01_vw_fb_ads_std.sql` (/7010 cứng) — dọn ở P2 | |
-| Gán marketer | ~~7 bản lệch nhau~~ → **HỢP NHẤT 29/07 (P1)**: 1 nguồn data `config/talpha_rules.json` + 3 loader (`ops/talpha_reports/talpha_rules.py`, `dashboard-ui/src/lib/talpha/rules.ts`, `ops/whatsapp-alerts/rules.js`). Golden-test 502 camp + 18 tên POS = 100% khớp bản cũ. Sửa rule = sửa JSON, đừng thêm map inline. Còn sót: `bq-queries.ts` (dead code) | |
+| Gán marketer | ~~7 bản lệch nhau~~ → **HỢP NHẤT 29/07 (P1)**: 1 nguồn data `config/talpha_rules.json` + 3 loader (`ops/talpha_reports/talpha_rules.py`, `dashboard-ui/src/lib/talpha/rules.ts`, `ops/whatsapp-alerts/rules.js` — nay bot Zalo `ops/zalo-alerts/rules.js`). Golden-test 502 camp + 18 tên POS = 100% khớp bản cũ. Sửa rule = sửa JSON, đừng thêm map inline. Còn sót: `bq-queries.ts` (dead code) | |
 | Status GTC | `sync/core/business_rules.py` · runtime sync · `format_all.py` · `realtime/route.ts` · `constants.ts` | |
 | Timezone | VN IANA (format_all) · offset +7 (quick_update) · tz TKQC (realtime matched) · `Asia/Dubai` (yaml — không khớp ai) · UTC thô (views + 6 tab BQ) | |
 
@@ -57,30 +63,36 @@
 **SỬA Ở REPO rồi deploy, KHÔNG sửa tay `~/talpha_reports` nữa:**
 1. Sửa `ops/talpha_reports/*` hoặc `config/talpha_rules.json` trong repo
 2. Chạy `ops/talpha_reports/deploy_runtime.sh --yes` (tự đợi lock, backup, copy atomic)
-Engine sync ĐANG CHẠY đã git-track tại `ops/talpha_reports/runtime_sync/`. Kế hoạch gộp
-2 engine: ĐÃ GỘP 11/09/2026 — chỉ còn `sync/talpha/talpha_sync.py`.
-Bot deploy: rsync `ops/whatsapp-alerts/` **và `config/talpha_rules.json`** lên `/opt/talpha/`.
+2 engine ĐÃ GỘP 11/09/2026 — chỉ còn `sync/talpha/talpha_sync.py`; `ops/talpha_reports/runtime_sync/`
+đã xoá. Bot (nay bot Zalo `ops/zalo-alerts/`) lên máy chủ cùng `from-mac.sh`, không rsync tay.
+Nhánh `kho-postgres` chạy bằng docker compose: vòng báo cáo đọc thẳng `ops/talpha_reports/` trong repo,
+không có bản chép runtime.
 
 ## 4. File quan trọng NGOÀI git (mất máy = mất)
 
 - ~~test_files.json + taiwan_files.json chỉ ở máy~~ → **đã copy vào `ops/talpha_reports/` 29/07**
   (bản chạy thật vẫn là `~/talpha_reports/` — sửa xong nhớ copy sang ops). Taiwan đã đủ 7 người
   (SAnh thêm 29/07, sheet id 128hNH2e8xHssURAxljQyYfyoZtouexuvNPHLwcVbTn8).
-- `~/talpha_reports/runtime/config/ad_accounts.json` (bản sync thật đọc)
-- `~/talpha_reports/runtime/.env` (TALPHA_META_ACCESS_TOKEN…), `runtime/bigquery_key.json`
-- Bot WA: `.wwebjs_auth/` session (chỉ trên server), `state.json`, `ads_state.json`
+- (Thời Mac chạy runtime — nay vòng báo cáo production ở `/root/talpha_reports/` trên VPS.)
+  `~/talpha_reports/runtime/.env` (TALPHA_META_ACCESS_TOKEN…), `runtime/bigquery_key.json`
+- Nhánh `kho-postgres`: token Meta, key POS… nằm MÃ HOÁ trong bảng `api_credentials` — mất / đổi
+  `TALPHA_ENCRYPTION_KEY` là phải nhập lại mọi khoá; sao kê, vận đơn, chi phí vận hành nằm trong bảng
+  `app_documents` (volume `pgdata` — `docker compose down -v` là mất).
+- Bot Zalo: phiên `.zalo_session.json`, `state.json`, file nhóm `zalo_group_nuoc_*.json` (ngoài git).
+  Bot WhatsApp (`.wwebjs_auth/`) đã xoá 30/10/2026.
 
 ## 5. Vận hành
 
 - **Log pm2 không logrotate trên VPS `139.180.131.21`** — chưa cài `pm2-logrotate`,
   `/var/log/talpha/*.log` có thể phình rất lớn. (Đã từng flush 3,2 GB trên máy Mac cũ.)
 - `.lock` là khoá của daily_guarded (dọn khi chủ khoá chết hoặc quá 45'). Nút "Xuất Sheet" chạy format_all.py mà KHÔNG giữ khoá này — bấm đúng lúc vòng mỗi giờ đang chạy là hai tiến trình cùng ghi Sheet.
-- `sql/talpha/views/` có 12 view. Dashboard dùng thật `vw_orders_std` (31 lần) và
-  `vw_fb_ads_std` (16 lần); số còn lại chỉ một vài lần. Sáu tab BigQuery vẫn tự viết
-  SQL inline thay vì đi qua view.
-- CEO "Hỏi dashboard" = **Gemini** (`@google/genai`, fallback 2.5-flash→2.0-flash, free tier
-  ~20 req/ngày/model), KHÔNG phải Claude — và hiện **ĐANG TẮT** (gỡ `GEMINI_API_KEY` 2 máy,
-  mục F2).
+- View: production `sql/talpha/views/` (BigQuery); nhánh `kho-postgres` `db/views/` (dựng bằng
+  `sync/core/pg_view.py`). Dashboard dùng thật `vw_orders_std` (31 lần) và `vw_fb_ads_std` (16 lần);
+  số còn lại chỉ một vài lần. Các tab đọc `/api/query` vẫn tự viết SQL inline thay vì đi qua view.
+- CEO "Hỏi dashboard" = **Gemini** (`@google/genai`), KHÔNG phải Claude. Tắt từ 03/08 (mục F2);
+  **nay bật lại 15/11/2026** thành trang 🤖 Hỏi AI (`/talpha/ask-ai`, chỉ giám đốc): khoá + model ở
+  Khoá kết nối → tab Gemini, model treo / hết quota thì tự đổi (`lib/talpha/gemini-models.ts`). SQL do
+  Gemini viết chạy bằng vai CHỈ ĐỌC.
 - `DATA_CONTRACT.md` + `FRONTEND_RULES.md` (mô tả STRAMARK) đã archive về `docs/_archive/`
   kèm banner cảnh báo — mục F4. Đừng tin nội dung, chỉ để tra lịch sử.
 

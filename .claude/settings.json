@@ -5,17 +5,21 @@
       "Bash(cd dashboard-ui && npm run build)",
       "Bash(cd dashboard-ui && npm test)",
       "Bash(cd dashboard-ui && npx tsc --noEmit*)",
+      "Bash(cd ops/zalo-alerts && npm test)",
       "Bash(python3 -m pytest tests/*)",
+      "Bash(docker compose ps*)",
+      "Bash(docker compose logs*)",
       "Bash(pm2 status)",
       "Bash(pm2 logs talpha-dashboard*)",
       "Bash(systemctl list-timers*)",
       "Bash(journalctl -u talpha-*)"
     ],
     "deny": [
-      "Bash(bq rm*)",
-      "Bash(bq query*DELETE*)",
-      "Bash(bq query*DROP*)",
-      "Bash(bq query*TRUNCATE*)"
+      "Bash(docker compose down -v*)",
+      "Bash(docker volume rm*)",
+      "Bash(*psql*DROP*)",
+      "Bash(*psql*TRUNCATE*)",
+      "Bash(*psql*DELETE*)"
     ],
     "defaultMode": "acceptEdits"
   },

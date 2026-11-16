@@ -1,8 +1,19 @@
 # TALPHA — Runbook thao tác vận hành
 
 > Làm theo từng bước. Mỗi thao tác ghi rõ máy nào (Mac dev / VPS 139.180.131.21).
+> **Hai bản**: production (`main`, VPS, BigQuery) và nhánh `kho-postgres` (Postgres, `docker compose`).
+> Mục nào không tách hai bản là viết thời BigQuery — **chưa soát lại sau khi chuyển Postgres (04/11/2026)**.
 
-## 1. Thêm TKQC mới (Mac)
+## 1. Thêm TKQC mới
+
+**Nhánh `kho-postgres` — không khai tay ở đâu cả** (TKQC tự động, 04/11/2026):
+1. Token Meta phải đọc được TKQC đó. TKQC ở Business Manager / app khác thì dán thêm token vào
+   `/admin` → Khoá kết nối → ô "Token Meta 2" / "Token Meta 3" (máy gọi thử rồi mới lưu).
+2. `/admin` → TKQC → "Quét TKQC ngay". TK không thuộc ANTALO thì chọn loại khác; TK tiền khác VND tự vào
+   loại "Khác" (không vào báo cáo).
+3. Vòng sync kế tiếp kéo chi tiêu; muốn ngay thì nút "Cập nhật ngay" trên thanh đầu.
+
+**Production (`main`, thời danh sách khai tay — chưa soát lại):**
 
 1. Verify quyền token trước: `curl "https://graph.facebook.com/v21.0/act_<ID>?access_token=$TALPHA_META_ACCESS_TOKEN"` (token System User talpha-sync, BM Mua 02 — lấy từ `~/talpha_reports/runtime/.env`).
 2. Sửa ĐỦ các chỗ (thiếu 1 = undercount âm thầm):
@@ -18,19 +29,27 @@
 ## 2. Chẩn đoán "số sai / thiếu spend / thiếu đơn"
 
 Theo đúng `docs/TALPHA_METRIC_RULES.md` §6 — tóm tắt:
-1. Ground truth: spend = Meta API trực tiếp (`level=campaign, time_increment=1`); đơn = POS API live. **KHÔNG so Sheet↔BQ.**
-2. So Meta ↔ BQ `fb_ads_data` theo account: lệch >2% → sync ads hỏng → xem `~/talpha_reports/daily_YYYYMMDD.log` (grep "Read timed out" / "request limit" / "PermissionError").
+1. Ground truth: spend = Meta API trực tiếp (`level=campaign, time_increment=1`); đơn = POS API live. **KHÔNG so Sheet ↔ kho số.**
+2. So Meta ↔ `fb_ads_data` theo account: lệch >2% → sync ads hỏng → xem log vòng chạy (grep "Read timed out" / "request limit" / "PermissionError"): production `/root/talpha_reports/daily_YYYYMMDD.log` + `journalctl -u talpha-sync`; nhánh `kho-postgres` `docker compose logs lich` + `ops/talpha_reports/daily_YYYYMMDD.log` trong repo. `/api/talpha/sync-health` trả TKQC / shop đọc lỗi của vòng gần nhất.
 3. So POS live ↔ `sale_order` theo marketer/ngày → sync đơn hỏng (grep "chết ở page").
 4. Dấu hiệu kinh điển: ngày có ĐƠN nhưng 0 SPEND = sync ads mất account/ngày; đơn tụt so với sáng = sync ghi đè bộ thiếu.
 5. Nhớ: GTC hôm nay ≈ 0 là đúng; từng ngày lệch tz là cố hữu (cả tháng mới khớp).
 
-## 3. Re-sync tay (chữa cháy, Mac)
+## 3. Re-sync tay (chữa cháy)
 
+**Nhánh `kho-postgres`:**
+```bash
+docker compose restart lich                                                    # chạy ngay một vòng kéo số + dựng báo cáo
+docker compose run --rm sync python sync/talpha/talpha_sync.py --days 40       # kéo lại cả tháng trước
+```
+Hoặc nút "Cập nhật ngay" trên thanh đầu dashboard (lịch nhặt trong ~15 giây).
+
+**Thời chạy runtime trên Mac (trước khi lên VPS — đường dẫn nay là `/root/talpha_reports/` trên VPS):**
 ```bash
 cd ~/talpha_reports && GOOGLE_APPLICATION_CREDENTIALS=runtime/bigquery_key.json \
   <repo>/.venv/bin/python sync_month.py && .venv/bin/python format_all.py
 ```
-- Chạy NỀN (sync full ~50-60'; SA ~10k đơn phân trang chậm). Backup `bq cp` 5 bảng trước nếu sợ.
+- Chạy NỀN (sync full ~50-60' thời còn shop SA ~10k đơn). Production BigQuery: backup `bq cp` 5 bảng trước nếu sợ.
 - Kill giữa chừng: phải `pkill -f daily_guarded` (wrapper tự chạy tiếp format_all).
 - KHÔNG BAO GIỜ chạy `daily.sh` (bản bq rm nguy hiểm).
 
@@ -55,14 +74,20 @@ cd ~/talpha_reports && GOOGLE_APPLICATION_CREDENTIALS=runtime/bigquery_key.json 
 - **Đừng rsync tay**: rsync từng file KHÔNG xoá file đã bỏ khỏi repo, nên máy chủ giữ
   lại file chết (đã dính `daily.sh`, `ecosystem.config.js`).
 
-## 6. Bot WhatsApp
+## 6. Bot Zalo (bot WhatsApp đã xoá 30/10/2026)
 
-- Phiên chết → `pair.js` dựng trang QR port 3099 trên server (mở ufw tạm, xong đóng); nếu treo: `pm2 stop`, `rm -rf .wwebjs_auth .wwebjs_cache`, start lại quét QR.
-- KHÔNG dùng `getChats()` (lỗi "r" cố hữu) — gửi thẳng `sendMessage(groupId, …)`, groupId trong `config.json` (`120363428990065476@g.us`).
-- Base URL mặc định của bot đã là `http://localhost:3000` (khớp dashboard trên VPS). Trỏ chỗ khác thì đặt env `TALPHA_DASHBOARD_URL`, ĐỪNG sửa `config.json` rồi commit.
+- Vận hành, ghép nick, đổi nhóm: `ops/zalo-alerts/README.md`. Lịch gửi, nguồn số từng tin: `docs/ZALO_BOT.md`.
+- Production: pm2 `talpha-zalo-alerts`. Nhánh `kho-postgres`: `docker compose --profile zalo run --rm zalo node pair.js`
+  để ghép nick, rồi `docker compose --profile zalo up -d zalo`.
+- Base URL dashboard: env `TALPHA_DASHBOARD_URL` (production mặc định `http://localhost:3000`), ĐỪNG sửa
+  `config.json` rồi commit.
 
-## 7. Vị trí log (đều trên VPS)
+## 7. Vị trí log
 
+Nhánh `kho-postgres`: `docker compose logs -f lich` (việc nền), `docker compose logs -f dashboard`,
+`ops/talpha_reports/daily_YYYYMMDD.log` (vòng báo cáo), bảng `job_runs` (đèn "Cập nhật lúc…").
+
+Production (VPS):
 - Vòng ghi Sheet: `/root/talpha_reports/daily_YYYYMMDD.log`
 - Sync vào BigQuery: `journalctl -u talpha-sync -n 60 --no-pager`
 - Dashboard: `/var/log/talpha/dashboard-{out,error}.log`, hoặc `pm2 logs talpha-dashboard`
@@ -74,6 +99,11 @@ Route `/api/talpha/billing` và bot WhatsApp dùng nó đã xoá 30/10/2026 (bot
 trên VPS). Cần lại cảnh báo hạn mức thì làm trong bot Zalo.
 
 ## 9. Meta token chết
+
+Nhánh `kho-postgres`: dán token mới ở `/admin` → Khoá kết nối (máy gọi thử rồi mới lưu, mã hoá vào bảng
+`api_credentials`); việc nền đọc lại khoá trước mỗi việc. Kiểm nhanh: `python3 ops/talpha_reports/check_meta_token.py`.
+
+Production:
 
 Triệu chứng: sync ads 0 rows mọi account / lỗi OAuth. Lấy lại: Business Manager "Mua 02"
 → System User `talpha-sync` (app abcd) → generate token mới → cập nhật

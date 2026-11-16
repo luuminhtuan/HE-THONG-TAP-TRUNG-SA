@@ -221,10 +221,7 @@ hoặc báo cáo chưa có số; gõ `/baocao` mà không thấy dòng `Lệnh "
 * Hàm dựng tin là hàm thuần, có test: `cd ops/zalo-alerts && npm test` (không gọi mạng, không đăng nhập).
   `require("./bot")` là đăng nhập Zalo luôn — logic cần test thì tách ra file riêng như `schedule.js`.
 * Giờ VN phải dùng `hourCycle: "h23"` — `hour12: false` trả "24" lúc nửa đêm (bot cũ từng bắn tin 8h lúc 0h05).
-* Tài liệu cũ còn lệch code ở mấy chỗ:
-  * `ops/zalo-alerts/README.md` ghi `sheet-report` "đọc thẳng file Google Sheet" — nay đọc bảng `bao_cao_tab`;
-    ghi `/canhbao` dùng `/api/talpha/ads-alerts` (BigQuery) — nay dùng `/api/talpha/realtime`; bảng lệnh ghi
-    nhóm Nhật `/vandon` "báo chưa theo dõi" — Nhật đã có vận đơn.
+* Chú thích trong code còn lệch ở mấy chỗ (README đã sửa 16/11/2026):
   * Chú thích đầu `bot.js` và log trong `daily_report.js → soMotNuoc` còn nhắc `data/bao_cao_nuoc/<tháng>.json`
     — nay là bảng `market_monthly_reports`.
   * Chú thích `commands.js` ghi `/canhbao` có "chi tiêu bất thường" — `buildCanhBaoNuoc` chỉ bắt camp đốt tiền.

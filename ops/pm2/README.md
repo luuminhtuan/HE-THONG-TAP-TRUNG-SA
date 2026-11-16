@@ -51,13 +51,17 @@ deploy là `ops/deploy/from-mac.sh`.
 
 ## Job theo giờ không nằm trong pm2
 
-Ba việc chạy nền trên máy chủ là **systemd timer**, không phải pm2:
+Việc chạy nền trên máy chủ là **systemd timer**, không phải pm2. Máy chủ chạy bản BigQuery của
+`main`; nhánh `kho-postgres` (Postgres) chạy các việc này bằng lịch `ops/docker/lich.py` trong
+docker compose, cùng giờ.
 
 | Timer | Làm gì | Xem |
 |---|---|---|
-| `talpha-sync.timer` | Kéo đơn POS + chi tiêu Meta vào BigQuery | `ops/deploy/vps-sync-setup.sh` |
-| `talpha-report.timer` | Đọc BigQuery rồi ghi báo cáo Google Sheets | `ops/deploy/vps-reports-setup.sh` |
-| `talpha-tracking.timer` | 6h sáng: nạp bảng đơn đối tác (Google Sheet NAZA) vào kho `tracking` | `ops/deploy/vps-tracking-setup.sh` |
+| `talpha-sync.timer` | :00 mỗi giờ — kéo đơn POS + chi tiêu Meta vào BigQuery | `ops/deploy/vps-sync-setup.sh` |
+| `talpha-report.timer` | :20 mỗi giờ — đọc BigQuery rồi ghi báo cáo Google Sheets | `ops/deploy/vps-reports-setup.sh` |
+| `talpha-snapshot.timer` | :40 mỗi giờ — chụp tồn kho dự phòng cho tab Kho | `ops/deploy/vps-setup.sh` |
+| `talpha-catalog.timer` | 05:10 mỗi ngày — danh mục sản phẩm `product_catalog` | `ops/deploy/vps-setup.sh` |
+| `talpha-tracking.timer` | 06:00 và 21:30: nạp bảng đơn đối tác vào kho `tracking` + đồng bộ vận đơn | `ops/deploy/vps-tracking-setup.sh` |
 
 ```bash
 systemctl list-timers 'talpha-*'

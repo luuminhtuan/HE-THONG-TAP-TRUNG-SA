@@ -4,6 +4,24 @@
 > "TALPHA — Sơ đồ hệ thống & Lộ trình tối ưu". Đường dẫn là điểm neo đã biết
 > lúc audit 29/07/2026 — trước khi sửa hãy xác nhận lại vị trí thực tế bằng
 > Glob/Grep, nhưng KHÔNG mở rộng phạm vi sang nhánh khác.
+>
+> **Trạng thái**: theo skill `alpha`, P0 9/9 · P1 8/8 (B1 xong 11/09/2026) · P2 8/8 — danh mục
+> này nay chủ yếu là lịch sử để tra "section X đã làm gì". Viết thời BigQuery + sáu shop GCC; **chưa
+> soát lại sau khi chuyển Postgres (04/11/2026)**. Câu "Verify" nào query BigQuery thì trên nhánh
+> `kho-postgres` dịch theo bảng trong `docs/POSTGRES.md` (bỏ tiền tố `cty-507710.TALPHA_Dataset.`).
+
+### Đường dẫn cũ → nay
+
+| Trong danh mục (29/07/2026) | Nay |
+|---|---|
+| `sql/talpha/views/*.sql`, deploy bằng `CREATE OR REPLACE VIEW` lên BQ | Production: vẫn BigQuery. Nhánh `kho-postgres`: `db/views/*.sql`, dựng bằng `sync/core/pg_view.py` |
+| Runtime sync `~/talpha_reports/runtime/sync/` | Đã gộp 11/09/2026 — chỉ còn `sync/talpha/talpha_sync.py` |
+| launchd / plist trên Mac | Production: systemd timer trên VPS. Nhánh `kho-postgres`: lịch `ops/docker/lich.py` |
+| Bot WhatsApp `ops/whatsapp-alerts/`, pm2 `talpha-wa-alerts` | Đã xoá 30/10/2026 — cảnh báo đi qua bot Zalo `ops/zalo-alerts/` |
+| Danh sách 14 TKQC khai tay (`talpha.yaml`, `ad_accounts.json`, `ACCOUNT_NAMES`) | Nhánh `kho-postgres`: TKQC tự động — bảng `tkqc`, `/admin` → TKQC, route `/api/talpha/tkqc` |
+| `/api/ad-accounts` | Nhánh `kho-postgres`: `/api/talpha/tkqc` |
+| `dashboard-ui/config/projects/talpha.yaml` (bản chép) | Đã xoá 11/09/2026 — chỉ còn `config/projects/talpha.yaml` |
+| `cty-507710.TALPHA_Dataset.<bảng>` | Nhánh `kho-postgres`: bảng cùng tên trong Postgres (`fb_ads_data` nay là VIEW) |
 
 ## A · Dashboard
 
