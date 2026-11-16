@@ -41,8 +41,19 @@ type Holder = { [SLOT]?: StartupData };
 
 export const ENCRYPTION_KEY_VAR = "TALPHA_ENCRYPTION_KEY";
 export const getEncryptionKey = () => (process.env[ENCRYPTION_KEY_VAR] || "").trim();
-export const CREDENTIALS_SQL = `SELECT name, public.pgp_sym_decrypt(encrypted_value, @encryptionKey) AS value, note, updated_at, updated_by
+// safe_decrypt (migration 0001): dòng mã hoá bằng chìa khác ra NULL thay vì làm chết cả câu.
+export const CREDENTIALS_SQL = `SELECT name, safe_decrypt(encrypted_value, @encryptionKey) AS value, note, updated_at, updated_by
                  FROM api_credentials`;
+
+/** Bỏ khoá không giải mã được (chìa đã đổi / dữ liệu hỏng) — KÊU ra log, các khoá còn lại vẫn dùng được. */
+export function readableCredentials(rows: (Omit<StoredCredentialRow, "value"> & { value: string | null })[]): StoredCredentialRow[] {
+    const unreadable = rows.filter((r) => r.value === null).map((r) => r.name);
+    if (unreadable.length) {
+        console.error(`credentials: ${unreadable.length} khoá không giải mã được bằng ${ENCRYPTION_KEY_VAR} hiện tại ` +
+            `(${unreadable.join(", ")}) — nhập lại ở /admin → Khoá kết nối`);
+    }
+    return rows.filter((r): r is StoredCredentialRow => r.value !== null);
+}
 
 /** Đã nạp chưa — undefined nghĩa là module đọc luật bị nạp TRƯỚC register() (không được xảy ra). */
 export function getStartupData(): StartupData | undefined {
@@ -82,7 +93,7 @@ async function loadCredentials(query: QueryFn): Promise<StoredCredentialRow[] | 
         return null;
     }
     try {
-        return await query<StoredCredentialRow>(CREDENTIALS_SQL, { encryptionKey });
+        return readableCredentials(await query<StoredCredentialRow>(CREDENTIALS_SQL, { encryptionKey }));
     } catch (e) {
         console.error("credentials: KHÔNG đọc được bảng api_credentials — dùng khoá trong .env.local:", e);
         return null;

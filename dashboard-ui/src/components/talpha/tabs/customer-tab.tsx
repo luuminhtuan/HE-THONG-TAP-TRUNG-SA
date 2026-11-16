@@ -42,14 +42,16 @@ export default function TALPHACustomerTab({ dateRange }: Props) {
                 // A1: tiền/ngày/trạng thái lấy từ view chuẩn vw_orders_std (revenue_vnd,
                 // order_date theo tz TKQC, is_confirmed). View không có cột danh tính
                 // khách → JOIN sale_order theo order_id chỉ để lấy phone/tên.
-                // ⚠️ sale_order có dòng trùng id (lỗi sync) → phải gom về 1 dòng/id
-                // TRƯỚC khi JOIN, nếu không doanh thu bị nhân đôi.
+                // ⚠️ sale_order có dòng trùng id (lỗi sync) → phải gom về 1 dòng/đơn
+                // TRƯỚC khi JOIN, nếu không doanh thu bị nhân đôi. Đơn = (shop_id, id): POS đánh số
+                // đơn RIÊNG từng shop (137 id trùng giữa các shop, 16/11/2026) — gom / ghép theo mình id
+                // là lấy SĐT, tên khách của shop khác; đếm đơn bằng order_uid.
                 const CUSTOMER_SRC = `(
-                    SELECT id,
+                    SELECT shop_id, id,
                            ANY_VALUE(bill_phone_number) AS bill_phone_number,
                            ANY_VALUE(bill_full_name)    AS bill_full_name
                     FROM sale_order
-                    GROUP BY id
+                    GROUP BY shop_id, id
                 )`;
 
                 const queries = [
@@ -57,10 +59,10 @@ export default function TALPHACustomerTab({ dateRange }: Props) {
                     `SELECT
                         v.market,
                         COUNT(DISTINCT NULLIF(o.bill_phone_number,'')) as unique_customers,
-                        COUNT(DISTINCT v.order_id) as total_orders,
+                        COUNT(DISTINCT v.order_uid) as total_orders,
                         ROUND(SUM(v.revenue_vnd), 0) as total_revenue_vnd
                     FROM vw_orders_std v
-                    JOIN ${CUSTOMER_SRC} o ON o.id = v.order_id
+                    JOIN ${CUSTOMER_SRC} o ON o.shop_id = v.shop_id AND o.id = v.order_id
                     WHERE v.order_date BETWEEN '${from}' AND '${to}' AND v.is_confirmed
                       AND o.bill_phone_number IS NOT NULL AND o.bill_phone_number != ''
                     GROUP BY 1`,
@@ -75,9 +77,9 @@ export default function TALPHACustomerTab({ dateRange }: Props) {
                         END as segment,
                         SUM(cnt) as customers
                     FROM (
-                        SELECT o.bill_phone_number, COUNT(DISTINCT v.order_id) as order_count, 1 as cnt
+                        SELECT o.bill_phone_number, COUNT(DISTINCT v.order_uid) as order_count, 1 as cnt
                         FROM vw_orders_std v
-                        JOIN ${CUSTOMER_SRC} o ON o.id = v.order_id
+                        JOIN ${CUSTOMER_SRC} o ON o.shop_id = v.shop_id AND o.id = v.order_id
                         WHERE v.order_date BETWEEN '${from}' AND '${to}' AND v.is_confirmed
                           AND o.bill_phone_number IS NOT NULL AND o.bill_phone_number != ''
                         GROUP BY 1
@@ -88,12 +90,12 @@ export default function TALPHACustomerTab({ dateRange }: Props) {
                         o.bill_full_name as name,
                         o.bill_phone_number as phone,
                         STRING_AGG(DISTINCT v.market, ', ') as shops,
-                        COUNT(DISTINCT v.order_id) as orders,
+                        COUNT(DISTINCT v.order_uid) as orders,
                         ROUND(SUM(v.revenue_vnd), 0) as revenue_vnd,
                         MIN(v.order_date) as first_order,
                         MAX(v.order_date) as last_order
                     FROM vw_orders_std v
-                    JOIN ${CUSTOMER_SRC} o ON o.id = v.order_id
+                    JOIN ${CUSTOMER_SRC} o ON o.shop_id = v.shop_id AND o.id = v.order_id
                     WHERE v.order_date BETWEEN '${from}' AND '${to}' AND v.is_confirmed
                       AND o.bill_phone_number IS NOT NULL AND o.bill_phone_number != ''
                     GROUP BY 1, 2 ORDER BY revenue_vnd DESC LIMIT 25`,
@@ -102,10 +104,10 @@ export default function TALPHACustomerTab({ dateRange }: Props) {
                     `SELECT
                         v.market,
                         COUNT(DISTINCT NULLIF(o.bill_phone_number,'')) as customers,
-                        COUNT(DISTINCT v.order_id) as orders,
+                        COUNT(DISTINCT v.order_uid) as orders,
                         ROUND(SUM(v.revenue_vnd), 0) as revenue_vnd
                     FROM vw_orders_std v
-                    JOIN ${CUSTOMER_SRC} o ON o.id = v.order_id
+                    JOIN ${CUSTOMER_SRC} o ON o.shop_id = v.shop_id AND o.id = v.order_id
                     WHERE v.order_date BETWEEN '${from}' AND '${to}' AND v.is_confirmed
                     GROUP BY 1 ORDER BY revenue_vnd DESC`,
                 ];

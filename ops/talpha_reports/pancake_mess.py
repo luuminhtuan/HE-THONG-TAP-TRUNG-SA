@@ -83,7 +83,7 @@ def is_market_page(name, market_code):
 def _call(url, log):
     for attempt in range(4):
         try:
-            with urllib.request.urlopen(url, timeout=60) as r:
+            with urllib.request.urlopen(url, timeout=60) as r:  # nosec B310 — URL Pancake API cố định (https)
                 j = json.load(r)
         except urllib.error.HTTPError as e:
             if e.code == 429:

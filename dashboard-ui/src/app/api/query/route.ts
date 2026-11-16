@@ -23,11 +23,12 @@ const API_KEY = process.env.DASHBOARD_API_KEY || "";
 
 // ═══ SECURITY: SQL Whitelist ═══
 // Only allow SELECT and WITH (for CTEs) queries — block all DDL/DML. Lớp chặn thật nằm ở database:
-// câu chạy bằng vai chỉ đọc trong transaction READ ONLY (lib/db.ts → queryChiDoc).
+// câu chạy bằng vai chỉ đọc trong transaction READ ONLY (lib/db.ts → queryReadOnly).
+// SET_CONFIG: đổi cấu hình phiên (TimeZone, search_path…) — vai chỉ đọc vẫn gọi được.
 const BLOCKED_KEYWORDS = [
     "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER",
     "TRUNCATE", "MERGE", "GRANT", "REVOKE", "EXEC", "EXECUTE",
-    "CALL", "BEGIN", "COMMIT", "ROLLBACK",
+    "CALL", "BEGIN", "COMMIT", "ROLLBACK", "SET_CONFIG",
 ];
 
 function isQuerySafe(query: string): { safe: boolean; reason?: string } {

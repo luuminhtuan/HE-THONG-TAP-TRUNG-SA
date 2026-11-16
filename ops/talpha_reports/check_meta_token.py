@@ -55,7 +55,7 @@ def load_env(path):
 def get(path, **params):
     url = f"{API}/{path}?" + urllib.parse.urlencode(params)
     try:
-        with urllib.request.urlopen(url, timeout=30) as r:
+        with urllib.request.urlopen(url, timeout=30) as r:  # nosec B310 — URL Graph API cố định (https)
             return True, json.load(r)
     except urllib.error.HTTPError as e:
         return False, json.load(e).get("error", {})

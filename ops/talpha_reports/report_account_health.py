@@ -162,7 +162,7 @@ def main():
     with conn.transaction():
         with conn.cursor() as c:
             c.executemany(
-                f"INSERT INTO {TABLE} ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))})",
+                f"INSERT INTO {TABLE} ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))})",  # nosec B608 — tên bảng / cột là hằng trong code
                 [tuple(r[k] for k in columns) for r in rows])
     conn.close()
 

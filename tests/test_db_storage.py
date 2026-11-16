@@ -60,8 +60,18 @@ class TestCredentials:
     def test_wrong_key_cannot_decrypt(self, pg, monkeypatch):
         save_credential(pg, "TALPHA_META_ACCESS_TOKEN", "tok")
         monkeypatch.setenv("TALPHA_ENCRYPTION_KEY", "chia-khac")
-        with pytest.raises(Exception):
-            read_credentials(pg)
+        assert read_credentials(pg) == {}          # không giải mã được thì không trả gì — không lộ, không chết
+        # …và KHÔNG cho ghi tiếp bằng chìa khác: kho trộn hai chìa là sửa lại chìa cũng hỏng một nửa.
+        with pytest.raises(RuntimeError):
+            save_credential(pg, "TRACK17_API_KEY", "k-17")
+        assert pg.execute("SELECT count(*) FROM api_credentials").fetchone()[0] == 1
+
+    def test_one_row_with_other_key_does_not_hide_the_rest(self, pg, monkeypatch):
+        # Trước 16/11/2026: một dòng mã hoá bằng chìa khác làm chết cả câu đọc → MỌI khoá rơi về .env.local.
+        save_credential(pg, "TALPHA_META_ACCESS_TOKEN", "tok")
+        pg.execute("INSERT INTO api_credentials (name, encrypted_value) "
+                   "VALUES ('TRACK17_API_KEY', public.pgp_sym_encrypt('k', 'chia-khac'))")
+        assert read_credentials(pg) == {"TALPHA_META_ACCESS_TOKEN": "tok"}
 
     def test_missing_key_raises(self, pg, monkeypatch):
         monkeypatch.delenv("TALPHA_ENCRYPTION_KEY")

@@ -159,7 +159,7 @@ def main():
     if inactive:
         from psycopg.rows import dict_row
         with conn.cursor(row_factory=dict_row) as cur:
-            kept_rows = cur.execute(f"SELECT * FROM {TABLE} WHERE shop_label = ANY(%s)", (inactive,)).fetchall()
+            kept_rows = cur.execute(f"SELECT * FROM {TABLE} WHERE shop_label = ANY(%s)", (inactive,)).fetchall()  # nosec B608 — tên bảng là hằng TABLE
         n_kept = 0
         for d in kept_rows:
             if d.get("variation_id") and d["variation_id"] not in seen:
@@ -174,7 +174,7 @@ def main():
     # Hụt >30% so với bảng đang có ⇒ dừng, bắt người chạy xác nhận bằng --force.
     if len(deduped) == 0:
         raise SystemExit(f"❌ Fetch được 0 variation — DỪNG, giữ nguyên {TABLE}.")
-    cur_n = conn.execute(f"SELECT COUNT(*) FROM {TABLE}").fetchone()[0]
+    cur_n = conn.execute(f"SELECT COUNT(*) FROM {TABLE}").fetchone()[0]  # nosec B608 — tên bảng là hằng TABLE
     if cur_n and len(deduped) < cur_n * 0.7 and not args.force:
         raise SystemExit(
             f"❌ Bảng mới {len(deduped)} dòng, hụt {100*(1-len(deduped)/cur_n):.0f}% "
@@ -191,7 +191,7 @@ def main():
       SELECT COUNT(*), COUNT(*) FILTER (WHERE c.variation_id IS NOT NULL)
       FROM order_items i
       LEFT JOIN {TABLE} c ON i.variation_id = c.variation_id
-    """).fetchone()
+    """).fetchone()  # nosec B608 — tên bảng là hằng TABLE
     pct = 100 * matched / max(total, 1)
     print(f"✅ JOIN coverage: {matched:,}/{total:,} order_items khớp catalog ({pct:.1f}%)")
     conn.close()

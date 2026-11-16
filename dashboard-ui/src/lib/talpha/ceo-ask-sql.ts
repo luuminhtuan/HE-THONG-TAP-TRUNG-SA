@@ -9,6 +9,7 @@
 export const BLOCKED_SQL_KEYWORDS = [
     "INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER", "TRUNCATE", "MERGE",
     "GRANT", "REVOKE", "EXEC", "EXECUTE", "CALL", "BEGIN", "COMMIT", "ROLLBACK",
+    "SET_CONFIG",   // đổi cấu hình phiên (TimeZone, search_path…) — vai chỉ đọc vẫn gọi được
 ] as const;
 
 /**
@@ -25,7 +26,7 @@ export function sanitizeSqlComment(text: string): string {
 }
 
 /** Chỉ cho phép 1 câu SELECT/WITH. Lớp chặn thật nằm ở database: câu chạy bằng vai chỉ đọc
- *  (lib/db.ts → queryChiDoc), nên không còn khoá "đúng dataset" như thời BigQuery. */
+ *  (lib/db.ts → queryReadOnly), nên không còn khoá "đúng dataset" như thời BigQuery. */
 export function checkSql(raw: string): { ok: boolean; reason?: string } {
     const q = raw.trim();
     const up = q.toUpperCase();

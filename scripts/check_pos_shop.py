@@ -31,7 +31,7 @@ def load_markets():
 
 def fetch(shop_id, key, page=1, size=100):
     q = urlencode({"api_key": key, "page_size": size, "page_number": page})
-    with urlopen(f"{POS_API}/shops/{shop_id}/orders?{q}", timeout=40) as r:
+    with urlopen(f"{POS_API}/shops/{shop_id}/orders?{q}", timeout=40) as r:  # nosec B310 — URL POS API cố định (https)
         return json.load(r)
 
 

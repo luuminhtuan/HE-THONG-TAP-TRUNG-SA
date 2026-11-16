@@ -371,6 +371,15 @@ CREATE TABLE view_fingerprints (
 -- migration trong schema tạm với search_path chỉ có schema đó.
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 
+-- Giải mã một khoá; chìa sai / dữ liệu hỏng → NULL. Gọi thẳng pgp_sym_decrypt trên cả bảng thì MỘT dòng mã hoá
+-- bằng chìa khác làm chết cả câu → mọi khoá rơi về .env.local (cũ) ở cả dashboard lẫn sync.
+CREATE FUNCTION safe_decrypt(data bytea, secret text) RETURNS text LANGUAGE plpgsql STABLE AS $$
+BEGIN
+    RETURN public.pgp_sym_decrypt(data, secret);
+EXCEPTION WHEN others THEN
+    RETURN NULL;
+END $$;
+
 CREATE TABLE app_documents (
     name        text PRIMARY KEY CHECK (name ~ '^[A-Za-z0-9_-]+$'),
     content     jsonb NOT NULL,

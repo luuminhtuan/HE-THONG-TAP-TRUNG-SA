@@ -18,9 +18,11 @@
 // ═══════════════════════════════════════════════════════════════════
 import fs from "fs";
 import yaml from "js-yaml";
-import { query } from "@/lib/db";
+import { query, withTransaction } from "@/lib/db";
 import { TALPHA_YAML } from "./config-path";
-import { CREDENTIALS_SQL, ENCRYPTION_KEY_VAR, getEncryptionKey, takeStartupCredentials, type StoredCredentialRow } from "./startup-data";
+import {
+    CREDENTIALS_SQL, ENCRYPTION_KEY_VAR, getEncryptionKey, readableCredentials, takeStartupCredentials, type StoredCredentialRow,
+} from "./startup-data";
 import { DISABLED_MARKETS, MESS_PANCAKE, RULES, SHOP2MKT, SHOP_POS } from "./rules";
 import { maskCredential } from "./credential-utils";
 import { META_TOKEN_VARS } from "./ad-account-rules";
@@ -50,7 +52,7 @@ const toMap = (rows: StoredCredentialRow[]) => new Map(rows.map(({ name, ...r })
 async function refreshCache(): Promise<void> {
     const encryptionKey = getEncryptionKey();
     if (!encryptionKey || !process.env.DATABASE_URL) return;
-    const rows = await query<StoredCredentialRow>(CREDENTIALS_SQL, { encryptionKey });
+    const rows = readableCredentials(await query<StoredCredentialRow>(CREDENTIALS_SQL, { encryptionKey }));
     setCache({ map: toMap(rows), loadedAt: Date.now() });
 }
 
@@ -218,12 +220,22 @@ export async function saveCredential(credentialName: string, value: string | nul
     } else {
         const encryptionKey = getEncryptionKey();
         if (!encryptionKey) throw new Error(`Chưa đặt ${ENCRYPTION_KEY_VAR} trên máy chủ — không mã hoá được khoá để lưu`);
-        await query(
-            `INSERT INTO api_credentials (name, encrypted_value, note, updated_at, updated_by)
-             VALUES (@ten, public.pgp_sym_encrypt(@giaTri, @chia), @ghiChu, now(), @ai)
-             ON CONFLICT (name) DO UPDATE SET encrypted_value = EXCLUDED.encrypted_value, note = EXCLUDED.note,
-               updated_at = now(), updated_by = EXCLUDED.updated_by`,
-            { ten: credentialName, giaTri: value, chia: encryptionKey, ghiChu: note || null, ai: ai || null });
+        await withTransaction(async (q) => {
+            // Chìa hiện tại không mở được khoá NÀO đang có = chìa đã đổi: lưu tiếp là kho trộn hai chìa (16/11/2026).
+            const [check] = await q<{ total: number; readable: number }>(
+                `SELECT count(*)::int AS total, count(safe_decrypt(encrypted_value, @chia))::int AS readable
+                 FROM api_credentials WHERE name <> @ten`, { ten: credentialName, chia: encryptionKey });
+            if (check && check.total > 0 && check.readable === 0) {
+                throw new Error(`${ENCRYPTION_KEY_VAR} trên máy chủ không mở được khoá nào đang lưu — chìa đã đổi? ` +
+                    "Không lưu để khỏi trộn hai chìa. Đặt lại đúng chìa, hoặc xoá hết khoá cũ rồi nhập lại.");
+            }
+            await q(
+                `INSERT INTO api_credentials (name, encrypted_value, note, updated_at, updated_by)
+                 VALUES (@ten, public.pgp_sym_encrypt(@giaTri, @chia), @ghiChu, now(), @ai)
+                 ON CONFLICT (name) DO UPDATE SET encrypted_value = EXCLUDED.encrypted_value, note = EXCLUDED.note,
+                   updated_at = now(), updated_by = EXCLUDED.updated_by`,
+                { ten: credentialName, giaTri: value, chia: encryptionKey, ghiChu: note || null, ai: ai || null });
+        });
     }
     await refreshCache();
 }

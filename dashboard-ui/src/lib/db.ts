@@ -121,7 +121,11 @@ export async function queryReadOnly<T = any>(sql: string, role: ReadOnlyRole, pa
         await client.query("ROLLBACK").catch(() => {});
         throw e;
     } finally {
-        client.release();
+        // set_config(…, false) trong câu của người dùng sống qua COMMIT và theo kết nối về pool — lượt sau của
+        // NGƯỜI KHÁC chạy với TimeZone / search_path đã bị đổi (16/11/2026). Xoá sạch trước khi trả; RESET ALL giữ
+        // tham số lúc nối (-c TimeZone=UTC). Không xoá được thì huỷ kết nối luôn.
+        const resetError = await client.query("RESET ALL").then(() => undefined, (e: Error) => e);
+        client.release(resetError);
     }
 }
 
@@ -134,9 +138,9 @@ export async function withTransaction<T>(work: (q: typeof query) => Promise<T>):
             const { text, values } = bindNamedParams(sql, params);
             return (await client.query(text, values)).rows;
         };
-        const kq = await work(q as typeof query);
+        const result = await work(q as typeof query);
         await client.query("COMMIT");
-        return kq;
+        return result;
     } catch (e) {
         await client.query("ROLLBACK").catch(() => {});
         throw e;

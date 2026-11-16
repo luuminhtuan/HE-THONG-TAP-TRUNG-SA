@@ -8,7 +8,7 @@ Laravel: bản sao lưu database, hay câu SQL đọc nhầm bảng, chỉ thấ
 
 Mọi tiến trình Python cần khoá (sync, danh mục SP, vòng ghi báo cáo, lịch Docker) gọi
 load_credentials_to_env() lúc bắt đầu: khoá trong kho THẮNG khoá cùng tên trong .env.local — đúng thứ tự
-dashboard đọc (lib/talpha/credentials.ts → docKhoa).
+dashboard đọc (lib/talpha/credentials.ts → getCredential).
 """
 import os
 import sys
@@ -26,15 +26,26 @@ def read_credentials(conn) -> dict:
     secret = get_encryption_key()
     if not secret:
         raise RuntimeError(f"chưa đặt {ENCRYPTION_KEY_VAR} — không giải mã được khoá kết nối trong kho")
-    rows = conn.execute(
-        "SELECT name, public.pgp_sym_decrypt(encrypted_value, %s) FROM api_credentials", (secret,)).fetchall()
-    return {name: value for name, value in rows}
+    # safe_decrypt (migration 0001): dòng mã hoá bằng chìa khác ra NULL — bỏ dòng đó, KÊU, các khoá khác vẫn dùng được
+    # (trước 16/11/2026 một dòng hỏng làm chết cả câu → mọi khoá rơi về .env.local).
+    rows = conn.execute("SELECT name, safe_decrypt(encrypted_value, %s) FROM api_credentials", (secret,)).fetchall()
+    unreadable = sorted(name for name, value in rows if value is None)
+    if unreadable:
+        print(f"credentials: {len(unreadable)} khoá không giải mã được bằng {ENCRYPTION_KEY_VAR} hiện tại "
+              f"({', '.join(unreadable)}) — nhập lại ở /admin → Khoá kết nối", file=sys.stderr)
+    return {name: value for name, value in rows if value is not None}
 
 
 def save_credential(conn, name: str, value: str, note: str = "", updated_by: str = "") -> None:
     secret = get_encryption_key()
     if not secret:
         raise RuntimeError(f"chưa đặt {ENCRYPTION_KEY_VAR} — không mã hoá được khoá")
+    # Chìa hiện tại không mở được khoá NÀO đang có = chìa đã đổi: ghi tiếp là kho trộn hai chìa.
+    total, readable = conn.execute(
+        "SELECT count(*), count(safe_decrypt(encrypted_value, %s)) FROM api_credentials WHERE name <> %s",
+        (secret, name)).fetchone()
+    if total and not readable:
+        raise RuntimeError(f"{ENCRYPTION_KEY_VAR} không mở được khoá nào đang lưu — chìa đã đổi? Không ghi để khỏi trộn hai chìa")
     conn.execute(
         "INSERT INTO api_credentials (name, encrypted_value, note, updated_by, updated_at) "
         "VALUES (%s, public.pgp_sym_encrypt(%s, %s), %s, %s, now()) "

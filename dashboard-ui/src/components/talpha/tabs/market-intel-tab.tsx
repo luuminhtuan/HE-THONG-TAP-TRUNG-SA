@@ -41,24 +41,24 @@ export default function TALPHAMarketIntelTab({ dateRange }: Props) {
 
                 // A1: tiền/ngày/trạng thái từ view chuẩn vw_orders_std. Q0 JOIN sale_order
                 // chỉ để đếm khách (bill_phone_number — view không có cột danh tính).
-                // ⚠️ sale_order có dòng trùng id (lỗi sync) → gom về 1 dòng/id trước khi
-                // JOIN, nếu không doanh thu bị nhân đôi.
+                // ⚠️ sale_order có dòng trùng id (lỗi sync) → gom về 1 dòng/đơn trước khi
+                // JOIN, nếu không doanh thu bị nhân đôi. Đơn = (shop_id, id) — id trùng giữa các shop.
                 const PHONE_SRC = `(
-                    SELECT id, ANY_VALUE(bill_phone_number) AS bill_phone_number
+                    SELECT shop_id, id, ANY_VALUE(bill_phone_number) AS bill_phone_number
                     FROM sale_order
-                    GROUP BY id
+                    GROUP BY shop_id, id
                 )`;
 
                 const queries = [
                     // Q0: Markets — DS Giao TC (VND từ view)
                     `SELECT
                         v.market,
-                        COUNT(DISTINCT v.order_id) as orders,
+                        COUNT(DISTINCT v.order_uid) as orders,
                         ROUND(SUM(v.revenue_vnd), 0) as revenue_vnd,
                         ROUND(AVG(v.revenue_vnd), 0) as avg_order_vnd,
                         COUNT(DISTINCT NULLIF(o.bill_phone_number,'')) as customers
                     FROM vw_orders_std v
-                    JOIN ${PHONE_SRC} o ON o.id = v.order_id
+                    JOIN ${PHONE_SRC} o ON o.shop_id = v.shop_id AND o.id = v.order_id
                     WHERE v.order_date BETWEEN '${from}' AND '${to}' AND v.is_confirmed
                     GROUP BY 1 ORDER BY revenue_vnd DESC`,
 

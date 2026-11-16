@@ -18,8 +18,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Chỉ nhận JSON" }, { status: 415 });
     }
     const a = await getAccess(req);
-    // Chìa nội bộ (bot, việc nền) không bao giờ cần đọc khoá qua đây.
-    if (!a || a.kind === "internal") return NextResponse.json({ error: "Không có quyền xem khoá" }, { status: 403 });
+    // Chìa nội bộ (bot, việc nền) không bao giờ cần đọc khoá qua đây. Chế độ công khai (DASHBOARD_PUBLIC — máy thử bỏ
+    // đăng nhập) cũng không: ai vào được cổng là đọc được token Meta / key POS bản rõ (16/11/2026).
+    if (!a || a.kind === "internal" || a.kind === "public") {
+        return NextResponse.json({ error: "Không có quyền xem khoá" }, { status: 403 });
+    }
 
     const body = await req.json().catch(() => null);
     const keyName = String(body?.ten || "");

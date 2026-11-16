@@ -89,7 +89,7 @@ def count_table_rows(conn) -> list:
     out = []
     for b in COUNTED_TABLES:
         column = "synced_at::text" if b == "partner_orders" else "sync_time"
-        n, latest = conn.execute(f"SELECT COUNT(*), MAX({column}) FROM {b}").fetchone()
+        n, latest = conn.execute(f"SELECT COUNT(*), MAX({column}) FROM {b}").fetchone()  # nosec B608 — tên bảng / cột là hằng trong code
         out.append((b, n, latest))
     n, latest = conn.execute("SELECT COUNT(*), MAX(last_seen_at)::text FROM ad_accounts").fetchone()
     out.append(("ad_accounts", n, latest))
@@ -99,7 +99,7 @@ def count_table_rows(conn) -> list:
                    ("api_credentials", "updated_at")):
         if conn.execute("SELECT to_regclass(%s)", (b,)).fetchone()[0] is None:
             continue
-        n, latest = conn.execute(f"SELECT COUNT(*), MAX({column})::text FROM {b}").fetchone()
+        n, latest = conn.execute(f"SELECT COUNT(*), MAX({column})::text FROM {b}").fetchone()  # nosec B608 — tên bảng / cột là hằng trong code
         out.append((b, n, latest))
     return out
 

@@ -157,18 +157,19 @@ def replace_table(conn, table: str, rows: list) -> int:
         log.warning(f"  [postgres] {table}: 0 dòng — giữ nguyên bảng cũ")
         return 0
     with conn.transaction():
-        conn.execute(f"DELETE FROM {_safe_ident(table)}")
+        conn.execute(f"DELETE FROM {_safe_ident(table)}")  # nosec B608 — tên bảng / cột qua _safe_ident
         insert_rows(conn, table, rows)
     log.info(f"  [postgres] {table}: {len(rows)} dòng (thay cả bảng)")
     return len(rows)
 
 
 def _rebuild_from_raw(conn, table: str, select_sql: str) -> int:
-    """Bảng sạch = kết quả `chon_sql` (đọc từ raw). Chạy trong transaction của người gọi."""
+    """Bảng sạch = kết quả `select_sql` (đọc từ raw). Chạy trong transaction của người gọi."""
+    table = _safe_ident(table)
     name = ", ".join(table_columns(conn, table))
-    conn.execute(f"DELETE FROM {table}")
-    conn.execute(f"INSERT INTO {table} ({name}) SELECT {name} FROM ({select_sql}) t")
-    return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+    conn.execute(f"DELETE FROM {table}")  # nosec B608 — tên bảng / cột qua _safe_ident
+    conn.execute(f"INSERT INTO {table} ({name}) SELECT {name} FROM ({select_sql}) t")  # nosec B608 — tên bảng / cột qua _safe_ident
+    return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]  # nosec B608 — tên bảng / cột qua _safe_ident
 
 
 def sql_rebuild_orders(orders_table: str, shop_ids=None) -> str:
@@ -207,9 +208,9 @@ def write_orders(conn, orders: list, items: list, orders_table: str = "sale_orde
     orders_table, items_table = _safe_ident(orders_table), _safe_ident(items_table)
     with conn.transaction():
         known = {f"{s}|{i}": (t or "") for s, i, t in conn.execute(
-            f"SELECT shop_id, id, MAX(updated_at) FROM {orders_table} GROUP BY 1, 2")}
+            f"SELECT shop_id, id, MAX(updated_at) FROM {orders_table} GROUP BY 1, 2")}  # nosec B608 — tên bảng / cột qua _safe_ident
         empty_keys = {c: {f"{s}|{i}" for s, i in conn.execute(
-            f"SELECT shop_id, id FROM {orders_table} WHERE COALESCE({_safe_ident(c)}, '') = ''")}
+            f"SELECT shop_id, id FROM {orders_table} WHERE COALESCE({_safe_ident(c)}, '') = ''")}  # nosec B608 — tên bảng / cột qua _safe_ident
             for c in BACKFILL_COLUMNS}
         changed = select_orders_to_upsert(orders, known, empty_keys=empty_keys)
         changed_keys = {(str(o.get("shop_id", "")), str(o.get("id", ""))) for o in changed}
@@ -222,7 +223,7 @@ def write_orders(conn, orders: list, items: list, orders_table: str = "sale_orde
         if replaced:
             shops = [str(x) for x in replaced if str(x).isdigit()]
             existing = conn.execute(
-                f"SELECT shop_id, id, inserted_at FROM {orders_table} WHERE shop_id = ANY(%s)",
+                f"SELECT shop_id, id, inserted_at FROM {orders_table} WHERE shop_id = ANY(%s)",  # nosec B608 — tên bảng / cột qua _safe_ident
                 (shops,)).fetchall() if shops else []
             deleted, warnings = select_deleted_orders(existing, replaced)
             for c in warnings:
@@ -236,7 +237,7 @@ def write_orders(conn, orders: list, items: list, orders_table: str = "sale_orde
                            or datetime.utcnow().isoformat())
                 with conn.cursor(row_factory=dict_row) as cur:
                     tombstones = cur.execute(
-                        f"SELECT * FROM {orders_table} WHERE shop_id || '|' || id = ANY(%s)", (keys,)).fetchall()
+                        f"SELECT * FROM {orders_table} WHERE shop_id || '|' || id = ANY(%s)", (keys,)).fetchall()  # nosec B608 — tên bảng / cột qua _safe_ident
                 for d in tombstones:
                     d["status_name"] = DELETED_ON_POS
                     d["sync_time"] = now
@@ -281,4 +282,4 @@ def ad_ids_to_lookup(conn, orders_table: str = "sale_order", limit: int = 600) -
         WHERE id IS NOT NULL
           AND id NOT IN (SELECT ad_id FROM fb_ads_all WHERE ad_id IS NOT NULL)
           AND id NOT IN (SELECT ad_id FROM ad_dictionary WHERE ad_id IS NOT NULL)
-        LIMIT %s""", (int(limit),))]
+        LIMIT %s""", (int(limit),))]  # nosec B608 — tên bảng qua _safe_ident
