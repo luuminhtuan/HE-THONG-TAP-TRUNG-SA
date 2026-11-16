@@ -16,8 +16,8 @@ def main():
     ap.add_argument("--detail", default="")
     a = ap.parse_args()
     sys.path.insert(0, talpha_paths.repo_dir())
-    from sync.core.pg import ket_noi
-    with ket_noi() as conn:
+    from sync.core.pg import get_connection
+    with get_connection() as conn:
         conn.execute(
             "INSERT INTO sync_health (ts, host, ok, sync_rc, format_rc, detail) VALUES (now(), %s, %s, %s, %s, %s)",
             (socket.gethostname(), bool(a.ok), a.sync_rc, a.format_rc, a.detail[:1000]))

@@ -116,7 +116,7 @@ function tenNganCamp(name) {
     return co ? `${co} ${ngan}` : ngan;
 }
 
-/** Tên page để SO KHỚP — ≡ chuanTenPage (dashboard-ui/src/lib/talpha/pancake.ts) và chuan_ten_page
+/** Tên page để SO KHỚP — ≡ chuanTenPage (dashboard-ui/src/lib/talpha/pancake.ts) và normalize_page_name
  *  (talpha_rules.py): bỏ kiểu chữ trang trí (𝑱𝒂𝒑𝒂𝒏 → japan), hoa thường, dấu câu, khoảng trắng thừa. */
 function chuanTenPage(s) {
     return String(s || "").normalize("NFKC").toLowerCase()
@@ -173,7 +173,7 @@ function chonNhomTheoTen(dsNhom, cacNuoc) {
     return { chon, trung, thieu };
 }
 
-// ── Ai cầm nước nào (Sỹ Anh chốt 10/10/2026) — ≡ nguoi_tinh_so bên talpha_rules.py ──
+// ── Ai cầm nước nào (Sỹ Anh chốt 10/10/2026) — ≡ credited_marketer bên talpha_rules.py ──
 // Số một người chạy LẤN sang nước của team khác (camp cũ chưa đổi tên) tính cho người cầm nước đó.
 const NUOC_CUA_NGUOI = {};
 for (const t of Object.values(khongGhiChu((RULES.access || {}).teams))) {

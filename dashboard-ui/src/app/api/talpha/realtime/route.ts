@@ -304,7 +304,7 @@ async function fetchPOSFromDirectAPI(shops: YamlConfig["poscake"]["shops"], star
                     const rate = EXCHANGE_RATES[shopName] ?? 0;   // xem chú thích ở fetchPOSFromKho
                     // X13 — số chia theo shop (GCC 100, Đài 1), xem fetchPOSFromKho.
                     // Đơn ghi bằng VND trong shop TWD (shop 1022091930 còn 340 đơn như vậy):
-                    // chia cho tỷ giá như bước sync làm (business_rules.quy_doi_don_ngoai_te),
+                    // chia cho tỷ giá như bước sync làm (business_rules.convert_order_currency),
                     // để phép nhân tỷ giá bên dưới trả lại đúng số VND — không thì 730.000đ
                     // hoá 584 triệu. Đường kho số không cần: bảng đơn đã quy đổi sẵn.
                     const laVnd = String(o.order_currency || '').toUpperCase() === 'VND';

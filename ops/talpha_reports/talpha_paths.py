@@ -21,8 +21,8 @@ import os
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def _first_dir(*ung_vien):
-    for d in ung_vien:
+def _first_dir(*candidates):
+    for d in candidates:
         if d and os.path.isdir(d):
             return d
     return None
@@ -72,12 +72,12 @@ def repo_dir() -> str:
             )
         return env
     # File này nằm ở <repo>/ops/talpha_reports/ khi chạy thẳng trong cây repo.
-    goc = os.path.dirname(os.path.dirname(_HERE))
-    if os.path.isdir(os.path.join(goc, "sync", "talpha")):
-        return goc
+    root = os.path.dirname(os.path.dirname(_HERE))
+    if os.path.isdir(os.path.join(root, "sync", "talpha")):
+        return root
     raise RuntimeError(
         "Không tìm thấy cây repo chứa sync/talpha (đã dò %s). "
-        "Đặt TALPHA_REPO trỏ vào gốc repo — trên máy chủ: TALPHA_REPO=/opt/talpha." % goc
+        "Đặt TALPHA_REPO trỏ vào gốc repo — trên máy chủ: TALPHA_REPO=/opt/talpha." % root
     )
 
 
@@ -104,7 +104,7 @@ def bq_key() -> str:
     return ung_vien[1]
 
 
-def dat_moi_truong() -> str:
+def setup_runtime_env() -> str:
     """
     Đặt GOOGLE_APPLICATION_CREDENTIALS và chuyển cwd về thư mục runtime.
 

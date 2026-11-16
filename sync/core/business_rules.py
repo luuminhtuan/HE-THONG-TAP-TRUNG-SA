@@ -22,20 +22,20 @@ from typing import Optional
 # X13 — số chia là số đơn vị phụ trên 1 đơn vị tiền MÀ POS ĐANG LƯU, không phải số thập
 # phân ISO 4217. Shop Đài lưu NGUYÊN TWD (cod=950 ⇒ 950 TWD) → 1; shop GCC cũ lưu minor
 # units (cod=9900 ⇒ 99,00 SAR) → 100. Trước 20/08 mọi nơi chia 100 ⇒ tiền Đài tụt 100 lần.
-def _doc_thi_truong() -> dict:
+def _load_markets() -> dict:
     # Đã phủ thị trường nhập ở /admin → Thị trường (04/11/2026) — xem sync/core/thi_truong.py.
-    from sync.core.thi_truong import doc_luat
-    return {k: v for k, v in (doc_luat().get("markets") or {}).items() if isinstance(v, dict)}
+    from sync.core.thi_truong import load_rules
+    return {k: v for k, v in (load_rules().get("markets") or {}).items() if isinstance(v, dict)}
 
 
-def _so_duong(v):
+def _is_positive(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
 
 
-_THI_TRUONG = _doc_thi_truong()
+_MARKETS = _load_markets()
 
 FX_RATES_TO_VND: dict[str, float] = {
-    v["shop_label"]: v["rate_vnd"] for v in _THI_TRUONG.values() if _so_duong(v.get("rate_vnd"))
+    v["shop_label"]: v["rate_vnd"] for v in _MARKETS.values() if _is_positive(v.get("rate_vnd"))
 }
 FX_RATES_TO_VND["USD"] = 25700    # USD → VND (Meta ads billing)
 
@@ -44,12 +44,12 @@ FX_RATES_TO_VND["USD"] = 25700    # USD → VND (Meta ads billing)
 _NON_SHOP_FX_KEYS: frozenset[str] = frozenset(["USD"])
 
 POS_MONEY_DIVISOR: dict[str, int] = {
-    v["shop_label"]: v["pos_money_divisor"] for v in _THI_TRUONG.values() if _so_duong(v.get("pos_money_divisor"))
+    v["shop_label"]: v["pos_money_divisor"] for v in _MARKETS.values() if _is_positive(v.get("pos_money_divisor"))
 }
 DEFAULT_MONEY_DIVISOR = 100  # shop mới chưa khai: giữ mặc định minor units
 
 # Market code → tên chuẩn (MỌI nước khai trong JSON, kể cả nước sắp chạy)
-MARKET_NAMES: dict[str, str] = {v["shop_label"]: ten for ten, v in _THI_TRUONG.items()}
+MARKET_NAMES: dict[str, str] = {v["shop_label"]: market_name for market_name, v in _MARKETS.items()}
 
 
 # ─── Nước không kéo đơn: đã tắt, sắp chạy (04/11/2026) ───────────────────────
@@ -60,7 +60,7 @@ MARKET_NAMES: dict[str, str] = {v["shop_label"]: ten for ten, v in _THI_TRUONG.i
 # cũ của nước đó biến khỏi báo cáo ngay vòng sau.
 
 
-def shop_pos_tu_markets(markets: dict, env=None) -> list[dict]:
+def pos_shops_from_markets(markets: dict, env=None) -> list[dict]:
     """Danh sách shop POS từ config/talpha_rules.json → markets.
 
     Nước "sắp chạy" chưa có shop POS: bỏ qua, KHÔNG đưa vào danh sách. Để shop_id rỗng lọt vào
@@ -73,7 +73,7 @@ def shop_pos_tu_markets(markets: dict, env=None) -> list[dict]:
     """
     env = os.environ if env is None else env
     out = []
-    for ten, m in (markets or {}).items():
+    for market_name, m in (markets or {}).items():
         if not isinstance(m, dict):
             continue
         label = m.get("shop_label", "")
@@ -81,7 +81,7 @@ def shop_pos_tu_markets(markets: dict, env=None) -> list[dict]:
             continue
         sid = str(m.get("shop_id") or "").strip()
         if not sid:
-            print(f"[pos] {ten} ({label}): chưa có shop POS — chưa kéo đơn")
+            print(f"[pos] {market_name} ({label}): chưa có shop POS — chưa kéo đơn")
             continue
         out.append({
             "key": env.get(f"TALPHA_POSCAKE_{label}_KEY", ""),
@@ -177,8 +177,8 @@ ORDER_MONEY_FIELDS = (
 ITEM_MONEY_FIELDS = ("retail_price", "discount_each_product", "total_discount", "same_price_discount")
 
 
-def quy_doi_don_ngoai_te(order: dict, items: list[dict], shop_currency: str,
-                         rate_vnd: Optional[float], so_chia: int = 1) -> Optional[tuple[dict, list[dict]]]:
+def convert_order_currency(order: dict, items: list[dict], shop_currency: str,
+                         rate_vnd: Optional[float], divisor: int = 1) -> Optional[tuple[dict, list[dict]]]:
     """Đưa một đơn về loại tiền của shop. Trả (đơn, items) đã quy đổi, hoặc None nếu phải bỏ.
 
     - Đơn cùng loại tiền với shop (hoặc không ghi loại tiền): trả nguyên.
@@ -193,19 +193,19 @@ def quy_doi_don_ngoai_te(order: dict, items: list[dict], shop_currency: str,
         return order, items
     if cur != "VND" or not rate_vnd or rate_vnd <= 0:
         return None
-    moi = dict(order)
+    new_order = dict(order)
     for k in ORDER_MONEY_FIELDS:
-        if moi.get(k) is not None:
-            moi[k] = round(float(moi[k] or 0) / rate_vnd * (so_chia or 1), 4)
-    moi["order_currency"] = want
-    moi_items = []
+        if new_order.get(k) is not None:
+            new_order[k] = round(float(new_order[k] or 0) / rate_vnd * (divisor or 1), 4)
+    new_order["order_currency"] = want
+    new_items = []
     for it in items:
         x = dict(it)
         for k in ITEM_MONEY_FIELDS:
             if x.get(k) is not None:
-                x[k] = round(float(x[k] or 0) / rate_vnd * (so_chia or 1), 4)
-        moi_items.append(x)
-    return moi, moi_items
+                x[k] = round(float(x[k] or 0) / rate_vnd * (divisor or 1), 4)
+        new_items.append(x)
+    return new_order, new_items
 
 
 # ─── R3: Market ─────────────────────────────────────────────────────────────

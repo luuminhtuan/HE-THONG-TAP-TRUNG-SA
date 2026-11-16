@@ -28,7 +28,7 @@ export type Conversation = {
 };
 export type ConversationCounts = { inbox_moi: number; comment_moi: number; co_sdt: number };
 
-/** Tên page để SO KHỚP — cùng luật chuan_ten_page (ops/talpha_reports/talpha_rules.py): bỏ kiểu
+/** Tên page để SO KHỚP — cùng luật normalize_page_name (ops/talpha_reports/talpha_rules.py): bỏ kiểu
  *  chữ trang trí (𝑱𝒂𝒑𝒂𝒏 → japan), hoa thường, dấu câu, khoảng trắng thừa. */
 export function normalizePageName(s?: string | null): string {
     return String(s || "").normalize("NFKC").toLowerCase()

@@ -75,7 +75,7 @@ Bản đồ nghiệp vụ đầy đủ: `DASHBOARD_MAP.md`. Hướng dẫn làm 
    nhầm bản khác.
 3. **X4 — sku bẩn** trong `product_catalog`: đã chuẩn hoá ở tầng view (`db/views/00_vw_product_catalog_std.sql`,
    4 bậc bóc mã); bảng thô vẫn giữ sku gốc của POS. *Chưa soát lại sau khi chuyển Postgres.*
-4. **`fb_campaign_tat_ca` (view `fb_campaign_data`)** — nhánh Postgres ghi bằng `thay_ca_bang` (thay cả
+4. **`fb_campaign_tat_ca` (view `fb_campaign_data`)** — nhánh Postgres ghi bằng `replace_table` (thay cả
    bảng trong một transaction; 0 dòng thì giữ bảng cũ). Nhưng một TKQC lỗi bị bỏ qua (`continue`)
    rồi bảng vẫn bị thay → campaign của TKQC đó biến khỏi bảng tới vòng sau. Cùng họ lỗi X2, chưa sửa.
 5. **F2 phần user**: Hỏi AI đã bật lại 15/11/2026 (khoá Gemini ở Khoá kết nối → tab Gemini). Việc

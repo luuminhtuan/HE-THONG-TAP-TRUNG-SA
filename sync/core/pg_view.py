@@ -19,20 +19,20 @@ import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-THU_MUC_VIEW = REPO / "db" / "views"
+VIEWS_DIR = REPO / "db" / "views"
 RULES_FILE = REPO / "config" / "talpha_rules.json"
 YAML_FILE = REPO / "config" / "projects" / "talpha.yaml"
 # Bảng vai chỉ đọc (/api/query, "CEO hỏi") KHÔNG được thấy — cùng danh sách REVOKE của migration 0006.
-BANG_RIENG = ("app_documents", "market_overrides", "market_monthly_reports", "users",
+PRIVATE_TABLES = ("app_documents", "market_overrides", "market_monthly_reports", "users",
               "api_credentials", "file_imports")
 
 
-def _luat() -> dict:
-    from sync.core.thi_truong import doc_luat
-    return doc_luat(str(RULES_FILE), str(REPO))
+def _rules() -> dict:
+    from sync.core.thi_truong import load_rules
+    return load_rules(str(RULES_FILE), str(REPO))
 
 
-def ad_tz_sql(cot: str = "f.account_id") -> str:
+def ad_tz_sql(column: str = "f.account_id") -> str:
     """CASE account_id → múi giờ của TKQC khai tay (talpha.yaml → meta_ads.ad_account_timezones) — DỰ PHÒNG
     cho TKQC cũ mà bảng tkqc chưa có múi giờ; múi giờ chính lấy từ Meta (tkqc.mui_gio). Đơn gom ngày theo
     múi của TKQC để ngày POS khớp ngày Meta báo tiền."""
@@ -41,18 +41,18 @@ def ad_tz_sql(cot: str = "f.account_id") -> str:
         tzs = (yaml.safe_load(f).get("meta_ads") or {}).get("ad_account_timezones") or {}
     if not tzs:
         raise SystemExit("❌ talpha.yaml thiếu meta_ads.ad_account_timezones — không sinh được múi giờ.")
-    dong = []
+    rows = []
     for aid, tz in tzs.items():
-        so = str(aid).replace("act_", "")
+        account_digits = str(aid).replace("act_", "")
         # Tên IANA có thể mang số và dấu ± (Etc/GMT-5). Vẫn cấm dấu nháy / khoảng trắng.
-        if not so.isdigit() or not re.match(r"^[A-Za-z_]+(/[A-Za-z0-9_+\-]+)+$", str(tz)):
+        if not account_digits.isdigit() or not re.match(r"^[A-Za-z_]+(/[A-Za-z0-9_+\-]+)+$", str(tz)):
             raise SystemExit(f"❌ mục múi giờ lạ: {aid} → {tz}")
-        dong.append(f"                WHEN '{so}' THEN '{tz}'")
-    return (f"CASE {cot}\n" + "\n".join(dong) +
+        rows.append(f"                WHEN '{account_digits}' THEN '{tz}'")
+    return (f"CASE {column}\n" + "\n".join(rows) +
             "\n                ELSE 'Asia/Ho_Chi_Minh'  -- TKQC chưa khai trong talpha.yaml\n            END")
 
 
-def _nhan_shop(markets) -> list:
+def _shop_markets(markets) -> list:
     out = [v for v in markets.values() if isinstance(v, dict) and v.get("shop_label")]
     for v in out:
         if not str(v["shop_label"]).isalnum():
@@ -63,20 +63,20 @@ def _nhan_shop(markets) -> list:
 def fx_sql() -> tuple:
     """(CASE tỷ giá về VND, điều kiện is_fx_known). Nước chưa có tỷ giá (sắp chạy) không có dòng —
     rơi vào ELSE 0.0 và is_fx_known = FALSE, KHÔNG đoán."""
-    cap = [(v["shop_label"], float(v["rate_vnd"])) for v in _nhan_shop(_luat()["markets"]) if v.get("rate_vnd")]
-    if not cap:
+    pairs = [(v["shop_label"], float(v["rate_vnd"])) for v in _shop_markets(_rules()["markets"]) if v.get("rate_vnd")]
+    if not pairs:
         raise SystemExit(f"❌ {RULES_FILE}: mục `markets` rỗng — không sinh được tỷ giá.")
     case = "CASE o.shop_label\n" + "\n".join(
-        f"            WHEN '{lb}' THEN {r}    -- → VND" for lb, r in cap
+        f"            WHEN '{lb}' THEN {r}    -- → VND" for lb, r in pairs
     ) + "\n            ELSE 0.0  -- shop chưa khai tỷ giá: doanh thu 0, is_fx_known = FALSE — KHÔNG đoán\n        END"
-    known = "(o.shop_label IN (" + ", ".join(f"'{lb}'" for lb, _ in cap) + "))"
+    known = "(o.shop_label IN (" + ", ".join(f"'{lb}'" for lb, _ in pairs) + "))"
     return case, known
 
 
 def money_divisor_sql() -> str:
     """CASE shop_label → số chia đưa tiền POS về đơn vị thật (Đài 1, Sing / UAE 100 — X13)."""
     cap = []
-    for v in _nhan_shop(_luat()["markets"]):
+    for v in _shop_markets(_rules()["markets"]):
         div = v.get("pos_money_divisor")
         if div is None and v.get("status") == "sap_chay":
             continue   # nước sắp chạy: chưa có đơn, chưa đo số chia
@@ -95,27 +95,27 @@ def money_divisor_sql() -> str:
 
 def marketer_group_sql(col: str = "_mk_name") -> str:
     """CASE 'team' / 'external' / 'unknown' từ pos_marketer_rules + pos_external_rules (X10)."""
-    r = _luat()
+    r = _rules()
 
-    def like(rules, nhan):
+    def like(rules, label):
         out = []
         for x in rules:
             s = x["contains"]
             if "'" in s or "%" in s or "_" in s:
                 raise SystemExit(f"❌ rule `contains` chứa ký tự phá SQL: {s!r}")
-            out.append(f"        WHEN UPPER({col}) LIKE '%{s}%' THEN '{nhan}'")
+            out.append(f"        WHEN UPPER({col}) LIKE '%{s}%' THEN '{label}'")
         return out
 
     team = like(r.get("pos_marketer_rules", []), "team")
-    ngoai = like(r.get("pos_external_rules", []), "external")
+    external = like(r.get("pos_external_rules", []), "external")
     if not team:
         raise SystemExit("❌ rules file thiếu `pos_marketer_rules` — không sinh được phân loại.")
-    return "CASE\n" + "\n".join(team + ngoai) + "\n        ELSE 'unknown'\n    END"
+    return "CASE\n" + "\n".join(team + external) + "\n        ELSE 'unknown'\n    END"
 
 
 def product_costs_sql() -> str:
     """Danh sách VALUES (sku, giá vốn VND/đơn vị) — giá vốn khai bằng tệ × cost_rate_rmb_vnd."""
-    r = _luat()
+    r = _rules()
     rate = r.get("cost_rate_rmb_vnd")
     if not isinstance(rate, (int, float)) or rate <= 0:
         raise SystemExit(f"❌ {RULES_FILE}: thiếu `cost_rate_rmb_vnd` — không quy được giá vốn tệ ra VND.")
@@ -125,106 +125,106 @@ def product_costs_sql() -> str:
                   and isinstance(v.get("cost_price_rmb"), (int, float)) and v["cost_price_rmb"] > 0)
     if not dong:
         raise SystemExit(f"❌ {RULES_FILE}: mục `products` rỗng — view sẽ có COGS = 0 toàn bộ.")
-    xau = [sku for sku, _ in dong if not sku.replace("-", "").replace("_", "").isalnum()]
-    if xau:
-        raise SystemExit(f"❌ SKU không hợp lệ trong rules file (chỉ cho chữ/số/-/_): {xau}")
-    return ",\n        ".join(f"('{sku}', {gia})" for sku, gia in dong)
+    invalid = [sku for sku, _ in dong if not sku.replace("-", "").replace("_", "").isalnum()]
+    if invalid:
+        raise SystemExit(f"❌ SKU không hợp lệ trong rules file (chỉ cho chữ/số/-/_): {invalid}")
+    return ",\n        ".join(f"('{sku}', {cost})" for sku, cost in dong)
 
 
 def test_campaign_re() -> str:
     """Mẫu nhận camp test — dùng NGUYÊN mẫu trong rules file: regex của Postgres có lookbehind /
     lookahead như Python (BigQuery thì không, nên trước đây phải dịch tay)."""
-    pat = (_luat().get("test_campaign") or {}).get("pattern")
+    pat = (_rules().get("test_campaign") or {}).get("pattern")
     if not pat or "'" in pat:
         raise SystemExit("❌ config/talpha_rules.json → test_campaign.pattern thiếu hoặc chứa dấu nháy.")
     return pat
 
 
-def tkqc_loai() -> tuple:
+def ad_account_types() -> tuple:
     """(loại mặc định, danh sách loại vào báo cáo dạng SQL) — talpha_rules.json → tkqc_loai."""
-    cfg = _luat().get("tkqc_loai") or {}
-    loai = {k: v for k, v in (cfg.get("loai") or {}).items() if not k.startswith("_") and isinstance(v, dict)}
-    vao = [k for k, v in loai.items() if v.get("vao_bao_cao")]
-    mac_dinh = cfg.get("mac_dinh") or "antalo"
-    for k in vao + [mac_dinh]:
+    cfg = _rules().get("tkqc_loai") or {}
+    account_types = {k: v for k, v in (cfg.get("loai") or {}).items() if not k.startswith("_") and isinstance(v, dict)}
+    report_types = [k for k, v in account_types.items() if v.get("vao_bao_cao")]
+    default_type = cfg.get("mac_dinh") or "antalo"
+    for k in report_types + [default_type]:
         if not re.match(r"^[a-z0-9_]+$", k):
             raise SystemExit(f"❌ tkqc_loai: tên loại lạ {k!r} — chỉ chữ thường, số, gạch dưới.")
-    if not vao:
+    if not report_types:
         raise SystemExit("❌ tkqc_loai: không loại nào vao_bao_cao — mọi báo cáo sẽ không có chi tiêu quảng cáo.")
-    return mac_dinh, ", ".join(f"'{k}'" for k in vao)
+    return default_type, ", ".join(f"'{k}'" for k in report_types)
 
 
 def thresholds() -> dict:
-    th = _luat().get("thresholds", {})
+    th = _rules().get("thresholds", {})
     if not th:
         raise SystemExit("❌ config/talpha_rules.json thiếu mục `thresholds` — view dùng {TH_*} không render được.")
     return {k: v for k, v in th.items() if not k.startswith("_")}
 
 
-def _nguong(sql: str, ten: str) -> str:
-    dung = set(re.findall(r"\{TH_([A-Z0-9_]+)\}", sql))
-    if not dung:
+def _apply_thresholds(sql: str, name: str) -> str:
+    used = set(re.findall(r"\{TH_([A-Z0-9_]+)\}", sql))
+    if not used:
         return sql
     th = thresholds()
-    thieu = sorted(t for t in dung if t.lower() not in th)
-    if thieu:
-        raise SystemExit(f"❌ {ten} dùng ngưỡng chưa khai trong talpha_rules.json → thresholds: {', '.join(thieu)}")
+    missing = sorted(t for t in used if t.lower() not in th)
+    if missing:
+        raise SystemExit(f"❌ {name} dùng ngưỡng chưa khai trong talpha_rules.json → thresholds: {', '.join(missing)}")
     for k, v in th.items():
         sql = sql.replace("{TH_" + k.upper() + "}", repr(v))
     return sql
 
 
 def render(ten: str) -> str:
-    sql = _nguong((THU_MUC_VIEW / ten).read_text(encoding="utf-8"), ten)
-    thay = {
+    sql = _apply_thresholds((VIEWS_DIR / ten).read_text(encoding="utf-8"), ten)
+    replacements = {
         "{PRODUCT_COSTS}": product_costs_sql,
         "{MARKETER_GROUP}": marketer_group_sql,
         "{AD_TZ_CASE}": ad_tz_sql,
         "{MONEY_DIV_CASE}": money_divisor_sql,
         "{TEST_CAMPAIGN_RE}": test_campaign_re,
     }
-    for token, ham in thay.items():
+    for token, builder in replacements.items():
         if token in sql:
-            sql = sql.replace(token, ham())
+            sql = sql.replace(token, builder())
     if "{TKQC_MAC_DINH}" in sql or "{TKQC_VAO_BAO_CAO}" in sql:
-        mac_dinh, vao = tkqc_loai()
+        mac_dinh, vao = ad_account_types()
         sql = sql.replace("{TKQC_MAC_DINH}", mac_dinh).replace("{TKQC_VAO_BAO_CAO}", vao)
     if "{FX_CASE}" in sql or "{FX_KNOWN}" in sql:
         case, known = fx_sql()
         sql = sql.replace("{FX_CASE}", case).replace("{FX_KNOWN}", known)
-    sot = re.findall(r"\{[A-Z_]+\}", sql)
-    if sot:
-        raise SystemExit(f"❌ {ten}: còn token chưa thay {sorted(set(sot))}")
+    leftover = re.findall(r"\{[A-Z_]+\}", sql)
+    if leftover:
+        raise SystemExit(f"❌ {ten}: còn token chưa thay {sorted(set(leftover))}")
     return sql
 
 
-def danh_sach() -> list:
+def list_view_files() -> list:
     """File view theo thứ tự phụ thuộc (tiền tố số)."""
-    return sorted(p.name for p in THU_MUC_VIEW.glob("*.sql"))
+    return sorted(p.name for p in VIEWS_DIR.glob("*.sql"))
 
 
-def ten_view(file: str) -> str:
-    m = re.search(r"CREATE VIEW\s+([a-z0-9_]+)", (THU_MUC_VIEW / file).read_text(encoding="utf-8"))
+def view_name(file: str) -> str:
+    m = re.search(r"CREATE VIEW\s+([a-z0-9_]+)", (VIEWS_DIR / file).read_text(encoding="utf-8"))
     if not m:
         raise SystemExit(f"❌ {file}: không thấy CREATE VIEW")
     return m.group(1)
 
 
-def sinh_tat_ca() -> tuple:
+def render_all() -> tuple:
     """([(tên view, SQL)], vân tay)."""
-    ds = [(ten_view(f), render(f)) for f in danh_sach()]
-    van_tay = hashlib.sha256("\n".join(sql for _, sql in ds).encode("utf-8")).hexdigest()[:16]
-    return ds, van_tay
+    ds = [(view_name(f), render(f)) for f in list_view_files()]
+    fingerprint = hashlib.sha256("\n".join(sql for _, sql in ds).encode("utf-8")).hexdigest()[:16]
+    return ds, fingerprint
 
 
-def dung_view(conn, ep: bool = False) -> bool:
+def rebuild_views(conn, force: bool = False) -> bool:
     """Dựng lại bộ view nếu luật đổi, hoặc có migration mới (view `SELECT f.*` chốt danh sách cột lúc
     dựng — bảng thêm cột mà không dựng lại là view thiếu cột), hoặc ep=True. Trả True nếu đã dựng."""
-    ds, van_tay = sinh_tat_ca()
+    ds, van_tay = render_all()
     mig = conn.execute("SELECT COALESCE(string_agg(ten, ',' ORDER BY ten), '') FROM schema_migrations").fetchone()[0]
     van_tay = hashlib.sha256(f"{van_tay}|{mig}".encode("utf-8")).hexdigest()[:16]
-    cu = conn.execute("SELECT van_tay FROM view_van_tay WHERE id = 1").fetchone()
-    if cu and cu[0] == van_tay and not ep:
+    previous = conn.execute("SELECT van_tay FROM view_van_tay WHERE id = 1").fetchone()
+    if previous and previous[0] == van_tay and not force:
         return False
     with conn.transaction():
         for ten, _ in reversed(ds):
@@ -236,11 +236,11 @@ def dung_view(conn, ep: bool = False) -> bool:
         conn.execute("DO $$ BEGIN EXECUTE format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO talpha_doc', "
                      "current_schema()); END $$")
         # …trừ bảng riêng (migration 0006): mật khẩu, khoá kết nối, sao kê tiền.
-        co = [r[0] for r in conn.execute(
+        existing = [r[0] for r in conn.execute(
             "SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename = ANY(%s)",
-            (list(BANG_RIENG),))]
-        if co:
-            conn.execute(f"REVOKE ALL ON {', '.join(co)} FROM talpha_doc, talpha_doc_nuoc")
+            (list(PRIVATE_TABLES),))]
+        if existing:
+            conn.execute(f"REVOKE ALL ON {', '.join(existing)} FROM talpha_doc, talpha_doc_nuoc")
         conn.execute("GRANT SELECT ON vw_orders_std, vw_fb_ads_std, vw_ad_windows TO talpha_doc_nuoc")
         conn.execute(
             "INSERT INTO view_van_tay (id, van_tay, dung_luc) VALUES (1, %s, now()) "

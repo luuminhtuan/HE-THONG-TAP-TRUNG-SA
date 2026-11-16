@@ -19,17 +19,17 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from sync.core import pg_writer  # noqa: E402
-from sync.core.business_rules import shop_pos_tu_markets  # noqa: E402
-from sync.core.pg import ket_noi  # noqa: E402
-from sync.core.thi_truong import doc_luat  # noqa: E402
+from sync.core.business_rules import pos_shops_from_markets  # noqa: E402
+from sync.core.pg import get_connection  # noqa: E402
+from sync.core.thi_truong import load_rules  # noqa: E402
 
 # Trên máy chủ khoá POS do systemd nạp (talpha-catalog.service đọc dashboard-ui/.env.local).
 # Chạy tay ở máy dev thì đọc .env cạnh script hoặc theo cwd.
 load_dotenv()
 load_dotenv(os.path.join(os.getcwd(), ".env"))
 # Key POS nhập ở /admin → Khoá kết nối (bảng api_credentials) thắng key cùng tên trong .env.
-from sync.core.credentials import nap_khoa_vao_env  # noqa: E402
-nap_khoa_vao_env()
+from sync.core.credentials import load_credentials_to_env  # noqa: E402
+load_credentials_to_env()
 
 POS_API = "https://pos.pages.fm/api/v1"
 TABLE = "product_catalog"
@@ -37,14 +37,14 @@ TABLE = "product_catalog"
 
 def load_shops() -> list[dict]:
     """Shop POS — CÙNG danh sách với sync đơn: talpha_rules.json → markets đã phủ thị trường nhập ở
-    /admin (shop_pos_tu_markets, 04/11/2026). Mỗi shop có label, shop_id, keo (chỉ nước đang bán
+    /admin (pos_shops_from_markets, 04/11/2026). Mỗi shop có label, shop_id, keo (chỉ nước đang bán
     mới gọi POS; nước đã tắt / sắp chạy thì giữ SP đang có).
 
     Danh sách shop CHỈ có 1 nguồn. Bản hardcode cũ thiếu Taiwan → 100% order_items của TW không
     khớp catalog (102/102 dòng, đo 04/08/2026) → mất hẳn TW khỏi mọi báo cáo theo sản phẩm. Sau đó
     đọc talpha.yaml kèm danh sách dự phòng gõ cứng 6 shop GCC đã chết — nay bỏ cả hai: đọc luật
     hỏng thì DỪNG, không chạy bằng danh sách sai."""
-    return shop_pos_tu_markets(doc_luat().get("markets") or {})
+    return pos_shops_from_markets(load_rules().get("markets") or {})
 
 
 SHOPS = load_shops()
@@ -108,9 +108,9 @@ def main():
     args = ap.parse_args()
 
     # Chỉ nước đang bán gọi POS. Nước đã tắt (key có thể đã bỏ) / sắp chạy: SP đang có giữ nguyên, xem dưới.
-    can_goi = [(s["label"], s["shop_id"]) for s in SHOPS if s["keo"]]
-    missing = [lb for lb, _ in can_goi if not os.environ.get(f"TALPHA_POSCAKE_{lb}_KEY", "")]
-    if can_goi and len(missing) == len(can_goi):
+    to_fetch = [(s["label"], s["shop_id"]) for s in SHOPS if s["keo"]]
+    missing = [lb for lb, _ in to_fetch if not os.environ.get(f"TALPHA_POSCAKE_{lb}_KEY", "")]
+    if to_fetch and len(missing) == len(to_fetch):
         # Không có key nào = chưa nạp được khoá. Chạy tiếp sẽ thay bảng bằng 0 dòng
         # và giết mọi báo cáo theo SP — đã xảy ra thật 04/08/2026.
         raise SystemExit(
@@ -119,11 +119,11 @@ def main():
             f"   DỪNG — không ghi để khỏi xoá trắng {TABLE}."
         )
     if missing:
-        print(f"⚠️  Thiếu API key {len(missing)}/{len(can_goi)} shop: {', '.join(missing)} "
+        print(f"⚠️  Thiếu API key {len(missing)}/{len(to_fetch)} shop: {', '.join(missing)} "
               f"→ SP của các shop này sẽ BIẾN MẤT khỏi catalog sau khi ghi đè")
 
     all_rows = []
-    for label, sid in can_goi:
+    for label, sid in to_fetch:
         key = os.environ.get(f"TALPHA_POSCAKE_{label}_KEY", "")
         if not key:
             continue
@@ -142,31 +142,31 @@ def main():
     named = sum(1 for r in deduped if r["product_name"])
     print(f"Có tên SP: {named}/{len(deduped)} ({100*named/max(len(deduped),1):.0f}%)")
 
-    tat = sorted({s["label"] for s in SHOPS if not s["keo"]})
+    inactive = sorted({s["label"] for s in SHOPS if not s["keo"]})
     if args.dry_run:
-        if tat:
-            print(f"Nước không gọi POS {', '.join(tat)}: khi ghi thật sẽ giữ nguyên SP đang có trong {TABLE}")
+        if inactive:
+            print(f"Nước không gọi POS {', '.join(inactive)}: khi ghi thật sẽ giữ nguyên SP đang có trong {TABLE}")
         print("\n--dry-run: KHÔNG ghi. Sample 3 rows:")
         for r in deduped[:3]:
             print(" ", {k: r[k] for k in ["variation_id", "sku", "product_name", "retail_price", "cost", "shop_label"]})
         return
 
-    conn = ket_noi()
+    conn = get_connection()
 
     # ─── Nước không gọi POS (đã tắt / sắp chạy): GIỮ SP đang có của shop đó ───
     # Bảng thay cả bảng mỗi lần chạy, nên shop không gọi POS mà không mang SP cũ theo là
     # SP đó mất — đơn cũ của nước đó hết tra được giá vốn, P&L các ngày nó còn chạy bị sai.
-    if tat:
+    if inactive:
         from psycopg.rows import dict_row
         with conn.cursor(row_factory=dict_row) as cur:
-            giu = cur.execute(f"SELECT * FROM {TABLE} WHERE shop_label = ANY(%s)", (tat,)).fetchall()
-        n_giu = 0
-        for d in giu:
+            kept_rows = cur.execute(f"SELECT * FROM {TABLE} WHERE shop_label = ANY(%s)", (inactive,)).fetchall()
+        n_kept = 0
+        for d in kept_rows:
             if d.get("variation_id") and d["variation_id"] not in seen:
                 seen.add(d["variation_id"])
                 deduped.append(d)
-                n_giu += 1
-        print(f"Nước không gọi POS {', '.join(tat)}: giữ nguyên {n_giu} dòng SP đang có")
+                n_kept += 1
+        print(f"Nước không gọi POS {', '.join(inactive)}: giữ nguyên {n_kept} dòng SP đang có")
 
     # ─── Hàng rào chống ghi đè hụt ───
     # Thay bảng nằm trong một transaction nhưng KHÔNG hoàn tác được sau khi xong: POS lỗi giữa
@@ -183,7 +183,7 @@ def main():
         )
     print(f"Bảng hiện có {cur_n} dòng → sẽ ghi {len(deduped)} dòng")
 
-    pg_writer.thay_ca_bang(conn, TABLE, deduped)
+    pg_writer.replace_table(conn, TABLE, deduped)
     print(f"\n✅ Loaded {len(deduped)} rows → {TABLE}")
 
     # Verify coverage

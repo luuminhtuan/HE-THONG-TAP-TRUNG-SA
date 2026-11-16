@@ -285,7 +285,7 @@ pos_system: poscake
 
 # ⚠️ TỪ 04/11/2026 KHÔNG CÒN CODE NÀO ĐỌC MỤC NÀY. Shop POS sinh từ talpha_rules.json → markets
 # (shop_id, shop_label; key ở biến TALPHA_POSCAKE_<shop_label>_KEY) cộng thị trường nhập ở /admin →
-# Thị trường — dashboard: SHOP_POS trong lib/talpha/rules.ts; Python: shop_pos_tu_markets trong
+# Thị trường — dashboard: SHOP_POS trong lib/talpha/rules.ts; Python: pos_shops_from_markets trong
 # sync/core/business_rules.py. Giữ lại để tra cứu; sửa ở đây không có tác dụng.
 poscake:
   shops:

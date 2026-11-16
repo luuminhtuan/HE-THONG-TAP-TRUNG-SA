@@ -30,7 +30,7 @@ if REPO not in sys.path:
     sys.path.insert(0, REPO)
 from sync.core import job_log  # noqa: E402
 VN = ZoneInfo("Asia/Ho_Chi_Minh")
-VIEC = [
+JOBS = [
     # (tên, phút, giờ trong ngày — None là mỗi giờ, lệnh)
     ("sync", 0, None, ["python", "sync/talpha/talpha_sync.py"]),
     ("bao_cao", 20, None, ["bash", "ops/talpha_reports/daily_guarded.sh"]),
@@ -39,19 +39,19 @@ VIEC = [
     ("van_don_sang", 0, [6], ["bash", "ops/deploy/tracking-import.sh"]),
     ("van_don_toi", 30, [21], ["bash", "ops/deploy/tracking-import.sh"]),
 ]
-_dang_chay: dict = {}
+_running: dict = {}
 
 
-def doc_env(duong: str) -> dict:
+def read_env_file(path: str) -> dict:
     """KEY=giá trị mỗi dòng (bỏ dòng trống / # chú thích, bỏ nháy bao ngoài)."""
     out = {}
     try:
-        with open(duong, encoding="utf-8") as fh:
-            for dong in fh:
-                dong = dong.strip()
-                if not dong or dong.startswith("#") or "=" not in dong:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
                     continue
-                k, v = dong.split("=", 1)
+                k, v = line.split("=", 1)
                 v = v.strip()
                 if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
                     v = v[1:-1]
@@ -61,57 +61,57 @@ def doc_env(duong: str) -> dict:
     return out
 
 
-def moi_truong() -> dict:
+def build_env() -> dict:
     env = dict(os.environ)
     # .env.local trước, Khoá kết nối (bảng api_credentials) sau — khoá nhập trên trang thắng (như
     # docKhoa của dashboard).
-    for k, v in doc_env(os.path.join(REPO, "dashboard-ui/.env.local")).items():
+    for k, v in read_env_file(os.path.join(REPO, "dashboard-ui/.env.local")).items():
         if k not in ("DATABASE_URL", "TALPHA_DOC_PASSWORD", "TALPHA_ENCRYPTION_KEY"):   # compose quyết định
             env[k] = v
     if REPO not in sys.path:
         sys.path.insert(0, REPO)
-    from sync.core.credentials import nap_khoa_vao_env
-    nap_khoa_vao_env(env)
+    from sync.core.credentials import load_credentials_to_env
+    load_credentials_to_env(env)
     return env
 
 
-def chay_va_ghi(ten: str, lenh: list, ai: str = "lịch", env: dict | None = None):
+def run_and_log(name: str, command: list, triggered_by: str = "lịch", env: dict | None = None):
     """Chạy một việc (chờ xong), in log ra như cũ, ghi lượt vào job_runs kèm 40 dòng log cuối. Trả rc."""
-    id_luot = job_log.bat_dau(ten, ai)
-    bat_dau = time.time()
-    print(f"{datetime.now(VN):%F %T} [{ten}] bắt đầu ({ai})", flush=True)
-    duoi: deque = deque(maxlen=40)
+    run_id = job_log.start_run(name, triggered_by)
+    start_time = time.time()
+    print(f"{datetime.now(VN):%F %T} [{name}] bắt đầu ({triggered_by})", flush=True)
+    tail: deque = deque(maxlen=40)
     try:
-        p = subprocess.Popen(lenh, cwd=REPO, env=env or moi_truong(), stdout=subprocess.PIPE,
+        p = subprocess.Popen(command, cwd=REPO, env=env or build_env(), stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, text=True, errors="replace")
         for dong in p.stdout:
             print(dong, end="", flush=True)
-            duoi.append(dong)
+            tail.append(dong)
         rc = p.wait()
     except Exception as e:   # noqa: BLE001
         rc = f"lỗi {e}"
-        duoi.append(str(rc))
-    print(f"{datetime.now(VN):%F %T} [{ten}] xong rc={rc} sau {time.time() - bat_dau:.0f}s", flush=True)
-    job_log.xong(id_luot, rc, "".join(duoi))
+        tail.append(str(rc))
+    print(f"{datetime.now(VN):%F %T} [{name}] xong rc={rc} sau {time.time() - start_time:.0f}s", flush=True)
+    job_log.finish_run(run_id, rc, "".join(tail))
     return rc
 
 
-def chay(ten: str, lenh: list):
-    if _dang_chay.get(ten):
+def start_job(ten: str, lenh: list):
+    if _running.get(ten):
         print(f"{datetime.now(VN):%F %T} [{ten}] lượt trước còn chạy — bỏ lượt", flush=True)
         return
 
-    def _lam():
-        _dang_chay[ten] = True
+    def _worker():
+        _running[ten] = True
         try:
-            chay_va_ghi(ten, lenh)
+            run_and_log(ten, lenh)
         finally:
-            _dang_chay[ten] = False
+            _running[ten] = False
 
-    threading.Thread(target=_lam, daemon=True).start()
+    threading.Thread(target=_worker, daemon=True).start()
 
 
-def bo_moc_bao_cao():
+def clear_report_marker():
     """daily_guarded.sh bỏ lượt nếu lượt trước chưa quá 50 phút — lượt có chủ đích thì xoá mốc trước."""
     try:
         os.remove(os.path.join(REPO, "ops", "talpha_reports", "last_run_epoch"))
@@ -119,59 +119,59 @@ def bo_moc_bao_cao():
         pass
 
 
-def cap_nhat_ngay():
+def handle_refresh_request():
     """Yêu cầu "Cập nhật ngay" từ dashboard: kéo số rồi dựng báo cáo, như vòng :00 + :20 gộp lại.
     Chỉ nhận khi không việc kéo số / báo cáo nào đang chạy (yêu cầu cứ chờ trong bảng)."""
-    if _dang_chay.get("sync") or _dang_chay.get("bao_cao") or _dang_chay.get("cap_nhat"):
+    if _running.get("sync") or _running.get("bao_cao") or _running.get("cap_nhat"):
         return
-    yc = job_log.nhan_yeu_cau()
-    if not yc:
+    request = job_log.claim_refresh_request()
+    if not request:
         return
-    ai = f"bấm tay: {yc[1] or '?'}"
+    ai = f"bấm tay: {request[1] or '?'}"
 
     def _lam():
         for k in ("cap_nhat", "sync", "bao_cao"):
-            _dang_chay[k] = True
+            _running[k] = True
         ok = False
         try:
-            rc_sync = chay_va_ghi("sync", ["python", "sync/talpha/talpha_sync.py"], ai)
-            bo_moc_bao_cao()
-            rc_bc = chay_va_ghi("bao_cao", ["bash", "ops/talpha_reports/daily_guarded.sh"], ai)
-            ok = rc_sync == 0 and rc_bc == 0
+            rc_sync = run_and_log("sync", ["python", "sync/talpha/talpha_sync.py"], ai)
+            clear_report_marker()
+            rc_report = run_and_log("bao_cao", ["bash", "ops/talpha_reports/daily_guarded.sh"], ai)
+            ok = rc_sync == 0 and rc_report == 0
         finally:
-            job_log.xong_yeu_cau(ok)
+            job_log.finish_refresh_request(ok)
             for k in ("cap_nhat", "sync", "bao_cao"):
-                _dang_chay[k] = False
+                _running[k] = False
 
     threading.Thread(target=_lam, daemon=True).start()
 
 
 def main():
     os.makedirs(os.environ.get("TALPHA_REPORTS_DIR", "/app/logs/bao_cao"), exist_ok=True)
-    print(f"Lịch việc nền bật lúc {datetime.now(VN):%F %T} (giờ VN): " + ", ".join(v[0] for v in VIEC), flush=True)
+    print(f"Lịch việc nền bật lúc {datetime.now(VN):%F %T} (giờ VN): " + ", ".join(v[0] for v in JOBS), flush=True)
     # Lượt nào còn ghi "đang chạy" là của lần bật trước, đã bị ngắt giữa chừng.
-    job_log.don_luot_treo()
+    job_log.fail_stale_runs()
     # Vòng đầu ngay khi bật: kéo số rồi dựng báo cáo (báo cáo đợi sync xong).
-    chay_va_ghi("sync", ["python", "sync/talpha/talpha_sync.py"], "khởi động")
-    env = moi_truong()
+    run_and_log("sync", ["python", "sync/talpha/talpha_sync.py"], "khởi động")
+    env = build_env()
     env["TALPHA_FORCE_FORMAT"] = "1"   # vòng đầu: ghi báo cáo cả khi sync báo lỗi (chưa nhập khoá)
     # daily_guarded.sh bỏ lượt nếu lượt trước chưa quá 50 phút — bật lại container (vừa nhập khoá) thì
     # phải dựng báo cáo ngay, nên xoá mốc trước.
-    bo_moc_bao_cao()
-    chay_va_ghi("bao_cao", ["bash", "ops/talpha_reports/daily_guarded.sh"], "khởi động", env)
+    clear_report_marker()
+    run_and_log("bao_cao", ["bash", "ops/talpha_reports/daily_guarded.sh"], "khởi động", env)
     # Vòng khởi động đã kéo số + dựng báo cáo: bật đúng phút :00 / :20 thì đừng chạy lại lượt phút đó.
-    luc_bat = datetime.now(VN).strftime("%Y-%m-%d %H:%M")
-    da_chay = {("sync", luc_bat), ("bao_cao", luc_bat)}
+    boot_slot = datetime.now(VN).strftime("%Y-%m-%d %H:%M")
+    already_run = {("sync", boot_slot), ("bao_cao", boot_slot)}
     while True:
-        bay_gio = datetime.now(VN)
-        moc = bay_gio.strftime("%Y-%m-%d %H:%M")
-        for ten, phut, gio, lenh in VIEC:
-            if bay_gio.minute == phut and (gio is None or bay_gio.hour in gio) and (ten, moc) not in da_chay:
-                da_chay.add((ten, moc))
-                chay(ten, lenh)
-        if len(da_chay) > 500:
-            da_chay = {x for x in da_chay if x[1] == moc}
-        cap_nhat_ngay()
+        now = datetime.now(VN)
+        slot = now.strftime("%Y-%m-%d %H:%M")
+        for ten, minute, hours, lenh in JOBS:
+            if now.minute == minute and (hours is None or now.hour in hours) and (ten, slot) not in already_run:
+                already_run.add((ten, slot))
+                start_job(ten, lenh)
+        if len(already_run) > 500:
+            already_run = {x for x in already_run if x[1] == slot}
+        handle_refresh_request()
         time.sleep(15)
 
 

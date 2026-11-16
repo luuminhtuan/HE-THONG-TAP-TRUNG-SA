@@ -16,10 +16,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sync.core import credentials as khoa_mod  # noqa: E402
-from sync.core.credentials import doc_khoa, ghi_khoa, nap_khoa_vao_env  # noqa: E402
-from sync.core.file_import import chep_tat_ca, doc_file_khoa  # noqa: E402
-from sync.core.thi_truong import doc_phu_tu_kho  # noqa: E402
+from sync.core import credentials as credentials_mod  # noqa: E402
+from sync.core.credentials import read_credentials, save_credential, load_credentials_to_env  # noqa: E402
+from sync.core.file_import import import_all, parse_credentials_file  # noqa: E402
+from sync.core.thi_truong import read_market_overrides_from_db  # noqa: E402
 
 
 @pytest.fixture
@@ -28,16 +28,16 @@ def pg(monkeypatch):
     if not url:
         pytest.skip("chưa đặt DATABASE_URL — bỏ qua phần chạy trên Postgres thật")
     psycopg = pytest.importorskip("psycopg")
-    from sync.core.pg import chay_migrations, ket_noi
+    from sync.core.pg import run_migrations, get_connection
     try:
-        conn = ket_noi(url)
+        conn = get_connection(url)
     except psycopg.OperationalError as e:
         pytest.skip(f"không nối được Postgres: {e}")
     monkeypatch.setenv("TALPHA_ENCRYPTION_KEY", "chia-thu-nghiem")
     schema = f"test_{uuid.uuid4().hex[:10]}"
     conn.execute(f"CREATE SCHEMA {schema}")
     conn.execute(f"SET search_path TO {schema}")
-    chay_migrations(conn)
+    run_migrations(conn)
     try:
         yield conn
     finally:
@@ -45,50 +45,50 @@ def pg(monkeypatch):
         conn.close()
 
 
-class TestKhoa:
-    def test_ma_hoa_roi_doc_lai_dung(self, pg):
-        ghi_khoa(pg, "TALPHA_POSCAKE_SG_KEY", "abc123", "ai lưu lúc nào", "thu")
-        assert doc_khoa(pg) == {"TALPHA_POSCAKE_SG_KEY": "abc123"}
-        tho = pg.execute("SELECT encrypted_value FROM api_credentials").fetchone()[0]
-        assert b"abc123" not in bytes(tho)          # trong bảng chỉ có chuỗi đã mã hoá
+class TestCredentials:
+    def test_encrypt_then_read_back(self, pg):
+        save_credential(pg, "TALPHA_POSCAKE_SG_KEY", "abc123", "ai lưu lúc nào", "thu")
+        assert read_credentials(pg) == {"TALPHA_POSCAKE_SG_KEY": "abc123"}
+        raw = pg.execute("SELECT encrypted_value FROM api_credentials").fetchone()[0]
+        assert b"abc123" not in bytes(raw)          # trong bảng chỉ có chuỗi đã mã hoá
 
-    def test_ghi_lai_cung_ten_thi_thay(self, pg):
-        ghi_khoa(pg, "TRACK17_API_KEY", "cu")
-        ghi_khoa(pg, "TRACK17_API_KEY", "moi")
-        assert doc_khoa(pg) == {"TRACK17_API_KEY": "moi"}
+    def test_rewrite_same_name_replaces(self, pg):
+        save_credential(pg, "TRACK17_API_KEY", "cu")
+        save_credential(pg, "TRACK17_API_KEY", "moi")
+        assert read_credentials(pg) == {"TRACK17_API_KEY": "moi"}
 
-    def test_sai_chia_thi_khong_giai_ma_duoc(self, pg, monkeypatch):
-        ghi_khoa(pg, "TALPHA_META_ACCESS_TOKEN", "tok")
+    def test_wrong_key_cannot_decrypt(self, pg, monkeypatch):
+        save_credential(pg, "TALPHA_META_ACCESS_TOKEN", "tok")
         monkeypatch.setenv("TALPHA_ENCRYPTION_KEY", "chia-khac")
         with pytest.raises(Exception):
-            doc_khoa(pg)
+            read_credentials(pg)
 
-    def test_thieu_chia_thi_keu(self, pg, monkeypatch):
+    def test_missing_key_raises(self, pg, monkeypatch):
         monkeypatch.delenv("TALPHA_ENCRYPTION_KEY")
         with pytest.raises(RuntimeError):
-            ghi_khoa(pg, "X_KEY", "v")
+            save_credential(pg, "X_KEY", "v")
 
-    def test_khoa_trong_kho_thang_env(self, monkeypatch):
-        class Noi:
+    def test_db_credential_overrides_env_file(self, monkeypatch):
+        class FakeConn:
             def __enter__(self):
                 return self
 
             def __exit__(self, *a):
                 return False
         monkeypatch.setenv("DATABASE_URL", "postgresql://khong-dung")
-        monkeypatch.setattr("sync.core.pg.ket_noi", lambda *a, **k: Noi())
-        monkeypatch.setattr(khoa_mod, "doc_khoa", lambda conn: {"TALPHA_POSCAKE_TW_KEY": "tu-kho"})
+        monkeypatch.setattr("sync.core.pg.get_connection", lambda *a, **k: FakeConn())
+        monkeypatch.setattr(credentials_mod, "read_credentials", lambda conn: {"TALPHA_POSCAKE_TW_KEY": "tu-kho"})
         env = {"TALPHA_POSCAKE_TW_KEY": "tu-env-local", "KHAC": "giu"}
-        assert nap_khoa_vao_env(env) == ["TALPHA_POSCAKE_TW_KEY"]
+        assert load_credentials_to_env(env) == ["TALPHA_POSCAKE_TW_KEY"]
         assert env == {"TALPHA_POSCAKE_TW_KEY": "tu-kho", "KHAC": "giu"}
 
-    def test_khong_co_database_url_thi_bo_qua(self, monkeypatch):
+    def test_no_database_url_skips(self, monkeypatch):
         monkeypatch.delenv("DATABASE_URL", raising=False)
         env = {"A": "1"}
-        assert nap_khoa_vao_env(env) == [] and env == {"A": "1"}
+        assert load_credentials_to_env(env) == [] and env == {"A": "1"}
 
 
-def _repo_gia(tmp_path: Path) -> Path:
+def _fake_repo(tmp_path: Path) -> Path:
     (tmp_path / "data" / "bao_cao_nuoc").mkdir(parents=True)
     (tmp_path / "config").mkdir()
     (tmp_path / "dashboard-ui").mkdir()
@@ -107,52 +107,52 @@ def _repo_gia(tmp_path: Path) -> Path:
     return tmp_path
 
 
-class TestChepFile:
-    def test_chep_du_moi_thu_mot_lan(self, pg, tmp_path):
-        repo = _repo_gia(tmp_path)
-        da = chep_tat_ca(pg, repo)
-        assert set(da) == {"data/cod_statements.json", "data/tracking.json", "data/thi_truong.json",
+class TestFileImport:
+    def test_imports_everything_once(self, pg, tmp_path):
+        repo = _fake_repo(tmp_path)
+        imported = import_all(pg, repo)
+        assert set(imported) == {"data/cod_statements.json", "data/tracking.json", "data/thi_truong.json",
                            "data/bao_cao_nuoc/2026-11.json", "config/users.json", "dashboard-ui/.env.khoa.local"}
-        kho = dict(pg.execute("SELECT name, content FROM app_documents").fetchall())
-        assert kho == {"cod_statements": {"statements": [{"ky": "2026-09-11"}]},
+        documents = dict(pg.execute("SELECT name, content FROM app_documents").fetchall())
+        assert documents == {"cod_statements": {"statements": [{"ky": "2026-09-11"}]},
                        "tracking": {"statuses": {"A1": {"status": "giao"}}}}
-        assert doc_phu_tu_kho(pg) == {"markets": {"Thailand": {"display": "Thái Lan", "status": "sap_chay"}}}
+        assert read_market_overrides_from_db(pg) == {"markets": {"Thailand": {"display": "Thái Lan", "status": "sap_chay"}}}
         assert pg.execute("SELECT month FROM market_monthly_reports").fetchall() == [("2026-11",)]
-        nguoi = pg.execute("SELECT id, username, role, teams, projects, status FROM users ORDER BY id").fetchall()
-        assert nguoi == [("1", "loc", "leader", ["trung_dong"], ["talpha"], "active"),
+        users = pg.execute("SELECT id, username, role, teams, projects, status FROM users ORDER BY id").fetchall()
+        assert users == [("1", "loc", "leader", ["trung_dong"], ["talpha"], "active"),
                          ("2", "cho", "sale", [], [], "pending")]
-        assert doc_khoa(pg) == {"TALPHA_POSCAKE_TW_KEY": "k-tw", "TRACK17_API_KEY": "k-17"}
+        assert read_credentials(pg) == {"TALPHA_POSCAKE_TW_KEY": "k-tw", "TRACK17_API_KEY": "k-17"}
         assert pg.execute("SELECT note FROM api_credentials WHERE name = 'TALPHA_POSCAKE_TW_KEY'").fetchone()[0] \
             == "sa lưu lúc 20:21"
-        assert chep_tat_ca(pg, repo) == []          # lần hai: không chép gì nữa
+        assert import_all(pg, repo) == []          # lần hai: không chép gì nữa
 
-    def test_khong_hoi_sinh_thu_da_xoa_khong_de_du_lieu_kho(self, pg, tmp_path):
-        repo = _repo_gia(tmp_path)
+    def test_no_resurrect_deleted_or_overwrite_db(self, pg, tmp_path):
+        repo = _fake_repo(tmp_path)
         # Kho đã có bản mới hơn file → giữ bản kho.
         pg.execute("INSERT INTO app_documents (name, content) VALUES ('tracking', '{\"moi\": true}')")
-        chep_tat_ca(pg, repo)
+        import_all(pg, repo)
         assert pg.execute("SELECT content FROM app_documents WHERE name = 'tracking'").fetchone()[0] == {"moi": True}
         # Người dùng bỏ khoá trên trang → lần migrate sau KHÔNG chép lại từ file cũ.
         pg.execute("DELETE FROM api_credentials WHERE name = 'TRACK17_API_KEY'")
-        chep_tat_ca(pg, repo)
-        assert set(doc_khoa(pg)) == {"TALPHA_POSCAKE_TW_KEY"}
+        import_all(pg, repo)
+        assert set(read_credentials(pg)) == {"TALPHA_POSCAKE_TW_KEY"}
 
-    def test_thieu_chia_thi_chua_chep_khoa_lan_sau_chep(self, pg, tmp_path, monkeypatch):
-        repo = _repo_gia(tmp_path)
+    def test_missing_key_defers_credential_import(self, pg, tmp_path, monkeypatch):
+        repo = _fake_repo(tmp_path)
         monkeypatch.delenv("TALPHA_ENCRYPTION_KEY")
-        assert "dashboard-ui/.env.khoa.local" not in chep_tat_ca(pg, repo)
+        assert "dashboard-ui/.env.khoa.local" not in import_all(pg, repo)
         monkeypatch.setenv("TALPHA_ENCRYPTION_KEY", "chia-thu-nghiem")
-        assert chep_tat_ca(pg, repo) == ["dashboard-ui/.env.khoa.local"]
+        assert import_all(pg, repo) == ["dashboard-ui/.env.khoa.local"]
 
-    def test_doc_file_khoa(self):
-        khoa, ghi = doc_file_khoa("# A_KEY: ai đó\nA_KEY=1\nB_KEY=\"2\"\n#C_KEY=3\nRONG=\n")
-        assert khoa == {"A_KEY": "1", "B_KEY": "2"} and ghi == {"A_KEY": "ai đó"}
+    def test_parse_credentials_file(self):
+        credentials, notes = parse_credentials_file("# A_KEY: ai đó\nA_KEY=1\nB_KEY=\"2\"\n#C_KEY=3\nRONG=\n")
+        assert credentials == {"A_KEY": "1", "B_KEY": "2"} and notes == {"A_KEY": "ai đó"}
 
 
-class TestVaiChiDoc:
-    def test_vai_chi_doc_khong_thay_bang_rieng(self, pg):
+class TestReadOnlyRole:
+    def test_readonly_role_cannot_see_private_tables(self, pg):
         schema = pg.execute("SELECT current_schema()").fetchone()[0]
-        for bang in ("api_credentials", "users", "app_documents", "market_overrides", "market_monthly_reports"):
-            for vai in ("talpha_doc", "talpha_doc_nuoc"):
+        for table in ("api_credentials", "users", "app_documents", "market_overrides", "market_monthly_reports"):
+            for role in ("talpha_doc", "talpha_doc_nuoc"):
                 assert pg.execute("SELECT has_table_privilege(%s, %s, 'SELECT')",
-                                  (vai, f"{schema}.{bang}")).fetchone()[0] is False, (vai, bang)
+                                  (role, f"{schema}.{table}")).fetchone()[0] is False, (role, table)

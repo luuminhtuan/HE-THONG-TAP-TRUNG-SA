@@ -15,11 +15,11 @@ import talpha_paths
 # Đường dẫn hỏi talpha_paths, KHÔNG ghi cứng ~/talpha_reports nữa: bản cũ chỉ
 # chạy được trên đúng một máy Mac, lên máy chủ là không thấy file nào.
 # Token nằm trong .env.local của dashboard trên máy chủ; runtime/.env là bản Mac cũ.
-def _dau_tien(*ung_vien):
-    for c in ung_vien:
+def _first_existing(*candidates):
+    for c in candidates:
         if c and os.path.isfile(c):
             return c
-    return ung_vien[0]
+    return candidates[0]
 
 
 _RT = talpha_paths.runtime_dir()
@@ -29,7 +29,7 @@ try:
 except RuntimeError:
     _REPO = _REPORTS
 
-ENV = _dau_tien(
+ENV = _first_existing(
     os.environ.get("TALPHA_ENV_FILE"),
     os.path.join(_REPO, "dashboard-ui", ".env.local"),
     os.path.join(_RT, ".env"),
@@ -65,22 +65,22 @@ def get(path, **params):
 
 def main():
     env = {**load_env(ENV), **{k: v for k, v in os.environ.items() if k == "TALPHA_META_ACCESS_TOKEN"}}
-    nguon = ENV
+    source = ENV
     # Khoá nhập ở /admin → Khoá kết nối (bảng api_credentials, 15/11/2026) thắng khoá cùng tên trong
     # .env.local — đúng thứ tự sync đọc (sync/core/credentials.py).
     if os.environ.get("DATABASE_URL"):
         sys.path.insert(0, _REPO)
-        from sync.core.credentials import nap_khoa_vao_env
-        tren_trang = {}
-        nap_khoa_vao_env(tren_trang)
-        env.update(tren_trang)
-        if tren_trang.get("TALPHA_META_ACCESS_TOKEN"):
-            nguon = "kho số (api_credentials)"
+        from sync.core.credentials import load_credentials_to_env
+        db_credentials = {}
+        load_credentials_to_env(db_credentials)
+        env.update(db_credentials)
+        if db_credentials.get("TALPHA_META_ACCESS_TOKEN"):
+            source = "kho số (api_credentials)"
     tok = env.get("TALPHA_META_ACCESS_TOKEN", "")
     if not tok:
         print("❌ .env không có TALPHA_META_ACCESS_TOKEN")
         return 1
-    print(f"token: dài {len(tok)} ký tự, đuôi ...{tok[-6:]}   (nguồn {nguon})\n")
+    print(f"token: dài {len(tok)} ký tự, đuôi ...{tok[-6:]}   (nguồn {source})\n")
 
     ok, me = get("me", access_token=tok, fields="id,name")
     if not ok:

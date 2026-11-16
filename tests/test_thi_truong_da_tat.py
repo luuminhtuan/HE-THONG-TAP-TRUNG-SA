@@ -15,8 +15,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from sync.core.business_rules import shop_pos_tu_markets  # noqa: E402
-from sync.core.pg_writer import sql_dung_lai_don  # noqa: E402
+from sync.core.business_rules import pos_shops_from_markets  # noqa: E402
+from sync.core.pg_writer import sql_rebuild_orders  # noqa: E402
 
 MARKETS = {
     "Taiwan": {"shop_label": "TW", "shop_id": "1022091930", "currency": "TWD",
@@ -29,30 +29,30 @@ MARKETS = {
 ENV = {"TALPHA_POSCAKE_SG_KEY": "k-sg"}
 
 
-class TestDanhSachShop:
-    def test_shop_da_tat_van_trong_danh_sach_nhung_khong_keo(self):
-        ds = {s["label"]: s for s in shop_pos_tu_markets(MARKETS, ENV)}
+class TestShopList:
+    def test_disabled_shop_listed_but_not_fetched(self):
+        ds = {s["label"]: s for s in pos_shops_from_markets(MARKETS, ENV)}
         assert ds["TW"]["keo"] is False and ds["TW"]["trang_thai"] == "da_tat"
         assert ds["SG"]["keo"] is True and ds["SG"]["key"] == "k-sg"
 
-    def test_nuoc_sap_chay_chua_co_shop_thi_bo(self):
-        assert "TH" not in {s["label"] for s in shop_pos_tu_markets(MARKETS, ENV)}
+    def test_upcoming_market_without_shop_skipped(self):
+        assert "TH" not in {s["label"] for s in pos_shops_from_markets(MARKETS, ENV)}
 
-    def test_nuoc_sap_chay_da_khai_shop_thi_chua_keo(self):
+    def test_upcoming_market_with_shop_not_fetched_yet(self):
         # Thêm nước trên trang có thể khai shop trước khi bán (04/11/2026) — chưa được kéo đơn.
         mk = {**MARKETS, "Thailand": {**MARKETS["Thailand"], "shop_id": "123456"}}
-        ds = {s["label"]: s for s in shop_pos_tu_markets(mk, ENV)}
+        ds = {s["label"]: s for s in pos_shops_from_markets(mk, ENV)}
         assert ds["TH"]["keo"] is False and ds["TH"]["trang_thai"] == "sap_chay"
 
-    def test_dung_lai_bang_don_giu_don_cu_cua_nuoc_da_tat(self):
+    def test_rebuild_orders_keeps_disabled_market_orders(self):
         # talpha_sync truyền shop_ids = MỌI shop trong danh sách → câu dựng lại phải giữ shop Đài.
-        ids = [s["shop_id"] for s in shop_pos_tu_markets(MARKETS, ENV)]
-        sql = sql_dung_lai_don("sale_order", ids)
+        ids = [s["shop_id"] for s in pos_shops_from_markets(MARKETS, ENV)]
+        sql = sql_rebuild_orders("sale_order", ids)
         assert "'1022091930'" in sql and "'715135541'" in sql
 
 
-class TestLuatPhiaSheet:
-    def test_nuoc_da_tat_giu_ty_gia_so_chia_va_lich_su(self, tmp_path, monkeypatch):
+class TestSheetSideRules:
+    def test_disabled_market_keeps_rate_divisor_and_history(self, tmp_path, monkeypatch):
         cfg = json.load(open(ROOT / "config" / "talpha_rules.json", encoding="utf-8"))
         cfg["markets"]["Taiwan"]["status"] = "da_tat"
         p = tmp_path / "talpha_rules.json"
@@ -62,8 +62,8 @@ class TestLuatPhiaSheet:
             "talpha_rules_da_tat", ROOT / "ops" / "talpha_reports" / "talpha_rules.py")
         R = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(R)
-        assert R.DA_TAT == ["Taiwan"]
-        assert "Taiwan" not in R.DANG_BAN
+        assert R.DISABLED_MARKETS == ["Taiwan"]
+        assert "Taiwan" not in R.ACTIVE_MARKETS
         assert "Taiwan" in R.ALLM                       # báo cáo những ngày Đài còn chạy vẫn có Đài
         assert R.RATE["Taiwan"] == 800 and R.MONEY_DIV["Taiwan"] == 1
         assert R.campaign_market("TW/THUONG/PHI/042-BLACK/Trang/2808")[0] == "Taiwan"

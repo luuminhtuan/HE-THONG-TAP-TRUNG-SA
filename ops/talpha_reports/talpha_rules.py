@@ -18,7 +18,7 @@ with open(RULES_PATH, encoding="utf-8") as _f:
     RULES = json.load(_f)
 
 
-def _phu_thi_truong(rules):
+def _with_market_overrides(rules):
     """Phủ thị trường nhập ở /admin → Thị trường (04/11/2026) lên luật vừa đọc — CÙNG hàm với sync
     (sync/core/thi_truong.py của repo). Bản chép runtime trên máy chủ tìm repo qua TALPHA_REPO
     (systemd đặt /opt/talpha). Không tìm thấy repo thì KÊU và chạy bằng luật gốc."""
@@ -31,57 +31,57 @@ def _phu_thi_truong(rules):
         repo = talpha_paths.repo_dir()
         if repo not in sys.path:
             sys.path.insert(0, repo)
-        from sync.core.thi_truong import doc_phu, phu_luat
+        from sync.core.thi_truong import load_market_overrides, apply_market_overrides
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  talpha_rules: không nạp được thị trường nhập trên trang ({e}) — dùng luật gốc", file=sys.stderr)
         return rules
-    return phu_luat(rules, doc_phu(repo))
+    return apply_market_overrides(rules, load_market_overrides(repo))
 
 
-RULES = _phu_thi_truong(RULES)
+RULES = _with_market_overrides(RULES)
 
 # ── Thị trường & tỷ giá (tương đương RATE/LOCALCUR/ALLM/MARKETS/SHOP2MKT cũ) ──
 # Nước "sap_chay" chưa có tỷ giá và số chia — khai null
 # trong JSON. Ở đây null → tỷ giá 0 (doanh thu 0, KHÔNG đoán) và số chia 1 (chưa có đơn
 # nào để chia). Nước "dang_ban" thiếu hai số này là cấu hình sai — test chặn trước deploy.
-def _so_duong(v, mac_dinh):
-    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else mac_dinh
+def _positive_or(v, default):
+    return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else default
 
 _MK = {m: v for m, v in RULES["markets"].items() if isinstance(v, dict)}
-RATE     = {m: _so_duong(v.get("rate_vnd"), 0) for m, v in _MK.items()}
+RATE     = {m: _positive_or(v.get("rate_vnd"), 0) for m, v in _MK.items()}
 LOCALCUR = {m: v["currency"] for m, v in _MK.items()}
 CURRENCY_SYMBOL = {m: v.get("currency_symbol") or v["currency"] for m, v in _MK.items()}
 STATUS   = {m: v.get("status", "dang_ban") for m, v in _MK.items()}
-DANG_BAN = [m for m in _MK if STATUS[m] == "dang_ban"]
+ACTIVE_MARKETS = [m for m in _MK if STATUS[m] == "dang_ban"]
 # "da_tat" (04/11/2026): ngừng kéo số mới nhưng GIỮ tỷ giá, số chia — vẫn nằm trong ALLM để báo
 # cáo những ngày nước đó còn chạy không đổi. Chỉ việc nhìn về phía trước (file tháng mới) bỏ nó.
-DA_TAT   = [m for m in _MK if STATUS[m] == "da_tat"]
+DISABLED_MARKETS   = [m for m in _MK if STATUS[m] == "da_tat"]
 # ── Ai cầm nước nào (Sỹ Anh chốt 10/10/2026) ──
 # Số một người chạy LẤN sang nước của team khác (camp cũ chưa đổi tên: Lộc còn camp Đài + Sing,
 # Thái còn camp Đài, Thương còn camp Sing) tính cho NGƯỜI CẦM nước đó. Thành viên team ở
 # access.teams.*.members, người cầm ở markets.*.nguoi_cam. Người không thuộc team nào: giữ nguyên.
-NUOC_CUA_NGUOI = {}
+PERSON_MARKETS = {}
 for _t in (RULES.get("access", {}).get("teams") or {}).values():
     if isinstance(_t, dict):
         for _nv in _t.get("members") or []:
-            NUOC_CUA_NGUOI.setdefault(_nv, set()).update(_t.get("markets") or [])
-NGUOI_CAM = {m: v["nguoi_cam"] for m, v in _MK.items() if v.get("nguoi_cam")}
+            PERSON_MARKETS.setdefault(_nv, set()).update(_t.get("markets") or [])
+MARKET_OWNER = {m: v["nguoi_cam"] for m, v in _MK.items() if v.get("nguoi_cam")}
 # Người ĐÃ NGỪNG CHẠY (marketers.*.ngung_chay_tu, Sỹ Anh chốt 03/11/2026 — Thương từ 01/10/2026):
 # từ ngày đó mọi số mang tên họ (tag POS khi họ tạo đơn với vai sale, camp cũ) về người cầm nước.
-NGUNG_CHAY = {k: v["ngung_chay_tu"] for k, v in RULES["marketers"].items()
+INACTIVE_SINCE = {k: v["ngung_chay_tu"] for k, v in RULES["marketers"].items()
               if isinstance(v, dict) and v.get("ngung_chay_tu")}
 
 
-def nguoi_tinh_so(nv, mkt, ngay=None):
+def credited_marketer(nv, mkt, date=None):
     """Người được tính số của ô (nv, nước, ngày 'YYYY-MM-DD'): chạy lấn nước của team khác, hoặc
     đã ngừng chạy tính tới ngày đó → người cầm nước đó. Không truyền ngày = số hiện tại."""
-    tu = NGUNG_CHAY.get(nv)
-    if tu and (ngay is None or str(ngay)[:10] >= tu):
-        return NGUOI_CAM.get(mkt) or nv
-    nuoc = NUOC_CUA_NGUOI.get(nv)
-    if nuoc is None or mkt in nuoc:
+    since = INACTIVE_SINCE.get(nv)
+    if since and (date is None or str(date)[:10] >= since):
+        return MARKET_OWNER.get(mkt) or nv
+    market = PERSON_MARKETS.get(nv)
+    if market is None or mkt in market:
         return nv
-    return NGUOI_CAM.get(mkt) or nv
+    return MARKET_OWNER.get(mkt) or nv
 
 
 # Nước lấy số TIN NHẮN từ Pancake thay Meta (Nhật — Meta không báo mess ở Nhật, 09/10/2026).
@@ -90,8 +90,8 @@ MESS_PANCAKE = {m for m, v in _MK.items() if v.get("mess_source") == "pancake"}
 # minor units (cod=9900 ⇒ 99,00 SAR) nên 100; shop Đài lưu NGUYÊN TWD (cod=950 ⇒
 # 950 TWD) nên 1. Trước 20/08 mọi chỗ gõ thẳng "/100" ⇒ tiền Đài tụt 100 lần trên cả
 # Sheet lẫn dashboard. Dùng MONEY_DIV[market] / MONEY_DIV_SHOP[shop_label], ĐỪNG gõ 100.
-MONEY_DIV      = {m: _so_duong(v.get("pos_money_divisor"), 1) for m, v in _MK.items()}
-MONEY_DIV_SHOP = {v["shop_label"]: _so_duong(v.get("pos_money_divisor"), 1) for m, v in _MK.items()}
+MONEY_DIV      = {m: _positive_or(v.get("pos_money_divisor"), 1) for m, v in _MK.items()}
+MONEY_DIV_SHOP = {v["shop_label"]: _positive_or(v.get("pos_money_divisor"), 1) for m, v in _MK.items()}
 ALLM     = list(_MK.keys())
 # Nước dành cho campaign KHÔNG ghi nước ở tên (tên cũ). Sỹ Anh chốt 15/09/2026: tên cũ
 # vẫn tính Đài, nhưng báo cáo liệt kê ra để sửa — xem campaign_market().
@@ -301,7 +301,7 @@ def attribute_order(pos_marketer=None, ad_id=None, adid_owner=None):
 #     "PHI" 4,98tr và "INDO" 1,64tr tiền ads, không phải sản phẩm nào;
 #   · tên có số page lấy ô SAU con số làm sản phẩm — kiểu GCC cũ số page đứng trước tên
 #     trang, nay đứng sau → ra NGÀY: file Thắng có tab "4-9 TEST", file Thương có tab "7-9".
-def camp_san_pham(cn):
+def parse_camp_product(cn):
     """Tên campaign → (sản phẩm, tên trang, page_id). Không nhận ra marketer → (None, None, None)."""
     p = [x.strip() for x in (cn or "").split("/")]
     mi = next((i for i, s in enumerate(p) if s.upper() in MARKETS), None)
@@ -312,49 +312,49 @@ def camp_san_pham(cn):
         if k is None:
             return None, None, None
     sp = p[k + 2] if len(p) > k + 2 else ""
-    trang = p[k + 3] if len(p) > k + 3 else ""
+    page = p[k + 3] if len(p) > k + 3 else ""
     # Số page (6+ chữ số) ở bất kỳ ô nào sau marketer — kiểu GCC cũ đứng trước tên trang,
     # kiểu hiện tại đứng sau. Ngày "2808" chỉ 4 số nên không lẫn.
     page_id = next((s.replace(" ", "") for s in p[k + 1:] if NUMID.match(s.replace(" ", ""))), None)
     if page_id and NUMID.match(sp.replace(" ", "")):
-        sp = trang                                   # kiểu GCC: số page chiếm ô sản phẩm → sản phẩm là tên trang (luồng cũ)
+        sp = page                                   # kiểu GCC: số page chiếm ô sản phẩm → sản phẩm là tên trang (luồng cũ)
     if sp.upper() == "TEST":
-        sp = f"TEST · {trang}" if trang else "TEST"  # camp thử: tách theo trang, không dồn chung một tab "TEST"
-    return (sp or "(khác)"), (trang or None), page_id
+        sp = f"TEST · {page}" if page else "TEST"  # camp thử: tách theo trang, không dồn chung một tab "TEST"
+    return (sp or "(khác)"), (page or None), page_id
 
 
-def chuan_ten_page(s):
+def normalize_page_name(s):
     """Tên page để SO KHỚP: bỏ kiểu chữ trang trí (𝑻𝒂𝒊𝒘𝒂𝒏 → taiwan), hoa thường, dấu câu,
     khoảng trắng thừa. POS và tên camp thường cùng kiểu chữ, nhưng gõ tay thì không chắc."""
     s = unicodedata.normalize("NFKC", str(s or "")).casefold()
     return " ".join(re.sub(r"[^\w]+", " ", s).split())
 
 
-def tao_chi_muc_page(dong_ads):
+def build_page_index(ad_rows):
     """[(campaign_name, ngày 'YYYY-MM-DD', tiền), …] → chỉ mục page để khớp NGUỒN ĐƠN của POS.
 
     Trả {"trang": {tên page chuẩn: {camp: {ngày: tiền}}},
          "o_khac": {ô khác sau marketer: {camp: {ngày: tiền}}}}.
     "o_khac" đỡ tên camp đặt lệch ô — tên page nằm ở ô sản phẩm, kiểu
     TW/THAI/PHI/Jewelry GJ International - TW - 05/09 (10 đơn tháng 9)."""
-    trang, o_khac = {}, {}
-    for cn, ngay, tien in dong_ads:
+    trang, other_cells = {}, {}
+    for cn, ngay, spend in ad_rows:
         p = [x.strip() for x in (cn or "").split("/")]
         mi = next((i for i, x in enumerate(p) if x.upper() in MARKETS), None)
         k = mi + 1 if mi is not None else next((i for i, x in enumerate(p[:2]) if norm_nv(x)), None)
         if k is None:
             continue
-        _sp, ten_trang, _pid = camp_san_pham(cn)
-        dich = [(trang, chuan_ten_page(ten_trang))] if ten_trang else []
-        dich += [(o_khac, chuan_ten_page(x)) for x in p[k + 1:] if x]
-        for bang, khoa in dich:
-            if khoa:
-                ngay_tien = bang.setdefault(khoa, {}).setdefault(cn, {})
-                ngay_tien[str(ngay)] = ngay_tien.get(str(ngay), 0) + (tien or 0)
-    return {"trang": trang, "o_khac": o_khac}
+        _sp, camp_page_name, _pid = parse_camp_product(cn)
+        targets = [(trang, normalize_page_name(camp_page_name))] if camp_page_name else []
+        targets += [(other_cells, normalize_page_name(x)) for x in p[k + 1:] if x]
+        for table, key in targets:
+            if key:
+                spend_by_date = table.setdefault(key, {}).setdefault(cn, {})
+                spend_by_date[str(ngay)] = spend_by_date.get(str(ngay), 0) + (spend or 0)
+    return {"trang": trang, "o_khac": other_cells}
 
 
-def tim_camp_theo_page(ten_page, ngay, chi_muc, camp_quang_cao=None, nuoc=None):
+def find_campaign_by_page(page_name, ngay, page_index, ad_campaign=None, nuoc=None):
     """NGUỒN ĐƠN của POS (tên page) → campaign. Luật Sỹ Anh chốt 17/09/2026:
     đơn lấy từ POS → cột "Nguồn đơn" → khớp ô tên page trong tên camp Meta → ra camp đó →
     ra sản phẩm, marketer, tiền ads.
@@ -371,38 +371,38 @@ def tim_camp_theo_page(ten_page, ngay, chi_muc, camp_quang_cao=None, nuoc=None):
     thể chạy camp ở cả Đài lẫn Singapore; đơn Đài #381 từng bị nối vào camp Singapore của Lộc
     (17/09/2026). Bậc nào chỉ khớp camp nước khác thì coi như không khớp, xuống bậc sau.
     Trả (campaign_name, cách khớp) · (None, "khong_co_nguon") · (None, "khong_khop")."""
-    p = chuan_ten_page(ten_page)
+    p = normalize_page_name(page_name)
     if not p:
         return None, "khong_co_nguon"
-    dau = p + " "
-    bac = (
-        ("dung_ten", [chi_muc["trang"].get(p, {})]),
-        ("dau_ten", [v for k, v in chi_muc["trang"].items() if k.startswith(dau)]),
-        ("lech_o", [chi_muc["o_khac"].get(p, {})] + [v for k, v in chi_muc["o_khac"].items() if k.startswith(dau)]),
+    prefix = p + " "
+    tiers = (
+        ("dung_ten", [page_index["trang"].get(p, {})]),
+        ("dau_ten", [v for k, v in page_index["trang"].items() if k.startswith(prefix)]),
+        ("lech_o", [page_index["o_khac"].get(p, {})] + [v for k, v in page_index["o_khac"].items() if k.startswith(prefix)]),
     )
-    for cach, nhom in bac:
-        ung = {}
-        for d in nhom:
+    for match_type, group in tiers:
+        candidates = {}
+        for d in group:
             for cn, ngay_tien in d.items():
-                g = ung.setdefault(cn, {})
+                g = candidates.setdefault(cn, {})
                 for nd, t in ngay_tien.items():
                     g[nd] = max(g.get(nd, 0), t)
         if nuoc:
-            ung = {cn: v for cn, v in ung.items() if campaign_market(cn)[0] == nuoc}
-        if ung:
+            candidates = {cn: v for cn, v in candidates.items() if campaign_market(cn)[0] == nuoc}
+        if candidates:
             break
     else:
         return None, "khong_khop"
-    if len(ung) == 1:
-        return next(iter(ung)), cach
-    if camp_quang_cao in ung:
-        return camp_quang_cao, cach
+    if len(candidates) == 1:
+        return next(iter(candidates)), match_type
+    if ad_campaign in candidates:
+        return ad_campaign, match_type
     ngay = str(ngay)
-    co_tien = sorted({nd for v in ung.values() for nd, t in v.items() if t > 0 and nd <= ngay})
-    if co_tien:
-        nd = co_tien[-1]
-        return max(ung, key=lambda cn: (ung[cn].get(nd, 0), cn)), cach
-    return max(ung, key=lambda cn: (sum(ung[cn].values()), cn)), cach
+    spend_dates = sorted({nd for v in candidates.values() for nd, t in v.items() if t > 0 and nd <= ngay})
+    if spend_dates:
+        nd = spend_dates[-1]
+        return max(candidates, key=lambda cn: (candidates[cn].get(nd, 0), cn)), match_type
+    return max(candidates, key=lambda cn: (sum(candidates[cn].values()), cn)), match_type
 
 
 # ═══ TÊN TAB THEO PAGE (Sỹ Anh chốt 17/09/2026) ═══════════════════════════════════════
@@ -410,11 +410,11 @@ def tim_camp_theo_page(ten_page, ngay, chi_muc, camp_quang_cao=None, nuoc=None):
 # phẩm nữa (mã sản phẩm hay bị gõ mỗi camp một kiểu: "042" và "042 - BLACK" thành hai tab).
 # Tên tab lấy theo cách viết TRÊN POS (cột Nguồn đơn) để tiền ads của camp và đơn của page rơi
 # đúng cùng một tab; page chưa có đơn nào trên POS thì lấy tên ghi trong camp.
-_LA_NGAY = re.compile(r"[\d\s./\-]*(\s*vd\s*\d*)?(\s*test)?", re.I)
-_DUOI_NGAY = re.compile(r"\s*-\s*\d{1,2}\s*$")
+_DATE_LIKE = re.compile(r"[\d\s./\-]*(\s*vd\s*\d*)?(\s*test)?", re.I)
+_DATE_SUFFIX = re.compile(r"\s*-\s*\d{1,2}\s*$")
 
 
-def o_trang_cua_camp(cn):
+def camp_page_cells(cn):
     """(tên page ghi trong camp, [các ô sau marketer]). Ô tên page trống, là NGÀY hay số page
     — tên page bị viết vào ô sản phẩm, kiểu TW/THAI/PHI/Jewelry GJ International - TW - 05/09,
     hoặc kiểu GCC số page đứng trước tên — thì lấy ô sản phẩm. Không nhận ra marketer → (None, [])."""
@@ -425,13 +425,13 @@ def o_trang_cua_camp(cn):
         return None, []
     sp = p[k + 2] if len(p) > k + 2 else ""
     trang = p[k + 3] if len(p) > k + 3 else ""
-    khong_phai_ten = lambda x: not x or _LA_NGAY.fullmatch(x) or NUMID.match(x.replace(" ", ""))
-    if khong_phai_ten(trang):
-        trang = "" if (khong_phai_ten(sp) or sp.upper() == "TEST") else sp
+    not_a_name = lambda x: not x or _DATE_LIKE.fullmatch(x) or NUMID.match(x.replace(" ", ""))
+    if not_a_name(trang):
+        trang = "" if (not_a_name(sp) or sp.upper() == "TEST") else sp
     return (trang or None), [x for x in p[k + 1:] if x]
 
 
-def tao_ten_tab_page(ten_page_pos, ten_camp):
+def build_page_tab_names(pos_page_names, campaign_names):
     """Bảng tên tab theo page.
     ten_page_pos: tên page trong bảng đơn POS (lặp lại được — chọn cách viết gặp nhiều nhất).
     ten_camp: tên các campaign cần xếp tab.
@@ -441,52 +441,52 @@ def tao_ten_tab_page(ten_page_pos, ten_camp):
     BẮT ĐẦU bằng tên POS (ngày dính vào) → tên POS nằm ở ô khác; nhiều tên POS cùng khớp thì lấy
     tên DÀI nhất (cụ thể nhất). Camp không khớp page POS nào: dùng tên trong camp, các biến thể
     chỉ khác đuôi ("LuxeGold Jewelry - 27" / "LuxeGold Jewelry") gộp về tên ngắn nhất."""
-    dem = {}
-    for t in ten_page_pos:
-        k = chuan_ten_page(t)
+    counts = {}
+    for t in pos_page_names:
+        k = normalize_page_name(t)
         if k:
-            d = dem.setdefault(k, {})
+            d = counts.setdefault(k, {})
             d[str(t).strip()] = d.get(str(t).strip(), 0) + 1
-    pos_ten = {k: max(d.items(), key=lambda x: (x[1], x[0]))[0] for k, d in dem.items()}
+    pos_names = {k: max(d.items(), key=lambda x: (x[1], x[0]))[0] for k, d in counts.items()}
 
-    def khop(chuoi):
-        if chuoi in pos_ten:
-            return chuoi
-        ung = [k for k in pos_ten if chuoi.startswith(k + " ")]
+    def match_pos_name(text):
+        if text in pos_names:
+            return text
+        ung = [k for k in pos_names if text.startswith(k + " ")]
         return max(ung, key=len) if ung else None
 
-    camp_tab, le = {}, {}
-    for cn in dict.fromkeys(ten_camp):
-        trang, cac_o = o_trang_cua_camp(cn)
-        if trang is None and not cac_o:
+    camp_tab, unmatched = {}, {}
+    for cn in dict.fromkeys(campaign_names):
+        trang, cells = camp_page_cells(cn)
+        if trang is None and not cells:
             camp_tab[cn] = None
             continue
-        k = khop(chuan_ten_page(trang)) if trang else None
-        for o in ([] if k else cac_o):
-            k = khop(chuan_ten_page(o))
+        k = match_pos_name(normalize_page_name(trang)) if trang else None
+        for o in ([] if k else cells):
+            k = match_pos_name(normalize_page_name(o))
             if k:
                 break
         if k:
-            camp_tab[cn] = pos_ten[k]
+            camp_tab[cn] = pos_names[k]
         elif trang:
             # "DD/MM" viết trong tên camp bị dấu / cắt đôi, nửa ngày dính vào đuôi tên page.
-            trang = _DUOI_NGAY.sub("", trang) or trang
-            le.setdefault(chuan_ten_page(trang), trang)
-            camp_tab[cn] = ("__le__", chuan_ten_page(trang))
+            trang = _DATE_SUFFIX.sub("", trang) or trang
+            unmatched.setdefault(normalize_page_name(trang), trang)
+            camp_tab[cn] = ("__le__", normalize_page_name(trang))
         else:
             camp_tab[cn] = None
-    goc = {}
-    for k in sorted(le, key=len):                       # ngắn trước: tên gốc trước biến thể dính đuôi
-        goc[k] = next((goc[g] for g in goc if k.startswith(g + " ")), le[k])
+    canonical = {}
+    for k in sorted(unmatched, key=len):                       # ngắn trước: tên gốc trước biến thể dính đuôi
+        canonical[k] = next((canonical[g] for g in canonical if k.startswith(g + " ")), unmatched[k])
     for cn, v in camp_tab.items():
         if isinstance(v, tuple):
-            camp_tab[cn] = goc[v[1]]
-    return pos_ten, camp_tab
+            camp_tab[cn] = canonical[v[1]]
+    return pos_names, camp_tab
 
 
-def ten_tab_cua_don(ten_page, pos_ten):
+def order_tab_name(ten_page, pos_ten):
     """Tên tab của một đơn = tên page trên POS (cách viết chuẩn trong bảng); không có nguồn → None."""
-    k = chuan_ten_page(ten_page)
+    k = normalize_page_name(ten_page)
     return pos_ten.get(k, str(ten_page).strip()) if k else None
 
 
@@ -496,19 +496,19 @@ def ten_tab_cua_don(ten_page, pos_ten):
 # Thái 2 + 18; Thắng 1 + 4). Đếm cả vào là số đơn thổi lên ~4 lần, CPO và tỷ lệ chốt đẹp giả —
 # ngày 15/09 Lộc ra 3 đơn trong khi POS 2 (đơn #381 trống, không tag, gán theo page).
 # Đơn được điền sản phẩm sau đó thì vòng sync kế tiếp tự tính lại. Doanh thu không đổi (đơn trống 0 đồng).
-def la_don_trong(total_quantity, total_price, cod):
+def is_empty_order(total_quantity, total_price, cod):
     """True khi đơn không sản phẩm, tổng tiền 0, cod 0. Ô trống/None coi như 0."""
-    def so(x):
+    def to_number(x):
         s = str(x).strip() if x is not None else ""
         try:
             return float(s) if s and s.lower() != "none" else 0.0
         except ValueError:
             return None
-    q, p, c = so(total_quantity), so(total_price), so(cod)
+    q, p, c = to_number(total_quantity), to_number(total_price), to_number(cod)
     return q == 0 and p == 0 and c == 0
 
 
-def sql_la_don_trong(bang=""):
+def sql_is_empty_order(bang=""):
     """Cùng điều kiện la_don_trong, viết bằng SQL Postgres cho bảng sale_order (total_quantity là
     chuỗi: không phải số thì coi như 0, đừng để ép kiểu làm chết cả câu)."""
     t = f"{bang}." if bang else ""

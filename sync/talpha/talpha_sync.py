@@ -30,18 +30,18 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(PROJECT_DIR, '.env'))
 # Khoá nhập ở /admin → Khoá kết nối (bảng api_credentials) thắng khoá cùng tên trong .env — nạp
 # TRƯỚC khi đọc FB_TOKEN bên dưới.
-from sync.core.credentials import nap_khoa_vao_env
-nap_khoa_vao_env()
+from sync.core.credentials import load_credentials_to_env
+load_credentials_to_env()
 
 # ── sync/core imports ────────────────────────────────────────────
-from sync.core.business_rules import STATUS_CATEGORY_MAP, quy_doi_don_ngoai_te, shop_pos_tu_markets
-from sync.core.thi_truong import doc_luat
+from sync.core.business_rules import STATUS_CATEGORY_MAP, convert_order_currency, pos_shops_from_markets
+from sync.core.thi_truong import load_rules
 from sync.core import pg_writer
 from sync.core.pos_client import PoscakeClient, PosFetchError
-from sync.core.partner_sheet import chuan_dong, doc_sheet
+from sync.core.partner_sheet import normalize_rows, read_sheet
 from sync.core.meta_client import MetaAdsClient, MetaFetchError
-from sync.core.tkqc import cac_token, tkqc_can_keo
-from sync.core.tk_loi import tach_tk_loi
+from sync.core.tkqc import meta_tokens, ad_accounts_to_fetch
+from sync.core.tk_loi import split_failed_accounts
 
 # ── Config ───────────────────────────────────────────────────────
 FB_TOKEN = (
@@ -60,10 +60,10 @@ def _pos_shops():
     thống trước, key thật trả về "Cửa hàng không tồn tại". Ghi cứng ở hai nơi
     thì sớm muộn cũng lệch nhau — nay chỉ còn một chỗ khai là config.
 
-    Luật dựng danh sách (nước sắp chạy, nước đã tắt) ở shop_pos_tu_markets — có test. Luật đã
+    Luật dựng danh sách (nước sắp chạy, nước đã tắt) ở pos_shops_from_markets — có test. Luật đã
     phủ thị trường nhập ở /admin → Thị trường (sync/core/thi_truong.py, 04/11/2026).
     """
-    return shop_pos_tu_markets(doc_luat(repo=PROJECT_DIR).get("markets") or {})
+    return pos_shops_from_markets(load_rules(repo=PROJECT_DIR).get("markets") or {})
 
 
 POS_SHOPS = _pos_shops()
@@ -90,11 +90,11 @@ def _pg():
     """Kết nối Postgres dùng chung cả vòng chạy; lần đầu nối thì chạy migration còn thiếu."""
     global _pg_conn
     if _pg_conn is None:
-        from sync.core.pg import chay_migrations, ket_noi
-        _pg_conn = ket_noi()
-        moi = chay_migrations(_pg_conn)
-        if moi:
-            log.info(f"  [postgres] chạy migration: {', '.join(moi)}")
+        from sync.core.pg import run_migrations, get_connection
+        _pg_conn = get_connection()
+        new_migrations = run_migrations(_pg_conn)
+        if new_migrations:
+            log.info(f"  [postgres] chạy migration: {', '.join(new_migrations)}")
     return _pg_conn
 
 # ── TKQC: MỌI tài khoản token đọc được (04/11/2026) ──────────────
@@ -104,8 +104,8 @@ _ad_accounts_cache = None
 def _ad_accounts() -> list:
     global _ad_accounts_cache
     if _ad_accounts_cache is None:
-        tokens = cac_token()
-        _ad_accounts_cache = tkqc_can_keo(_pg(), tokens, doc_luat(repo=PROJECT_DIR)) if tokens else []
+        tokens = meta_tokens()
+        _ad_accounts_cache = ad_accounts_to_fetch(_pg(), tokens, load_rules(repo=PROJECT_DIR)) if tokens else []
         log.info(f"TKQC: {len(tokens)} token đọc được {len(_ad_accounts_cache)} tài khoản — kéo tất cả")
     return _ad_accounts_cache
 
@@ -125,7 +125,7 @@ def _drop_foreign_currency(orders, items, shop):
 
     Trước 14/09/2026 hàm này BỎ hết đơn VND. Với shop "TAIWAN SỸ ANH" thì bỏ là mất
     340 đơn, trong đó có toàn bộ đơn 01–10/09 — tuần đầu tháng báo cáo ra 0 đơn.
-    Nay đơn VND được chia cho tỷ giá (xem business_rules.quy_doi_don_ngoai_te); chỉ
+    Nay đơn VND được chia cho tỷ giá (xem business_rules.convert_order_currency); chỉ
     loại tiền không có tỷ giá mới bị bỏ, và luôn ghi rõ số đơn, không bỏ im lặng.
     """
     want = (shop.get("currency") or "").upper()
@@ -136,25 +136,25 @@ def _drop_foreign_currency(orders, items, shop):
     for it in items:
         items_of.setdefault(str(it.get("order_id", "")), []).append(it)
 
-    keep, kept_items, quy_doi, dropped = [], [], {}, {}
-    so_chia = shop.get("pos_money_divisor") or 1
-    chua_do = []
+    keep, kept_items, converted, dropped = [], [], {}, {}
+    divisor = shop.get("pos_money_divisor") or 1
+    unmeasured = []
     for o in orders:
         cur = (o.get("order_currency") or want).upper()
         if cur == want and not shop.get("divisor_confirmed", True) and float(o.get("cod") or 0) > 0:
-            chua_do.append(o)
-        ra = quy_doi_don_ngoai_te(o, items_of.get(str(o.get("id", "")), []), want, shop.get("rate_vnd"), so_chia)
-        if ra is None:
+            unmeasured.append(o)
+        conversion = convert_order_currency(o, items_of.get(str(o.get("id", "")), []), want, shop.get("rate_vnd"), divisor)
+        if conversion is None:
             dropped[cur] = dropped.get(cur, 0) + 1
             continue
-        keep.append(ra[0])
-        kept_items.extend(ra[1])
+        keep.append(conversion[0])
+        kept_items.extend(conversion[1])
         if cur != want:
-            quy_doi[cur] = quy_doi.get(cur, 0) + 1
+            converted[cur] = converted.get(cur, 0) + 1
 
-    if quy_doi:
+    if converted:
         log.info(
-            f"  {shop['label']}: quy đổi {sum(quy_doi.values())} đơn {quy_doi} sang {want} "
+            f"  {shop['label']}: quy đổi {sum(converted.values())} đơn {converted} sang {want} "
             f"theo tỷ giá {shop.get('rate_vnd')} — doanh thu VND giữ đúng số gốc."
         )
     if dropped:
@@ -162,23 +162,23 @@ def _drop_foreign_currency(orders, items, shop):
             f"  {shop['label']}: bỏ {sum(dropped.values())} đơn khác loại tiền {dropped} "
             f"— không có tỷ giá để quy về {want}. Cộng vào là sai doanh thu."
         )
-    if chua_do:
-        o = chua_do[0]
+    if unmeasured:
+        o = unmeasured[0]
         log.warning(
-            f"  ⚠️ {shop['label']}: {len(chua_do)} đơn ghi {want} có tiền nhưng số chia {so_chia} CHƯA ĐO — "
+            f"  ⚠️ {shop['label']}: {len(unmeasured)} đơn ghi {want} có tiền nhưng số chia {divisor} CHƯA ĐO — "
             f"mở đơn id={o.get('id')} (cod={o.get('cod')}) trên POS so với giá bán, rồi đặt "
             f"pos_money_divisor_confirmed=true trong talpha_rules.json."
         )
     return keep, kept_items
 
 
-def _moc_shop(window_start, orders_from):
+def _shop_cutoff(window_start, orders_from):
     """Mốc inserted_at (UTC, dạng POS trả về) muộn hơn giữa cửa sổ sync và ngày bắt đầu tính
     đơn của shop. orders_from là NGÀY GIỜ VIỆT NAM — 00:00 giờ VN là 17:00 UTC hôm trước."""
     if not orders_from:
         return window_start
-    moc = (datetime.strptime(orders_from, "%Y-%m-%d") - timedelta(hours=7)).strftime("%Y-%m-%dT%H:%M:%S")
-    return moc if not window_start or moc > window_start else window_start
+    cutoff = (datetime.strptime(orders_from, "%Y-%m-%d") - timedelta(hours=7)).strftime("%Y-%m-%dT%H:%M:%S")
+    return cutoff if not window_start or cutoff > window_start else window_start
 
 
 def sync_all_orders(window_start=None) -> tuple[int, int]:
@@ -191,15 +191,15 @@ def sync_all_orders(window_start=None) -> tuple[int, int]:
         kéo hụt không còn xoá được dữ liệu đã có.
     """
     all_orders, all_items = [], []
-    da_thay = {}   # shop kéo ĐỦ → (mốc, {id POS trả}) — để nhận ra đơn đã bị xoá trên POS
+    seen_by_shop = {}   # shop kéo ĐỦ → (mốc, {id POS trả}) — để nhận ra đơn đã bị xoá trên POS
 
     failed_shops = []
     for shop in POS_SHOPS:
         if not shop.get("keo", True):
             # Nước đã tắt / sắp chạy: không kéo đơn mới. Shop vẫn nằm trong POS_SHOPS để bước dựng
-            # lại bên dưới giữ đơn cũ của nó (xem shop_pos_tu_markets trong business_rules).
-            ly_do = "đã tắt — không kéo đơn mới, giữ đơn cũ" if shop.get("trang_thai") == "da_tat" else "sắp chạy — chưa kéo đơn"
-            log.info(f"  {shop['label']}: nước {ly_do}")
+            # lại bên dưới giữ đơn cũ của nó (xem pos_shops_from_markets trong business_rules).
+            reason = "đã tắt — không kéo đơn mới, giữ đơn cũ" if shop.get("trang_thai") == "da_tat" else "sắp chạy — chưa kéo đơn"
+            log.info(f"  {shop['label']}: nước {reason}")
             continue
         if not shop["key"]:
             log.warning(f"  Skipping {shop['label']} — no API key")
@@ -212,14 +212,14 @@ def sync_all_orders(window_start=None) -> tuple[int, int]:
             sync_time=sync_time,
         )
         # Mốc riêng của shop: đơn TẠO trước ngày orders_from (giờ VN) không kéo về.
-        tu = _moc_shop(window_start, shop.get("orders_from"))
-        if tu != window_start:
-            log.info(f"  {shop['label']}: chỉ kéo đơn tạo từ {shop.get('orders_from')} (giờ VN) — {tu} UTC")
+        fetch_from = _shop_cutoff(window_start, shop.get("orders_from"))
+        if fetch_from != window_start:
+            log.info(f"  {shop['label']}: chỉ kéo đơn tạo từ {shop.get('orders_from')} (giờ VN) — {fetch_from} UTC")
         # Retry cả shop (ngoài retry từng page) — SA hay bị reset giữa chừng.
         orders = items = None
         for attempt in range(3):
             try:
-                orders, items = pos.fetch_orders(window_start=tu)
+                orders, items = pos.fetch_orders(window_start=fetch_from)
                 break
             except PosFetchError as e:
                 log.error(f"  {shop['label']} fetch lỗi (lần {attempt+1}/3): {e}")
@@ -230,7 +230,7 @@ def sync_all_orders(window_start=None) -> tuple[int, int]:
             continue
 
         # Lấy TRƯỚC khi lọc ngoại tệ: "POS còn trả" là đơn còn tồn tại, không phải đơn được tính.
-        da_thay[str(shop.get("shop_id") or pos.shop_id)] = (tu or "", {str(o.get("id")) for o in orders})
+        seen_by_shop[str(shop.get("shop_id") or pos.shop_id)] = (fetch_from or "", {str(o.get("id")) for o in orders})
         orders, items = _drop_foreign_currency(orders, items, shop)
         all_orders.extend(orders)
         all_items.extend(items)
@@ -246,9 +246,9 @@ def sync_all_orders(window_start=None) -> tuple[int, int]:
         # 408074608 → 1022091930) thì đơn shop cũ vẫn nằm trong *_raw, không xoá,
         # nhưng không lọt vào báo cáo để bị đếm chung với shop mới.
         # Gồm CẢ shop của nước đã tắt — lọc nó ra ở đây là đơn cũ của nước đó biến mất.
-        n_orders, n_items = pg_writer.ghi_don(
+        n_orders, n_items = pg_writer.write_orders(
             _pg(), all_orders, all_items,
-            shop_ids=[s["shop_id"] for s in POS_SHOPS], da_thay=da_thay)
+            shop_ids=[s["shop_id"] for s in POS_SHOPS], da_thay=seen_by_shop)
     else:
         log.warning("  Không fetch được order từ bất kỳ shop nào!")
         n_orders = n_items = 0
@@ -366,14 +366,14 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
     `since`/`until`: chỉ định thẳng khoảng ngày, dùng để BACKFILL tháng cũ (kéo theo
     từng tháng cho nhẹ, tránh chạm rate limit của Meta).
     """
-    if not cac_token():
+    if not meta_tokens():
         log.error("TALPHA_META_ACCESS_TOKEN not set!")
         return 0, 0
 
     today = until or datetime.utcnow().strftime('%Y-%m-%d')
     since = since or (datetime.utcnow() - timedelta(days=days_back)).strftime('%Y-%m-%d')
     # Mỗi TKQC đọc bằng token đầu tiên thấy nó (nhiều BM / app — sync/core/tkqc.py).
-    client_cua = {}
+    client_by_token = {}
 
     fields = (
         "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,"
@@ -390,11 +390,11 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
     for acct in _ad_accounts():
         log.info(f"  {acct['name']} ({acct['id']})...")
         rows = None
-        mat_quyen = False
+        lost_access = False
         # Retry cả account (ngoài retry trong _request) — account lớn hay timeout/limit.
         for attempt in range(3):
             try:
-                meta = client_cua.setdefault(acct['token'], MetaAdsClient(access_token=acct['token']))
+                meta = client_by_token.setdefault(acct['token'], MetaAdsClient(access_token=acct['token']))
                 rows = meta.fetch_ads_insights(
                     account_id=acct['id'], date_start=since, date_stop=today,
                     fields=fields.split(','), level='ad',
@@ -410,12 +410,12 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
                     log.error(f"    ⚠️ {acct['name']}: lỗi phân quyền — bỏ qua, không thử lại.")
                     # "Chưa cấp quyền" = MẤT QUYỀN (bot Zalo khuyên gỡ TK). Token hết hạn / sai cũng
                     # là lỗi vĩnh viễn nhưng hỏng MỌI TK — tach_tk_loi chặn vì không TK nào đọc được.
-                    mat_quyen = "has not grant" in str(e).lower()
+                    lost_access = "has not grant" in str(e).lower()
                     break
                 if attempt < 2:
                     time.sleep(30)
         if rows is None:
-            failed.append({'name': acct['name'], 'id': acct['id'], 'mat_quyen': mat_quyen})
+            failed.append({'name': acct['name'], 'id': acct['id'], 'mat_quyen': lost_access})
             log.error(f"    ⚠️ {acct['name']}: fetch THẤT BẠI hẳn — KHÔNG nạp 0 đè, sẽ hủy load.")
             continue
         for r in rows:
@@ -425,7 +425,7 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
         # Adset-level (port từ engine runtime): BEST-EFFORT như runtime —
         # account fail chỉ log + bỏ qua, KHÔNG hủy cả lượt (fb_adset_data là bảng phụ).
         try:
-            meta = client_cua.setdefault(acct['token'], MetaAdsClient(access_token=acct['token']))
+            meta = client_by_token.setdefault(acct['token'], MetaAdsClient(access_token=acct['token']))
             rows2 = meta.fetch_ads_insights(
                 account_id=acct['id'], date_start=since, date_stop=today,
                 fields=adset_fields.split(','), level='adset',
@@ -439,8 +439,8 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
     # X2: append/rebuild nên account lỗi KHÔNG còn xoá được spend đã có — dòng của
     # account đó chỉ giữ bản cũ. Vẫn raise ở cuối để báo cảnh, nhưng ghi trước đã.
     if all_ads:
-        n_ads = pg_writer.ghi_ads(_pg(), all_ads, 'fb_ads_tat_ca', 'ad_id')
-        n_adsets = pg_writer.ghi_ads(_pg(), all_adsets, 'fb_adset_tat_ca', 'adset_id')
+        n_ads = pg_writer.write_ads(_pg(), all_ads, 'fb_ads_tat_ca', 'ad_id')
+        n_adsets = pg_writer.write_ads(_pg(), all_adsets, 'fb_adset_tat_ca', 'adset_id')
         log.info(f"  ads window {since}→{today} (cửa sổ chỉ làm mới, không xoá lịch sử)")
     else:
         log.warning("  Không fetch được insight ads từ bất kỳ account nào!")
@@ -451,15 +451,15 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
         # khi KHÔNG TK nào đọc được (token chết / app bị chặn). Xem sync/core/tk_loi.py. Dòng
         # "TKQC BỎ QUA …" dưới đây được daily_guarded.sh bóc thành nhãn TKQC_BO_QUA để bot Zalo
         # báo tên — đừng đổi chữ.
-        bo_qua, chan = tach_tk_loi(failed, len(_ad_accounts()))
-        if bo_qua:
+        skipped, blocked = split_failed_accounts(failed, len(_ad_accounts()))
+        if skipped:
             log.warning(
-                f"  TKQC BỎ QUA (không đọc được, giữ số đã có): {[f['name'] for f in bo_qua]} "
+                f"  TKQC BỎ QUA (không đọc được, giữ số đã có): {[f['name'] for f in skipped]} "
                 f"— vẫn ghi số các TK còn lại; TK chết hẳn thì gỡ khỏi config/projects/talpha.yaml."
             )
-        if chan:
+        if blocked:
             raise RuntimeError(
-                f"Đã ghi {n_ads} dòng ads nhưng {len(chan)} account fetch thất bại {[f['name'] for f in chan]} "
+                f"Đã ghi {n_ads} dòng ads nhưng {len(blocked)} account fetch thất bại {[f['name'] for f in blocked]} "
                 f"— không TK nào đọc được (token chết / app bị chặn?). Chạy lại khi Meta ổn."
             )
     return n_ads, n_adsets
@@ -480,14 +480,14 @@ def sync_ad_dictionary(max_ids: int = 600) -> int:
     (status='error') để không tra lại mãi.
     """
     api = 'https://graph.facebook.com/v21.0'
-    ids = pg_writer.ad_id_can_tra(_pg(), 'sale_order', max_ids)
+    ids = pg_writer.ad_ids_to_lookup(_pg(), 'sale_order', max_ids)
     if not ids:
         log.info("  ad_dictionary: không có id mới cần tra")
         return 0
-    return _tra_ad_dictionary(api, ids)
+    return _lookup_ad_dictionary(api, ids)
 
 
-def _tra_ad_dictionary(api: str, ids: list) -> int:
+def _lookup_ad_dictionary(api: str, ids: list) -> int:
     log.info(f"  ad_dictionary: tra Meta {len(ids)} ad_id lạ (batch 50)...")
     out, acc_names = [], {}
     for i in range(0, len(ids), 50):
@@ -538,7 +538,7 @@ def _tra_ad_dictionary(api: str, ids: list) -> int:
     if not out:
         return 0
     with _pg().transaction():
-        pg_writer.them_dong(_pg(), 'ad_dictionary', out)
+        pg_writer.insert_rows(_pg(), 'ad_dictionary', out)
     ok = sum(1 for r in out if r['status'] == 'ok')
     log.info(f"  ad_dictionary: +{len(out)} id ({ok} tra được, {len(out)-ok} lỗi)")
     return len(out)
@@ -546,7 +546,7 @@ def _tra_ad_dictionary(api: str, ids: list) -> int:
 
 def sync_campaign_data() -> int:
     """Sync campaign budgets → fb_campaign_tat_ca (view fb_campaign_data lọc theo loại TKQC)."""
-    if not cac_token():
+    if not meta_tokens():
         log.error("TALPHA_META_ACCESS_TOKEN not set!")
         return 0
 
@@ -592,7 +592,7 @@ def sync_campaign_data() -> int:
             log.error(f"  [{acct_id}] Campaign error: {e}")
         time.sleep(0.5)
 
-    n = pg_writer.thay_ca_bang(_pg(), 'fb_campaign_tat_ca', all_campaigns)
+    n = pg_writer.replace_table(_pg(), 'fb_campaign_tat_ca', all_campaigns)
     log.info(f"  fb_campaign_tat_ca: {n} rows")
     return n
 
@@ -618,15 +618,15 @@ def sync_partner_orders() -> int:
     # bảng để riêng tư thì báo lỗi rõ và GIỮ bảng cũ.
     rows = []
     for sh in sheets:
-        values = doc_sheet(sh["sheet_id"], str(sh.get("sheet_gid", "0")))
-        dong = chuan_dong(values, cfg.get("column_map") or {},
+        values = read_sheet(sh["sheet_id"], str(sh.get("sheet_gid", "0")))
+        sheet_rows = normalize_rows(values, cfg.get("column_map") or {},
                           {"market": sh.get("market", ""), "shop_label": sh.get("shop_label", ""),
                            "sheet_id": sh["sheet_id"]}, sync_time)
-        log.info(f"  [{sh.get('shop_label')}] bảng đối tác: {len(dong)} đơn")
-        rows.extend(dong)
-    bang = cfg.get("table") or "partner_orders"
-    n = pg_writer.thay_ca_bang(_pg(), bang, rows)
-    log.info(f"  {bang}: {n} rows")
+        log.info(f"  [{sh.get('shop_label')}] bảng đối tác: {len(sheet_rows)} đơn")
+        rows.extend(sheet_rows)
+    table = cfg.get("table") or "partner_orders"
+    n = pg_writer.replace_table(_pg(), table, rows)
+    log.info(f"  {table}: {n} rows")
     return n
 
 
@@ -636,10 +636,10 @@ def sync_partner_orders() -> int:
 
 def test_connections():
     """Kiểm tra token Meta + POS API keys trước khi sync thật."""
-    for bien, tok in cac_token():
+    for token_var, tok in meta_tokens():
         d = requests.get('https://graph.facebook.com/v21.0/me', params={'access_token': tok}, timeout=10).json()
-        log.info(f"  {bien}: {d.get('name', d.get('error', {}).get('message', '?'))}")
-    if cac_token():
+        log.info(f"  {token_var}: {d.get('name', d.get('error', {}).get('message', '?'))}")
+    if meta_tokens():
         log.info(f"  Ad accounts: {len(_ad_accounts())}")
     else:
         log.warning("  Meta token: NOT SET")
@@ -696,8 +696,8 @@ def main():
     # nếu không các tab tính nước mới ra doanh thu 0. Không chặn vòng chạy: dựng lỗi thì đơn và tiền
     # ads vẫn kéo bình thường, lỗi báo ra và vòng sau thử lại.
     try:
-        from sync.core.pg_view import dung_view
-        results['view_dung_lai'] = dung_view(_pg())
+        from sync.core.pg_view import rebuild_views
+        results['view_dung_lai'] = rebuild_views(_pg())
         if results['view_dung_lai']:
             log.info("  Luật đổi — đã dựng lại bộ view")
     except (Exception, SystemExit) as e:   # SystemExit: bộ dựng view dừng khi luật khai thiếu

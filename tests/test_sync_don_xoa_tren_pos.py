@@ -12,52 +12,52 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sync.core.pg_writer import DA_XOA_TREN_POS, chon_don_da_xoa, sql_dung_lai_don  # noqa: E402
+from sync.core.pg_writer import DELETED_ON_POS, select_deleted_orders, sql_rebuild_orders  # noqa: E402
 
 SG = "715135541"
 TW = "1022091930"
-MOC = "2026-09-13T17:00:00"
+CUTOFF = "2026-09-13T17:00:00"
 
 
-def test_don_trong_cua_so_ma_pos_khong_con_thi_danh_dau_xoa():
-    trong_bang = [(SG, "59", "2026-09-14T12:41:44"), (SG, "77", "2026-09-14T01:34:00"),
+def test_order_in_window_missing_on_pos_marked_deleted():
+    in_table = [(SG, "59", "2026-09-14T12:41:44"), (SG, "77", "2026-09-14T01:34:00"),
                   (SG, "60", "2026-09-14T12:42:02")]
-    xoa, canh_bao = chon_don_da_xoa(trong_bang, {SG: (MOC, {"77", "78", "79"})})
-    assert sorted(xoa) == [(SG, "59"), (SG, "60")] and canh_bao == []
+    deleted, warnings = select_deleted_orders(in_table, {SG: (CUTOFF, {"77", "78", "79"})})
+    assert sorted(deleted) == [(SG, "59"), (SG, "60")] and warnings == []
 
 
-def test_don_cu_hon_cua_so_khong_dung_toi():
+def test_order_older_than_window_untouched():
     # Cửa sổ chỉ kéo từ MOC — đơn cũ hơn POS không trả về là chuyện bình thường, không phải bị xoá.
-    xoa, _ = chon_don_da_xoa([(SG, "12", "2026-09-01T03:00:00")], {SG: (MOC, {"77"})})
+    xoa, _ = select_deleted_orders([(SG, "12", "2026-09-01T03:00:00")], {SG: (CUTOFF, {"77"})})
     assert xoa == []
 
 
-def test_shop_keo_hong_khong_nam_trong_da_thay_thi_khong_dung_toi():
-    xoa, _ = chon_don_da_xoa([(TW, "5", "2026-09-14T00:00:00")], {SG: (MOC, {"77"})})
+def test_failed_shop_not_in_seen_untouched():
+    xoa, _ = select_deleted_orders([(TW, "5", "2026-09-14T00:00:00")], {SG: (CUTOFF, {"77"})})
     assert xoa == []
 
 
-def test_pos_tra_0_don_thi_khong_xoa_gi():
-    xoa, canh_bao = chon_don_da_xoa([(SG, "77", "2026-09-14T01:34:00")], {SG: (MOC, set())})
+def test_pos_returns_zero_orders_deletes_nothing():
+    xoa, canh_bao = select_deleted_orders([(SG, "77", "2026-09-14T01:34:00")], {SG: (CUTOFF, set())})
     assert xoa == [] and "POS trả 0 đơn" in canh_bao[0]
 
 
-def test_mat_qua_nhieu_mot_luot_thi_nghi_pos_tra_thieu():
+def test_too_many_missing_suspects_partial_pos_response():
     trong_bang = [(TW, str(i), "2026-09-14T00:00:00") for i in range(100)]
-    thay = {str(i) for i in range(60)}                       # POS "mất" 40 đơn một lượt
-    xoa, canh_bao = chon_don_da_xoa(trong_bang, {TW: (MOC, thay)})
+    seen_ids = {str(i) for i in range(60)}                       # POS "mất" 40 đơn một lượt
+    xoa, canh_bao = select_deleted_orders(trong_bang, {TW: (CUTOFF, seen_ids)})
     assert xoa == [] and "nghi POS trả thiếu" in canh_bao[0]
 
 
-def test_it_don_bi_xoa_van_dung_nguong_toi_thieu():
+def test_few_deleted_still_uses_min_threshold():
     trong_bang = [(SG, str(i), "2026-09-14T00:00:00") for i in range(25)]
     thay = {str(i) for i in range(15)}                       # 10 đơn xoá, POS còn 15: dưới ngưỡng 20
-    xoa, canh_bao = chon_don_da_xoa(trong_bang, {SG: (MOC, thay)})
+    xoa, canh_bao = select_deleted_orders(trong_bang, {SG: (CUTOFF, thay)})
     assert len(xoa) == 10 and canh_bao == []
 
 
-def test_dung_lai_bang_bo_dong_danh_dau_xoa_va_van_loc_shop():
-    sql = sql_dung_lai_don("sale_order", [TW, SG])
-    assert f"COALESCE(status_name, '') <> '{DA_XOA_TREN_POS}'" in sql
+def test_rebuild_drops_tombstones_and_filters_shops():
+    sql = sql_rebuild_orders("sale_order", [TW, SG])
+    assert f"COALESCE(status_name, '') <> '{DELETED_ON_POS}'" in sql
     assert "updated_at DESC NULLS LAST, sync_time DESC NULLS LAST" in sql     # dòng đánh dấu cùng updated_at, sync_time mới hơn → thắng
     assert f"WHERE shop_id IN ('{TW}', '{SG}')" in sql

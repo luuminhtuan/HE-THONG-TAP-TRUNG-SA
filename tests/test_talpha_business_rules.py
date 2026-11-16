@@ -24,138 +24,138 @@ from sync.core.business_rules import (  # noqa: E402
 )
 
 
-class TestBaThiTruong:
+class TestMarkets:
     """15/09/2026: Đài Loan và Singapore đang bán; UAE đã nối shop nhưng chưa có tỷ giá."""
 
-    def test_khai_du_ba_nuoc(self):
+    def test_all_markets_declared(self):
         # 08/10/2026: thêm Nhật (JP) — chưa có shop POS, chỉ có số ads.
         assert set(MARKET_NAMES) == {"TW", "SG", "AE", "JP"}
 
-    def test_chi_nuoc_da_co_so_moi_co_ty_gia_va_so_chia(self):
+    def test_only_measured_markets_have_rate_and_divisor(self):
         # Nước chưa có tỷ giá thì không được có dòng — nhân với số đoán là sai tiền.
         # Nhật: 1 JPY = 160đ (Sỹ Anh chốt 08/10/2026), số chia TẠM 1 — chưa có đơn để đo.
         assert FX_RATES_TO_VND == {"TW": 800, "SG": 20000, "AE": 7000, "JP": 160, "USD": 25700}
         assert POS_MONEY_DIVISOR == {"TW": 1, "SG": 100, "AE": 100, "JP": 1}
 
-    def test_singapore_49_sgd_luu_4900(self):
+    def test_singapore_49_sgd_stored_as_4900(self):
         # Poscake lưu SGD theo đơn vị nhỏ: cod 4900 = 49 SGD = 980.000đ.
         assert revenue_vnd(4900, "SG") == 980_000.0
 
-    def test_uae_49_aed_luu_4900(self):
+    def test_uae_49_aed_stored_as_4900(self):
         # Tỷ giá 7.000đ/AED (chốt 15/09/2026), số chia 100 chưa đo: cod 4900 = 49 AED = 343.000đ.
         assert revenue_vnd(4900, "AE") == 343_000.0
 
-    def test_quy_doi_nuoc_chua_co_ty_gia_thi_bao_loi(self):
+    def test_convert_market_without_rate_raises(self):
         with pytest.raises(ValueError):
             to_vnd(49, "KW")
 
-    def test_nuoc_dang_ban_phai_khai_du(self):
+    def test_active_market_fully_configured(self):
         # Chuyển một nước sang "dang_ban" mà quên shop, tỷ giá hay số chia → đỏ trước deploy.
         import json
         cfg = json.load(open(Path(__file__).resolve().parent.parent / "config" / "talpha_rules.json", encoding="utf-8"))
-        for ten, v in cfg["markets"].items():
+        for name, v in cfg["markets"].items():
             if not isinstance(v, dict):
                 continue
-            assert v.get("status") in ("dang_ban", "sap_chay", "da_tat"), f"{ten}: status lạ {v.get('status')!r}"
+            assert v.get("status") in ("dang_ban", "sap_chay", "da_tat"), f"{name}: status lạ {v.get('status')!r}"
             # Nước đã tắt vẫn phải giữ đủ: đơn cũ của nó còn trong báo cáo, cần tỷ giá + số chia.
             if v["status"] in ("dang_ban", "da_tat"):
-                assert str(v.get("shop_id", "")).strip(), f"{ten}: đang bán / đã tắt mà không có shop_id"
-                assert isinstance(v.get("rate_vnd"), (int, float)) and v["rate_vnd"] > 0, f"{ten}: thiếu tỷ giá"
-                assert isinstance(v.get("pos_money_divisor"), int) and v["pos_money_divisor"] > 0, f"{ten}: thiếu số chia"
+                assert str(v.get("shop_id", "")).strip(), f"{name}: đang bán / đã tắt mà không có shop_id"
+                assert isinstance(v.get("rate_vnd"), (int, float)) and v["rate_vnd"] > 0, f"{name}: thiếu tỷ giá"
+                assert isinstance(v.get("pos_money_divisor"), int) and v["pos_money_divisor"] > 0, f"{name}: thiếu số chia"
             if v.get("rate_vnd"):
                 # Có tỷ giá mà trống số chia: view chia 100, Sheet và dashboard chia 1.
-                assert isinstance(v.get("pos_money_divisor"), int) and v["pos_money_divisor"] > 0, f"{ten}: có tỷ giá mà thiếu số chia"
-            assert v.get("currency_symbol"), f"{ten}: thiếu ký hiệu tiền"
+                assert isinstance(v.get("pos_money_divisor"), int) and v["pos_money_divisor"] > 0, f"{name}: có tỷ giá mà thiếu số chia"
+            assert v.get("currency_symbol"), f"{name}: thiếu ký hiệu tiền"
             # 08/10/2026: Nhật khai shop_id null → Python str(None) = "None" lọt vào bộ lọc shop,
             # sync đơn nổ, Sheet đứng. Chưa có shop thì để chuỗi rỗng.
-            assert isinstance(v.get("shop_id", ""), str), f"{ten}: shop_id phải là chuỗi (chưa có shop → \"\")"
+            assert isinstance(v.get("shop_id", ""), str), f"{name}: shop_id phải là chuỗi (chưa có shop → \"\")"
 
 
-class TestX13SoChia:
+class TestX13Divisor:
     """Shop Đài lưu nguyên TWD — số chia phải là 1, không phải 100."""
 
-    def test_so_chia_dai_la_mot(self):
+    def test_taiwan_divisor_is_one(self):
         assert money_divisor("TW") == 1
 
-    def test_cod_950_la_950_twd(self):
+    def test_cod_950_is_950_twd(self):
         # Đơn thật id=336: 1 Birthstone Set + 1 BOX, cod=950 ⇒ 950 TWD (~760k VND).
         assert calc_revenue_local(950, "TW") == 950.0
 
-    def test_cod_le_khong_bi_chia(self):
+    def test_odd_cod_not_divided(self):
         for cod in (1390, 999, 1499, 6999):
             assert calc_revenue_local(cod, "TW") == float(cod)
 
-    def test_cod_rong(self):
+    def test_empty_cod(self):
         assert calc_revenue_local(0, "TW") == 0.0
         assert calc_revenue_local(None, "TW") == 0.0
 
 
-class TestQuyDoiVND:
-    def test_ty_gia_twd(self):
+class TestConvertToVND:
+    def test_twd_rate(self):
         assert to_vnd(1, "TW") == 800.0
 
-    def test_doanh_thu_don_that(self):
+    def test_real_order_revenue(self):
         # 950 TWD × 800 = 760.000 VND
         assert revenue_vnd(950, "TW") == 760000.0
 
 
-class TestDonThanhCong:
-    def test_giao_thanh_cong_co_tien(self):
+class TestSuccessfulOrder:
+    def test_delivered_with_cod(self):
         assert is_success_order("GIAO_THANH_CONG", 950) is True
 
-    def test_giao_thanh_cong_khong_tien_khong_tinh(self):
+    def test_delivered_without_cod_not_counted(self):
         assert is_success_order("GIAO_THANH_CONG", 0) is False
 
-    def test_don_hoan_khong_tinh(self):
+    def test_returned_not_counted(self):
         assert is_success_order("DON_HOAN", 950) is False
 
-    def test_don_huy_khong_tinh(self):
+    def test_cancelled_not_counted(self):
         assert is_success_order("HUY", 950) is False
 
 
-class TestThiTruong:
-    def test_ten_hien_thi(self):
+class TestMarket:
+    def test_display_name(self):
         assert get_market_display("TW") == "Taiwan"
 
-    def test_mui_gio_dai_bac(self):
+    def test_taipei_timezone(self):
         assert get_market_timezone("TW") == "Asia/Taipei"
 
-    def test_shop_la_khong_khai_van_ve_dai_bac(self):
+    def test_unknown_shop_defaults_to_taipei(self):
         # Chỉ còn một thị trường nên mặc định phải là Đài Bắc, không phải Dubai.
         assert get_market_timezone("XX") == "Asia/Taipei"
 
 
 class TestMarketer:
-    def test_tach_ten_tu_json(self):
+    def test_extract_name_from_json(self):
         assert extract_marketer_name('{"name": "Hồ Sỹ Lộc"}') == "Hồ Sỹ Lộc"
 
-    def test_ten_dang_chuoi_thuong(self):
+    def test_plain_string_name(self):
         assert extract_marketer_name("Chu Thuý") == "Chu Thuý"
 
-    def test_rong_thi_khong_hop_le(self):
+    def test_empty_is_invalid(self):
         assert is_valid_marketer("") is False
         assert is_valid_marketer(None) is False
 
 
-class TestChiPhiQuangCao:
-    def test_spend_da_la_vnd(self):
+class TestAdSpend:
+    def test_spend_already_vnd(self):
         # Rule #3: spend từ Meta đã là VND — hàm không được nhân thêm tỷ giá.
         assert validate_ads_spend(1_000_000) == 1_000_000
 
-    def test_ad_id_ve_chuoi_de_join(self):
+    def test_ad_id_as_string_for_join(self):
         assert normalize_ad_id_for_join(123456789) == "123456789"
         assert normalize_ad_id_for_join("123456789") == "123456789"
 
 
-class TestChiSo:
+class TestMetrics:
     def test_roas(self):
         assert calc_roas(3_000_000, 1_000_000) == 3.0
 
-    def test_roas_chia_khong(self):
+    def test_roas_divide_by_zero(self):
         assert calc_roas(3_000_000, 0) is None
 
     def test_aov(self):
         assert calc_aov(7_600_000, 10) == 760_000.0
 
-    def test_aov_khong_co_don(self):
+    def test_aov_no_orders(self):
         assert calc_aov(7_600_000, 0) is None

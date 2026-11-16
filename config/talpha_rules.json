@@ -210,7 +210,7 @@
       "full": "Thương",
       "also_sale": true,
       "ngung_chay_tu": "2026-10-01",
-      "_ngung_chay_note": "Sỹ Anh chốt 03/11/2026: từ tháng 10 Thương KHÔNG chạy quảng cáo nữa (chỉ làm sale + vận đơn). Từ ngày ngung_chay_tu, MỌI số mang tên người này — đơn POS gắn tag 'Thương Thương' (Thương tạo đơn với vai sale: 16 đơn Đài 01–03/11), camp cũ TW/THƯƠNG… (chạy tới 14/10) — tính cho NGƯỜI CẦM nước đó (markets.*.nguoi_cam): Đài/Nhật → Sỹ Anh, Singapore → Thái, UAE → Lộc. Số trước ngày đó giữ tên Thương. Áp ở talpha_rules.nguoi_tinh_so (Sheet) và rules.nguoiTinhSo (bot Zalo)."
+      "_ngung_chay_note": "Sỹ Anh chốt 03/11/2026: từ tháng 10 Thương KHÔNG chạy quảng cáo nữa (chỉ làm sale + vận đơn). Từ ngày ngung_chay_tu, MỌI số mang tên người này — đơn POS gắn tag 'Thương Thương' (Thương tạo đơn với vai sale: 16 đơn Đài 01–03/11), camp cũ TW/THƯƠNG… (chạy tới 14/10) — tính cho NGƯỜI CẦM nước đó (markets.*.nguoi_cam): Đài/Nhật → Sỹ Anh, Singapore → Thái, UAE → Lộc. Số trước ngày đó giữ tên Thương. Áp ở talpha_rules.credited_marketer (Sheet) và rules.nguoiTinhSo (bot Zalo)."
     },
     "Quynh": {
       "display": "Quỳnh",

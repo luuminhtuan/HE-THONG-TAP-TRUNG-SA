@@ -12,35 +12,35 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sync.core.tk_loi import tach_tk_loi  # noqa: E402
+from sync.core.tk_loi import split_failed_accounts  # noqa: E402
 
 SA01 = {"name": "SA ANTALO 01", "id": "act_2201353496727281", "mat_quyen": True}
 ANTALO1 = {"name": "ANTALO 1 - CHẠY ĐÀI", "id": "act_191133507087352", "mat_quyen": True}
-MANG = {"name": "Sỹ Anh Taiwan 4", "id": "act_256210853826298", "mat_quyen": False}
+NETWORK_ERROR = {"name": "Sỹ Anh Taiwan 4", "id": "act_256210853826298", "mat_quyen": False}
 
 
-def test_khong_tk_nao_loi_thi_khong_bo_khong_chan():
-    assert tach_tk_loi([], 12) == ([], [])
+def test_no_failed_accounts_nothing_skipped_or_blocked():
+    assert split_failed_accounts([], 12) == ([], [])
 
 
-def test_tk_chet_luc_dang_chay_van_bo_qua():
+def test_account_dead_while_spending_still_skipped():
     # 14/10: SA ANTALO 01 bị khoá khi đang tiêu tiền — luật cũ chặn, Sheet đứng 23 giờ.
-    bo_qua, chan = tach_tk_loi([SA01], 11)
-    assert bo_qua == [SA01] and chan == []
+    skipped, blocked = split_failed_accounts([SA01], 11)
+    assert skipped == [SA01] and blocked == []
 
 
-def test_loi_mang_mot_tk_cung_bo_qua():
+def test_network_error_on_one_account_also_skipped():
     # Dòng cũ của TK lỗi giữ nguyên (append_and_rebuild_ads) nên bỏ qua không ghi số 0.
-    bo_qua, chan = tach_tk_loi([MANG], 12)
-    assert bo_qua == [MANG] and chan == []
+    bo_qua, chan = split_failed_accounts([NETWORK_ERROR], 12)
+    assert bo_qua == [NETWORK_ERROR] and chan == []
 
 
-def test_nhieu_tk_chet_van_con_tk_doc_duoc_thi_bo_qua_het():
-    bo_qua, chan = tach_tk_loi([SA01, ANTALO1, MANG], 4)
-    assert bo_qua == [SA01, ANTALO1, MANG] and chan == []
+def test_many_dead_accounts_with_readable_ones_skips_all():
+    bo_qua, chan = split_failed_accounts([SA01, ANTALO1, NETWORK_ERROR], 4)
+    assert bo_qua == [SA01, ANTALO1, NETWORK_ERROR] and chan == []
 
 
-def test_khong_tk_nao_doc_duoc_thi_chan():
+def test_no_readable_account_blocks():
     # Token chết / app bị chặn (02/09, 08/10): ghi Sheet là ghi tiền ads cũ cạnh đơn mới.
-    bo_qua, chan = tach_tk_loi([SA01, ANTALO1, MANG], 3)
-    assert bo_qua == [] and chan == [SA01, ANTALO1, MANG]
+    bo_qua, chan = split_failed_accounts([SA01, ANTALO1, NETWORK_ERROR], 3)
+    assert bo_qua == [] and chan == [SA01, ANTALO1, NETWORK_ERROR]

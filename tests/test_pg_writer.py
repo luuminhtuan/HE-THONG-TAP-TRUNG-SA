@@ -27,61 +27,61 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from sync.core import pg_writer  # noqa: E402
-from sync.core.pg_writer import DA_XOA_TREN_POS  # noqa: E402
+from sync.core.pg_writer import DELETED_ON_POS  # noqa: E402
 
 MIGRATION = ROOT / "db" / "migrations" / "0001_bang_tho.sql"
-TAT_CA_MIGRATION = sorted(p.name for p in (ROOT / "db" / "migrations").glob("*.sql"))
+ALL_MIGRATIONS = sorted(p.name for p in (ROOT / "db" / "migrations").glob("*.sql"))
 
 
 def _schema_migration():
     """{bảng: [(cột, kiểu)]} của các CREATE TABLE có khai cột trong file migration 0001."""
     sql = MIGRATION.read_text(encoding="utf-8")
     out = {}
-    for ten, than in re.findall(r"CREATE TABLE (\w+) \(\n(.*?)\n\);", sql, re.S):
-        out[ten] = re.findall(r"^\s+(\w+)\s+(text|double precision|bigint|date|timestamptz),?$", than, re.M)
+    for name, body in re.findall(r"CREATE TABLE (\w+) \(\n(.*?)\n\);", sql, re.S):
+        out[name] = re.findall(r"^\s+(\w+)\s+(text|double precision|bigint|date|timestamptz),?$", body, re.M)
     return out
 
 
-class TestCauTrucBang:
-    def test_bang_raw_chep_dung_bang_sach(self):
+class TestTableStructure:
+    def test_raw_table_mirrors_clean_table(self):
         sql = MIGRATION.read_text(encoding="utf-8")
-        for bang in ("sale_order", "order_items", "fb_ads_data", "fb_adset_data"):
-            assert f"CREATE TABLE {bang}_raw (LIKE {bang});" in sql
+        for table in ("sale_order", "order_items", "fb_ads_data", "fb_adset_data"):
+            assert f"CREATE TABLE {table}_raw (LIKE {table});" in sql
 
-    def test_cot_sync_ghi_deu_co_trong_bang(self):
+    def test_synced_columns_exist_in_tables(self):
         # Sync ghi dòng có cột bảng chưa có thì dừng giữa chừng (pg_writer.them_dong) — soát trước.
         bang = _schema_migration()
-        cot = lambda b: {c for c, _ in bang[b]}
-        assert {"page_name", "seller_name", "inserted_at", "updated_at", "sync_time", "cod"} <= cot("sale_order")
-        assert {"spend", "date", "messaging_conversations_started", "account_id"} <= cot("fb_ads_data")
+        columns = lambda b: {c for c, _ in bang[b]}
+        assert {"page_name", "seller_name", "inserted_at", "updated_at", "sync_time", "cod"} <= columns("sale_order")
+        assert {"spend", "date", "messaging_conversations_started", "account_id"} <= columns("fb_ads_data")
         assert dict(bang["fb_ads_data"])["date"] == "date" and dict(bang["sale_order"])["inserted_at"] == "text"
 
-    def test_ad_dictionary_du_cot(self):
+    def test_ad_dictionary_has_all_columns(self):
         assert [c for c, _ in _schema_migration()["ad_dictionary"]] == [
             "ad_id", "account_id", "account_name", "campaign_id", "campaign_name", "ad_name", "status", "sync_time"]
 
 
-class TestCauSql:
-    def test_dung_lai_don_dung_luat_bigquery(self):
-        sql = pg_writer.sql_dung_lai_don("sale_order", ["1022091930", "715135541"])
+class TestSqlBuilders:
+    def test_rebuild_orders_matches_bigquery_rule(self):
+        sql = pg_writer.sql_rebuild_orders("sale_order", ["1022091930", "715135541"])
         assert "DISTINCT ON (shop_id, id)" in sql
         assert "updated_at DESC NULLS LAST, sync_time DESC NULLS LAST" in sql
         assert "WHERE shop_id IN ('1022091930', '715135541')" in sql
-        assert DA_XOA_TREN_POS in sql
+        assert DELETED_ON_POS in sql
 
-    def test_ten_bang_la_bi_chan(self):
+    def test_invalid_table_name_rejected(self):
         with pytest.raises(ValueError):
-            pg_writer.sql_dung_lai_don("sale_order; DROP TABLE x")
+            pg_writer.sql_rebuild_orders("sale_order; DROP TABLE x")
         with pytest.raises(ValueError):
-            pg_writer._ten("Sale_Order")
+            pg_writer._safe_ident("Sale_Order")
 
-    def test_gia_tri_nhu_bigquery_nhan_json(self):
-        assert pg_writer._gia_tri(5, "text") == "5"
-        assert pg_writer._gia_tri({"a": 1}, "text") == '{"a": 1}'
-        assert pg_writer._gia_tri("", "date") is None
-        assert pg_writer._gia_tri("", "double precision") is None
-        assert pg_writer._gia_tri(3.0, "bigint") == 3
-        assert pg_writer._gia_tri("", "text") == ""
+    def test_values_like_bigquery_accept_json(self):
+        assert pg_writer._to_db_value(5, "text") == "5"
+        assert pg_writer._to_db_value({"a": 1}, "text") == '{"a": 1}'
+        assert pg_writer._to_db_value("", "date") is None
+        assert pg_writer._to_db_value("", "double precision") is None
+        assert pg_writer._to_db_value(3.0, "bigint") == 3
+        assert pg_writer._to_db_value("", "text") == ""
 
 
 # ─── Phần cần Postgres thật ────────────────────────────────────────────────────────────
@@ -95,15 +95,15 @@ def pg():
     if not _url():
         pytest.skip("chưa đặt DATABASE_URL — bỏ qua phần chạy trên Postgres thật")
     psycopg = pytest.importorskip("psycopg")
-    from sync.core.pg import chay_migrations, ket_noi
+    from sync.core.pg import run_migrations, get_connection
     try:
-        conn = ket_noi(_url())
+        conn = get_connection(_url())
     except psycopg.OperationalError as e:
         pytest.skip(f"không nối được Postgres: {e}")
     schema = f"test_{uuid.uuid4().hex[:10]}"
     conn.execute(f"CREATE SCHEMA {schema}")
     conn.execute(f"SET search_path TO {schema}")
-    assert chay_migrations(conn) == TAT_CA_MIGRATION
+    assert run_migrations(conn) == ALL_MIGRATIONS
     try:
         yield conn
     finally:
@@ -114,10 +114,10 @@ def pg():
 SHOP_TW, SHOP_SG = "1022091930", "715135541"
 
 
-def _don(id_, shop=SHOP_TW, updated="2026-11-01T01:00:00", status="new", ins="2026-11-01T00:00:00", sync="t1", **them):
+def _order(id_, shop=SHOP_TW, updated="2026-11-01T01:00:00", status="new", ins="2026-11-01T00:00:00", sync="t1", **extra):
     d = {"id": str(id_), "shop_id": shop, "shop_label": "TW", "status_name": status, "cod": 1000.0,
          "inserted_at": ins, "updated_at": updated, "sync_time": sync, "page_name": "Page A", "seller_name": "Lan"}
-    d.update(them)
+    d.update(extra)
     return d
 
 
@@ -126,113 +126,113 @@ def _item(order_id, item_id, shop=SHOP_TW, sync="t1", qty=1):
             "retail_price": 500.0, "sync_time": sync}
 
 
-def _dem(conn, bang):
+def _count(conn, bang):
     return conn.execute(f"SELECT COUNT(*) FROM {bang}").fetchone()[0]
 
 
 class TestMigration:
-    def test_chay_lai_khong_lam_gi(self, pg):
-        from sync.core.pg import chay_migrations
-        assert chay_migrations(pg) == []
+    def test_rerun_is_noop(self, pg):
+        from sync.core.pg import run_migrations
+        assert run_migrations(pg) == []
 
 
-class TestGhiDon:
-    def test_chi_ghi_them_don_moi_hoac_doi(self, pg):
-        assert pg_writer.ghi_don(pg, [_don(1), _don(2)], [_item(1, "a"), _item(2, "b")]) == (2, 2)
-        doi = _don(2, updated="2026-11-01T05:00:00", status="shipped", sync="t2")
-        pg_writer.ghi_don(pg, [_don(1, sync="t2"), doi], [_item(1, "a", sync="t2"), _item(2, "b", sync="t2")])
-        assert _dem(pg, "sale_order_raw") == 3          # đơn 1 không đổi → không ghi thêm
+class TestWriteOrders:
+    def test_appends_only_new_or_changed_orders(self, pg):
+        assert pg_writer.write_orders(pg, [_order(1), _order(2)], [_item(1, "a"), _item(2, "b")]) == (2, 2)
+        changed = _order(2, updated="2026-11-01T05:00:00", status="shipped", sync="t2")
+        pg_writer.write_orders(pg, [_order(1, sync="t2"), changed], [_item(1, "a", sync="t2"), _item(2, "b", sync="t2")])
+        assert _count(pg, "sale_order_raw") == 3          # đơn 1 không đổi → không ghi thêm
         assert pg.execute("SELECT status_name FROM sale_order WHERE id = '2'").fetchone()[0] == "shipped"
-        assert _dem(pg, "sale_order") == 2
+        assert _count(pg, "sale_order") == 2
 
-    def test_cung_ma_don_khac_shop_la_hai_don(self, pg):
-        assert pg_writer.ghi_don(pg, [_don(18, shop=SHOP_TW), _don(18, shop=SHOP_SG)], [])[0] == 2
+    def test_same_order_id_different_shops_are_two_orders(self, pg):
+        assert pg_writer.write_orders(pg, [_order(18, shop=SHOP_TW), _order(18, shop=SHOP_SG)], [])[0] == 2
 
-    def test_updated_at_trong_khong_thang_ban_co_ngay(self, pg):
-        pg_writer.ghi_don(pg, [_don(1, updated="2026-11-01T05:00:00", status="shipped")], [])
+    def test_null_updated_at_does_not_beat_dated_version(self, pg):
+        pg_writer.write_orders(pg, [_order(1, updated="2026-11-01T05:00:00", status="shipped")], [])
         pg.execute("INSERT INTO sale_order_raw (id, shop_id, status_name, updated_at, sync_time) "
                    "VALUES ('1', %s, 'hong', NULL, 't9')", (SHOP_TW,))
-        pg_writer.ghi_don(pg, [], [])
+        pg_writer.write_orders(pg, [], [])
         assert pg.execute("SELECT status_name FROM sale_order WHERE id = '1'").fetchone()[0] == "shipped"
 
-    def test_item_lay_tron_bo_lan_sync_moi_nhat(self, pg):
-        pg_writer.ghi_don(pg, [_don(1)], [_item(1, "a"), _item(1, "b")])
-        pg_writer.ghi_don(pg, [_don(1, updated="2026-11-01T09:00:00", sync="t2")], [_item(1, "a", sync="t2")])
+    def test_items_taken_whole_from_latest_sync(self, pg):
+        pg_writer.write_orders(pg, [_order(1)], [_item(1, "a"), _item(1, "b")])
+        pg_writer.write_orders(pg, [_order(1, updated="2026-11-01T09:00:00", sync="t2")], [_item(1, "a", sync="t2")])
         assert [r[0] for r in pg.execute("SELECT item_id FROM order_items")] == ["a"]
 
-    def test_don_bi_xoa_tren_pos_bo_khoi_bang_giu_trong_raw(self, pg):
-        pg_writer.ghi_don(pg, [_don(1), _don(2)], [])
-        pg_writer.ghi_don(pg, [_don(1, sync="t2")], [],
+    def test_order_deleted_on_pos_dropped_from_table_kept_in_raw(self, pg):
+        pg_writer.write_orders(pg, [_order(1), _order(2)], [])
+        pg_writer.write_orders(pg, [_order(1, sync="t2")], [],
                           da_thay={SHOP_TW: ("2026-10-01T00:00:00", {"1"})})
         assert [r[0] for r in pg.execute("SELECT id FROM sale_order")] == ["1"]
         assert pg.execute("SELECT COUNT(*) FROM sale_order_raw WHERE id = '2' AND status_name = %s",
-                          (DA_XOA_TREN_POS,)).fetchone()[0] == 1
-        pg_writer.ghi_don(pg, [_don(2, updated="2026-11-02T00:00:00", sync="t3")], [])   # hiện lại trên POS
-        assert _dem(pg, "sale_order") == 2
+                          (DELETED_ON_POS,)).fetchone()[0] == 1
+        pg_writer.write_orders(pg, [_order(2, updated="2026-11-02T00:00:00", sync="t3")], [])   # hiện lại trên POS
+        assert _count(pg, "sale_order") == 2
 
-    def test_pos_tra_0_don_thi_khong_xoa_gi(self, pg):
-        pg_writer.ghi_don(pg, [_don(1), _don(2)], [])
-        pg_writer.ghi_don(pg, [], [], da_thay={SHOP_TW: ("2026-10-01T00:00:00", set())})
-        assert _dem(pg, "sale_order") == 2
+    def test_pos_returns_zero_orders_deletes_nothing(self, pg):
+        pg_writer.write_orders(pg, [_order(1), _order(2)], [])
+        pg_writer.write_orders(pg, [], [], da_thay={SHOP_TW: ("2026-10-01T00:00:00", set())})
+        assert _count(pg, "sale_order") == 2
 
-    def test_bang_sach_chi_gom_shop_dang_khai(self, pg):
-        n, _ = pg_writer.ghi_don(pg, [_don(1, shop="408074608"), _don(1)], [], shop_ids=[SHOP_TW, SHOP_SG])
-        assert n == 1 and _dem(pg, "sale_order_raw") == 2   # shop cũ vẫn nằm trong raw
+    def test_clean_table_only_configured_shops(self, pg):
+        n, _ = pg_writer.write_orders(pg, [_order(1, shop="408074608"), _order(1)], [], shop_ids=[SHOP_TW, SHOP_SG])
+        assert n == 1 and _count(pg, "sale_order_raw") == 2   # shop cũ vẫn nằm trong raw
 
-    def test_dien_nguoc_cot_moi_khi_bang_con_trong(self, pg):
-        pg_writer.ghi_don(pg, [_don(1, page_name=None)], [])
-        pg_writer.ghi_don(pg, [_don(1, sync="t2")], [])     # cùng updated_at nhưng POS đã có tên page
+    def test_backfill_new_column_while_table_blank(self, pg):
+        pg_writer.write_orders(pg, [_order(1, page_name=None)], [])
+        pg_writer.write_orders(pg, [_order(1, sync="t2")], [])     # cùng updated_at nhưng POS đã có tên page
         assert pg.execute("SELECT page_name FROM sale_order").fetchone()[0] == "Page A"
 
-    def test_loi_giua_chung_khong_mat_gi(self, pg):
-        pg_writer.ghi_don(pg, [_don(1)], [_item(1, "a")])
+    def test_midway_error_loses_nothing(self, pg):
+        pg_writer.write_orders(pg, [_order(1)], [_item(1, "a")])
         with pytest.raises(Exception):
-            pg_writer.ghi_don(pg, [_don(2, sync="t2")], [_item(2, "b", sync="t2", qty="hai")])
-        assert _dem(pg, "sale_order_raw") == 1 and _dem(pg, "sale_order") == 1
+            pg_writer.write_orders(pg, [_order(2, sync="t2")], [_item(2, "b", sync="t2", qty="hai")])
+        assert _count(pg, "sale_order_raw") == 1 and _count(pg, "sale_order") == 1
 
-    def test_cot_la_bao_loi_ro(self, pg):
+    def test_unknown_column_raises_clear_error(self, pg):
         with pytest.raises(RuntimeError, match="thêm file migration"):
-            pg_writer.ghi_don(pg, [_don(1, cot_chua_co="x")], [])
+            pg_writer.write_orders(pg, [_order(1, cot_chua_co="x")], [])
 
 
-class TestGhiAds:
+class TestWriteAds:
     @staticmethod
-    def _ad(ad, ngay, spend, sync):
-        return {"ad_id": ad, "account_id": "123", "date": ngay, "spend": spend, "impressions": 10, "sync_time": sync}
+    def _ad(ad, date, spend, sync):
+        return {"ad_id": ad, "account_id": "123", "date": date, "spend": spend, "impressions": 10, "sync_time": sync}
 
-    def test_ban_moi_nhat_thang_ngay_ngoai_cua_so_giu_nguyen(self, pg):
-        pg_writer.ghi_ads(pg, [self._ad("a", "2026-10-31", 100.0, "t1"), self._ad("a", "2026-11-01", 50.0, "t1")],
+    def test_latest_version_wins_days_outside_window_kept(self, pg):
+        pg_writer.write_ads(pg, [self._ad("a", "2026-10-31", 100.0, "t1"), self._ad("a", "2026-11-01", 50.0, "t1")],
                           "fb_ads_tat_ca", "ad_id")
-        n = pg_writer.ghi_ads(pg, [self._ad("a", "2026-11-01", 80.0, "t2")], "fb_ads_tat_ca", "ad_id")
+        n = pg_writer.write_ads(pg, [self._ad("a", "2026-11-01", 80.0, "t2")], "fb_ads_tat_ca", "ad_id")
         assert n == 2
         assert dict((str(d), s) for d, s in pg.execute("SELECT date, spend FROM fb_ads_tat_ca")) == {
             "2026-10-31": 100.0, "2026-11-01": 80.0}
 
-    def test_id_col_la_bi_chan(self, pg):
+    def test_invalid_id_col_rejected(self, pg):
         with pytest.raises(ValueError):
-            pg_writer.ghi_ads(pg, [], "fb_ads_tat_ca", "date; DROP")
+            pg_writer.write_ads(pg, [], "fb_ads_tat_ca", "date; DROP")
 
 
-class TestThayCaBang:
-    def test_thay_va_0_dong_thi_giu_bang_cu(self, pg):
-        pg_writer.thay_ca_bang(pg, "fb_campaign_tat_ca", [{"campaign_id": "1"}, {"campaign_id": "2"}])
-        pg_writer.thay_ca_bang(pg, "fb_campaign_tat_ca", [{"campaign_id": "3"}])
+class TestReplaceTable:
+    def test_replace_and_zero_rows_keeps_old_table(self, pg):
+        pg_writer.replace_table(pg, "fb_campaign_tat_ca", [{"campaign_id": "1"}, {"campaign_id": "2"}])
+        pg_writer.replace_table(pg, "fb_campaign_tat_ca", [{"campaign_id": "3"}])
         assert [r[0] for r in pg.execute("SELECT campaign_id FROM fb_campaign_tat_ca")] == ["3"]
-        pg_writer.thay_ca_bang(pg, "fb_campaign_tat_ca", [])
-        assert _dem(pg, "fb_campaign_tat_ca") == 1
+        pg_writer.replace_table(pg, "fb_campaign_tat_ca", [])
+        assert _count(pg, "fb_campaign_tat_ca") == 1
 
-    def test_partner_orders_ngay_trong_va_gio_utc(self, pg):
-        pg_writer.thay_ca_bang(pg, "partner_orders", [{"order_no": "A1", "order_date": "", "ship_date": "2026-11-02",
+    def test_partner_orders_blank_date_and_utc_time(self, pg):
+        pg_writer.replace_table(pg, "partner_orders", [{"order_no": "A1", "order_date": "", "ship_date": "2026-11-02",
                                                      "quantity": 2, "synced_at": "2026-11-04T03:00:00"}])
         d, s, t = pg.execute("SELECT order_date, ship_date::text, synced_at::text FROM partner_orders").fetchone()
         assert d is None and s == "2026-11-02" and t.startswith("2026-11-04 03:00:00")
 
 
 class TestAdDictionary:
-    def test_id_tren_don_chua_co_o_dau_ca(self, pg):
-        pg_writer.ghi_don(pg, [_don(1, ad_id="111"), _don(2, p_utm_term="120200000000001", ad_id="222"),
-                               _don(3, ad_id="333")], [])
-        pg_writer.ghi_ads(pg, [{"ad_id": "111", "account_id": "1", "date": "2026-11-01", "sync_time": "t"}],
+    def test_ids_on_orders_missing_everywhere(self, pg):
+        pg_writer.write_orders(pg, [_order(1, ad_id="111"), _order(2, p_utm_term="120200000000001", ad_id="222"),
+                               _order(3, ad_id="333")], [])
+        pg_writer.write_ads(pg, [{"ad_id": "111", "account_id": "1", "date": "2026-11-01", "sync_time": "t"}],
                           "fb_ads_tat_ca", "ad_id")
-        pg_writer.them_dong(pg, "ad_dictionary", [{"ad_id": "333", "status": "ok"}])
-        assert pg_writer.ad_id_can_tra(pg) == ["120200000000001"]
+        pg_writer.insert_rows(pg, "ad_dictionary", [{"ad_id": "333", "status": "ok"}])
+        assert pg_writer.ad_ids_to_lookup(pg) == ["120200000000001"]

@@ -86,7 +86,7 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   `/admin` → Khoá kết nối — máy gọi thử khoá rồi mới lưu. Lưu ở bảng `api_credentials` (15/11/2026),
   MÃ HOÁ bằng pgcrypto với chìa `TALPHA_ENCRYPTION_KEY` (đổi chìa = phải nhập lại mọi khoá), thắng khoá
   cùng tên trong `.env.local`. Dashboard đọc qua `docKhoa()` (`lib/talpha/credentials.ts`) — **đừng đọc
-  `process.env` thẳng cho khoá**; Python gọi `nap_khoa_vao_env()` (`sync/core/credentials.py`) lúc bắt đầu.
+  `process.env` thẳng cho khoá**; Python gọi `load_credentials_to_env()` (`sync/core/credentials.py`) lúc bắt đầu.
   Ngoại lệ có chủ đích (16/11/2026): trang Hỏi AI cho dán khoá Gemini RIÊNG, chỉ lưu localStorage của trình
   duyệt đó, gửi kèm từng câu hỏi (header `x-gemini-key`) và thắng khoá mặc định — máy chủ không lưu, không
   ghi log khoá này (`lib/talpha/gemini-key.ts`).
@@ -108,7 +108,7 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
 * **Người dùng thấy và tự chạy cập nhật số** (15/11/2026): đèn "Cập nhật lúc…" + nút "Cập nhật ngay" trên
   thanh đầu (`components/talpha/refresh-status.tsx` ↔ `/api/talpha/refresh`). Lịch Docker ghi mỗi lượt vào
   `job_runs` và nhặt yêu cầu ở `refresh_requests` (`sync/core/job_log.py`). Thêm việc nền mới thì chạy qua
-  `chay_va_ghi()` của `ops/docker/lich.py` để nó hiện lên đèn.
+  `run_and_log()` của `ops/docker/lich.py` để nó hiện lên đèn.
 
 ## Nguyên tắc cứng — vi phạm là số sai hoặc mất dữ liệu
 

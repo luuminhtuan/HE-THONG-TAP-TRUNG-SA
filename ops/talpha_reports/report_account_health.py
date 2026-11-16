@@ -104,9 +104,9 @@ def main():
     a = ap.parse_args()
 
     sys.path.insert(0, talpha_paths.repo_dir())
-    from sync.core.pg import ket_noi
+    from sync.core.pg import get_connection
     from psycopg.rows import namedtuple_row
-    conn = ket_noi()
+    conn = get_connection()
     with conn.cursor(row_factory=namedtuple_row) as c:
         cur = c.execute(STATE_SQL.format(MONEY_DIV_CASE=MONEY_DIV_CASE)).fetchall()
         # Lần chạy đầu: bảng trống → không có mốc so sánh, mọi mục là 'new'.
@@ -157,13 +157,13 @@ def main():
         print("(dry-run — không ghi)")
         return
 
-    cot = ("ts", "run_ts", "host", "kind", "entity_id", "entity_name", "rows_total", "rows_recent",
+    columns = ("ts", "run_ts", "host", "kind", "entity_id", "entity_name", "rows_total", "rows_recent",
            "metric", "prev_rows_total", "status")
     with conn.transaction():
         with conn.cursor() as c:
             c.executemany(
-                f"INSERT INTO {TABLE} ({', '.join(cot)}) VALUES ({', '.join(['%s'] * len(cot))})",
-                [tuple(r[k] for k in cot) for r in rows])
+                f"INSERT INTO {TABLE} ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))})",
+                [tuple(r[k] for k in columns) for r in rows])
     conn.close()
 
 if __name__ == "__main__":

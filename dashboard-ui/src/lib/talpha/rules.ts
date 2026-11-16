@@ -100,7 +100,7 @@ export const ACTIVE_MARKETS: ReadonlySet<string> = new Set(
     MARKET_ENTRIES.filter(([, v]) => (v.status || "dang_ban") === "dang_ban").map(([k]) => k));
 
 /** Shop POS của mọi nước có shop_id (kể cả nước đã tắt — nơi gọi tự lọc MARKET_DA_TAT).
- *  CÙNG luật với shop_pos_tu_markets bên Python: key nằm ở biến TALPHA_POSCAKE_<mã shop>_KEY.
+ *  CÙNG luật với pos_shops_from_markets bên Python: key nằm ở biến TALPHA_POSCAKE_<mã shop>_KEY.
  *  Trước 04/11/2026 danh sách này đọc ở talpha.yaml → poscake.shops, trùng từng dòng với markets —
  *  nước thêm trên trang không có trong yaml, nên nay chỉ còn một nguồn là markets. */
 export type ShopPos = { name: string; label: string; shop_id: string; api_url: string; bien_key: string };

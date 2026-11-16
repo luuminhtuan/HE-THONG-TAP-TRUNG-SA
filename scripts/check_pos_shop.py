@@ -23,10 +23,10 @@ POS_API = "https://pos.pages.fm/api/v1"
 def load_markets():
     # Đã phủ thị trường nhập ở /admin → Thị trường (04/11/2026) — kiểm đúng các shop sync sẽ kéo.
     sys.path.insert(0, ROOT)
-    from sync.core.credentials import nap_khoa_vao_env   # key POS nhập ở /admin → Khoá kết nối
-    nap_khoa_vao_env()
-    from sync.core.thi_truong import doc_luat
-    return doc_luat(repo=ROOT).get("markets") or {}
+    from sync.core.credentials import load_credentials_to_env   # key POS nhập ở /admin → Khoá kết nối
+    load_credentials_to_env()
+    from sync.core.thi_truong import load_rules
+    return load_rules(repo=ROOT).get("markets") or {}
 
 
 def fetch(shop_id, key, page=1, size=100):

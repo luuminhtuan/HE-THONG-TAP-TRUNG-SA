@@ -24,12 +24,12 @@ import urllib.parse
 import urllib.request
 
 API = "https://pages.fm/api/v1"
-GIAN = 0.4          # giây giữa hai lượt gọi — gọi dồn là 429
+CALL_INTERVAL = 0.4          # giây giữa hai lượt gọi — gọi dồn là 429
 VN = datetime.timedelta(hours=7)
 
 
-def chuan_ten_page(s):
-    """≡ talpha_rules.chuan_ten_page (chép để module chạy độc lập trong test)."""
+def normalize_page_name(s):
+    """≡ talpha_rules.normalize_page_name (chép để module chạy độc lập trong test)."""
     s = unicodedata.normalize("NFKC", str(s or "")).casefold()
     return " ".join(re.sub(r"[^\w]+", " ", s).split())
 
@@ -42,52 +42,52 @@ def _utc(iso):
         return None
 
 
-def ngay_vn(iso):
+def vn_date(iso):
     t = _utc(iso)
     return (t + VN).date().isoformat() if t else None
 
 
-def dem_theo_ngay(hoi_thoai, tu_ngay, toi_ngay):
+def count_by_date(conversations, from_date, to_date):
     """[hội thoại] → {ngày VN: số tin nhắn MỚI (INBOX)} trong [tu_ngay, toi_ngay]; trùng id một lần."""
-    out, da = {}, set()
-    for h in hoi_thoai:
-        if not h or h.get("id") in da:
+    out, seen_ids = {}, set()
+    for h in conversations:
+        if not h or h.get("id") in seen_ids:
             continue
-        da.add(h.get("id"))
+        seen_ids.add(h.get("id"))
         if str(h.get("type") or "").upper() == "COMMENT":
             continue
-        d = ngay_vn(h.get("inserted_at"))
-        if d and tu_ngay <= d <= toi_ngay:
+        d = vn_date(h.get("inserted_at"))
+        if d and from_date <= d <= to_date:
             out[d] = out.get(d, 0) + 1
     return out
 
 
-def het_lo(lo, tu_ngay):
+def is_batch_exhausted(batch, tu_ngay):
     """Cả lô đã cập nhật trước 00:00 VN của tu_ngay → các lô sau không còn hội thoại tạo từ ngày đó."""
-    if not lo:
+    if not batch:
         return True
-    moc = datetime.datetime.fromisoformat(tu_ngay) - VN       # 00:00 VN tính theo UTC
-    for h in lo:
+    cutoff = datetime.datetime.fromisoformat(tu_ngay) - VN       # 00:00 VN tính theo UTC
+    for h in batch:
         t = _utc(h.get("updated_at") or h.get("inserted_at"))
-        if t is None or t >= moc:
+        if t is None or t >= cutoff:
             return False
     return True
 
 
-def la_trang_cua_nuoc(ten, ma_nuoc):
+def is_market_page(name, market_code):
     """Từ CUỐI tên page là mã nước ("Lucky Charm JP"). Chỉ mã shop: "Prime Leather Japan" là page Đài."""
-    tu = chuan_ten_page(ten).upper().split()
-    return bool(tu) and tu[-1] == str(ma_nuoc).upper()
+    words = normalize_page_name(name).upper().split()
+    return bool(words) and words[-1] == str(market_code).upper()
 
 
-def _goi(url, log):
-    for lan in range(4):
+def _call(url, log):
+    for attempt in range(4):
         try:
             with urllib.request.urlopen(url, timeout=60) as r:
                 j = json.load(r)
         except urllib.error.HTTPError as e:
             if e.code == 429:
-                time.sleep(5 * 2 ** lan)
+                time.sleep(5 * 2 ** attempt)
                 continue
             raise RuntimeError(f"Pancake HTTP {e.code}")
         if j.get("success") is False:
@@ -96,7 +96,7 @@ def _goi(url, log):
     raise RuntimeError("Pancake 429 — gọi dồn quá")
 
 
-def han_token(tok):
+def token_expiry(tok):
     try:
         p = tok.split(".")[1]
         p += "=" * (-len(p) % 4)
@@ -106,7 +106,7 @@ def han_token(tok):
         return None
 
 
-def tin_nhan_theo_trang(ten_trang_camp, ma_nuoc, tu_ngay, toi_ngay, log=print, token=None):
+def messages_by_page(camp_page_names, ma_nuoc, tu_ngay, toi_ngay, log=print, token=None):
     """Số tin nhắn mới theo page × ngày cho MỘT nước.
 
     ten_trang_camp: tên page lấy từ ô page của các camp nước đó (khớp chính).
@@ -116,35 +116,35 @@ def tin_nhan_theo_trang(ten_trang_camp, ma_nuoc, tu_ngay, toi_ngay, log=print, t
     if not tok:
         log("CANH BAO: chua khai TALPHA_PANCAKE_API_TOKEN — tin nhan Nhat giu so Meta (0)")
         return None
-    exp = han_token(tok)
+    exp = token_expiry(tok)
     if exp and exp < time.time():
         log(f"CANH BAO: token Pancake het han {datetime.date.fromtimestamp(exp)} — tin nhan Nhat giu so Meta (0)")
         return None
-    can = {chuan_ten_page(t) for t in ten_trang_camp if t}
+    wanted = {normalize_page_name(t) for t in camp_page_names if t}
     try:
-        j = _goi(f"{API}/pages?access_token={urllib.parse.quote(tok)}", log)
+        j = _call(f"{API}/pages?access_token={urllib.parse.quote(tok)}", log)
         c = j.get("categorized") or {}
         pages = [p for p in (c.get("activated") or []) + (c.get("inactivated") or []) if p and p.get("id")]
-        chon = [p for p in pages if chuan_ten_page(p.get("name")) in can or la_trang_cua_nuoc(p.get("name"), ma_nuoc)]
+        selected = [p for p in pages if normalize_page_name(p.get("name")) in wanted or is_market_page(p.get("name"), ma_nuoc)]
         out = {}
-        for p in chon:
-            hts, cc = [], 0
+        for p in selected:
+            all_conversations, cc = [], 0
             try:
                 for _ in range(60):
-                    time.sleep(GIAN)
-                    lo = _goi(f"{API}/pages/{p['id']}/conversations?access_token={urllib.parse.quote(tok)}&current_count={cc}", log).get("conversations") or []
-                    hts += lo
-                    if het_lo(lo, tu_ngay):
+                    time.sleep(CALL_INTERVAL)
+                    lo = _call(f"{API}/pages/{p['id']}/conversations?access_token={urllib.parse.quote(tok)}&current_count={cc}", log).get("conversations") or []
+                    all_conversations += lo
+                    if is_batch_exhausted(lo, tu_ngay):
                         break
                     cc += len(lo)
             except RuntimeError as e:
                 # Page chưa chạy camp nào mà lỗi (chưa có gói cước…) thì thôi; page có camp thì báo.
-                if chuan_ten_page(p.get("name")) in can:
+                if normalize_page_name(p.get("name")) in wanted:
                     log(f"CANH BAO: Pancake page {p.get('name')}: {e}")
                 continue
-            out[chuan_ten_page(p.get("name"))] = {"ten": p.get("name"), "ngay": dem_theo_ngay(hts, tu_ngay, toi_ngay)}
-        thay = {chuan_ten_page(p.get("name")) for p in pages}
-        for k in can - thay:
+            out[normalize_page_name(p.get("name"))] = {"ten": p.get("name"), "ngay": count_by_date(all_conversations, tu_ngay, toi_ngay)}
+        seen = {normalize_page_name(p.get("name")) for p in pages}
+        for k in wanted - seen:
             log(f"CANH BAO: tai khoan Pancake khong thay page '{k}' cua camp {ma_nuoc} — tin nhan page do = 0")
         return out
     except Exception as e:       # noqa: BLE001
@@ -152,35 +152,35 @@ def tin_nhan_theo_trang(ten_trang_camp, ma_nuoc, tu_ngay, toi_ngay, log=print, t
         return None
 
 
-def gan_cho_camp(so_trang, dong_ads, la_camp_cua_nuoc, trang_cua_camp):
+def assign_to_campaigns(page_counts, ad_rows, is_market_camp, camp_page):
     """Gán tin nhắn (page × ngày) cho MỘT camp: camp TIÊU NHIỀU NHẤT trên page đó trong ngày đó; ngày
     page không tiêu đồng nào (khách nhắn muộn) → camp gần nhất trước đó chạy page đó.
 
     dong_ads: [(campaign_name, ngày 'YYYY-MM-DD', tiền)] — đủ rộng (cả tháng + trước đó).
     Trả ({(campaign_name, ngày): số tin nhắn}, {tên page: số tin nhắn KHÔNG gán được}).
     """
-    theo_trang = {}
-    for cn, d, tien in dong_ads:
-        if not la_camp_cua_nuoc(cn):
+    by_page = {}
+    for cn, d, spend in ad_rows:
+        if not is_market_camp(cn):
             continue
-        t = trang_cua_camp(cn)
+        t = camp_page(cn)
         if not t:
             continue
-        theo_trang.setdefault(chuan_ten_page(t), []).append((d, float(tien or 0), cn))
-    gan, khong = {}, {}
-    for k, v in (so_trang or {}).items():
-        ds = sorted(theo_trang.get(k, []))
+        by_page.setdefault(normalize_page_name(t), []).append((d, float(spend or 0), cn))
+    assigned, unassigned = {}, {}
+    for k, v in (page_counts or {}).items():
+        ds = sorted(by_page.get(k, []))
         for d, n in v["ngay"].items():
             if not n:
                 continue
-            cung = [x for x in ds if x[0] == d]
-            if cung:
-                cn = max(cung, key=lambda x: x[1])[2]
+            same_day = [x for x in ds if x[0] == d]
+            if same_day:
+                cn = max(same_day, key=lambda x: x[1])[2]
             else:
-                truoc = [x for x in ds if x[0] < d]
-                cn = truoc[-1][2] if truoc else (ds[0][2] if ds else None)
+                earlier = [x for x in ds if x[0] < d]
+                cn = earlier[-1][2] if earlier else (ds[0][2] if ds else None)
             if cn is None:
-                khong[v["ten"]] = khong.get(v["ten"], 0) + n
+                unassigned[v["ten"]] = unassigned.get(v["ten"], 0) + n
                 continue
-            gan[(cn, d)] = gan.get((cn, d), 0) + n
-    return gan, khong
+            assigned[(cn, d)] = assigned.get((cn, d), 0) + n
+    return assigned, unassigned

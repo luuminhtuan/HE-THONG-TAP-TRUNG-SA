@@ -1,5 +1,5 @@
 /**
- * Loại TKQC — luật thuần (04/11/2026), cùng luật với sync/core/tkqc.py → loai_lan_dau. Khai ở
+ * Loại TKQC — luật thuần (04/11/2026), cùng luật với sync/core/tkqc.py → initial_account_type. Khai ở
  * talpha_rules.json → tkqc_loai. Chỉ loại vao_bao_cao mới vào báo cáo (view fb_ads_data).
  */
 import { RULES } from "./rules";

@@ -25,7 +25,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import talpha_paths
 import report_files as rf
-from talpha_rules import ALLM, DA_TAT, RULES
+from talpha_rules import ALLM, DISABLED_MARKETS, RULES
 
 
 def main():
@@ -33,14 +33,14 @@ def main():
         print(__doc__)
         sys.exit(1)
     arg = sys.argv[1].strip()
-    sess = rf.phien_drive(talpha_paths.bq_key())
+    sess = rf.drive_session(talpha_paths.bq_key())
     m = re.fullmatch(r'(\d{4})-(\d{1,2})', arg)
     if m:
-        y, th = int(m.group(1)), int(m.group(2))
+        y, month = int(m.group(1)), int(m.group(2))
         root = (RULES.get('report_drive') or {}).get('root_folder_id')
-        fid = rf.tim_thu_muc_thang(sess, root, y, th)
+        fid = rf.find_month_folder(sess, root, y, month)
         if not fid:
-            print(f'KHÔNG THẤY thư mục "Tháng {th}" trong thư mục gốc {root}.')
+            print(f'KHÔNG THẤY thư mục "Tháng {month}" trong thư mục gốc {root}.')
             print('→ Tạo thư mục đó, hoặc share thư mục gốc (Editor) cho talpha-dashboard@cty-507710.iam.gserviceaccount.com')
             sys.exit(2)
     else:
@@ -50,29 +50,29 @@ def main():
     if not items:
         print(f'KHÔNG THẤY FILE NÀO trong thư mục {fid} — chưa có file, hoặc chưa share cho service account.')
         sys.exit(2)
-    bo, excel, la = rf.phan_loai(items)
-    print(f'# {len(items)} bảng tính · ' + ' · '.join(f'{len(bo["files"][x])} {x}' for x in ALLM)
-          + f' · {len(bo["test"])} Test · TỔNG TEAM: {"có" if bo["grand"] else "THIẾU"}\n')
-    print(json.dumps(bo, ensure_ascii=False, indent=1))
+    file_set, excel, unclassified = rf.classify_files(items)
+    print(f'# {len(items)} bảng tính · ' + ' · '.join(f'{len(file_set["files"][x])} {x}' for x in ALLM)
+          + f' · {len(file_set["test"])} Test · TỔNG TEAM: {"có" if file_set["grand"] else "THIẾU"}\n')
+    print(json.dumps(file_set, ensure_ascii=False, indent=1))
 
     # So với tháng KHAI TAY gần nhất (người ngừng chạy vẫn nằm trong talpha_rules.json nên
     # không so với cả roster — kêu "thiếu" họ mỗi tháng là báo nhầm). Nước đã tắt không
     # còn file tháng mới — cũng không kêu.
     here = os.path.dirname(os.path.abspath(__file__))
-    cu = sorted(glob.glob(os.path.join(here, 'report_files', '*.json')))
-    if cu:
-        truoc = json.load(open(cu[-1], encoding='utf-8'))
-        for x in [m for m in ALLM if m not in DA_TAT]:
-            thieu = [k for k in (truoc.get('files') or {}).get(x, {}) if k not in bo['files'][x]]
-            if thieu:
-                print(f'\nTHIẾU FILE {x.upper()} (so với {os.path.basename(cu[-1])}): ' + ', '.join(thieu))
+    saved_files = sorted(glob.glob(os.path.join(here, 'report_files', '*.json')))
+    if saved_files:
+        previous = json.load(open(saved_files[-1], encoding='utf-8'))
+        for x in [m for m in ALLM if m not in DISABLED_MARKETS]:
+            missing = [k for k in (previous.get('files') or {}).get(x, {}) if k not in file_set['files'][x]]
+            if missing:
+                print(f'\nTHIẾU FILE {x.upper()} (so với {os.path.basename(saved_files[-1])}): ' + ', '.join(missing))
     if excel:
         print('\nFILE EXCEL (.xlsx) — job KHÔNG ghi được. Mở file → File → Save as Google Sheets:')
         for f, ctx in excel:
             print(f'    {f["name"][:48]:50s} [{ctx}]')
-    if la:
+    if unclassified:
         print('\nKHÔNG XẾP ĐƯỢC — đổi tên file/thư mục cho rõ rồi chạy lại:')
-        for f, ctx, why in la:
+        for f, ctx, why in unclassified:
             print(f'    {f["name"][:48]:50s} [{ctx}]  ← {why}')
 
 

@@ -4,10 +4,10 @@ import os, sys, collections, datetime, time, re, json
 # "TỔNG TEAM THÁNG n" + file riêng từng người là TUỲ CHỌN: có khoá Google (tài khoản máy) thì ghi
 # thêm cho team xem như cũ, không có thì bỏ qua — báo cáo trên dashboard vẫn đủ.
 # Khoá: env thắng → key runtime (máy chạy launchd) → key trong repo.
-_KEY_UNGVIEN=[os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'),
+_KEY_CANDIDATES=[os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'),
               os.path.expanduser('~/talpha_reports/runtime/bigquery_key.json'),
               os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),'bigquery_key.json')]
-KEY=next((k for k in _KEY_UNGVIEN if k and os.path.exists(k)), None)
+KEY=next((k for k in _KEY_CANDIDATES if k and os.path.exists(k)), None)
 if KEY: os.environ['GOOGLE_APPLICATION_CREDENTIALS']=KEY
 import calendar as _cal
 # ── THÁNG ĐANG CHẠY + BỘ FILE CỦA CHÍNH THÁNG ĐÓ (Sỹ Anh chốt 01/10/2026) ──
@@ -19,20 +19,20 @@ import calendar as _cal
 import report_files as _rf
 import talpha_paths   # repo_dir(): gốc repo, để import sync.core (kho số, khoá kết nối)
 import pancake_mess   # tin nhắn Nhật từ Pancake — Meta không báo mess ở Nhật (09/10/2026)
-_T=_rf.ngay_chot(os.environ.get('TALPHA_REPORT_MONTH'))
+_T=_rf.report_end_date(os.environ.get('TALPHA_REPORT_MONTH'))
 _HERE=os.path.dirname(os.path.abspath(__file__))
 _RT=os.environ.get('TALPHA_RUNTIME_DIR') or os.path.expanduser('~/talpha_reports/runtime')
 if KEY:
-    BO,NGUON_BO=_rf.bo_file_thang(_T.year,_T.month,here=_HERE,cache_dir=os.path.join(_RT,'report_files_cache'),key=KEY)
+    FILE_SET,FILE_SET_SOURCE=_rf.get_month_file_set(_T.year,_T.month,here=_HERE,cache_dir=os.path.join(_RT,'report_files_cache'),key=KEY)
 else:
-    BO,NGUON_BO={},"không có khoá Google — chỉ ghi Postgres, bỏ qua Google Sheet"
-print(f"THANG {_T.month}/{_T.year} (toi {_T}) · bo file: {NGUON_BO}")
-if KEY and not BO:
+    FILE_SET,FILE_SET_SOURCE={},"không có khoá Google — chỉ ghi Postgres, bỏ qua Google Sheet"
+print(f"THANG {_T.month}/{_T.year} (toi {_T}) · bo file: {FILE_SET_SOURCE}")
+if KEY and not FILE_SET:
     # KHÔNG ghi Sheet, KHÔNG lùi về file tháng khác — số vẫn ghi vào Postgres cho dashboard + bot.
-    print(f"CANH BAO: CHUA CO BO FILE THANG {_T.month}/{_T.year} — KHONG GHI SHEET. {NGUON_BO}")
+    print(f"CANH BAO: CHUA CO BO FILE THANG {_T.month}/{_T.year} — KHONG GHI SHEET. {FILE_SET_SOURCE}")
     print(f"    Tao thu muc 'Tháng {_T.month}' trong BÁO CÁO ADS ANTALO + file 'TỔNG TEAM THÁNG {_T.month}' va file tung nguoi "
           f"(hoac chay Apps Script tao_thang_moi.gs), share thu muc goc cho service account.")
-GHI_SHEET=bool(KEY and BO)
+WRITE_SHEET=bool(KEY and FILE_SET)
 FROM=_T.replace(day=1).isoformat(); TO=_T.isoformat()  # đầu tháng -> hôm nay (tháng cũ: -> cuối tháng)
 # ── RULE CHUNG: đọc từ talpha_rules.json qua loader (golden-test 29/07 = 100% khớp bản cũ).
 # Sửa rule (marketer/tỷ giá/thị trường/test) → sửa talpha_rules.json, KHÔNG sửa tại đây.
@@ -40,8 +40,8 @@ from talpha_rules import (RATE, LOCALCUR, MONEY_DIV, ALLM, MARKETS, SHOP2MKT, GT
                           NUMID, norm_nv, norm_pos_nv, is_test, PRIMARY_MARKET,
                           DISPLAY, EXTERNAL_DISPLAY, norm_pos_external, norm_nv_external,
                           UNASSIGN, bucket_nv, campaign_market,
-                          camp_san_pham, tao_chi_muc_page, tim_camp_theo_page,
-                          tao_ten_tab_page, ten_tab_cua_don, sql_la_don_trong, MESS_PANCAKE, nguoi_tinh_so)
+                          parse_camp_product, build_page_index, find_campaign_by_page,
+                          build_page_tab_names, order_tab_name, sql_is_empty_order, MESS_PANCAKE, credited_marketer)
 # SHOP2MKT + norm_pos_nv: import từ talpha_rules (xem trên)
 def parse_camp(cn):
     p=[x.strip() for x in (cn or "").split("/")]
@@ -64,24 +64,24 @@ def parse_camp(cn):
         nv=norm_nv(p[idx]); mkt=PRIMARY_MARKET
     # Sản phẩm = ô thứ HAI sau marketer (ô ngay sau là tệp khách) — cả tên có lẫn không có ô
     # nước. Xem camp_san_pham trong talpha_rules.py: hai lỗi đọc ô sửa 16/09/2026 nằm ở đó.
-    prod=camp_san_pham(cn)[0] or "(khác)"
+    prod=parse_camp_product(cn)[0] or "(khác)"
     return mkt,nv,prod
 # File theo nước của từng marketer: bộ file của tháng (report_files.py) — xem FILE_NUOC bên dưới.
 # (MARKET_MAP gõ tay trong code — bộ 30 file GCC của team cũ — bỏ 09/09/2026.)
-TONG_MAP={}  # Không còn file "TỔNG ADS" riêng từng người. Tổng MỌI nước của một người nằm ở
+TOTALS_MAP={}  # Không còn file "TỔNG ADS" riêng từng người. Tổng MỌI nước của một người nằm ở
 # tab của người đó trong file TỔNG TEAM.
 # Vòng lặp file riêng + TEST bên dưới duyệt theo FILE_NUOC/TESTMAP, KHÔNG theo TONG_MAP nữa.
 # File TỔNG TEAM THÁNG n của tháng đang chạy — lấy từ bộ file của tháng (report_files.py).
 # write_file() xoá sạch tab rồi ghi đè, nên ID này TUYỆT ĐỐI không được là file của tháng khác.
-GRAND_KEY=BO.get('grand') or ""
+GRAND_KEY=FILE_SET.get('grand') or ""
 DAYS=[datetime.date(_T.year,_T.month,d) for d in range(1,_cal.monthrange(_T.year,_T.month)[1]+1)]  # đủ ngày tháng hiện tại
 sys.path.insert(0, talpha_paths.repo_dir())
-from sync.core.pg import ket_noi
-from sync.core.credentials import nap_khoa_vao_env
+from sync.core.pg import get_connection
+from sync.core.credentials import load_credentials_to_env
 from psycopg.rows import namedtuple_row
 from psycopg.types.json import Jsonb
-nap_khoa_vao_env()   # token Pancake (mess Nhật) nhập ở /admin → Khoá kết nối — bảng api_credentials
-pg=ket_noi()
+load_credentials_to_env()   # token Pancake (mess Nhật) nhập ở /admin → Khoá kết nối — bảng api_credentials
+pg=get_connection()
 def Q(sql):
     """Chạy một câu SELECT, trả các dòng đọc được theo tên cột (r.campaign_name…)."""
     with pg.cursor(row_factory=namedtuple_row) as cur:
@@ -100,16 +100,16 @@ test_pages=set(); main_pages=set()  # page thuộc camp test / camp thường (�
 # đó → ra marketer, tiền ads. Luật khớp và chọn camp khi một page chạy nhiều camp nằm ở
 # tim_camp_theo_page (talpha_rules.py, có test). Chỉ mục lấy thêm 30 ngày trước đầu tháng:
 # đơn đầu tháng hay đến từ camp chạy cuối tháng trước.
-ADS_CHI_MUC=Q(
+INDEX_ADS=Q(
     f"SELECT date, campaign_name, SUM(spend)::float8 spend FROM fb_ads_data "
     f"WHERE date BETWEEN DATE '{FROM}' - 30 AND DATE '{TO}' GROUP BY 1, 2")
-CHI_MUC=tao_chi_muc_page([(r.campaign_name, str(r.date), r.spend or 0) for r in ADS_CHI_MUC])
+PAGE_INDEX=build_page_index([(r.campaign_name, str(r.date), r.spend or 0) for r in INDEX_ADS])
 # ── TAB THEO PAGE (Sỹ Anh chốt 17/09/2026) ── file riêng của từng người: MỖI PAGE MỘT TAB, đặt
 # theo tên page. Tên lấy theo cách viết trên POS (cột Nguồn đơn) để tiền ads của camp và đơn của
 # page rơi cùng một tab; page chưa có đơn trên POS thì lấy tên ghi trong camp. Xem tao_ten_tab_page.
-POS_TEN, CAMP_TAB = tao_ten_tab_page(
+POS_NAMES, CAMP_TAB = build_page_tab_names(
     [r.page_name for r in Q("SELECT page_name FROM sale_order") if r.page_name],
-    [r.campaign_name for r in ADS_CHI_MUC])
+    [r.campaign_name for r in INDEX_ADS])
 # ADS: spend/tin nhắn/purchases theo campaign (giữ nguyên) — tab = page của campaign.
 # 20/08: camp không parse được (typo thị trường 'TAIWAIN', tên không theo format 'tt 20/7')
 # trước đây bị bỏ IM LẶNG — spend biến mất khỏi mọi báo cáo mà không ai biết. Nay gom lại
@@ -118,7 +118,7 @@ DROPPED=collections.defaultdict(float)
 # 15/09/2026 — ba thị trường. Campaign KHÔNG ghi nước ở tên (tên cũ "Lộc/Philippine/…")
 # vẫn tính Đài (Sỹ Anh chốt), nhưng gom lại để in cảnh báo: có Singapore, UAE rồi thì
 # một campaign Singapore quên ghi "SG/" sẽ lặng lẽ chạy vào số của Đài.
-THIEU_NUOC=collections.defaultdict(float)
+MISSING_MARKET=collections.defaultdict(float)
 for r in Q(f"SELECT date, campaign_name, SUM(spend)::float8 spend, SUM(messaging_conversations_started)::bigint msg, SUM(purchases)::bigint pur FROM fb_ads_data WHERE date BETWEEN '{FROM}' AND '{TO}' GROUP BY 1, 2"):
     mkt,nv,prod=parse_camp(r.campaign_name)
     if not mkt or not nv:
@@ -131,10 +131,10 @@ for r in Q(f"SELECT date, campaign_name, SUM(spend)::float8 spend, SUM(messaging
     # Người đã nghỉ (unassign_marketers): ĐỔI Ô ĐÍCH sang "(không gán)", KHÔNG bỏ camp.
     # Đặt SAU nhánh DROPPED ở trên để spend còn sót của họ vẫn được đếm và soi được,
     # chỉ là không mang tên ai.
-    if campaign_market(r.campaign_name)[1]=="mac_dinh": THIEU_NUOC[r.campaign_name or "(tên rỗng)"]+=r.spend or 0
+    if campaign_market(r.campaign_name)[1]=="mac_dinh": MISSING_MARKET[r.campaign_name or "(tên rỗng)"]+=r.spend or 0
     nv=bucket_nv(nv)
     t=is_test(r.campaign_name, mkt)
-    pid=camp_san_pham(r.campaign_name)[2]
+    pid=parse_camp_product(r.campaign_name)[2]
     if pid:
         (test_pages if t else main_pages).add(pid)
     tab=CAMP_TAB.get(r.campaign_name) or "(khác)"
@@ -146,22 +146,22 @@ for r in Q(f"SELECT date, campaign_name, SUM(spend)::float8 spend, SUM(messaging
 # trong ngày (ngày page không tiêu: camp gần nhất trước đó). Pancake hỏng → giữ 0, có CANH BAO.
 PANCAKE_MESS={}
 for _m in sorted(MESS_PANCAKE):
-    _ma=RULES_MARKETS[_m]["shop_label"]
-    _dong=[(r.campaign_name, str(r.date), r.spend or 0) for r in ADS_CHI_MUC]
-    _cua=lambda cn,_m=_m: campaign_market(cn)[0]==_m
-    _trang={camp_san_pham(cn)[1] for cn,_,_ in _dong if _cua(cn)}
-    _so=pancake_mess.tin_nhan_theo_trang(_trang, _ma, FROM, TO, log=print)
-    if _so is None: continue
-    _gan,_khong=pancake_mess.gan_cho_camp(_so, _dong, _cua, lambda cn: camp_san_pham(cn)[1])
+    _shop_label=RULES_MARKETS[_m]["shop_label"]
+    _ad_rows=[(r.campaign_name, str(r.date), r.spend or 0) for r in INDEX_ADS]
+    _is_market_camp=lambda cn,_m=_m: campaign_market(cn)[0]==_m
+    _pages={parse_camp_product(cn)[1] for cn,_,_ in _ad_rows if _is_market_camp(cn)}
+    _page_counts=pancake_mess.messages_by_page(_pages, _shop_label, FROM, TO, log=print)
+    if _page_counts is None: continue
+    _assigned,_unassigned=pancake_mess.assign_to_campaigns(_page_counts, _ad_rows, _is_market_camp, lambda cn: parse_camp_product(cn)[1])
     _n=0
-    for (_cn,_d),_k in _gan.items():
+    for (_cn,_d),_k in _assigned.items():
         if not (FROM <= _d <= TO): continue
         _mk,_nv,_=parse_camp(_cn)
         if not _mk or not _nv: continue
         _c=(cell_test if is_test(_cn,_mk) else cell)[(bucket_nv(_nv),_mk,CAMP_TAB.get(_cn) or "(khác)",_d)]
         _c["msg"]+=_k; _n+=_k
-    PANCAKE_MESS[_m]=(_n,len(_so),_khong)
-    print(f"PANCAKE MESS {_ma}: {_n} tin nhan tu {len(_so)} page" + (f" · KHONG GAN DUOC (page chua co camp): {_khong}" if _khong else ""))
+    PANCAKE_MESS[_m]=(_n,len(_page_counts),_unassigned)
+    print(f"PANCAKE MESS {_shop_label}: {_n} tin nhan tu {len(_page_counts)} page" + (f" · KHONG GAN DUOC (page chua co camp): {_unassigned}" if _unassigned else ""))
 # ad_id → chủ campaign (marketer) — dùng cho FALLBACK đơn không tag (duyệt 06/07).
 # X9 (06/08): POS không phải lúc nào cũng ghi ad_id vào ô `ad_id` — 999 đơn/10.634 (9,4%)
 # mang ADSET id ở ô đó. Nạp CẢ adset vào chung bảng tra; ad_id nạp SAU để đè lên adset
@@ -182,39 +182,39 @@ purely_test_pages=test_pages-main_pages  # page CHỈ chạy camp test → đơn
 UNASSIGNED="(không gán)"
 # Tiền tố đánh dấu người ngoài team — để grand_tab() loại khỏi TỔNG mà vẫn có tab riêng.
 EXT_PREFIX="~ngoai~"
-DON=Q(f"""SELECT id, ngay_theo_mui(inserted_at,'{POS_TZ}') d,
+ORDERS=Q(f"""SELECT id, ngay_theo_mui(inserted_at,'{POS_TZ}') d,
     safe_json(marketer) ->> 'name' nm, shop_label, page_id, page_name, seller_name,
     ad_id, adset_id, status_name,
     COALESCE(cod,0) cod, CASE WHEN status_category='{GTC_CAT}' THEN COALESCE(cod,0) ELSE 0 END cod_gtc
   FROM sale_order
   WHERE ngay_theo_mui(inserted_at,'{POS_TZ}') BETWEEN '{FROM}' AND '{TO}' AND status_category NOT IN ('HUY','DON_THO')
-    AND NOT {sql_la_don_trong()}
+    AND NOT {sql_is_empty_order()}
   ORDER BY d DESC, shop_label, id""")
 # Đơn TRỐNG (không sản phẩm, 0 tiền) KHÔNG tính vào số đơn — Sỹ Anh chốt 17/09/2026, xem la_don_trong.
 # Không bỏ lặng lẽ: đếm lại để in cuối log.
-DON_TRONG=Q(f"""SELECT shop_label, COUNT(*) n FROM sale_order
+EMPTY_ORDERS=Q(f"""SELECT shop_label, COUNT(*) n FROM sale_order
   WHERE ngay_theo_mui(inserted_at,'{POS_TZ}') BETWEEN '{FROM}' AND '{TO}' AND status_category NOT IN ('HUY','DON_THO')
-    AND {sql_la_don_trong()} GROUP BY 1 ORDER BY 1""")
-DEM_KHOP=collections.Counter()
-for r in DON:
+    AND {sql_is_empty_order()} GROUP BY 1 ORDER BY 1""")
+MATCH_COUNTS=collections.Counter()
+for r in ORDERS:
     mkt=SHOP2MKT.get((r.shop_label or "").upper())
     if not mkt: continue
     cqc=ad2camp.get(r.ad_id or "") or ad2camp.get(r.adset_id or "")
     # Đơn shop nước nào chỉ theo camp nước đó — cả khi nối theo page lẫn khi dự phòng theo quảng cáo.
     # 17/09/2026: đơn Đài #381 (0 TWD, không tag) mang quảng cáo + page của camp Singapore của Lộc →
     # Lộc ngày 15/09 ra 3 đơn, POS 2.
-    qc_cung_nuoc = bool(cqc) and campaign_market(cqc)[0]==mkt
-    if not qc_cung_nuoc: cqc=None
-    camp,cach=tim_camp_theo_page(r.page_name, str(r.d), CHI_MUC, cqc, nuoc=mkt)   # chỉ camp cùng nước với shop
-    DEM_KHOP[cach]+=1
+    ad_same_market = bool(cqc) and campaign_market(cqc)[0]==mkt
+    if not ad_same_market: cqc=None
+    camp,match_type=find_campaign_by_page(r.page_name, str(r.d), PAGE_INDEX, cqc, nuoc=mkt)   # chỉ camp cùng nước với shop
+    MATCH_COUNTS[match_type]+=1
     nv_camp=parse_camp(camp)[1] if camp else None
     # Người NGOÀI TEAM chạy chung TKQC + bán chung shop POS. Nhận diện TRƯỚC bậc 2 để
     # camp/ad_id không đẩy đơn của họ sang người trong team.
     nv = norm_pos_nv(r.nm)
     if not nv:
         ex = norm_pos_external(r.nm)
-        nv = EXT_PREFIX + ex if ex else (nv_camp or (qc_cung_nuoc and (ad2nv.get(r.ad_id or "") or ad2nv.get(r.adset_id or ""))) or UNASSIGNED)
-    prod = ten_tab_cua_don(r.page_name, POS_TEN) or CAMP_TAB.get(camp or cqc or "") or "(khác)"   # tab = page
+        nv = EXT_PREFIX + ex if ex else (nv_camp or (ad_same_market and (ad2nv.get(r.ad_id or "") or ad2nv.get(r.adset_id or ""))) or UNASSIGNED)
+    prod = order_tab_name(r.page_name, POS_NAMES) or CAMP_TAB.get(camp or cqc or "") or "(khác)"   # tab = page
     # Đã nghỉ → "(không gán)" (bucket_nv), kể cả khi tag POS ghi đúng tên họ.
     nv=bucket_nv(nv)
     # Đơn từ camp TEST (ad_id thuộc camp test, hoặc page chỉ chạy test) → tách khỏi báo cáo doanh số.
@@ -223,19 +223,19 @@ for r in DON:
     c=(cell_test if t else cell)[(nv,mkt,prod,str(r.d))]; c["orders"]+=1; c["cod"]+=r.cod or 0; c["cod_gtc"]+=r.cod_gtc or 0
 # ── LẤN NƯỚC → NGƯỜI CẦM NƯỚC (Sỹ Anh chốt 10/10/2026) ── tiền ads, tin nhắn, đơn, doanh số của
 # một người ở nước thuộc team khác (camp cũ chưa đổi tên) chuyển cho người cầm nước đó: Đài →
-# Sỹ Anh (từ 03/11/2026, trước là Thương), Singapore → Thái, UAE → Lộc (talpha_rules.nguoi_tinh_so).
+# Sỹ Anh (từ 03/11/2026, trước là Thương), Singapore → Thái, UAE → Lộc (talpha_rules.credited_marketer).
 # Số của người đã ngừng chạy (Thương từ 01/10/2026) cũng chuyển theo ngày. Làm SAU khi gom đủ ads + đơn,
 # TRƯỚC khi ghi file — Sheet, file riêng và số cho bot Zalo cùng một cách tính.
-def _gom_lan_nuoc(cells):
-    moi=collections.defaultdict(lambda:{"spend":0.0,"msg":0,"pur":0,"orders":0,"cod":0.0,"cod_gtc":0.0}); lan=collections.defaultdict(lambda:[0.0,0])
+def _reassign_cross_market(cells):
+    merged=collections.defaultdict(lambda:{"spend":0.0,"msg":0,"pur":0,"orders":0,"cod":0.0,"cod_gtc":0.0}); cross=collections.defaultdict(lambda:[0.0,0])
     for (nv,mkt,tab,d),c in cells.items():
-        nv2=nguoi_tinh_so(nv,mkt,d)
-        if nv2!=nv: lan[(nv,nv2,mkt)][0]+=c["spend"]; lan[(nv,nv2,mkt)][1]+=c["orders"]
-        x=moi[(nv2,mkt,tab,d)]
+        nv2=credited_marketer(nv,mkt,d)
+        if nv2!=nv: cross[(nv,nv2,mkt)][0]+=c["spend"]; cross[(nv,nv2,mkt)][1]+=c["orders"]
+        x=merged[(nv2,mkt,tab,d)]
         for kk in x: x[kk]+=c.get(kk,0)
-    return moi,lan
-cell,_LAN=_gom_lan_nuoc(cell); cell_test,_=_gom_lan_nuoc(cell_test)
-for (_a,_b,_m),(_s,_o) in sorted(_LAN.items()):
+    return merged,cross
+cell,_CROSS_MARKET=_reassign_cross_market(cell); cell_test,_=_reassign_cross_market(cell_test)
+for (_a,_b,_m),(_s,_o) in sorted(_CROSS_MARKET.items()):
     print(f"LAN NUOC: {DISPLAY.get(_a,_a)} chay {_m} → tinh cho {DISPLAY.get(_b,_b)}: {_s:,.0f} d ads · {_o} don")
 def H(local): return ["Ngày","TỔNG TIỀN ADS","SỐ TIN NHẮN","Giá Tiền/TN","CPO","Tỷ lệ chốt","Số đơn",local,"Tỉ giá","Doanh Số","DS Giao TC","% Ads/DT","% Ads/DT giao","TB đơn"]
 def drow(day,c,rate,div):
@@ -311,7 +311,7 @@ def freq(sid,nr):
         R.append({"repeatCell":{"range":{"sheetId":sid,"startRowIndex":1,"endRowIndex":nr,"startColumnIndex":ci,"endColumnIndex":ci+1},"cell":{"userEnteredFormat":cf},"fields":fl}})
     R.append({"repeatCell":{"range":{"sheetId":sid,"startRowIndex":t,"endRowIndex":t+1,"startColumnIndex":0,"endColumnIndex":14},"cell":{"userEnteredFormat":{"backgroundColor":cc(RED),"textFormat":{"bold":True,"foregroundColor":cc(WHT)}}},"fields":"userEnteredFormat.backgroundColor,userEnteredFormat.textFormat"}})
     return R
-if GHI_SHEET:
+if WRITE_SHEET:
     import gspread
     from google.oauth2.service_account import Credentials
     from gspread.exceptions import APIError, SpreadsheetNotFound
@@ -366,7 +366,7 @@ def write_file(key, tabs, title=None, month_suffix=False):
     do(lambda: sh.batch_update({"requests":fr}))
 n=0
 # 8 TỔNG files
-for emp,key in TONG_MAP.items():
+for emp,key in TOTALS_MAP.items():
     used=set(); tabs=[("Tổng",combined_tab(emp))]; used.add("tổng")
     for mkt in ALLM:
         sub={k:v for k,v in cell.items() if k[0]==emp and k[1]==mkt}
@@ -383,45 +383,45 @@ for emp,key in TONG_MAP.items():
 # ID lấy từ bộ file của tháng (report_files.py) — {nước: {key marketer: ID}}, nhận theo thư mục
 # người (LOC, THAI…) và tên file "<NƯỚC> T<n>". Service account KHÔNG tự tạo được file (quota
 # Drive của nó = 0): người tạo sheet trong thư mục marketer của tháng là vòng sau tự thấy.
-FILE_NUOC={mkt: dict((BO.get('files') or {}).get(mkt) or {}) for mkt in ALLM}
-_TEN_NUOC={m: v.get("display", m) for m, v in RULES_MARKETS.items()}
-def nuoc_co_so(cells, loc=lambda k: True):
+MARKET_FILES={mkt: dict((FILE_SET.get('files') or {}).get(mkt) or {}) for mkt in ALLM}
+_MARKET_NAMES={m: v.get("display", m) for m, v in RULES_MARKETS.items()}
+def markets_with_data(cells, loc=lambda k: True):
     """Các nước có số (chi tiêu hoặc đơn) trong tập ô, xếp Đài trước rồi theo thứ tự cấu hình."""
-    co={k[1] for k,c in cells.items() if loc(k) and (c["spend"] or c["orders"] or c["msg"])}
-    return [m for m in ALLM if m in co]
-def tabs_mot_nuoc(emp, mkt):
+    found={k[1] for k,c in cells.items() if loc(k) and (c["spend"] or c["orders"] or c["msg"])}
+    return [m for m in ALLM if m in found]
+def market_file_tabs(emp, mkt):
     sub={k:v for k,v in cell.items() if k[0]==emp and k[1]==mkt}
     used=set(); used.add("tổng")
     tabs=[("Tổng",market_tab(sub,RATE[mkt],LOCALCUR[mkt],MONEY_DIV[mkt]))]
     # Page không có gì trong tháng (0 tiền, 0 tin nhắn, 0 đơn) thì không mọc tab: camp đã tắt vẫn
     # để lại dòng 0 đồng trong dữ liệu Meta, thành tab trống như "Taiwan Savings Center".
-    co_so={k[2] for k,c in sub.items() if c["spend"] or c["msg"] or c["orders"]}
-    prods=sorted(co_so, key=lambda p:(-sum(sub[x]["spend"] for x in sub if x[2]==p), str(p)))
+    with_data={k[2] for k,c in sub.items() if c["spend"] or c["msg"] or c["orders"]}
+    prods=sorted(with_data, key=lambda p:(-sum(sub[x]["spend"] for x in sub if x[2]==p), str(p)))
     for prod in prods:
         psub={k:v for k,v in sub.items() if k[2]==prod}; tabs.append((safe(prod,used),market_tab(psub,RATE[mkt],LOCALCUR[mkt],MONEY_DIV[mkt])))
     return tabs
-MAT_FILE=[]
+LOST_FILES=[]
 for mkt in ALLM:
-    for emp,key in FILE_NUOC[mkt].items():
+    for emp,key in MARKET_FILES[mkt].items():
         if not key: continue
-        tabs=tabs_mot_nuoc(emp,mkt)
+        tabs=market_file_tabs(emp,mkt)
         # File đã bị xoá HẲN (thùng rác Drive tự dọn sau 30 ngày) hoặc bị gỡ quyền: bỏ qua riêng
         # file đó, KHÔNG làm chết cả vòng — nổ ở đây là file TỔNG TEAM ghi phía sau đứng số, và
         # tin Zalo 8h30 đọc đúng file đó. Dính thật 16/09/2026: thư mục ANH nằm trong thùng rác
         # từ trước, job vẫn ghi vào file trong đó mỗi giờ — tới ngày thùng rác dọn là nổ.
         try: write_file(key,tabs)
         except SpreadsheetNotFound:
-            MAT_FILE.append((emp,mkt,key)); print(f"[SKIP] FILE {emp}/{mkt}: không mở được {key} — đã xoá hẳn hoặc mất quyền"); continue
+            LOST_FILES.append((emp,mkt,key)); print(f"[SKIP] FILE {emp}/{mkt}: không mở được {key} — đã xoá hẳn hoặc mất quyền"); continue
         n+=1; print(f"[{n}] FILE {emp}/{mkt}: {len(tabs)} tab — https://docs.google.com/spreadsheets/d/{key}")
 # Người CÓ SỐ ở một nước mà chưa có file nước đó: số KHÔNG mất — vẫn nằm trong file TỔNG TEAM
 # (tab của người đó + tab nước) — nhưng thư mục riêng của họ thiếu file. Cảnh báo ở cuối log.
-THIEU_FILE=[] if not GHI_SHEET else sorted({(k[0],k[1]) for k,c in cell.items()
+MISSING_FILES=[] if not WRITE_SHEET else sorted({(k[0],k[1]) for k,c in cell.items()
                    if (c["spend"] or c["orders"] or c["msg"]) and k[0] in DISPLAY and k[0] not in UNASSIGN
-                   and not FILE_NUOC.get(k[1],{}).get(k[0])})
-CO_FILE={emp for m in FILE_NUOC.values() for emp,key in m.items() if key}
+                   and not MARKET_FILES.get(k[1],{}).get(k[0])})
+HAS_FILE={emp for m in MARKET_FILES.values() for emp,key in m.items() if key}
 # TỔNG TEAM THÁNG — gộp tất cả marketer: tab "Tổng" (all mkt) + 1 tab mỗi marketer. Tính LUÔN (không
 # cần file Sheet) vì dashboard + bot đọc bảng này từ Postgres; có file Sheet thì ghi thêm lên Sheet.
-def tabs_tong_team():
+def team_summary_tabs():
     used=set(); tabs=[("Tổng",grand_tab())]; used.add("tổng")
     # Tab theo ROSTER trong talpha_rules.json (không phải TONG_MAP) — người mới vào team
     # là có tab ngay, không cần chờ tạo file Sheet riêng cho họ.
@@ -433,7 +433,7 @@ def tabs_tong_team():
         # Người đã nghỉ (unassign_marketers): KHÔNG tab — số của họ nằm ở "(không gán)".
         # Chặn tường minh ở đây để dù thư mục tháng còn file của họ cũng không mọc tab rỗng.
         if emp in UNASSIGN: continue
-        if emp not in CO_FILE and not any(k[0] == emp for k in cell): continue
+        if emp not in HAS_FILE and not any(k[0] == emp for k in cell): continue
         tabs.append((safe(emp,used),combined_tab(emp)))
     # Người NGOÀI TEAM: KHÔNG có tab trong báo cáo của team (CEO chốt 10/08).
     # Số của họ vẫn bị loại khỏi tab Tổng nhờ EXT_PREFIX ở grand_tab() — chỉ là
@@ -442,26 +442,26 @@ def tabs_tong_team():
     if any(k[0]==UNASSIGNED for k in cell): tabs.append((safe(UNASSIGNED,used),combined_tab(UNASSIGNED)))
     # Ba thị trường (15/09/2026): từ HAI nước có số trở lên thì thêm mỗi nước một tab,
     # CHỈ người trong team như tab Tổng, tiền địa phương + tỷ giá của nước đó.
-    ds_nuoc=nuoc_co_so(cell, lambda k: k[0]!=UNASSIGNED and not str(k[0]).startswith(EXT_PREFIX))
-    if len(ds_nuoc)>1:
-        for mkt in ds_nuoc:
+    market_list=markets_with_data(cell, lambda k: k[0]!=UNASSIGNED and not str(k[0]).startswith(EXT_PREFIX))
+    if len(market_list)>1:
+        for mkt in market_list:
             sub={k:v for k,v in cell.items() if k[1]==mkt and k[0]!=UNASSIGNED and not str(k[0]).startswith(EXT_PREFIX)}
-            tabs.append((safe(_TEN_NUOC[mkt],used),market_tab(sub,RATE[mkt],LOCALCUR[mkt],MONEY_DIV[mkt])))
+            tabs.append((safe(_MARKET_NAMES[mkt],used),market_tab(sub,RATE[mkt],LOCALCUR[mkt],MONEY_DIV[mkt])))
     return tabs
-TABS_TONG=tabs_tong_team()
+SUMMARY_TABS=team_summary_tabs()
 # ── GHI POSTGRES (bao_cao_tab) — nguồn của tab Tổng quan / P&L / Marketer và bot Zalo ── Thay trọn
 # tháng trong MỘT transaction: người đang xem thấy bản cũ tới lúc COMMIT, lỗi giữa chừng thì giữ bản
 # cũ. Hàng ghi ĐÚNG như lên Sheet (hàng đầu tiêu đề, hàng cuối TỔNG) — route đọc theo cùng bố cục.
 if not DRY:
-    _thang=f"{_T.year}-{_T.month:02d}"
+    _month=f"{_T.year}-{_T.month:02d}"
     with pg.transaction():
-        pg.execute("DELETE FROM bao_cao_tab WHERE thang = %s AND tep = 'tong_team'", (_thang,))
-        for _i,(_ten,_hang) in enumerate(TABS_TONG):
+        pg.execute("DELETE FROM bao_cao_tab WHERE thang = %s AND tep = 'tong_team'", (_month,))
+        for _i,(_tab_name,_rows) in enumerate(SUMMARY_TABS):
             pg.execute("INSERT INTO bao_cao_tab (thang, tep, thu_tu, ten_tab, hang) VALUES (%s, 'tong_team', %s, %s, %s)",
-                       (_thang, _i, _ten, Jsonb(_hang)))
-    print(f"POSTGRES bao_cao_tab {_thang}: {len(TABS_TONG)} tab — " + " · ".join(t for t,_ in TABS_TONG))
-if GHI_SHEET and GRAND_KEY and not GRAND_KEY.endswith("placeholder"):
-    write_file(GRAND_KEY,TABS_TONG,title=f"TỔNG TEAM THÁNG {_T.month}"); n+=1; print(f"[{n}] GRAND TỔNG THÁNG: {len(TABS_TONG)} tab")
+                       (_month, _i, _tab_name, Jsonb(_rows)))
+    print(f"POSTGRES bao_cao_tab {_month}: {len(SUMMARY_TABS)} tab — " + " · ".join(t for t,_ in SUMMARY_TABS))
+if WRITE_SHEET and GRAND_KEY and not GRAND_KEY.endswith("placeholder"):
+    write_file(GRAND_KEY,SUMMARY_TABS,title=f"TỔNG TEAM THÁNG {_T.month}"); n+=1; print(f"[{n}] GRAND TỔNG THÁNG: {len(SUMMARY_TABS)} tab")
 # ── SỐ THEO NƯỚC × NGƯỜI cho bot Zalo (Sỹ Anh chốt 08/10/2026: mỗi nước một nhóm "ADS + VẬN
 # ĐƠN") ── File TỔNG TEAM chỉ có tab nước (gộp người) và tab người (gộp nước); bảng xếp hạng
 # người TRONG một nước không có ở đâu. Ghi vào bảng market_monthly_reports (15/11/2026 — trước đó
@@ -470,28 +470,28 @@ if GHI_SHEET and GRAND_KEY and not GRAND_KEY.endswith("placeholder"):
 # Chỉ người trong team (như tab nước), "(không gán)" để riêng; người ngoài team bỏ. Hỏng thì
 # chỉ log — không bao giờ làm chết vòng ghi Sheet.
 try:
-    _ban={}
+    _by_market={}
     for (_nv,_m,_tab,_d),_c in cell.items():
         if str(_nv).startswith(EXT_PREFIX) or _m not in RATE: continue
-        _o=_ban.setdefault(_m,{}).setdefault(_d,{}).setdefault(_nv,{"ads":0.0,"mess":0,"don":0,"doanh_so":0.0,"ds_giao_tc":0.0})
+        _o=_by_market.setdefault(_m,{}).setdefault(_d,{}).setdefault(_nv,{"ads":0.0,"mess":0,"don":0,"doanh_so":0.0,"ds_giao_tc":0.0})
         _o["ads"]+=_c["spend"]; _o["mess"]+=_c["msg"]; _o["don"]+=_c["orders"]
         _o["doanh_so"]+=_c["cod"]/MONEY_DIV[_m]*RATE[_m]; _o["ds_giao_tc"]+=_c["cod_gtc"]/MONEY_DIV[_m]*RATE[_m]
-    for _m in _ban.values():
-        for _ng in _m.values():
-            for _o in _ng.values():
+    for _m in _by_market.values():
+        for _people in _m.values():
+            for _o in _people.values():
                 for _k in ("ads","doanh_so","ds_giao_tc"): _o[_k]=round(_o[_k])
-    _thang_ban=f"{_T.year}-{_T.month:02d}"
+    _report_month=f"{_T.year}-{_T.month:02d}"
     pg.execute("INSERT INTO market_monthly_reports (month, content, written_at) VALUES (%s, %s, now()) "
                "ON CONFLICT (month) DO UPDATE SET content = EXCLUDED.content, written_at = now()",
-               (_thang_ban, Jsonb({"thang":_thang_ban,"ghi_luc":datetime.datetime.utcnow().isoformat()+"Z",
-                                   "khong_gan":UNASSIGNED,"nuoc":_ban})))
-    print(f"BAN NUOC: market_monthly_reports {_thang_ban} ({', '.join(sorted(_ban))})")
+               (_report_month, Jsonb({"thang":_report_month,"ghi_luc":datetime.datetime.utcnow().isoformat()+"Z",
+                                   "khong_gan":UNASSIGNED,"nuoc":_by_market})))
+    print(f"BAN NUOC: market_monthly_reports {_report_month} ({', '.join(sorted(_by_market))})")
 except Exception as _e:
     print(f"CANH BAO: khong ghi duoc so theo nuoc cho bot Zalo: {_e}")
 # ── FILE TEST mỗi marketer (chung mọi thị trường, tab theo page) ──
 # ID từ bộ file của tháng: file có chữ TEST trong tên, người theo thư mục/tên file.
-TESTMAP=dict(BO.get('test') or {})
-for emp in (sorted({k[0] for k in cell_test} | set(TESTMAP)) if GHI_SHEET else []):
+TESTMAP=dict(FILE_SET.get('test') or {})
+for emp in (sorted({k[0] for k in cell_test} | set(TESTMAP)) if WRITE_SHEET else []):
     sub={k:v for k,v in cell_test.items() if k[0]==emp}
     if not sub: continue
     key=TESTMAP.get(emp)
@@ -506,27 +506,27 @@ for emp in (sorted({k[0] for k in cell_test} | set(TESTMAP)) if GHI_SHEET else [
     write_file(key,tabs,month_suffix=True); n+=1
     print(f"[{n}] TEST {emp}: {len(tabs)} tab — https://docs.google.com/spreadsheets/d/{key}")
 print("ALL DONE", n)
-print("NOI NGUON DON: " + " · ".join(f"{k} {v}" for k,v in sorted(DEM_KHOP.items())))
-if DON_TRONG:
-    print("BO DON TRONG (khong san pham, 0 tien — khong tinh vao so don): " + " · ".join(f"{r.shop_label} {r.n}" for r in DON_TRONG))
-if MAT_FILE:
-    print(f"CANH BAO: {len(MAT_FILE)} file rieng KHONG MO DUOC (da xoa han hoac mat quyen) — kiem thu muc 'Tháng {_T.month}' tren Drive.")
-    for _e,_m,_k in MAT_FILE:
+print("NOI NGUON DON: " + " · ".join(f"{k} {v}" for k,v in sorted(MATCH_COUNTS.items())))
+if EMPTY_ORDERS:
+    print("BO DON TRONG (khong san pham, 0 tien — khong tinh vao so don): " + " · ".join(f"{r.shop_label} {r.n}" for r in EMPTY_ORDERS))
+if LOST_FILES:
+    print(f"CANH BAO: {len(LOST_FILES)} file rieng KHONG MO DUOC (da xoa han hoac mat quyen) — kiem thu muc 'Tháng {_T.month}' tren Drive.")
+    for _e,_m,_k in LOST_FILES:
         print(f"    {_e:8s} {_m:10s} {_k}")
-if THIEU_FILE:
-    print(f"CANH BAO: {len(THIEU_FILE)} cap nguoi/nuoc CO SO nhung CHUA CO FILE rieng — so van nam trong TONG TEAM. Tao sheet '<NUOC> T{_T.month}' trong thu muc nguoi do o 'Tháng {_T.month}' — vong sau tu thay.")
-    for _e,_m in THIEU_FILE:
+if MISSING_FILES:
+    print(f"CANH BAO: {len(MISSING_FILES)} cap nguoi/nuoc CO SO nhung CHUA CO FILE rieng — so van nam trong TONG TEAM. Tao sheet '<NUOC> T{_T.month}' trong thu muc nguoi do o 'Tháng {_T.month}' — vong sau tu thay.")
+    for _e,_m in MISSING_FILES:
         print(f"    {_e:8s} {_m:10s}")
-if THIEU_NUOC:
-    _tn=sum(THIEU_NUOC.values())
-    print(f"CANH BAO: {len(THIEU_NUOC)} campaign KHONG GHI NUOC o dau ten — {_tn:,.0f} d dang tinh ve {PRIMARY_MARKET}. Doi ten thanh TW/… SG/… AE/… JP/… de khoi nham nuoc.")
-    for _c,_s in sorted(THIEU_NUOC.items(), key=lambda x:-x[1])[:10]:
+if MISSING_MARKET:
+    _tn=sum(MISSING_MARKET.values())
+    print(f"CANH BAO: {len(MISSING_MARKET)} campaign KHONG GHI NUOC o dau ten — {_tn:,.0f} d dang tinh ve {PRIMARY_MARKET}. Doi ten thanh TW/… SG/… AE/… JP/… de khoi nham nuoc.")
+    for _c,_s in sorted(MISSING_MARKET.items(), key=lambda x:-x[1])[:10]:
         print(f"    {_s:>12,.0f} d | {_c[:90]}")
 if DROPPED:
     _ts=sum(DROPPED.values())
     print(f"CANH BAO: {len(DROPPED)} campaign KHONG VAO BAO CAO — {_ts:,.0f} d bi roi (ten camp sai format/typo thi truong)")
     for _c,_s in sorted(DROPPED.items(), key=lambda x:-x[1])[:10]:
         print(f"    {_s:>12,.0f} d | {_c[:90]}")
-if GHI_SHEET and not GRAND_KEY:
+if WRITE_SHEET and not GRAND_KEY:
     # Dashboard + bot vẫn có số (đọc Postgres) — chỉ là team chưa có file Sheet tháng này để xem.
     print(f"CANH BAO: thu muc 'Tháng {_T.month}' CHUA CO file 'TỔNG TEAM THÁNG {_T.month}' — chua ghi Sheet tong thang nay (dashboard van du so).")

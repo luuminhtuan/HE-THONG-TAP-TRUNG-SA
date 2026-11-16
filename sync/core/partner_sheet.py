@@ -8,7 +8,7 @@ trạng thái giao và tiền COD đối tác thu. Tab Theo dõi vận đơn / S
 Sỹ Anh chia sẻ bảng Singapore 25/09/2026 ("cập nhật vào database cho những lúc cần").
 
 Module này KHÔNG ghi kho số — chỉ đọc Sheet và chuẩn hoá dòng. Ghi là việc của
-talpha_sync.sync_partner_orders() (pg_writer.thay_ca_bang — thay cả bảng trong một transaction).
+talpha_sync.sync_partner_orders() (pg_writer.replace_table — thay cả bảng trong một transaction).
 Cấu hình (sheet nào, tên cột nào) ở config/talpha_rules.json → partner_orders.
 
 Hai cách đọc (05/11/2026): có khoá Google (GOOGLE_APPLICATION_CREDENTIALS) thì đọc bằng Sheets API — bảng
@@ -30,36 +30,36 @@ log = logging.getLogger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
 
-def chuan_tieu_de(s) -> str:
+def normalize_header(s) -> str:
     """'COD Amount (SGD)' → 'cod amount sgd' · 'Mã đơn mới…' → 'ma don moi…' · 'Contact Name(*)' → 'contact name'."""
     s = unicodedata.normalize("NFKD", str(s or "")).replace("đ", "d").replace("Đ", "D")
     s = "".join(ch for ch in s if not unicodedata.combining(ch)).lower()
     return " ".join(re.sub(r"[^a-z0-9]+", " ", s).split())
 
 
-def gan_cot(tieu_de: list, column_map: dict) -> dict:
+def map_columns(headers: list, column_map: dict) -> dict:
     """Tiêu đề → {khoá: chỉ số cột}. Mỗi tiêu đề nhận khoá có bí danh KHỚP DÀI NHẤT —
     'ma don moi cua don di kho hang hoan' phải về return_order_no ('ma don moi') chứ không
     về order_no ('ma don'). Mỗi khoá chỉ lấy cột đầu tiên khớp."""
-    ra = {}
-    for i, td in enumerate(tieu_de):
-        h = chuan_tieu_de(td)
+    result = {}
+    for i, td in enumerate(headers):
+        h = normalize_header(td)
         if not h:
             continue
-        tot, dai = None, -1
-        for khoa, bi_danh in column_map.items():
-            if khoa.startswith("_"):
+        best, best_len = None, -1
+        for key, aliases in column_map.items():
+            if key.startswith("_"):
                 continue
-            for b in bi_danh:
-                b = chuan_tieu_de(b)
-                if b and (h == b or h.startswith(b + " ")) and len(b) > dai:
-                    tot, dai = khoa, len(b)
-        if tot and tot not in ra:
-            ra[tot] = i
-    return ra
+            for b in aliases:
+                b = normalize_header(b)
+                if b and (h == b or h.startswith(b + " ")) and len(b) > best_len:
+                    best, best_len = key, len(b)
+        if best and best not in result:
+            result[best] = i
+    return result
 
 
-def doc_ngay(v):
+def parse_date(v):
     """'14/9/2026' · '18/09/2026' · '2026-09-14' → 'YYYY-MM-DD'; không đọc được → None."""
     s = str(v or "").strip()
     m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
@@ -74,7 +74,7 @@ def doc_ngay(v):
     return None
 
 
-def doc_so(v):
+def parse_number(v):
     """'99' · '1,299' · '1.299,5' · '' → số hoặc None. Sheet vi_VN dùng chấm nghìn, phẩy thập phân."""
     s = re.sub(r"[^\d,.\-]", "", str(v or ""))
     if not s:
@@ -89,32 +89,32 @@ def doc_so(v):
         return None
 
 
-def chuan_dong(values: list, column_map: dict, meta: dict, synced_at: str) -> list:
+def normalize_rows(values: list, column_map: dict, meta: dict, synced_at: str) -> list:
     """values = mảng 2 chiều (dòng 1 là tiêu đề) → list dict theo PARTNER_ORDER_SCHEMA.
     meta = {market, shop_label, sheet_id}. Dòng không có cả mã đơn lẫn mã vận đơn bị bỏ."""
     if not values:
         return []
-    cot = gan_cot(values[0], column_map)
-    thieu = [k for k in ("order_no", "tracking", "cod") if k not in cot]
-    if thieu:
-        raise ValueError(f"bảng {meta.get('sheet_id')} thiếu cột {thieu} — tiêu đề: {values[0]}")
+    columns = map_columns(values[0], column_map)
+    missing = [k for k in ("order_no", "tracking", "cod") if k not in columns]
+    if missing:
+        raise ValueError(f"bảng {meta.get('sheet_id')} thiếu cột {missing} — tiêu đề: {values[0]}")
 
     def o(r, k):
-        i = cot.get(k)
+        i = columns.get(k)
         return str(r[i]).strip() if i is not None and i < len(r) and r[i] is not None else ""
 
     ra = []
-    for so_dong, r in enumerate(values[1:], start=2):
+    for row_no, r in enumerate(values[1:], start=2):
         order_no, tracking = o(r, "order_no"), re.sub(r"\s+", "", o(r, "tracking"))
         if not order_no and not tracking:
             continue
-        qty = doc_so(o(r, "quantity"))
+        qty = parse_number(o(r, "quantity"))
         ra.append({
             "market": meta["market"], "shop_label": meta["shop_label"], "sheet_id": meta["sheet_id"],
-            "row_no": so_dong,
+            "row_no": row_no,
             "marketer": o(r, "marketer"), "recon": o(r, "recon"), "note": o(r, "note"),
             "status": o(r, "status"),
-            "order_date": doc_ngay(o(r, "order_date")), "ship_date": doc_ngay(o(r, "ship_date")),
+            "order_date": parse_date(o(r, "order_date")), "ship_date": parse_date(o(r, "ship_date")),
             "ship_method": o(r, "ship_method"),
             "order_no": order_no, "tracking": tracking,
             "return_order_no": re.sub(r"\s+", "", o(r, "return_order_no")),
@@ -122,13 +122,13 @@ def chuan_dong(values: list, column_map: dict, meta: dict, synced_at: str) -> li
             "contact_name": o(r, "contact_name"), "phone": o(r, "phone"),
             "country": o(r, "country"), "state": o(r, "state"), "city": o(r, "city"),
             "address": o(r, "address"), "postcode": o(r, "postcode"),
-            "cod": doc_so(o(r, "cod")), "currency": o(r, "currency"),
+            "cod": parse_number(o(r, "cod")), "currency": o(r, "currency"),
             "synced_at": synced_at,
         })
     return ra
 
 
-def doc_sheet_cong_khai(sheet_id: str, gid: str = "0") -> list:
+def read_public_sheet(sheet_id: str, gid: str = "0") -> list:
     """Đọc tab qua link xuất CSV, KHÔNG cần khoá — cùng cách dashboard đọc bảng NAZA của Đài. Bảng để
     riêng tư thì Google trả 401 / trang đăng nhập → báo lỗi rõ, không trả bảng rỗng (rỗng là xoá trắng
     partner_orders)."""
@@ -149,12 +149,12 @@ def doc_sheet_cong_khai(sheet_id: str, gid: str = "0") -> list:
     return rows
 
 
-def doc_sheet(sheet_id: str, gid: str = "0") -> list:
+def read_sheet(sheet_id: str, gid: str = "0") -> list:
     """Đọc cả tab (theo gid). Có khoá Google thì đọc bằng tài khoản dịch vụ trong
     GOOGLE_APPLICATION_CREDENTIALS (bảng CHIA SẺ quyền Người xem cho email tài khoản đó, không cần công
     khai); không có khoá thì đọc qua link công khai (doc_sheet_cong_khai)."""
     if not os.path.isfile(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") or ""):
-        return doc_sheet_cong_khai(sheet_id, gid)
+        return read_public_sheet(sheet_id, gid)
     import google.auth
     from google.auth.transport.requests import AuthorizedSession
 
@@ -164,9 +164,9 @@ def doc_sheet(sheet_id: str, gid: str = "0") -> list:
     meta = s.get(base, params={"fields": "sheets.properties(title,sheetId)"}, timeout=60)
     meta.raise_for_status()
     tabs = {str(t["properties"]["sheetId"]): t["properties"]["title"] for t in meta.json().get("sheets", [])}
-    ten = tabs.get(str(gid))
-    if ten is None:
+    tab_title = tabs.get(str(gid))
+    if tab_title is None:
         raise ValueError(f"bảng {sheet_id} không có tab gid={gid} (có: {tabs})")
-    r = s.get(f"{base}/values/'{ten}'!A1:AZ", params={"valueRenderOption": "FORMATTED_VALUE"}, timeout=60)
+    r = s.get(f"{base}/values/'{tab_title}'!A1:AZ", params={"valueRenderOption": "FORMATTED_VALUE"}, timeout=60)
     r.raise_for_status()
     return r.json().get("values", [])

@@ -23,10 +23,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 # Hai ô chỉ có trong file phủ: mã trên tên campaign, team phụ trách — đổ vào chỗ của chúng trong
 # luật gốc (market_aliases + camp_market_tokens, access.teams), không nằm trong khối nước.
-CHI_O_FILE_PHU = ("tokens", "team")
+OVERRIDE_ONLY_FIELDS = ("tokens", "team")
 
 
-def _doc_file_phu(p: str):
+def _read_override_file(p: str):
     """File phủ của test (TALPHA_THI_TRUONG). Không có file = chưa ai nhập."""
     if not os.path.isfile(p):
         return None
@@ -38,72 +38,72 @@ def _doc_file_phu(p: str):
         return None
 
 
-def doc_phu_tu_kho(conn) -> dict:
+def read_market_overrides_from_db(conn) -> dict:
     """{"markets": {nước: khối}} từ bảng market_overrides — cùng dạng file phủ cũ."""
     rows = conn.execute("SELECT market_key, settings FROM market_overrides ORDER BY market_key").fetchall()
     return {"markets": {k: v for k, v in rows}}
 
 
-def doc_phu(repo=None):
+def load_market_overrides(repo=None):
     """Phần phủ, hoặc None nếu chưa ai nhập. Kho lỗi thì KÊU và bỏ qua — không được làm sập cả
     vòng sync (chạy bằng luật gốc, và dòng cảnh báo nằm trong log của vòng đó)."""
-    tep = os.environ.get("TALPHA_THI_TRUONG")
-    if tep:
-        return _doc_file_phu(tep)
+    path = os.environ.get("TALPHA_THI_TRUONG")
+    if path:
+        return _read_override_file(path)
     if not (os.environ.get("DATABASE_URL") or "").strip():
         return None
     try:
-        from sync.core.pg import ket_noi
-        with ket_noi() as conn:
-            phu = doc_phu_tu_kho(conn)
+        from sync.core.pg import get_connection
+        with get_connection() as conn:
+            overrides = read_market_overrides_from_db(conn)
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  không đọc được market_overrides ({e}) — bỏ qua thị trường nhập trên trang", file=sys.stderr)
         return None
-    return phu if phu["markets"] else None
+    return overrides if overrides["markets"] else None
 
 
-def phu_luat(luat: dict, phu) -> dict:
+def apply_market_overrides(rules: dict, phu) -> dict:
     """Phủ file thị trường lên luật gốc. Không sửa `luat` truyền vào.
 
     Mỗi nước: ô trong file phủ đè ô cùng tên của bản gốc, ô không nhắc tới giữ nguyên. Mã campaign
     đang thuộc nước KHÁC không bị giành — chi tiêu nước đó không được nhảy sang nước mới. Nước có
     `team` thì chỉ nằm ở đúng team đó."""
-    out = copy.deepcopy(luat)
+    out = copy.deepcopy(rules)
     markets = out.setdefault("markets", {})
     aliases = out.setdefault("market_aliases", {})
     tokens = out.setdefault("camp_market_tokens", [])
     teams = (out.get("access") or {}).get("teams") or {}
-    for key, khoi in ((phu or {}).get("markets") or {}).items():
-        if key.startswith("_") or not isinstance(khoi, dict):
+    for key, settings in ((phu or {}).get("markets") or {}).items():
+        if key.startswith("_") or not isinstance(settings, dict):
             continue
-        moi = dict(markets[key]) if isinstance(markets.get(key), dict) else {}
-        moi.update({k: v for k, v in khoi.items() if k not in CHI_O_FILE_PHU})
-        markets[key] = moi
+        merged = dict(markets[key]) if isinstance(markets.get(key), dict) else {}
+        merged.update({k: v for k, v in settings.items() if k not in OVERRIDE_ONLY_FIELDS})
+        markets[key] = merged
 
-        for t in khoi.get("tokens") or []:
+        for t in settings.get("tokens") or []:
             T = str(t).strip().upper()
             if not T:
                 continue
-            cua = aliases.get(T)
-            if cua and cua != key:
+            owner = aliases.get(T)
+            if owner and owner != key:
                 continue
             aliases[T] = key
             if T not in tokens:
                 tokens.append(T)
 
-        team = khoi.get("team")
+        team = settings.get("team")
         if isinstance(team, str) and isinstance(teams.get(team), dict):
-            for tk, t in teams.items():
+            for team_name, t in teams.items():
                 if not isinstance(t, dict):
                     continue
                 ds = t["markets"] if isinstance(t.get("markets"), list) else []
-                t["markets"] = (ds if key in ds else ds + [key]) if tk == team else [m for m in ds if m != key]
+                t["markets"] = (ds if key in ds else ds + [key]) if team_name == team else [m for m in ds if m != key]
     return out
 
 
-def doc_luat(duong_goc=None, repo=None) -> dict:
+def load_rules(base_path=None, repo=None) -> dict:
     """talpha_rules.json (mặc định của repo) ĐÃ phủ thị trường nhập trên trang."""
-    goc = duong_goc or str(Path(repo or REPO) / "config" / "talpha_rules.json")
-    with open(goc, encoding="utf-8") as fh:
+    rules_path = base_path or str(Path(repo or REPO) / "config" / "talpha_rules.json")
+    with open(rules_path, encoding="utf-8") as fh:
         luat = json.load(fh)
-    return phu_luat(luat, doc_phu(repo))
+    return apply_market_overrides(luat, load_market_overrides(repo))

@@ -13,7 +13,7 @@ import talpha_paths
 REPO = talpha_paths.repo_dir()
 sys.path.insert(0, REPO)
 # FIX 29/06: KHÔNG ghi đè cứng key trong ~/Desktop (launchd thiếu Full Disk Access -> PermissionError).
-talpha_paths.dat_moi_truong()
+talpha_paths.setup_runtime_env()
 # FIX 06/07: BỎ DROP bảng trước fetch. Trước đây DROP xong mới fetch → fetch chết giữa
 # chừng (SA reset page 11 / Tiểu Alpha timeout+rate-limit) = mất trắng dữ liệu → Sheet
 # sai đơn & spend hàng loạt. Giờ sync ghi WRITE_TRUNCATE atomic: chỉ thay bảng KHI fetch
@@ -21,12 +21,12 @@ talpha_paths.dat_moi_truong()
 import sync.talpha.talpha_sync as ts
 print("sync code =", ts.__file__)
 # Chốt hạ: nạp nhầm bản khác thì DỪNG NGAY, đừng ghi vào kho số bằng code lạ.
-_mong_doi = os.path.join(REPO, "sync", "talpha", "talpha_sync.py")
-if os.path.realpath(ts.__file__) != os.path.realpath(_mong_doi):
+_expected = os.path.join(REPO, "sync", "talpha", "talpha_sync.py")
+if os.path.realpath(ts.__file__) != os.path.realpath(_expected):
     sys.exit(
         "DỪNG: đang nạp engine sync ở %s, đáng lẽ phải là %s.\n"
         "Kiểm TALPHA_REPO và PYTHONPATH — chỉ được phép có MỘT bản engine."
-        % (ts.__file__, _mong_doi)
+        % (ts.__file__, _expected)
     )
 today=datetime.date.today(); first=today.replace(day=1)
 # X1 (04/08): cửa sổ theo NGÀY TẠO đơn, không còn Smart Stop theo updated_at.

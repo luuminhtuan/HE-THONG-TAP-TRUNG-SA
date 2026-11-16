@@ -12,39 +12,39 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sync.core.pg_writer import chon_don_can_ghi  # noqa: E402
+from sync.core.pg_writer import select_orders_to_upsert  # noqa: E402
 
 
-def don(id_, updated, page="", seller=""):
+def order(id_, updated, page="", seller=""):
     return {"shop_id": "1022091930", "id": id_, "updated_at": updated, "page_name": page, "seller_name": seller}
 
 
 KNOWN = {"1022091930|1": "2026-09-10T01:00", "1022091930|2": "2026-09-10T01:00"}
 
 
-def test_luat_cu_chi_noi_don_moi_hoac_doi_trang_thai():
-    ds = [don("1", "2026-09-10T01:00", "Page A"), don("2", "2026-09-12T01:00", "Page B"), don("3", "2026-09-12T01:00")]
-    assert [o["id"] for o in chon_don_can_ghi(ds, KNOWN)] == ["2", "3"]
+def test_old_rule_appends_only_new_or_status_changed():
+    ds = [order("1", "2026-09-10T01:00", "Page A"), order("2", "2026-09-12T01:00", "Page B"), order("3", "2026-09-12T01:00")]
+    assert [o["id"] for o in select_orders_to_upsert(ds, KNOWN)] == ["2", "3"]
 
 
-def test_bang_chua_co_cot_moi_thi_noi_lai_ca_cua_so():
-    ds = [don("1", "2026-09-10T01:00", "Page A"), don("2", "2026-09-10T01:00")]
-    assert [o["id"] for o in chon_don_can_ghi(ds, KNOWN, thieu_cot=True)] == ["1", "2"]
+def test_table_missing_new_column_reappends_whole_window():
+    ds = [order("1", "2026-09-10T01:00", "Page A"), order("2", "2026-09-10T01:00")]
+    assert [o["id"] for o in select_orders_to_upsert(ds, KNOWN, missing_columns=True)] == ["1", "2"]
 
 
-def test_bang_dang_trong_cot_ma_pos_da_co_thi_dien_nguoc():
-    trong = {"page_name": {"1022091930|1", "1022091930|2"}, "seller_name": set()}
-    ds = [don("1", "2026-09-10T01:00", "Page A"), don("2", "2026-09-10T01:00", "")]
+def test_blank_column_with_pos_value_is_backfilled():
+    empty_keys = {"page_name": {"1022091930|1", "1022091930|2"}, "seller_name": set()}
+    ds = [order("1", "2026-09-10T01:00", "Page A"), order("2", "2026-09-10T01:00", "")]
     # đơn 2: POS cũng trống tên page → không nối lại vô ích mỗi giờ
-    assert [o["id"] for o in chon_don_can_ghi(ds, KNOWN, trong=trong)] == ["1"]
+    assert [o["id"] for o in select_orders_to_upsert(ds, KNOWN, empty_keys=empty_keys)] == ["1"]
 
 
-def test_da_dien_roi_thi_thoi():
-    ds = [don("1", "2026-09-10T01:00", "Page A", "Thương Thương")]
-    assert chon_don_can_ghi(ds, KNOWN, trong={"page_name": set(), "seller_name": set()}) == []
+def test_already_backfilled_does_nothing():
+    ds = [order("1", "2026-09-10T01:00", "Page A", "Thương Thương")]
+    assert select_orders_to_upsert(ds, KNOWN, empty_keys={"page_name": set(), "seller_name": set()}) == []
 
 
-def test_sale_duoc_gan_sau_cung_duoc_dien():
-    ds = [don("1", "2026-09-10T01:00", "Page A", "Chun Ho")]
+def test_seller_assigned_later_also_backfilled():
+    ds = [order("1", "2026-09-10T01:00", "Page A", "Chun Ho")]
     trong = {"page_name": set(), "seller_name": {"1022091930|1"}}
-    assert [o["id"] for o in chon_don_can_ghi(ds, KNOWN, trong=trong)] == ["1"]
+    assert [o["id"] for o in select_orders_to_upsert(ds, KNOWN, empty_keys=trong)] == ["1"]

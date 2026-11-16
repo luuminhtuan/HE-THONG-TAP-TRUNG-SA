@@ -24,13 +24,13 @@ paths:
   `sync/core/thi_truong.py`. Luật phủ chạy chung fixture `tests/fixtures/thi_truong_phu.json` với
   bản TS (`lib/talpha/market-config.ts`) và bot (`ops/zalo-alerts/thi_truong.js`) — sửa thì sửa cả ba.
 - Khoá kết nối (token Meta, key POS…) nằm MÃ HOÁ trong bảng `api_credentials`: gọi
-  `nap_khoa_vao_env()` (`sync/core/credentials.py`) lúc bắt đầu, đừng tự đọc file `.env`.
+  `load_credentials_to_env()` (`sync/core/credentials.py`) lúc bắt đầu, đừng tự đọc file `.env`.
 
 ## Ghi kho số
 
 - Nối Postgres qua `sync/core/pg.py`. Ghi bảng hai tầng qua `sync/core/pg_writer.py`: raw chỉ thêm,
   bảng sạch dựng lại trong một transaction. Cấm `DELETE` / `DROP` / `TRUNCATE` lên bảng dữ liệu.
-- Việc nền mới trong Docker chạy qua `chay_va_ghi()` của `ops/docker/lich.py` để nó hiện lên đèn
+- Việc nền mới trong Docker chạy qua `run_and_log()` của `ops/docker/lich.py` để nó hiện lên đèn
   "Cập nhật lúc…" (bảng `job_runs`).
 
 ## Cấu trúc file

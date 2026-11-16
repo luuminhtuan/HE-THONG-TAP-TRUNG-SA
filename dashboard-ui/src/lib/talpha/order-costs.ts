@@ -183,7 +183,7 @@ export async function computeOrderCosts(from: string, to: string, shopFilter?: (
                 FROM sale_order
                 WHERE ngay_theo_mui(inserted_at, @tz) BETWEEN @from::date AND @to::date
                   AND status_category NOT IN ('HUY', 'DON_THO')
-                  -- Đơn trống (0 sản phẩm, 0 tiền) — Sheet không đếm (sql_la_don_trong).
+                  -- Đơn trống (0 sản phẩm, 0 tiền) — Sheet không đếm (sql_is_empty_order).
                   -- total_quantity là chuỗi: không phải số thì coi như 0 (như SAFE_CAST cũ).
                   AND NOT (COALESCE(CASE WHEN total_quantity ~ '^[[:space:]]*[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?[[:space:]]*$'
                                          THEN total_quantity::float8 END, 0) = 0

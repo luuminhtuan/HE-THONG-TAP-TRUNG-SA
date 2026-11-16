@@ -16,12 +16,12 @@ daily_guarded.sh) để biết mà gỡ khỏi config/projects/talpha.yaml.
 """
 
 
-def tach_tk_loi(failed, so_tk):
+def split_failed_accounts(failed, account_count):
     """Chia TKQC fetch hỏng thành (bo_qua, chan).
 
     failed — [{"name", "id", "mat_quyen"}].
     so_tk  — số TKQC cả vòng (kể cả TK đọc được).
     """
-    if failed and len(failed) >= so_tk:
+    if failed and len(failed) >= account_count:
         return [], list(failed)
     return list(failed), []

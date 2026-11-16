@@ -60,7 +60,7 @@ paths:
 - Dashboard đọc qua `lib/db.ts`: `query(sql, { ten })`, tham số viết `@ten`.
 - Câu SQL dựng ở trình duyệt hoặc do AI viết (`/api/query`, Hỏi AI) chạy bằng vai **CHỈ ĐỌC**
   (`queryChiDoc`, migration 0003) — đừng chạy chúng bằng `query()`.
-- Python nối kho qua `sync/core/pg.py` (`ket_noi()`).
+- Python nối kho qua `sync/core/pg.py` (`get_connection()`).
 
 ## 6. Chẩn đoán số sai
 

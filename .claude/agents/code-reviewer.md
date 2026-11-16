@@ -48,7 +48,7 @@ trước khi review. Lỗi làm số sai hoặc mất dữ liệu quan trọng h
 - [ ] Route API mới đã khai trong `API_RULES` (`lib/talpha/access-rules.ts`).
 - [ ] Route gộp nhiều nước tự lọc theo `getAccess()`.
 - [ ] SQL do trình duyệt / AI viết chạy bằng `queryChiDoc` (vai chỉ đọc), không bằng `query()`.
-- [ ] Khoá đọc qua `docKhoa()` (TS) / `nap_khoa_vao_env()` (Python) — không đọc `process.env` thẳng cho khoá,
+- [ ] Khoá đọc qua `docKhoa()` (TS) / `load_credentials_to_env()` (Python) — không đọc `process.env` thẳng cho khoá,
       không in khoá ra log, không commit `.env*`, `bigquery_key.json`, `data/`.
 
 ### Cấu trúc và quy ước (🟢)

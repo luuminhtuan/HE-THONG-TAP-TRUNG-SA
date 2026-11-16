@@ -41,7 +41,7 @@ DRIVE_API = 'https://www.googleapis.com/drive/v3/files'
 
 # ─── Tháng nào đang chạy ───────────────────────────────────────────────────────────────────
 
-def hom_nay_vn(now=None):
+def today_vn(now=None):
     """Ngày hôm nay theo giờ VIỆT NAM. Máy chủ để giờ UTC: dùng date.today() là 00:00–07:00 sáng
     ngày 1 vẫn còn tháng cũ, rồi 07:00 mới lật — đúng lúc 16 file tháng 9 bị ghi đè 01/10/2026."""
     if now is not None:
@@ -51,20 +51,20 @@ def hom_nay_vn(now=None):
     return datetime.datetime.now(ZoneInfo(TZ_VN)).date()
 
 
-def ngay_chot(thang_env=None, now=None):
+def report_end_date(month_override=None, now=None):
     """Ngày CUỐI của khoảng báo cáo: tháng hiện tại → hôm nay; tháng đã qua → ngày cuối tháng đó.
 
     thang_env: "YYYY-MM" (biến TALPHA_REPORT_MONTH) — dựng lại một tháng cũ, ví dụ khôi phục
     file tháng 9 sau khi bị ghi đè. Tháng tương lai thì báo lỗi, không đoán.
     """
-    hom_nay = hom_nay_vn(now)
-    if not thang_env:
-        return hom_nay
-    y, m = (int(x) for x in thang_env.strip().split('-'))
-    if (y, m) > (hom_nay.year, hom_nay.month):
-        raise ValueError(f'TALPHA_REPORT_MONTH={thang_env} là tháng chưa tới')
-    if (y, m) == (hom_nay.year, hom_nay.month):
-        return hom_nay
+    today = today_vn(now)
+    if not month_override:
+        return today
+    y, m = (int(x) for x in month_override.strip().split('-'))
+    if (y, m) > (today.year, today.month):
+        raise ValueError(f'TALPHA_REPORT_MONTH={month_override} là tháng chưa tới')
+    if (y, m) == (today.year, today.month):
+        return today
     return datetime.date(y, m, calendar.monthrange(y, m)[1])
 
 
@@ -86,15 +86,15 @@ MKT.update({norm(m): m for m in ALLM})
 # So theo TỪ nguyên vẹn chứ không theo chuỗi con: "ANH" không được khớp nhầm vào "THANH".
 NV = {}
 for _key, _v in RULES['marketers'].items():
-    _ten = _v.get('display') or ''
-    for _cum in (_key, _ten, _v.get('full'), _ten.split()[-1] if _ten else None):
-        if _cum:
-            NV.setdefault(norm(_cum), _key)
-NV_DAI_TRUOC = sorted(NV, key=lambda c: -len(c.split()))   # cụm dài khớp trước cụm ngắn
+    _display = _v.get('display') or ''
+    for _phrase in (_key, _display, _v.get('full'), _display.split()[-1] if _display else None):
+        if _phrase:
+            NV.setdefault(norm(_phrase), _key)
+NV_LONGEST_FIRST = sorted(NV, key=lambda c: -len(c.split()))   # cụm dài khớp trước cụm ngắn
 
 
-def _co_cum(cum, text):
-    t, c = norm(text).split(), cum.split()
+def _has_phrase(phrase, text):
+    t, c = norm(text).split(), phrase.split()
     # "THÁNG 10" bỏ dấu thành "THANG 10" — trùng tên Thắng. Chữ tháng + số thì bỏ khỏi phần dò người.
     t = [x for i, x in enumerate(t) if not (x == 'THANG' and i + 1 < len(t) and t[i + 1].isdigit())]
     return any(t[i:i + len(c)] == c for i in range(len(t) - len(c) + 1))
@@ -102,8 +102,8 @@ def _co_cum(cum, text):
 
 def find_nv(*texts):
     for t in texts:
-        for cum in NV_DAI_TRUOC:
-            if _co_cum(cum, t):
+        for cum in NV_LONGEST_FIRST:
+            if _has_phrase(cum, t):
                 return NV[cum]
     return None
 
@@ -116,24 +116,24 @@ def find_mkt(*texts):
     return None
 
 
-def la_thu_muc_thang(ten, y, m):
+def is_month_folder(folder_name, y, m):
     """'Tháng 10' · 'THÁNG 10' · 'Tháng 10/2026' · 'Tháng 10 - 2026' đều là tháng 10.
     Có ghi năm thì năm phải khớp; không ghi năm thì coi là năm đang chạy."""
-    t = norm(ten).split()
+    t = norm(folder_name).split()
     if len(t) < 2 or t[0] != 'THANG' or not t[1].isdigit() or int(t[1]) != m:
         return False
-    nam = [x for x in t[2:] if x.isdigit() and len(x) == 4]
-    return not nam or int(nam[0]) == y
+    years = [x for x in t[2:] if x.isdigit() and len(x) == 4]
+    return not years or int(years[0]) == y
 
 
-def phan_loai(items):
+def classify_files(items):
     """items: [(file {id,name,mimeType}, đường dẫn thư mục tuple)] → bộ file + danh sách lỗi.
 
     Trả (bo, excel, la): bo = {"grand", "files", "test"}; excel = file .xlsx (job không ghi
     được); la = (file, ngữ cảnh, lý do) không xếp được.
     """
-    bo = {'grand': None, 'files': {m: {} for m in ALLM}, 'test': {}}
-    excel, la = [], []
+    file_set = {'grand': None, 'files': {m: {} for m in ALLM}, 'test': {}}
+    excel, unclassified = [], []
     for f, path in items:
         name, ctx = f['name'], ' / '.join(path)
         if f['mimeType'] in EXCEL_MIME:
@@ -146,30 +146,30 @@ def phan_loai(items):
         u = norm(name)
         if 'TEST' in u.split():
             if not nv:
-                la.append((f, ctx, 'file test nhưng không rõ người'))
-            elif nv in bo['test']:
-                la.append((f, ctx, f'TRÙNG — file test của {nv} đã nhận {bo["test"][nv]}'))
+                unclassified.append((f, ctx, 'file test nhưng không rõ người'))
+            elif nv in file_set['test']:
+                unclassified.append((f, ctx, f'TRÙNG — file test của {nv} đã nhận {file_set["test"][nv]}'))
             else:
-                bo['test'][nv] = f['id']
+                file_set['test'][nv] = f['id']
         elif 'TONG TEAM' in u:
-            if bo['grand']:
-                la.append((f, ctx, f'TRÙNG — đã có file TỔNG TEAM {bo["grand"]}'))
+            if file_set['grand']:
+                unclassified.append((f, ctx, f'TRÙNG — đã có file TỔNG TEAM {file_set["grand"]}'))
             else:
-                bo['grand'] = f['id']
+                file_set['grand'] = f['id']
         elif nv and mkt:
-            if nv in bo['files'][mkt]:
-                la.append((f, ctx, f'TRÙNG — {nv}/{mkt} đã nhận file {bo["files"][mkt][nv]}'))
+            if nv in file_set['files'][mkt]:
+                unclassified.append((f, ctx, f'TRÙNG — {nv}/{mkt} đã nhận file {file_set["files"][mkt][nv]}'))
             else:
-                bo['files'][mkt][nv] = f['id']
+                file_set['files'][mkt][nv] = f['id']
         else:
-            thieu = ' và '.join(x for x, co in (('người', nv), ('nước', mkt)) if not co)
-            la.append((f, ctx, f'không rõ {thieu}'))
-    return bo, excel, la
+            missing = ' và '.join(x for x, found in (('người', nv), ('nước', mkt)) if not found)
+            unclassified.append((f, ctx, f'không rõ {missing}'))
+    return file_set, excel, unclassified
 
 
 # ─── Drive ────────────────────────────────────────────────────────────────────────────────
 
-def ds_con(sess, fid):
+def list_children(sess, fid):
     """Mọi thứ nằm NGAY trong một thư mục (không đệ quy)."""
     out, page = [], None
     while True:
@@ -189,75 +189,75 @@ def ds_con(sess, fid):
 
 def walk(sess, fid, path=()):
     """Trả về (file, đường dẫn thư mục) cho mọi bảng tính, đệ quy vào thư mục con."""
-    for f in ds_con(sess, fid):
+    for f in list_children(sess, fid):
         if f['mimeType'] == FOLDER_MIME:
             yield from walk(sess, f['id'], path + (f['name'],))
         elif f['mimeType'] == SHEET_MIME or f['mimeType'] in EXCEL_MIME:
             yield f, path
 
 
-def phien_drive(key):
+def drive_session(key):
     from google.oauth2.service_account import Credentials
     from google.auth.transport.requests import AuthorizedSession
     return AuthorizedSession(Credentials.from_service_account_file(
         key, scopes=['https://www.googleapis.com/auth/drive.readonly']))
 
 
-def tim_thu_muc_thang(sess, root, y, m):
+def find_month_folder(sess, root, y, m):
     """ID thư mục "Tháng m" nằm ngay trong thư mục gốc. Không thấy → None (chưa tạo hoặc chưa
     share thư mục gốc cho service account)."""
-    ung_vien = [f for f in ds_con(sess, root) if f['mimeType'] == FOLDER_MIME and la_thu_muc_thang(f['name'], y, m)]
-    if not ung_vien:
+    candidates = [f for f in list_children(sess, root) if f['mimeType'] == FOLDER_MIME and is_month_folder(f['name'], y, m)]
+    if not candidates:
         return None
     # Hai thư mục cùng là tháng m: ưu tiên cái ghi rõ năm.
-    ung_vien.sort(key=lambda f: str(y) not in f['name'])
-    return ung_vien[0]['id']
+    candidates.sort(key=lambda f: str(y) not in f['name'])
+    return candidates[0]['id']
 
 
 # ─── Bộ file của một tháng ──────────────────────────────────────────────────────────────────
 
-def _co_file(bo):
+def _has_files(bo):
     return bool(bo and (bo.get('grand') or any(bo.get('files', {}).values()) or bo.get('test')))
 
 
-def bo_file_thang(y, m, *, here, cache_dir, key=None, log=print, sess=None):
+def get_month_file_set(y, m, *, here, cache_dir, key=None, log=print, sess=None):
     """Bộ file của tháng y-m + nguồn (chuỗi để in log). Không có → (None, lý do)."""
-    tk = f'{y}-{m:02d}'
-    khai_tay = os.path.join(here, 'report_files', f'{tk}.json')
-    if os.path.exists(khai_tay):
-        with open(khai_tay, encoding='utf-8') as fh:
+    month_key = f'{y}-{m:02d}'
+    manual_path = os.path.join(here, 'report_files', f'{month_key}.json')
+    if os.path.exists(manual_path):
+        with open(manual_path, encoding='utf-8') as fh:
             bo = json.load(fh)
         bo.setdefault('files', {})
         bo.setdefault('test', {})
-        return bo, f'khai tay ở report_files/{tk}.json'
+        return bo, f'khai tay ở report_files/{month_key}.json'
 
     root = (RULES.get('report_drive') or {}).get('root_folder_id')
-    nho = os.path.join(cache_dir, f'{tk}.json')
+    cache_path = os.path.join(cache_dir, f'{month_key}.json')
     if not root:
         return None, 'talpha_rules.json chưa khai report_drive.root_folder_id'
     try:
-        sess = sess or phien_drive(key)
-        thu_muc = tim_thu_muc_thang(sess, root, y, m)
-        if not thu_muc:
+        sess = sess or drive_session(key)
+        folder_id = find_month_folder(sess, root, y, m)
+        if not folder_id:
             return None, (f'không thấy thư mục "Tháng {m}" trong thư mục gốc {root} — chưa tạo, hoặc '
                           'thư mục gốc chưa share Editor cho service account')
-        bo, excel, la = phan_loai(list(walk(sess, thu_muc)))
+        bo, excel, la = classify_files(list(walk(sess, folder_id)))
         for f, ctx in excel:
             log(f'CANH BAO: file Excel (.xlsx) không ghi được — {f["name"]} [{ctx}]: mở file → File → Save as Google Sheets')
         for f, ctx, why in la:
             log(f'CANH BAO: không xếp được {f["name"]} [{ctx}] ← {why}')
-        if not _co_file(bo):
-            return None, f'thư mục "Tháng {m}" ({thu_muc}) chưa có Google Sheet nào'
+        if not _has_files(bo):
+            return None, f'thư mục "Tháng {m}" ({folder_id}) chưa có Google Sheet nào'
         try:
             os.makedirs(cache_dir, exist_ok=True)
-            with open(nho, 'w', encoding='utf-8') as fh:
-                json.dump({**bo, '_thu_muc': thu_muc}, fh, ensure_ascii=False, indent=1)
+            with open(cache_path, 'w', encoding='utf-8') as fh:
+                json.dump({**bo, '_thu_muc': folder_id}, fh, ensure_ascii=False, indent=1)
         except OSError as e:
-            log(f'(không lưu được bản nhớ {nho}: {e})')
-        return bo, f'Drive thư mục "Tháng {m}" ({thu_muc})'
+            log(f'(không lưu được bản nhớ {cache_path}: {e})')
+        return bo, f'Drive thư mục "Tháng {m}" ({folder_id})'
     except Exception as e:  # mạng / Drive API lỗi — dùng bản nhớ CỦA CHÍNH THÁNG ĐÓ nếu có
-        if os.path.exists(nho):
-            with open(nho, encoding='utf-8') as fh:
+        if os.path.exists(cache_path):
+            with open(cache_path, encoding='utf-8') as fh:
                 bo = json.load(fh)
-            return bo, f'bản nhớ {nho} (Drive lỗi: {e})'
-        return None, f'Drive lỗi và chưa có bản nhớ tháng {tk}: {e}'
+            return bo, f'bản nhớ {cache_path} (Drive lỗi: {e})'
+        return None, f'Drive lỗi và chưa có bản nhớ tháng {month_key}: {e}'
