@@ -1,124 +1,22 @@
 "use client";
 
-import { Fragment, useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import axios from "axios";
 import {
-    RotateCw, Satellite, Layers, AlertTriangle, ChevronDown, ChevronRight, Check, Zap,
+    RotateCw, Satellite, Layers, AlertTriangle, ChevronDown, Check, Zap,
     Target, TrendingUp, Wallet, ShoppingCart, Package, Coins, MessageSquare,
     ArrowUpRight, ArrowDownRight, Megaphone, FileSpreadsheet,
 } from "lucide-react";
 import { formatVNDCompact, cn } from "@/components/talpha/utils";
 import { useAccess } from "@/components/talpha/access-context";
+import { ROAS_GOOD, todayStr, DATE_PRESETS } from "./_components/constants";
+import { KpiCard } from "./_components/ui";
+import type { RealtimeCampaign, RealtimeData } from "./_components/types";
+import { AccountCampaigns } from "./_components/account-campaigns";
+import { UnmatchedOrders } from "./_components/unmatched-orders";
 
-// ── constants ──
-const ROAS_GOOD = 2.5;
 // Tên TKQC KHÔNG hard-code ở đây — đọc từ response /api/talpha/realtime
 // (route đọc talpha.yaml → ad_account_names, nguồn duy nhất).
-
-// ── small UI helpers (style only — no business logic) ──
-type Accent = "slate" | "purple" | "blue" | "emerald" | "amber" | "indigo" | "cyan" | "rose";
-const ACCENT: Record<Accent, { ring: string; text: string; chip: string; glow: string; bar: string }> = {
-    slate:   { ring: "border-slate-600/60",  text: "text-slate-100",   chip: "bg-slate-500/15 text-slate-300",   glow: "from-slate-500/10",   bar: "bg-slate-400" },
-    purple:  { ring: "border-purple-500/40", text: "text-purple-300",  chip: "bg-purple-500/15 text-purple-300", glow: "from-purple-500/15",  bar: "bg-purple-400" },
-    blue:    { ring: "border-blue-500/40",   text: "text-blue-300",    chip: "bg-blue-500/15 text-blue-300",     glow: "from-blue-500/15",    bar: "bg-blue-400" },
-    emerald: { ring: "border-emerald-500/40",text: "text-emerald-300", chip: "bg-emerald-500/15 text-emerald-300",glow: "from-emerald-500/15", bar: "bg-emerald-400" },
-    amber:   { ring: "border-amber-500/40",  text: "text-amber-300",   chip: "bg-amber-500/15 text-amber-300",   glow: "from-amber-500/15",   bar: "bg-amber-400" },
-    indigo:  { ring: "border-indigo-500/40", text: "text-indigo-300",  chip: "bg-indigo-500/15 text-indigo-300", glow: "from-indigo-500/15",  bar: "bg-indigo-400" },
-    cyan:    { ring: "border-cyan-500/40",   text: "text-cyan-300",    chip: "bg-cyan-500/15 text-cyan-300",     glow: "from-cyan-500/15",    bar: "bg-cyan-400" },
-    rose:    { ring: "border-rose-500/40",   text: "text-rose-300",    chip: "bg-rose-500/15 text-rose-300",     glow: "from-rose-500/15",    bar: "bg-rose-400" },
-};
-
-function KpiCard({ icon: Icon, label, value, sub, accent, valueClass }: {
-    icon: any; label: string; value: string; sub?: React.ReactNode; accent: Accent; valueClass?: string;
-}) {
-    const a = ACCENT[accent];
-    return (
-        <div className={cn(
-            "relative overflow-hidden rounded-2xl border bg-[#1B1A17]/80 p-3.5 transition-all duration-200",
-            "hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/40", a.ring
-        )}>
-            <div className={cn("pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full bg-gradient-to-b to-transparent blur-2xl", a.glow)} />
-            <div className="relative flex items-start justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
-                <span className={cn("grid h-7 w-7 place-items-center rounded-lg", a.chip)}><Icon className="h-3.5 w-3.5" /></span>
-            </div>
-            <div className={cn("relative mt-1.5 font-mono text-2xl font-extrabold tabular-nums", valueClass || a.text)}>{value}</div>
-            {sub && <div className="relative mt-0.5 text-[10px] text-slate-500">{sub}</div>}
-        </div>
-    );
-}
-
-function roasTone(roas: number) {
-    if (roas >= ROAS_GOOD) return "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
-    if (roas > 1) return "bg-amber-500/15 text-amber-300 border-amber-500/30";
-    if (roas > 0) return "bg-rose-500/15 text-rose-300 border-rose-500/30";
-    return "bg-slate-700/40 text-slate-500 border-slate-700";
-}
-
-function Pill({ children, className }: { children: React.ReactNode; className?: string }) {
-    return <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold", className)}>{children}</span>;
-}
-
-// ── types ──
-interface AdDetail {
-    ad_id: string; ad_name: string; adset_name: string;
-    spend_vnd: number; impressions: number; cpm_vnd: number; cpc_vnd: number; ctr: number;
-    messages: number; purchases: number; orders: number; revenue_vnd: number; roas: number;
-}
-
-interface RealtimeCampaign {
-    account_id: string; account_name: string; campaign_id: string; campaign_name: string;
-    spend_vnd: number; impressions: number; cpm_vnd: number; ctr: number;
-    messages: number; purchases: number; orders: number; revenue_vnd: number; roas: number;
-    ads_count: number; ads: AdDetail[];
-    /** "pancake" = nước Meta không báo tin nhắn (Nhật): mess đếm ở hộp thư Pancake của page. */
-    mess_nguon?: string;
-}
-
-interface Summary {
-    total_spend_vnd: number; total_revenue_vnd: number; total_orders: number;
-    total_messages: number; matched_orders: number; unmatched_orders: number;
-    /** Phần mess đếm ở Pancake (Nhật) — null khi không có camp nước đó. */
-    mess_pancake?: { nuoc: string[]; tong: number; ok: boolean } | null;
-    total_pos_orders: number; total_meta_purchases: number; blended_roas: number;
-    matched_via_adid?: number; matched_via_fallback?: number; unmatched_ambiguous?: number;
-    accounts_fetched: number; shops_fetched: number;
-    matched_revenue_vnd: number; unmatched_revenue_vnd: number;
-    // GTC thật (giao thành công) — rule báo cáo Sheet, thay ước lượng 65%
-    delivered_revenue_vnd: number; delivered_orders: number; delivered_roas: number;
-}
-
-interface RealtimeData {
-    source: string; fetched_at: string; duration_ms: number;
-    warnings?: string[]; // cảnh báo cap phân trang từ route (Meta 10 trang / POS 200 trang)
-    accounts?: { id: string; name: string }[]; // 14 TKQC từ talpha.yaml (qua realtime route)
-    summary: Summary; campaigns: RealtimeCampaign[]; unmatched_orders: any[];
-    unmatched_by_shop: Record<string, { count: number; revenue_vnd: number }>;
-    unmatched_by_reason?: Record<string, { count: number; revenue_vnd: number }>;
-}
-
-// Nhãn tiếng Việt cho lý do đơn CHƯA MAP được vào campaign
-const UNMATCH_REASON_LABEL: Record<string, string> = {
-    khong_ad_id: "Không có ad_id & không khớp fallback",
-    trung_nhieu_campaign: "Trùng ≥2 campaign (không đoán)",
-    marketer_ngoai_team: "Marketer ngoài team",
-    thieu_page_id: "Đơn thiếu page_id",
-    thieu_thi_truong: "Thiếu thị trường",
-    khong_co_campaign_khop: "Không campaign nào khớp khoá",
-};
-
-// ── date helpers (ad account timezone +4 = Asia/Dubai) ──
-const AD_TZ = 'Asia/Dubai';
-function todayStr() { return new Date().toLocaleDateString('sv-SE', { timeZone: AD_TZ }); }
-function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); return d.toLocaleDateString('sv-SE', { timeZone: AD_TZ }); }
-const DATE_PRESETS: { label: string; from: () => string; to: () => string }[] = [
-    { label: "Hôm nay", from: todayStr, to: todayStr },
-    { label: "Hôm qua", from: () => daysAgo(1), to: () => daysAgo(1) },
-    { label: "3 ngày", from: () => daysAgo(2), to: todayStr },
-    { label: "7 ngày", from: () => daysAgo(6), to: todayStr },
-    { label: "14 ngày", from: () => daysAgo(13), to: todayStr },
-    { label: "30 ngày", from: () => daysAgo(29), to: todayStr },
-];
 
 export default function TALPHAAdsCommandCenterPage() {
     const [data, setData] = useState<RealtimeData | null>(null);
@@ -463,173 +361,15 @@ export default function TALPHAAdsCommandCenterPage() {
                         <div className="text-sm">Không có campaign nào trong khoảng thời gian này</div>
                     </div>
                 ) : (
-                    Object.entries(grouped).map(([accId, accCampaigns]) => {
-                        const accSpend = accCampaigns.reduce((s, c) => s + c.spend_vnd, 0);
-                        const accRevenue = accCampaigns.reduce((s, c) => s + c.revenue_vnd, 0);
-                        const accOrders = accCampaigns.reduce((s, c) => s + c.orders, 0);
-                        const accPurchases = accCampaigns.reduce((s, c) => s + c.purchases, 0);
-                        const accRoas = accSpend > 0 ? accRevenue / accSpend : 0;
-
-                        return (
-                            <div key={accId} className="overflow-hidden rounded-2xl border border-white/10 bg-[#1B1A17]/80 shadow-xl shadow-black/30">
-                                {/* Account header */}
-                                <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-gradient-to-r from-[#201E19] to-[#1B1A17] px-4 py-2.5">
-                                    <div className="flex items-center gap-3">
-                                        <div className="h-8 w-1.5 rounded-full bg-gradient-to-b from-amber-400 to-orange-500" />
-                                        <div>
-                                            <h2 className="text-sm font-bold uppercase tracking-wider text-white">{getAccountName(accId)}</h2>
-                                            <div className="font-mono text-[9px] text-slate-500">{accId}</div>
-                                        </div>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                        <Pill className="bg-white/5 text-slate-300"><Megaphone className="h-3 w-3" />{accCampaigns.length} camp</Pill>
-                                        <Pill className="bg-slate-500/15 text-slate-200"><Wallet className="h-3 w-3" />{formatVNDCompact(accSpend)}</Pill>
-                                        {accPurchases > 0 && <Pill className="bg-purple-500/15 text-purple-300"><ShoppingCart className="h-3 w-3" />{accPurchases}</Pill>}
-                                        {accOrders > 0 && <Pill className="bg-blue-500/15 text-blue-300"><Package className="h-3 w-3" />{accOrders}</Pill>}
-                                        {accRevenue > 0 && <Pill className="bg-emerald-500/15 text-emerald-300"><Coins className="h-3 w-3" />{formatVNDCompact(accRevenue)}</Pill>}
-                                        <Pill className={cn("border", roasTone(accRoas))}><TrendingUp className="h-3 w-3" />{accRoas.toFixed(2)}x</Pill>
-                                    </div>
-                                </div>
-
-                                {/* Campaign table */}
-                                <div className="max-h-[600px] overflow-auto">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="sticky top-0 z-10 bg-[#16140F]/95 text-[10px] font-semibold uppercase text-slate-400 backdrop-blur">
-                                            <tr>
-                                                <th className="w-6 px-2 py-2.5"></th>
-                                                <th className="px-2 py-2.5">Campaign</th>
-                                                <th className="px-2 py-2.5 text-right">Spend (₫)</th>
-                                                <th className="px-2 py-2.5 text-right">CPM / CTR</th>
-                                                <th className="px-2 py-2.5 text-right">MSG</th>
-                                                <th className="px-2 py-2.5 text-right text-indigo-300">CPA MSG</th>
-                                                <th className="px-2 py-2.5 text-right text-purple-300">🛒 META</th>
-                                                <th className="px-2 py-2.5 text-right text-blue-300">📦 POS</th>
-                                                <th className="px-2 py-2.5 text-right text-emerald-300" title="Doanh số ĐẶT (mọi đơn) — không phải GTC">💰 DS đặt</th>
-                                                <th className="px-2 py-2.5 text-right text-emerald-300" title="ROAS blended = DS đặt ÷ spend — không so trực tiếp với ROAS GTC của các tab đọc kho số">📈 ROAS</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {accCampaigns.map(c => {
-                                                const isExpanded = expandedCampaign === c.campaign_id;
-                                                // Khoá đặt ở Fragment bọc ngoài — đặt ở <tr> bên trong thì React vẫn
-                                                // báo thiếu key cho từng phần tử của danh sách.
-                                                return (
-                                                    <Fragment key={c.campaign_id}>
-                                                        {/* Campaign row */}
-                                                        <tr
-                                                            onClick={() => toggleCampaign(c.campaign_id)}
-                                                            className={cn("group cursor-pointer border-t border-white/5 transition",
-                                                                isExpanded ? "bg-amber-500/5" : "odd:bg-white/[0.015] hover:bg-white/5")}>
-                                                            <td className="px-2 py-2.5 text-slate-500">
-                                                                {isExpanded
-                                                                    ? <ChevronDown className="h-3.5 w-3.5 text-amber-400" />
-                                                                    : <ChevronRight className="h-3.5 w-3.5 group-hover:text-amber-400" />}
-                                                            </td>
-                                                            <td className="px-2 py-2.5">
-                                                                <div className="max-w-[280px] whitespace-normal text-xs font-medium leading-tight text-white">{c.campaign_name}</div>
-                                                                <div className="mt-0.5 text-[9px] text-slate-500">{c.ads_count} ads</div>
-                                                            </td>
-                                                            <td className="px-2 py-2.5 text-right font-mono text-xs text-slate-200">{formatVNDCompact(c.spend_vnd)}</td>
-                                                            <td className="px-2 py-2.5 text-right font-mono text-[10px]">
-                                                                <div className="text-slate-400">CPM {formatVNDCompact(c.cpm_vnd)}</div>
-                                                                <div className="text-indigo-400">CTR {c.ctr.toFixed(2)}%</div>
-                                                            </td>
-                                                            <td className="px-2 py-2.5 text-right font-mono text-xs text-indigo-400"
-                                                                title={c.mess_nguon === "pancake" ? "Meta không báo tin nhắn ở Nhật — số này đếm hội thoại mới trên Pancake của page ghi trong tên camp" : undefined}>
-                                                                {c.messages || 0}{c.mess_nguon === "pancake" ? <span className="ml-0.5 text-[9px] text-amber-400">P</span> : null}
-                                                            </td>
-                                                            <td className="px-2 py-2.5 text-right font-mono text-xs text-indigo-300">
-                                                                {c.messages > 0 ? formatVNDCompact(c.spend_vnd / c.messages) : '-'}
-                                                            </td>
-                                                            <td className={cn("px-2 py-2.5 text-right font-mono font-bold", c.purchases > 0 ? 'text-purple-400' : 'text-slate-600')}>{c.purchases || 0}</td>
-                                                            <td className={cn("px-2 py-2.5 text-right font-mono font-bold", c.orders > 0 ? 'text-blue-400' : 'text-slate-600')}>{c.orders}</td>
-                                                            <td className={cn("px-2 py-2.5 text-right font-mono text-xs", c.revenue_vnd > 0 ? 'font-bold text-emerald-400' : 'text-slate-600')}>
-                                                                {c.revenue_vnd > 0 ? formatVNDCompact(c.revenue_vnd) : '-'}
-                                                            </td>
-                                                            <td className="px-2 py-2.5 text-right">
-                                                                {c.roas > 0
-                                                                    ? <span className={cn("inline-block rounded-md border px-1.5 py-0.5 font-mono text-[11px] font-bold", roasTone(c.roas))}>{c.roas.toFixed(2)}</span>
-                                                                    : <span className="text-slate-600">-</span>}
-                                                            </td>
-                                                        </tr>
-
-                                                        {/* Expanded ads detail */}
-                                                        {isExpanded && c.ads.map((ad: AdDetail) => (
-                                                            <tr key={ad.ad_id} className="border-l-2 border-amber-500/40 bg-[#0F0E0B]/80">
-                                                                <td className="px-2 py-1.5"></td>
-                                                                <td className="px-2 py-1.5 pl-6">
-                                                                    <div className="max-w-[260px] whitespace-normal text-[10px] leading-tight text-slate-300">{ad.ad_name}</div>
-                                                                    <div className="text-[9px] text-slate-600">{ad.adset_name} • {ad.ad_id}</div>
-                                                                </td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-[10px] text-slate-400">{formatVNDCompact(ad.spend_vnd)}</td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-[9px]">
-                                                                    <div className="text-slate-500">CPM {formatVNDCompact(ad.cpm_vnd)}</div>
-                                                                    <div className="text-indigo-400/70">CTR {ad.ctr.toFixed(2)}%</div>
-                                                                </td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-[10px] text-indigo-400/70">{ad.messages || 0}</td>
-                                                                <td className="px-2 py-1.5 text-right font-mono text-[10px] text-indigo-300/70">
-                                                                    {ad.messages > 0 ? formatVNDCompact(ad.spend_vnd / ad.messages) : '-'}
-                                                                </td>
-                                                                <td className={cn("px-2 py-1.5 text-right font-mono text-[10px]", ad.purchases > 0 ? 'text-purple-400' : 'text-slate-600')}>{ad.purchases || 0}</td>
-                                                                <td className={cn("px-2 py-1.5 text-right font-mono text-[10px]", ad.orders > 0 ? 'font-bold text-blue-400' : 'text-slate-600')}>{ad.orders}</td>
-                                                                <td className={cn("px-2 py-1.5 text-right font-mono text-[10px]", ad.revenue_vnd > 0 ? 'text-emerald-400' : 'text-slate-600')}>
-                                                                    {ad.revenue_vnd > 0 ? formatVNDCompact(ad.revenue_vnd) : '-'}
-                                                                </td>
-                                                                <td className={cn("px-2 py-1.5 text-right font-mono text-[10px]",
-                                                                    ad.roas >= ROAS_GOOD ? 'text-emerald-400' : ad.roas > 0 ? 'text-rose-400' : 'text-slate-600')}>
-                                                                    {ad.roas > 0 ? ad.roas.toFixed(2) : '-'}
-                                                                </td>
-                                                            </tr>
-                                                        ))}
-                                                    </Fragment>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        );
-                    })
+                    Object.entries(grouped).map(([accId, accCampaigns]) => (
+                        <AccountCampaigns key={accId} accId={accId} accCampaigns={accCampaigns} getAccountName={getAccountName}
+                            expandedCampaign={expandedCampaign} toggleCampaign={toggleCampaign} />
+                    ))
                 )}
 
                 {/* Unmatched Orders */}
                 {data && data.unmatched_by_shop && Object.keys(data.unmatched_by_shop).length > 0 && (
-                    <div className="rounded-2xl border border-white/10 bg-[#1B1A17]/80 p-3">
-                        <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold text-amber-400">
-                            <AlertTriangle className="h-3.5 w-3.5" />
-                            Đơn CHƯA MAP được (không gán bừa) — {data.summary.unmatched_orders} đơn • {formatVNDCompact(data.summary.unmatched_revenue_vnd)}
-                        </h3>
-
-                        {/* Lý do chưa map — để soi, không đoán */}
-                        {data.unmatched_by_reason && Object.keys(data.unmatched_by_reason).length > 0 && (
-                            <div className="mb-3">
-                                <div className="mb-1 text-[10px] font-bold uppercase text-slate-500">Lý do</div>
-                                <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-3">
-                                    {Object.entries(data.unmatched_by_reason)
-                                        .sort(([, a], [, b]) => b.count - a.count)
-                                        .map(([reason, info]) => (
-                                            <div key={reason} className="rounded-xl border border-amber-500/20 bg-amber-500/[0.04] p-2.5">
-                                                <div className="text-[11px] font-semibold text-amber-200">{UNMATCH_REASON_LABEL[reason] || reason}</div>
-                                                <div className="mt-0.5 text-[10px] text-slate-400">{info.count} đơn • {formatVNDCompact(info.revenue_vnd)}</div>
-                                            </div>
-                                        ))}
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="mb-1 text-[10px] font-bold uppercase text-slate-500">Theo thị trường</div>
-                        <div className="grid grid-cols-3 gap-2 text-xs md:grid-cols-6">
-                            {Object.entries(data.unmatched_by_shop)
-                                .sort(([, a], [, b]) => b.revenue_vnd - a.revenue_vnd)
-                                .map(([shop, info]) => (
-                                    <div key={shop} className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 transition hover:border-amber-500/30">
-                                        <div className="text-xs font-bold text-white">{shop}</div>
-                                        <div className="font-mono text-sm font-bold text-emerald-400">{formatVNDCompact(info.revenue_vnd)}</div>
-                                        <div className="text-[10px] text-slate-500">{info.count} đơn</div>
-                                    </div>
-                                ))}
-                        </div>
-                    </div>
+                    <UnmatchedOrders data={data} />
                 )}
             </main>
         </div>

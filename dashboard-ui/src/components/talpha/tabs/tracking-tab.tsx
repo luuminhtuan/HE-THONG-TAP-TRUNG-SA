@@ -7,134 +7,13 @@ import TabSkeleton, { ErrorState } from "@/components/ui/tab-skeleton";
 import { useUrlParam } from "../url-state";
 import { formatNumber, cn } from "../utils";
 import WaLink from "@/components/talpha/wa-link";
+import type { Shipment, Alert, LastSync } from "./tracking/types";
+import { getPickupCode, buildPickupMessage } from "./tracking/pickup-message";
+import { STATUS_VI, LEVEL_STYLE } from "./tracking/status-styles";
+import { Stat } from "./tracking/stat";
+import { ShipmentTable } from "./tracking/shipment-table";
 
 interface Props { dateRange?: { from: Date; to: Date }; projectId?: string }
-
-type Shipment = {
-    tracking: string; order_uid: string | null; order_id: string; order_date: string | null;
-    customer: string; phone: string; marketer: string | null; sale: string | null;
-    cod_local: number; status: string | null; sub_status: string | null;
-    status_since: string | null; last_event_time: string | null; last_event: string | null;
-    registered: boolean;
-    source?: "doi_tac" | "17track" | "weship" | null;
-    raw_status?: string | null;
-    store_name?: string; store_code?: string; ship_method?: string;
-    /** Mã khách đọc khi lấy hàng = mã tracking (máy chủ tính, xem maLayHang). */
-    pickup_code?: string | null;
-    track17_code?: string | null;
-    city?: string | null; fail_count?: number | null;
-    /** Link WhatsApp kèm tin xác nhận đơn, dựng ở máy chủ — chỉ UAE (29/09/2026); còn lại null. */
-    wa?: string | null;
-};
-type Alert = {
-    level: "gap" | "canh_bao" | "nhac";
-    code: string; title: string; detail: string; days: number | null; shipment: Shipment;
-    /** Còn mấy ngày là bị trả về (API tính, âm = quá hạn) — chỉ đơn đang ở cửa hàng. */
-    days_left?: number | null;
-};
-
-/** Mã khách đọc cho nhân viên cửa hàng = mã TRACKING, không phải store_code (mã cửa
- *  hàng — sai tới 30/09/2026). Máy chủ tính sẵn pickup_code; thiếu thì tự tính y hệt. */
-const getPickupCode = (s: Shipment) =>
-    String(s.pickup_code || s.track17_code || s.tracking || "").trim().replace(/^73N/i, "");
-
-/** Tên cửa hàng cho người không đọc tiếng Trung: thêm chuỗi (7-ELEVEN / FamilyMart)
- *  theo kênh giao, trừ khi tên đã có sẵn ("全家新城康樂店"). */
-function storeDisplayName(s: Shipment): string {
-    const name = String(s.store_name || "");
-    const channel = String(s.ship_method || "");
-    const chain = /7.?ELEVEN|7-11|711/i.test(channel) ? "7-ELEVEN" : /FAMILY|全家/i.test(channel) ? "FamilyMart" : "";
-    return chain && !/全家|7-?11|ELEVEN|FAMILY/i.test(name) ? `${chain} ${name}` : name;
-}
-
-/**
- * Tin báo khách ra lấy hàng — TIẾNG ANH để gửi khách, kèm bản TIẾNG VIỆT cho sale đọc
- * hiểu. CÙNG CÂU CHỮ với bot Zalo (ops/zalo-alerts/shipment_alerts.js → tinKhachDai).
- *
- * Sale không phải tự gõ — gõ tay mỗi ngày vài chục tin là vừa chậm vừa sai tên cửa
- * hàng. Chỉ điền được khi có tên cửa hàng; thiếu thì trả null chứ KHÔNG soạn tin cụt,
- * vì tin thiếu chỗ lấy hàng thì khách đọc xong vẫn không biết đi đâu.
- *
- * Sỹ Anh chốt 30/09 → 01/10/2026:
- *  • tiếng Anh (khách Đài phần lớn là lao động Philippines/Indonesia/Việt), không nhắc
- *    chuẩn bị tiền;
- *  • lần đầu — nhẹ nhàng, nói hàng ĐÃ TỚI được mấy ngày (đếm xuôi), không nói còn
- *    mấy ngày (khách thấy còn nhiều ngày thì thong thả rồi quên);
- *  • nhắc lại — khách đã được nhắn mà chưa lấy: gấp hơn, mai/hôm nay là ngày cuối
- *    thì nói thẳng. Bot biết chắc ai đã nhắn (sổ nhắc); ở đây không có sổ nên dùng
- *    đúng luật dự phòng của bot: hàng nằm từ 2 ngày trở lên = đã nhắn lúc mới tới.
- */
-function buildPickupMessage(s: Shipment, timing: { ngay: number | null; conLai: number | null }, lang: "en" | "vi" = "en"): string | null {
-    if (!s.store_name) return null;
-    const vi = lang === "vi";
-    const name = s.customer || (vi ? "bạn" : "there");
-    const pickupCode = getPickupCode(s);
-    const place = `${storeDisplayName(s)}${pickupCode ? (vi ? ` (mã lấy hàng ${pickupCode})` : ` (pickup code ${pickupCode})`) : ""}`;
-    const { ngay: days, conLai: daysLeft } = timing;
-    const isLastDay = daysLeft != null && daysLeft <= 0;
-    const daysText = (n: number) => (vi ? `${n} ngày` : `${n} day${n === 1 ? "" : "s"}`);
-    if (days != null && days >= 2) {
-        if (vi) {
-            const overdueText = `hàng của bạn đã nằm ở cửa hàng ${place} ${daysText(days)} rồi mà vẫn chưa được lấy!`;
-            const deadlineText = isLastDay ? "Hôm nay là NGÀY CUỐI để lấy hàng — hôm nay không lấy là hàng bị trả về. Bạn nhớ ghé lấy ngay trong hôm nay nhé!"
-                : daysLeft === 1 ? "Mai là ngày cuối để lấy hàng, quá hạn hàng sẽ bị trả về. Bạn ghé lấy sớm nhất có thể nhé!"
-                    : "Cửa hàng chỉ giữ hàng thêm vài ngày nữa là trả về. Bạn ghé lấy sớm nhất có thể nhé!";
-            return `Chào ${name}, nhắc bạn lần nữa: ${overdueText} ${deadlineText} Có gì thắc mắc bạn cứ nhắn lại cho shop nhé. Cảm ơn bạn!`;
-        }
-        const overdueText = `your parcel has been waiting at ${place} for ${daysText(days)} and hasn't been picked up yet!`;
-        const deadlineText = isLastDay ? "Today is the LAST DAY to pick it up — if it's not collected today, it will be returned. Please make sure to pick it up today!"
-            : daysLeft === 1 ? "Tomorrow is the last day to pick it up, after that it will be returned. Please pick it up as soon as possible!"
-                : "The store will only keep it for a few more days before sending it back. Please pick it up as soon as possible!";
-        return `Hi ${name}, this is another reminder: ${overdueText} ${deadlineText} If you have any questions, just reply to this message. Thank you!`;
-    }
-    if (vi) {
-        const arrivedText = days ? `hàng của bạn đã tới cửa hàng ${place} được ${daysText(days)} rồi`
-            : days === 0 ? `hàng của bạn đã tới cửa hàng ${place} hôm nay` : `hàng của bạn đã tới cửa hàng ${place}`;
-        const deadlineText = isLastDay ? "Hôm nay là ngày cuối để lấy hàng, phiền bạn ghé cửa hàng lấy trong hôm nay nhé, không thì hàng sẽ bị trả về."
-            : "Phiền bạn tranh thủ ghé cửa hàng lấy nhé, quá hạn hàng sẽ bị trả về.";
-        return `Chào ${name}, ${arrivedText}. ${deadlineText} Cảm ơn bạn!`;
-    }
-    const arrivedText = days ? `your parcel arrived at ${place} ${daysText(days)} ago`
-        : days === 0 ? `your parcel arrived at ${place} today` : `your parcel has arrived at ${place}`;
-    const deadlineText = isLastDay ? "Today is the last day to pick it up, so please drop by the store today — otherwise it will be returned."
-        : "Please drop by the store to pick it up when you can — if it's not picked up in time, it will be returned.";
-    return `Hi ${name}, ${arrivedText}. ${deadlineText} Thank you!`;
-}
-
-const STATUS_VI: Record<string, string> = {
-    NotFound: "Chưa có thông tin", InfoReceived: "Đã tạo vận đơn", InTransit: "Đang vận chuyển",
-    Expired: "Quá hạn theo dõi", AvailableForPickup: "Đã tới cửa hàng", OutForDelivery: "Đang giao",
-    DeliveryFailure: "Giao hỏng", Delivered: "Đã giao", Exception: "Sự cố",
-    // Ba trạng thái chỉ file đối tác mới có:
-    Returned: "Đã hoàn về kho", Cancelled: "Đã huỷ", Destroyed: "Đã tiêu huỷ",
-};
-const STATUS_STYLE: Record<string, string> = {
-    AvailableForPickup: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400",
-    Delivered: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400",
-    DeliveryFailure: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400",
-    Exception: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400",
-    InTransit: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400",
-    OutForDelivery: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400",
-    Returned: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400",
-    Cancelled: "bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-400",
-    Destroyed: "bg-slate-200 text-slate-700 dark:bg-slate-500/25 dark:text-slate-300",
-};
-const LEVEL_STYLE = {
-    gap: { bar: "bg-rose-500", chip: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400", label: "Gấp" },
-    canh_bao: { bar: "bg-amber-500", chip: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400", label: "Cảnh báo" },
-    nhac: { bar: "bg-slate-300 dark:bg-slate-600", chip: "bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-400", label: "Nhắc" },
-} as const;
-
-type LastSync = {
-    at: string; ok: boolean; error?: string;
-    registered?: number; checked?: number; quota_out?: boolean;
-    /** Số mã 17TRACK từ chối đăng ký ở lượt cuối (Sagawa — Nhật, 13/10/2026). */
-    register_rejected?: number;
-    /** Lượt tra WeShip (UAE): số mã đem tra, trang báo không có, lỗi. */
-    targets?: number; not_found?: number; failed?: number;
-    quota?: { total: number; used: number; remain: number } | null;
-    keys?: { label: string; ok: boolean; error?: string }[];
-};
 
 export default function TALPHATrackingTab({ dateRange }: Props) {
     const [loading, setLoading] = useState(true);
@@ -547,55 +426,7 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                     </div>
                 </>
             ) : (
-                <div className="rounded-xl border border-border bg-card shadow-sm">
-                    <div className="max-h-[560px] overflow-auto">
-                        <table className="w-full min-w-[880px] text-sm">
-                            <thead className="sticky top-0 bg-card">
-                                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-                                    <th className="px-3 py-2.5 text-left font-medium">Mã đơn</th>
-                                    <th className="px-3 py-2.5 text-left font-medium">Vận đơn</th>
-                                    <th className="px-3 py-2.5 text-left font-medium">Trạng thái</th>
-                                    <th className="px-3 py-2.5 text-right font-medium">COD</th>
-                                    <th className="px-3 py-2.5 text-left font-medium">Khách</th>
-                                    <th className="px-3 py-2.5 text-left font-medium">Sale</th>
-                                    <th className="px-3 py-2.5 text-left font-medium">Nguồn</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {/* Mới nhất lên đầu (15/11/2026): ngày lên đơn, cùng ngày mã đơn lớn trước. */}
-                                {[...shipments].sort((a, b) => String(b.order_date || "").localeCompare(String(a.order_date || ""))
-                                    || String(b.order_id).localeCompare(String(a.order_id), "vi", { numeric: true })).map((s) => (
-                                    // Khoá = mã đơn + mã vận đơn: một mã vận đơn có thể nằm ở hai đơn (lỗi bảng đối tác).
-                                    <tr key={`${s.order_id}|${s.tracking}`} className="border-b border-border/40 last:border-0 hover:bg-muted/40">
-                                        <td className="px-3 py-2 font-mono text-xs">{s.order_id}</td>
-                                        <td className="px-3 py-2 font-mono text-xs text-muted-foreground">{s.tracking}</td>
-                                        <td className="px-3 py-2">
-                                            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium",
-                                                STATUS_STYLE[s.status || ""] || "bg-slate-100 text-slate-600 dark:bg-slate-500/15 dark:text-slate-400")}>
-                                                {STATUS_VI[s.status || ""] || (s.raw_status ? `“${s.raw_status}”` : s.registered ? "chưa có tin" : "chưa đăng ký")}
-                                            </span>
-                                        </td>
-                                        <td className="px-3 py-2 text-right font-mono tabular-nums">{s.cod_local ? money(s.cod_local) : "—"}</td>
-                                        <td className="px-3 py-2">
-                                            <div className="max-w-[160px] truncate">{s.customer || "—"}</div>
-                                            <div className="text-xs text-muted-foreground">{s.phone}</div>
-                                            {s.wa && <WaLink href={s.wa} className="mt-1" />}
-                                        </td>
-                                        <td className={cn("px-3 py-2", !s.sale && "text-muted-foreground")}>{s.sale || "—"}</td>
-                                        <td className="px-3 py-2 text-xs text-muted-foreground">
-                                            {s.source === "17track" ? "17TRACK" : s.source === "weship" ? "WeShip" : s.source === "doi_tac" ? "file đối tác" : posSource ? "POS" : "—"}
-                                        </td>
-                                    </tr>
-                                ))}
-                                {!shipments.length && (
-                                    <tr><td colSpan={7} className="px-3 py-10 text-center text-muted-foreground">
-                                        Không có đơn nào có mã vận đơn trong kỳ này.
-                                    </td></tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <ShipmentTable shipments={shipments} money={money} posSource={posSource} />
             )}
 
             {provider === "weship" ? (
@@ -613,22 +444,6 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                 sửa ở <span className="font-mono">talpha_rules.json → tracking.pickup_expire_days</span> nếu hãng vận chuyển quy định khác.
             </p>
             )}
-        </div>
-    );
-}
-
-function Stat({ icon, label, value, sub, tone }: {
-    icon: React.ReactNode; label: string; value: string; sub?: string; tone?: "warn" | "bad";
-}) {
-    return (
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-            <div className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-muted-foreground">
-                {icon}{label}
-            </div>
-            <div className={cn("mt-1 text-2xl font-semibold tabular-nums",
-                tone === "warn" && "text-amber-600 dark:text-amber-400",
-                tone === "bad" && "text-rose-600 dark:text-rose-400")}>{value}</div>
-            {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
         </div>
     );
 }

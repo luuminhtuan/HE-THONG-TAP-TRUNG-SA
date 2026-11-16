@@ -1,19 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Upload, Download, Send, Trash2, AlertTriangle, CheckCircle2, FileSpreadsheet, Database } from "lucide-react";
+import { Upload, Download, Send, Trash2, AlertTriangle, CheckCircle2, FileSpreadsheet } from "lucide-react";
 import TabSkeleton, { ErrorState } from "@/components/ui/tab-skeleton";
 import { cn } from "../utils";
-import { VND as baseVND, d6 } from "./ledger-shared";
-
-/**
- * In tiền, nhưng CHẶN số vô lý.
- * Đọc dính hai cột số trong PDF là ra 2,9 × 10^48 đồng; in nguyên dãy đó ra
- * thì vỡ layout mà người đọc vẫn tưởng là tiền. Nói thẳng nó là số đọc sai.
- */
-const ABSURD_AMOUNT_THRESHOLD = 1e12;
-const VND = (n: number | null | undefined) =>
-    n != null && Math.abs(n) >= ABSURD_AMOUNT_THRESHOLD ? "số đọc sai" : baseVND(Number(n || 0));
+import { d6 } from "./ledger-shared";
+import { VND, API, mergeFiles, SEV_BOX } from "./ads-recon/shared";
+import { ResultTable } from "./ads-recon/result-table";
+import { StorePanel } from "./ads-recon/store-panel";
+import { ConclusionCard } from "./ads-recon/conclusion-card";
+import type { Result, FileMeta, StoreSource, ImportStats, PeriodMeta } from "./ads-recon/types";
 
 /* ═══════════════════════════════════════════════════════════════════
    ĐỐI SOÁT CHI PHÍ QUẢNG CÁO — việc của mỗi tuần khi có 2 file.
@@ -24,63 +20,6 @@ const VND = (n: number | null | undefined) =>
 
    Đối soát COD ở tab kia là tiền VỀ. Màn này là tiền RA.
    ═══════════════════════════════════════════════════════════════════ */
-
-type Sev = "critical" | "warn" | "info";
-type Alert = { code: string; severity: Sev; title: string; detail: string; hint: string; amount: number; count?: number };
-type FbRow = { line: number; file?: string; date: string; amount: number; card4: string | null; txn_id: string; account_id: string; account_name: string; status: string };
-type BankRow = { line: number; file?: string; date: string; amount: number; card4: string | null; desc: string; ref: string; balance: number | null };
-type Pair = {
-    fb: FbRow; bank: BankRow; date_diff: number; amount_diff: number;
-    exact: boolean; ambiguous: boolean; card_ok: boolean; confidence: "cao" | "vua" | "thap";
-};
-type Summary = {
-    fb_total: number; bank_total: number; fee_total: number; gap: number; at_risk: number;
-    counts: { critical: number; warn: number; info: number };
-    so_dong_canh_bao?: number;
-    ket_luan?: Conclusion;
-    period: { bank_start?: string; bank_end?: string; fb_start?: string; fb_end?: string };
-};
-type Result = {
-    ky: string; chay_luc: string; summary: Summary;
-    stats: { matched: number; fb_chargeable: number; ambiguous: number };
-    alerts: Alert[]; pairs: Pair[];
-    fb_unmatched: FbRow[]; bank_unmatched: BankRow[]; fb_failed: FbRow[]; other_ads: BankRow[];
-    files?: { fb?: FileMeta[]; bank?: FileMeta[] };
-    nguon?: StoreSource[];
-    nap?: ImportStats;
-    kho?: { fb: number; bank: number };
-    tkqc_ten?: Record<string, string>;
-    chua_du?: boolean;
-    thieu?: string;
-};
-type FileMeta = { ten: string; sheet?: string; so_dong: number };
-type StoreSource = { ten: string; phia: "fb" | "bank"; so_dong: number; tien: number; tu: string | null; den: string | null; tkqc: string[] };
-type ImportStats = { fb: { them: number; trung: number }; bank: { them: number; trung: number } };
-type Conclusion = {
-    muc: "khong_tin" | "co_van_de" | "can_xem" | "sach";
-    tieu_de: string; giai_thich: string;
-    viec: { code: string; title: string; hint: string }[];
-};
-type PeriodMeta = { ky: string; chay_luc: string; summary?: Summary };
-
-const API = "/api/talpha/ads-recon";
-
-/** Thêm file vào ô, bỏ bản trùng ngay tại chỗ — chọn lại lần hai không nhân đôi. */
-function mergeFiles(cur: File[], incoming: File[]): File[] {
-    const existing = new Set(cur.map((f) => f.name + ":" + f.size));
-    return [...cur, ...incoming.filter((f) => !existing.has(f.name + ":" + f.size))];
-}
-
-const SEV_BOX: Record<Sev, string> = {
-    critical: "border-l-rose-500 bg-rose-50/70 dark:bg-rose-500/[0.07]",
-    warn: "border-l-amber-400 bg-amber-50/60 dark:bg-amber-500/[0.06]",
-    info: "border-l-slate-300 bg-slate-50/70 dark:border-l-slate-600 dark:bg-white/[0.03]",
-};
-const CONF: Record<string, string> = {
-    cao: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
-    vua: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
-    thap: "bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-300",
-};
 
 export default function TALPHAAdsReconTab() {
     const [loading, setLoading] = useState(true);
@@ -362,54 +301,7 @@ export default function TALPHAAdsReconTab() {
                 toán của Facebook là của ĐÚNG MỘT tài khoản, nên nhìn cột TKQC
                 là biết ngay còn thiếu bản kê của ai.                        */}
             {store && store.nguon.length > 0 && (
-                <div className="rounded-xl border border-border bg-card p-4 dark:bg-white/[0.03]">
-                    <div className="mb-3 flex flex-wrap items-center gap-3">
-                        <h3 className="flex items-center gap-2 text-sm font-semibold">
-                            <Database className="h-4 w-4 text-muted-foreground" /> Kho dữ liệu
-                        </h3>
-                        <span className="text-xs text-muted-foreground">
-                            {store.kho.fb} dòng chi phí TKQC · {store.kho.bank} dòng sao kê · giữ lại giữa các lần tải
-                        </span>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead className="border-b border-border">
-                                <tr>{["File", "Phía", "Tài khoản quảng cáo", "Số dòng", "Số tiền", "Khoảng ngày", ""]
-                                    .map((h) => <th key={h} className={TH}>{h}</th>)}</tr>
-                            </thead>
-                            <tbody>
-                                {store.nguon.map((n) => (
-                                    <tr key={n.phia + n.ten} className="border-b border-border/60">
-                                        <td className="px-3 py-2 min-w-[220px] font-medium">{n.ten}</td>
-                                        <td className={TD}>
-                                            <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                                                n.phia === "fb" ? "bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300"
-                                                                : "bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300")}>
-                                                {n.phia === "fb" ? "TKQC" : "Sao kê"}
-                                            </span>
-                                        </td>
-                                        <td className="px-3 py-2 min-w-[160px]">
-                                            {n.tkqc.length
-                                                ? n.tkqc.map((t) => adAccountNames[t.replace(/^act_/, "")] || t).join(", ")
-                                                : <span className="text-muted-foreground">—</span>}
-                                        </td>
-                                        <td className={cn(TD, "text-right tabular-nums")}>{n.so_dong}</td>
-                                        <td className={cn(TD, "text-right tabular-nums")}>{VND(n.tien)}</td>
-                                        <td className={cn(TD, "text-muted-foreground")}>{d6(n.tu)} → {d6(n.den)}</td>
-                                        <td className={TD}>
-                                            <button
-                                                onClick={() => removeSource(n.ten)}
-                                                className="text-muted-foreground hover:text-rose-600" title="Rút file này khỏi kho"
-                                            >
-                                                <Trash2 className="h-3.5 w-3.5" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <StorePanel store={store} adAccountNames={adAccountNames} onRemove={removeSource} />
             )}
 
             {!res && (
@@ -459,41 +351,7 @@ export default function TALPHAAdsReconTab() {
                         Câu hỏi thật sự mỗi tuần chỉ có một: số này có tin được
                         không, và phải làm gì. Sáu ô số với một chồng cảnh báo
                         không trả lời được câu đó, nên nó phải nằm ở đây.   */}
-                    {s.ket_luan && (
-                        <div className={cn("rounded-xl border-l-4 p-4",
-                            s.ket_luan.muc === "khong_tin" ? "border-l-rose-600 bg-rose-50/80 dark:bg-rose-500/[0.09]"
-                            : s.ket_luan.muc === "co_van_de" ? "border-l-amber-500 bg-amber-50/70 dark:bg-amber-500/[0.08]"
-                            : s.ket_luan.muc === "can_xem" ? "border-l-sky-500 bg-sky-50/60 dark:bg-sky-500/[0.07]"
-                            : "border-l-emerald-500 bg-emerald-50/60 dark:bg-emerald-500/[0.07]")}>
-                            <div className="flex items-start gap-2.5">
-                                {s.ket_luan.muc === "sach"
-                                    ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                                    : <AlertTriangle className={cn("mt-0.5 h-5 w-5 shrink-0",
-                                        s.ket_luan.muc === "khong_tin" ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400")} />}
-                                <div className="min-w-0 flex-1">
-                                    <div className="text-base font-bold">{s.ket_luan.tieu_de}</div>
-                                    {s.ket_luan.giai_thich && (
-                                        <div className="mt-0.5 text-sm text-muted-foreground">{s.ket_luan.giai_thich}</div>
-                                    )}
-                                    {s.ket_luan.viec.length > 0 && (
-                                        <ol className="mt-3 space-y-2">
-                                            {s.ket_luan.viec.map((v, i) => (
-                                                <li key={i} className="flex gap-2.5 text-sm">
-                                                    <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/[0.07] text-[11px] font-bold dark:bg-white/15">
-                                                        {i + 1}
-                                                    </span>
-                                                    <span className="min-w-0">
-                                                        <span className="font-semibold">{v.title}</span>
-                                                        {v.hint && <span className="block text-xs text-muted-foreground">{v.hint}</span>}
-                                                    </span>
-                                                </li>
-                                            ))}
-                                        </ol>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    )}
+                    {s.ket_luan && <ConclusionCard conclusion={s.ket_luan} />}
 
                     {/* ═══ Số tổng ═══ */}
                     <div className={cn("grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6",
@@ -584,113 +442,4 @@ export default function TALPHAAdsReconTab() {
             )}
         </div>
     );
-}
-
-/* ───────────────────────────────────────────────────────────────────── */
-
-const TH = "whitespace-nowrap px-3 py-2 text-left text-[11px] uppercase tracking-wide text-muted-foreground";
-const TD = "whitespace-nowrap px-3 py-2";
-
-function ResultTable({ tab, res }: { tab: string; res: Result }) {
-    if (tab === "pairs") {
-        if (!res.pairs.length) return <NoRows />;
-        return (
-            <table className="w-full text-sm">
-                <thead className="border-b border-border">
-                    <tr>{["Ngày TKQC", "Mã GD", "Tài khoản QC", "Tiền TKQC", "Ngày thẻ", "Nội dung sao kê", "Tiền thẻ", "Lệch", "Ngày lệch", "Thẻ", "Tin cậy"]
-                        .map((h) => <th key={h} className={TH}>{h}</th>)}</tr>
-                </thead>
-                <tbody>
-                    {res.pairs.map((p, i) => (
-                        <tr key={i} className={cn("border-b border-border/60", !p.exact && "bg-amber-50/40 dark:bg-amber-500/[0.04]")}>
-                            <td className={TD}>{d6(p.fb.date)}</td>
-                            <td className={TD}>{p.fb.txn_id}</td>
-                            <td className="px-3 py-2 min-w-[160px]">{accountLabel(p.fb, res)}</td>
-                            <td className={cn(TD, "text-right tabular-nums")}>{VND(p.fb.amount)}</td>
-                            <td className={TD}>{d6(p.bank.date)}</td>
-                            <td className="px-3 py-2 min-w-[200px] text-muted-foreground">{p.bank.desc}</td>
-                            <td className={cn(TD, "text-right tabular-nums")}>{VND(p.bank.amount)}</td>
-                            <td className={cn(TD, "text-right tabular-nums", p.amount_diff !== 0 && "font-semibold text-rose-600 dark:text-rose-400")}>
-                                {p.amount_diff ? VND(p.amount_diff) : "—"}
-                            </td>
-                            <td className={cn(TD, "text-right tabular-nums")}>{p.date_diff}</td>
-                            <td className={cn(TD, !p.card_ok && "font-semibold text-rose-600 dark:text-rose-400")}>
-                                {p.bank.card4 || p.fb.card4 || "·"}
-                            </td>
-                            <td className={TD}>
-                                <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", CONF[p.confidence])}>
-                                    {p.confidence}{p.ambiguous ? " ?" : ""}
-                                </span>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        );
-    }
-
-    if (tab === "fb_unmatched" || tab === "fb_failed") {
-        // Mới nhất lên đầu (15/11/2026).
-        const rows = [...(tab === "fb_unmatched" ? res.fb_unmatched : res.fb_failed)]
-            .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-        if (!rows.length) return <NoRows />;
-        return (
-            <table className="w-full text-sm">
-                <thead className="border-b border-border">
-                    <tr>{["Ngày", "Mã GD", "Tài khoản QC", "Số tiền", "Thẻ trên hoá đơn", "Trạng thái", "Dòng"]
-                        .map((h) => <th key={h} className={TH}>{h}</th>)}</tr>
-                </thead>
-                <tbody>
-                    {rows.map((r, i) => (
-                        <tr key={i} className="border-b border-border/60">
-                            <td className={TD}>{d6(r.date)}</td>
-                            <td className={TD}>{r.txn_id}</td>
-                            <td className="px-3 py-2 min-w-[160px]">{accountLabel(r, res)}</td>
-                            <td className={cn(TD, "text-right tabular-nums font-semibold")}>{VND(r.amount)}</td>
-                            <td className={TD}>{r.card4 || "·"}</td>
-                            <td className={TD}>{r.status}</td>
-                            <td className={cn(TD, "text-right text-muted-foreground")}>{r.line}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        );
-    }
-
-    // Mới nhất lên đầu (15/11/2026).
-    const rows = [...(tab === "bank_unmatched" ? res.bank_unmatched : res.other_ads)]
-        .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
-    if (!rows.length) return <NoRows />;
-    return (
-        <table className="w-full text-sm">
-            <thead className="border-b border-border">
-                <tr>{["Ngày", "Nội dung", "Số tiền", "Thẻ", "Tham chiếu", "Số dư sau", "Dòng"]
-                    .map((h) => <th key={h} className={TH}>{h}</th>)}</tr>
-            </thead>
-            <tbody>
-                {rows.map((r, i) => (
-                    <tr key={i} className="border-b border-border/60">
-                        <td className={TD}>{d6(r.date)}</td>
-                        <td className="px-3 py-2 min-w-[220px]">{r.desc}</td>
-                        <td className={cn(TD, "text-right tabular-nums font-semibold")}>{VND(r.amount)}</td>
-                        <td className={TD}>{r.card4 || "·"}</td>
-                        <td className={cn(TD, "text-muted-foreground")}>{r.ref}</td>
-                        <td className={cn(TD, "text-right tabular-nums text-muted-foreground")}>
-                            {r.balance != null ? VND(r.balance) : "·"}
-                        </td>
-                        <td className={cn(TD, "text-right text-muted-foreground")}>{r.line}</td>
-                    </tr>
-                ))}
-            </tbody>
-        </table>
-    );
-}
-
-const NoRows = () => <div className="py-8 text-center text-sm text-muted-foreground">Không có dòng nào.</div>;
-
-/** Tên tài khoản quảng cáo cho dễ đọc; không tra được thì trả lại id. */
-function accountLabel(r: FbRow, res: Result) {
-    if (r.account_name) return r.account_name;
-    const id = (r.account_id || "").replace(/^act_/, "");
-    return (id && res.tkqc_ten?.[id]) || r.account_id || "—";
 }

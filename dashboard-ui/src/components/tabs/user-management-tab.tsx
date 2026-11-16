@@ -3,43 +3,16 @@
 import { useState, useEffect, useCallback } from "react";
 import {
     UserPlus,
-    Pencil,
-    Trash2,
     X,
     Check,
     Loader2,
-    Shield,
-    Mail,
     Eye,
     EyeOff,
     AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface UserData {
-    id: string;
-    email: string;
-    name: string;
-    role: string;
-    projects: string[];
-    /** Team được xem (khoá ở talpha_rules.json → access.teams), ["*"] = mọi team. */
-    teams?: string[];
-    /** "pending" = đã khoá, không đăng nhập được (vd tài khoản chung cũ talpha@levelup). */
-    status?: string;
-}
-
-// Dashboard chỉ phục vụ một dự án — tài khoản mới mặc định TALPHA, không thì đăng nhập
-// bị chặn "không có quyền truy cập dashboard này" (api/auth/validate).
-const DEFAULT_PROJECTS = ["TALPHA"];
-
-// Vai trò + team đọc từ talpha_rules.json → access (qua /api/talpha/me), không gõ ở đây.
-// Phân quyền theo team từ 05/10/2026: role quyết định THẤY TAB NÀO, team quyết định THẤY NƯỚC NÀO.
-type RoleOpt = { key: string; label: string; desc: string; full: boolean };
-type TeamOpt = { key: string; name: string; leader: string; markets: string[] };
-const ROLE_COLOR: Record<string, string> = {
-    director: "text-orange-400", admin: "text-red-400", leader: "text-violet-400",
-    marketer: "text-sky-400", sale: "text-emerald-400",
-};
+import { DEFAULT_PROJECTS, ROLE_COLOR, type UserData, type RoleOpt, type TeamOpt } from "./user-management/shared";
+import { UsersTable } from "./user-management/users-table";
 
 export default function UserManagementTab() {
     const [users, setUsers] = useState<UserData[]>([]);
@@ -245,100 +218,8 @@ export default function UserManagementTab() {
             </div>
 
             {/* Users Table */}
-            {/* Điện thoại: bảng cuộn ngang trong khung, không đẩy cả trang. */}
-            <div className="overflow-x-auto rounded-xl border border-white/[0.08] bg-white/[0.02]">
-                <table className="w-full min-w-[640px] text-sm">
-                    <thead>
-                        <tr className="border-b border-white/[0.06] bg-white/[0.02]">
-                            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                                User
-                            </th>
-                            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                                Vai trò
-                            </th>
-                            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                                Team được xem
-                            </th>
-                            <th className="text-right px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                                Hành động
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {users.map((user) => {
-                            const rLabel = roleLabel(user.role);
-                            return (
-                                <tr
-                                    key={user.id}
-                                    className="border-b border-white/[0.04] hover:bg-white/[0.03] transition-colors"
-                                >
-                                    <td className="px-5 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-indigo-500/20 to-purple-500/20 flex items-center justify-center text-indigo-400 text-sm font-bold">
-                                                {user.name
-                                                    .charAt(0)
-                                                    .toUpperCase()}
-                                            </div>
-                                            <div>
-                                                <p className="font-semibold text-foreground">
-                                                    {user.name}
-                                                    {user.status === "pending" && (
-                                                        <span className="ml-2 rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-rose-500">
-                                                            ĐÃ KHOÁ
-                                                        </span>
-                                                    )}
-                                                </p>
-                                                <p className="text-xs text-slate-500 flex items-center gap-1">
-                                                    <Mail className="h-3 w-3" />
-                                                    {user.email}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-5 py-4">
-                                        <span
-                                            className={cn(
-                                                "flex items-center gap-1.5 text-xs font-medium",
-                                                rLabel?.color
-                                            )}
-                                        >
-                                            <Shield className="h-3.5 w-3.5" />
-                                            {rLabel?.label || user.role}
-                                        </span>
-                                    </td>
-                                    <td className="px-5 py-4">
-                                        <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-foreground/80">
-                                            {teamText(user)}
-                                        </span>
-                                    </td>
-                                    <td className="px-5 py-4 text-right">
-                                        <div className="flex items-center justify-end gap-1.5">
-                                            <button
-                                                onClick={() =>
-                                                    openEditForm(user)
-                                                }
-                                                className="p-2 rounded-lg hover:bg-white/[0.06] text-slate-400 hover:text-indigo-400 transition-colors"
-                                                title="Sửa"
-                                            >
-                                                <Pencil className="h-4 w-4" />
-                                            </button>
-                                            <button
-                                                onClick={() =>
-                                                    handleDelete(user)
-                                                }
-                                                className="p-2 rounded-lg hover:bg-red-500/10 text-slate-400 hover:text-red-400 transition-colors"
-                                                title="Xóa"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
+            <UsersTable users={users} roleLabel={roleLabel} teamText={teamText}
+                onEdit={openEditForm} onDelete={handleDelete} />
 
             {/* Create/Edit Form Modal */}
             {showForm && (
