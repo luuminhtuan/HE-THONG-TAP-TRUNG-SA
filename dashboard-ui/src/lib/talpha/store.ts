@@ -2,7 +2,7 @@
  * KHO DỮ LIỆU DO NGƯỜI DÙNG NHẬP — sao kê 3PL, việc đối soát COD, thanh toán quảng cáo, sổ theo dõi
  * vận đơn, chi phí vận hành.
  *
- * Một chỗ chứa duy nhất: bảng Postgres `app_documents` (15/11/2026, migration 0006), mỗi kho một
+ * Một chỗ chứa duy nhất: bảng Postgres `app_documents` (15/11/2026, migration 0001), mỗi kho một
  * dòng, nội dung jsonb đúng như file data/<kho>.json trước đây (file cũ được chép vào ở bước
  * migrate — sync/core/file_import.py). Deploy code không còn đụng tới dữ liệu này: lần chép data/ từ
  * Mac đè máy chủ suýt mất một kỳ sao kê ngày 12/09/2026.

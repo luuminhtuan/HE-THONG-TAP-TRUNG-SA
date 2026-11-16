@@ -1,5 +1,5 @@
 """
-Chép dữ liệu còn nằm ở file vào Postgres (15/11/2026, migration 0006) — chạy ở bước `migrate`.
+Chép dữ liệu còn nằm ở file vào Postgres (15/11/2026, migration 0001) — chạy ở bước `migrate`.
 
   data/<kho>.json            → app_documents           (sao kê COD, việc đối soát, thanh toán QC, vận đơn…)
   data/thi_truong.json       → market_overrides
@@ -41,8 +41,8 @@ def _read_json(p: Path):
         return json.load(fh)
 
 
-# File cũ tên tiếng Việt → tên dòng app_documents sau migration 0008 (16/11/2026). Máy chủ chuyển sang
-# Postgres SAU đợt đổi tên vẫn còn data/<tên cũ>.json — nhập vào tên cũ thì code mới không thấy dòng đó.
+# File của bản chạy bằng file (máy chủ VPS trước khi chuyển Postgres) mang tên tiếng Việt → tên dòng
+# app_documents mà code đọc (đặt tiếng Anh 16/11/2026). Nhập vào tên cũ thì code không thấy dòng đó.
 LEGACY_DOC_NAMES = {"chi_phi_van_hanh": "operating_expenses", "ads_recon_kho": "ads_recon_rows"}
 
 

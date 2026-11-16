@@ -2,7 +2,7 @@
 // Trạng thái cập nhật số cho NGƯỜI DÙNG (15/11/2026): đang kéo số không, kéo xong lúc nào, vòng báo
 // cáo gần nhất ra sao, TKQC / shop nào đọc lỗi, yêu cầu "Cập nhật ngay" tới đâu.
 //
-// Nguồn: job_runs + refresh_requests (migration 0007, lịch Docker ghi — sync/core/job_log.py) và
+// Nguồn: job_runs + refresh_requests (migration 0001, lịch Docker ghi — sync/core/job_log.py) và
 // sync_health (vòng báo cáo ghi — daily_guarded.sh). Máy chưa ghi job_runs (máy chủ VPS chạy systemd)
 // thì lấy giờ kéo số từ sale_order.sync_time.
 // ═══════════════════════════════════════════════════════════════════

@@ -22,7 +22,7 @@ REPO = Path(__file__).resolve().parents[2]
 VIEWS_DIR = REPO / "db" / "views"
 RULES_FILE = REPO / "config" / "talpha_rules.json"
 YAML_FILE = REPO / "config" / "projects" / "talpha.yaml"
-# Bảng vai chỉ đọc (/api/query, "CEO hỏi") KHÔNG được thấy — cùng danh sách REVOKE của migration 0006.
+# Bảng vai chỉ đọc (/api/query, "CEO hỏi") KHÔNG được thấy — cùng danh sách REVOKE cuối migration 0001.
 PRIVATE_TABLES = ("app_documents", "market_overrides", "market_monthly_reports", "users",
               "api_credentials", "file_imports")
 
@@ -231,21 +231,16 @@ def rebuild_views(conn, force: bool = False) -> bool:
             conn.execute(f"DROP VIEW IF EXISTS {name} CASCADE")
         for _, sql in ds:
             conn.execute(sql)
-        # Quyền của hai vai chỉ đọc (migration 0008) mất theo view cũ — cấp lại. talpha_readonly_market
+        # Quyền của hai vai chỉ đọc (migration 0001, mục 6) mất theo view cũ — cấp lại. talpha_readonly_market
         # chỉ được đúng những view mà scopeQuery (access-rules.ts) lọc được theo nước.
         conn.execute("DO $$ BEGIN EXECUTE format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO talpha_readonly', "
                      "current_schema()); END $$")
-        # …trừ bảng riêng (migration 0006): mật khẩu, khoá kết nối, sao kê tiền.
+        # …trừ bảng riêng: mật khẩu, khoá kết nối, sao kê tiền.
         existing = [r[0] for r in conn.execute(
             "SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename = ANY(%s)",
             (list(PRIVATE_TABLES),))]
         if existing:
             conn.execute(f"REVOKE ALL ON {', '.join(existing)} FROM talpha_readonly, talpha_readonly_market")
-            # Vai chỉ đọc tên cũ (migration 0003) còn trên cụm cho bản code cũ — cũng không được thấy bảng riêng.
-            legacy = [r[0] for r in conn.execute(
-                "SELECT rolname FROM pg_roles WHERE rolname IN ('talpha_doc', 'talpha_doc_nuoc')")]
-            if legacy:
-                conn.execute(f"REVOKE ALL ON {', '.join(existing)} FROM {', '.join(legacy)}")
         conn.execute("GRANT SELECT ON vw_orders_std, vw_fb_ads_std, vw_ad_windows TO talpha_readonly_market")
         conn.execute(
             "INSERT INTO view_fingerprints (id, fingerprint, built_at) VALUES (1, %s, now()) "

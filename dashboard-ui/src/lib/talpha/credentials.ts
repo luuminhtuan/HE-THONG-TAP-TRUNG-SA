@@ -6,7 +6,7 @@
 // deploy; máy khác không có file đó thì không chạy được. Nay giám đốc dán khoá mới ở
 // /admin → Khoá kết nối, máy gọi thử khoá trước rồi mới lưu.
 //
-// Lưu ở bảng Postgres `api_credentials` (15/11/2026, migration 0006 — trước đó file
+// Lưu ở bảng Postgres `api_credentials` (15/11/2026, migration 0001 — trước đó file
 // dashboard-ui/.env.khoa.local), MÃ HOÁ bằng pgcrypto với chìa TALPHA_ENCRYPTION_KEY: bản sao lưu
 // database hay câu SQL đọc nhầm bảng chỉ thấy chuỗi đã mã hoá; hai vai chỉ đọc của /api/query và
 // "CEO hỏi" không được đọc bảng này. Khoá trên trang thắng biến môi trường (.env.local):

@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 from sync.core import pg_writer  # noqa: E402
 from sync.core.pg_writer import DELETED_ON_POS  # noqa: E402
 
-MIGRATION = ROOT / "db" / "migrations" / "0001_bang_tho.sql"
+MIGRATION = ROOT / "db" / "migrations" / "0001_initial_schema.sql"
 ALL_MIGRATIONS = sorted(p.name for p in (ROOT / "db" / "migrations").glob("*.sql"))
 
 
@@ -45,7 +45,7 @@ def _schema_migration():
 class TestTableStructure:
     def test_raw_table_mirrors_clean_table(self):
         sql = MIGRATION.read_text(encoding="utf-8")
-        for table in ("sale_order", "order_items", "fb_ads_data", "fb_adset_data"):
+        for table in ("sale_order", "order_items", "fb_ads_all", "fb_adset_all"):
             assert f"CREATE TABLE {table}_raw (LIKE {table});" in sql
 
     def test_synced_columns_exist_in_tables(self):
@@ -53,8 +53,8 @@ class TestTableStructure:
         table = _schema_migration()
         columns = lambda b: {c for c, _ in table[b]}
         assert {"page_name", "seller_name", "inserted_at", "updated_at", "sync_time", "cod"} <= columns("sale_order")
-        assert {"spend", "date", "messaging_conversations_started", "account_id"} <= columns("fb_ads_data")
-        assert dict(table["fb_ads_data"])["date"] == "date" and dict(table["sale_order"])["inserted_at"] == "text"
+        assert {"spend", "date", "messaging_conversations_started", "account_id"} <= columns("fb_ads_all")
+        assert dict(table["fb_ads_all"])["date"] == "date" and dict(table["sale_order"])["inserted_at"] == "text"
 
     def test_ad_dictionary_has_all_columns(self):
         assert [c for c, _ in _schema_migration()["ad_dictionary"]] == [

@@ -87,7 +87,7 @@ const ROW_CAP = 200;
 //   1. Soát chữ ở đây: chỉ 1 câu SELECT/WITH, không từ khoá ghi/DDL (danh sách chung ở
 //      lib/talpha/ceo-ask-sql.ts — dùng chung với prompt builder). Gỡ nháy thừa: cleanSql.
 //   2. Database: chạy bằng vai CHỈ ĐỌC talpha_readonly, transaction READ ONLY, tối đa 30 giây
-//      (queryChiDoc, migration 0003) — lọt qua lớp 1 cũng không ghi / không treo máy được.
+//      (queryReadOnly, migration 0001) — lọt qua lớp 1 cũng không ghi / không treo máy được.
 // Bản BigQuery còn khoá "đúng dataset" + hạn mức byte quét; Postgres chỉ có một database và vai
 // chỉ đọc thay cho cả hai.
 async function runSql(rawSql: string): Promise<{ rows?: any[]; error?: string }> {

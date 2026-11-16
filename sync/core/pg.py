@@ -7,7 +7,9 @@ docker-compose đặt sẵn cho các container; chạy ngoài Docker thì trỏ 
 
 Migration là file SQL trong db/migrations/, chạy theo thứ tự tên, mỗi file một transaction, ghi tên
 vào bảng schema_migrations — như `php artisan migrate`. Chỉ THÊM file mới, đừng sửa file đã chạy:
-máy đã chạy file đó sẽ không chạy lại, hai máy ra hai cấu trúc bảng khác nhau.
+máy đã chạy file đó sẽ không chạy lại, hai máy ra hai cấu trúc bảng khác nhau. 16/11/2026: 9 file của
+nhánh kho-postgres (chưa từng lên production) gộp thành 0001_initial_schema.sql, tên tiếng Anh từ đầu —
+kho dựng bằng code cũ phải xoá đi dựng lại (docs/POSTGRES.md).
 
   python -m sync.core.pg migrate     # chạy migration còn thiếu + dựng lại view nếu luật đổi
   python -m sync.core.pg view [--ep] # chỉ dựng lại view (--ep: dựng dù luật không đổi)
@@ -50,14 +52,6 @@ def run_migrations(conn, folder: Path = MIGRATIONS_DIR) -> list:
         conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_migrations ("
             " name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())")
-        # Kho dựng trước 16/11/2026 có cột tiếng Việt (ten, chay_luc). Đổi ở ĐÂY chứ không trong một file
-        # migration: chính hàm này ghi tên file vào bảng ngay sau khi chạy file — đổi trong migration là
-        # câu INSERT của lượt đó gãy. Đổi tên cột giữ nguyên dữ liệu, chạy lại không làm gì.
-        for old, new in (("ten", "name"), ("chay_luc", "applied_at")):
-            conn.execute(
-                "DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()"
-                f" AND table_name = 'schema_migrations' AND column_name = '{old}') THEN"
-                f" ALTER TABLE schema_migrations RENAME COLUMN {old} TO {new}; END IF; END $$")
         applied = {r[0] for r in conn.execute("SELECT name FROM schema_migrations")}
         new_migrations = []
         for f in sorted(Path(folder).glob("*.sql")):
@@ -73,8 +67,9 @@ def run_migrations(conn, folder: Path = MIGRATIONS_DIR) -> list:
 
 
 def set_readonly_role_passwords(conn) -> bool:
-    """Cho hai vai chỉ đọc (migration 0008) đăng nhập bằng TALPHA_READONLY_PASSWORD (tên cũ TALPHA_DOC_PASSWORD vẫn nhận) — cổng /api/query của
-    dashboard đăng nhập bằng chúng. Không đặt biến → giữ NOLOGIN, /api/query từ chối chạy."""
+    """Cho hai vai chỉ đọc (migration 0001, mục 6) đăng nhập bằng TALPHA_READONLY_PASSWORD (tên cũ
+    TALPHA_DOC_PASSWORD vẫn nhận) — cổng /api/query của dashboard đăng nhập bằng chúng. Không đặt biến →
+    giữ NOLOGIN, /api/query từ chối chạy."""
     password = (os.environ.get("TALPHA_READONLY_PASSWORD") or os.environ.get("TALPHA_DOC_PASSWORD") or "").strip()
     if not password:
         return False
@@ -98,7 +93,7 @@ def count_table_rows(conn) -> list:
         out.append((b, n, latest))
     n, latest = conn.execute("SELECT COUNT(*), MAX(last_seen_at)::text FROM ad_accounts").fetchone()
     out.append(("ad_accounts", n, latest))
-    # Dữ liệu người dùng nhập (migration 0006) — cột "sync gần nhất" là lần sửa gần nhất.
+    # Dữ liệu người dùng nhập (migration 0001, mục 4) — cột "sync gần nhất" là lần sửa gần nhất.
     for b, column in (("app_documents", "updated_at"), ("market_overrides", "updated_at"),
                    ("market_monthly_reports", "written_at"), ("users", "updated_at"),
                    ("api_credentials", "updated_at")):

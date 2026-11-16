@@ -1,5 +1,5 @@
 """
-Dữ liệu file → Postgres (15/11/2026, migration 0006): khoá kết nối mã hoá, chép file cũ một lần,
+Dữ liệu file → Postgres (15/11/2026, migration 0001): khoá kết nối mã hoá, chép file cũ một lần,
 thị trường đọc từ bảng phủ, vai chỉ đọc không thấy bảng riêng.
 
 Chạy: DATABASE_URL=postgresql://talpha:talpha@127.0.0.1:5433/talpha \\

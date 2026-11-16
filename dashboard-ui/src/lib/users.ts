@@ -1,7 +1,7 @@
 /**
  * TALPHA — MỘT chỗ duy nhất đọc/ghi danh sách người dùng.
  *
- * Bảng Postgres `users` (15/11/2026, migration 0006 — trước đó file config/users.json, hoặc biến
+ * Bảng Postgres `users` (15/11/2026, migration 0001 — trước đó file config/users.json, hoặc biến
  * USERS_JSON chỉ đọc trên máy chủ). Hai nguồn cũ được chép vào bảng một lần ở bước migrate
  * (sync/core/file_import.py). Thêm / sửa / xoá người dùng ở /admin → Quản lý User, có hiệu lực ngay.
  *

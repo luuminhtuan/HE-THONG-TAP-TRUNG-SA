@@ -14,7 +14,7 @@
 # AUTH_SECRET=<chuỗi ngẫu nhiên> (chìa mặc định dưới đây nằm công khai trong repo — ai biết là giả được
 # phiên đăng nhập), DASHBOARD_MODE=prod (next build + next start: nhanh, không lộ màn lỗi của bản dev).
 #
-# MỌI dữ liệu người dùng nhập nằm trong Postgres (15/11/2026, migration 0006): sao kê, vận đơn, thị
+# MỌI dữ liệu người dùng nhập nằm trong Postgres (15/11/2026, migration 0001): sao kê, vận đơn, thị
 # trường, người dùng, và khoá Meta / POS / Pancake / 17TRACK nhập ở /admin → Khoá kết nối (bảng
 # api_credentials, MÃ HOÁ bằng TALPHA_ENCRYPTION_KEY — đổi chìa này là khoá cũ không giải mã được nữa,
 # phải nhập lại). File cũ (data/*.json, .env.khoa.local) được chép vào kho một lần ở bước migrate.

@@ -1,6 +1,6 @@
 """
 Khoá kết nối (token Meta, key POS từng shop, token Pancake, key 17TRACK) — bảng `api_credentials`
-(15/11/2026, migration 0006). Trước đó nằm ở dashboard-ui/.env.khoa.local.
+(15/11/2026, migration 0001). Trước đó nằm ở dashboard-ui/.env.khoa.local.
 
 Giám đốc dán khoá ở /admin → Khoá kết nối; dashboard gọi thử rồi mới ghi. Giá trị MÃ HOÁ bằng
 pgcrypto (pgp_sym_encrypt) với chìa ở biến môi trường TALPHA_ENCRYPTION_KEY — như APP_KEY của
