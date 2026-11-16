@@ -115,7 +115,7 @@ function removeSession() {
 async function login() {
     const s = readJson(SESSION_FILE);
     if (!s || !s.imei || !s.cookie || !s.userAgent) {
-        throw new Error("chưa ghép nick Zalo — chạy `node pair.js` rồi quét QR");
+        throw new Error("chưa ghép nick Zalo — ghép ở /admin → Khoá kết nối → Zalo (hoặc `node pair.js`) rồi quét QR");
     }
     const api = await createZalo().login({ imei: s.imei, cookie: s.cookie, userAgent: s.userAgent, language: s.language || "vi" });
     saveSession(api);
