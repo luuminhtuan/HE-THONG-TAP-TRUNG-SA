@@ -1842,6 +1842,14 @@
       "_2332183394212686_note": "Thai BM XUAN THAI 02 01 (việt): camp VN/THÁI/… bán hạt giống trong nước — máy cũ cố ý không khai (03/11/2026). Tên camp không ghi nước nên kéo vào báo cáo là tiền dồn hết về Đài."
     }
   },
+  "_meta_currency_offset_note": "Ngân sách campaign / nhóm QC (daily_budget, lifetime_budget, budget_remaining) Meta trả theo ĐƠN VỊ NHỎ NHẤT của tiền TKQC: chia cho offset của tiền đó — USD 100 (xu), VND / TWD / JPY 1. Chi tiêu (insights spend) KHÔNG nhân offset, đừng chia. Bảng của Meta: developers.facebook.com/docs/marketing-api/currencies (kiểm 16/11/2026). Trước 16/11/2026 sync chia 100 cho mọi TK — ngân sách TK VND nhỏ đi 100 lần (150.000 đ/ngày lưu thành 1.500).",
+  "meta_currency_offset": {
+    "default": 100,
+    "currencies": {
+      "CLP": 1, "COP": 1, "CRC": 1, "HUF": 1, "ISK": 1, "IDR": 1,
+      "JPY": 1, "KRW": 1, "PYG": 1, "TWD": 1, "VND": 1
+    }
+  },
   "report_drive": {
     "_note": "Sỹ Anh chốt 01/10/2026: MỖI THÁNG MỘT THƯ MỤC. Thư mục gốc 'CÔNG TY ANTALO / BÁO CÁO ADS ANTALO' chứa 'Tháng 9', 'Tháng 10'… Trong thư mục tháng: file 'TỔNG TEAM THÁNG n' + mỗi người một thư mục (LOC, THAI…) chứa '<NƯỚC> T<n>' + file có chữ TEST. format_all.py (ops/talpha_reports/report_files.py) tự tìm bộ file của tháng đang chạy trong đó (chỉ khi có khoá Google — số cho dashboard và bot ghi ở bảng Postgres monthly_report_tabs, không cần file) — không còn ID cố định, nên không bao giờ ghi số tháng này vào file tháng khác. Thư mục gốc PHẢI share Editor cho service account talpha-dashboard@cty-507710.iam.gserviceaccount.com. Service account không tạo được file (quota Drive = 0) — file tháng mới do người tạo, hoặc chạy Apps Script ops/talpha_reports/create_month_files.gs.",
     "root_folder_id": "1AW2xgJ-6kQXxjA04VSpjJjeLEe1IcOV6"

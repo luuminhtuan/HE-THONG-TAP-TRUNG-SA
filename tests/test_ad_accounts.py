@@ -22,7 +22,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from sync.core.ad_accounts import write_ad_account_directory, initial_account_type  # noqa: E402
+from sync.core.ad_accounts import initial_account_type, meta_budget_offset, write_ad_account_directory  # noqa: E402
 
 RULES = json.loads((ROOT / "config" / "talpha_rules.json").read_text(encoding="utf-8"))
 
@@ -66,6 +66,19 @@ def pg():
     finally:
         conn.execute(f"DROP SCHEMA {schema} CASCADE")   # schema tạm của lần chạy này
         conn.close()
+
+
+class TestMetaBudgetOffset:
+    # Ngân sách Meta theo đơn vị nhỏ nhất của tiền TKQC. Trước 16/11/2026 sync chia 100 cho mọi TK — kho thật
+    # lưu ngân sách ngày 1.500 đ cho camp VND đặt 150.000 đ.
+    def test_zero_decimal_currencies_divide_by_one(self):
+        assert [meta_budget_offset(c, RULES) for c in ("VND", "vnd", "TWD", "JPY")] == [1, 1, 1, 1]
+
+    def test_cent_currencies_divide_by_100(self):
+        assert [meta_budget_offset(c, RULES) for c in ("USD", "BDT", "SGD", "AED")] == [100, 100, 100, 100]
+
+    def test_unknown_currency_uses_default(self):
+        assert meta_budget_offset(None, RULES) == meta_budget_offset("", RULES) == RULES["meta_currency_offset"]["default"]
 
 
 def _meta(aid, name, currency="VND", tz="Asia/Ho_Chi_Minh", st=1):
@@ -112,8 +125,19 @@ class TestMultipleTokens:
         monkeypatch.setattr(T, "list_token_ad_accounts", lambda tok: accounts_by_token[tok])
         ds = T.ad_accounts_to_fetch(pg, [("TALPHA_META_ACCESS_TOKEN", "moi"), ("TALPHA_META_ACCESS_TOKEN_2", "cu")], RULES)
         assert {d["id"]: d["token"] for d in ds} == {"act_1": "moi", "act_2": "moi", "act_3": "cu"}
+        assert {d["currency"] for d in ds} == {"VND"}         # campaign_sync chia ngân sách theo tiền này
         assert dict(pg.execute("SELECT account_id, token_env_var FROM ad_accounts").fetchall()) == {
             "1": "TALPHA_META_ACCESS_TOKEN", "2": "TALPHA_META_ACCESS_TOKEN", "3": "TALPHA_META_ACCESS_TOKEN_2"}
+
+    def test_all_tokens_dead_fall_back_to_directory_with_currency(self, pg, monkeypatch):
+        from sync.core import ad_accounts as T
+        write_ad_account_directory(pg, [_meta("9", "TK USD", currency="USD")], RULES)
+
+        def dead(tok):
+            raise RuntimeError("Session has expired")
+        monkeypatch.setattr(T, "list_token_ad_accounts", dead)
+        ds = T.ad_accounts_to_fetch(pg, [("TALPHA_META_ACCESS_TOKEN", "chet")], RULES)
+        assert [(d["id"], d["currency"], d["token"]) for d in ds] == [("act_9", "USD", "chet")]
 
     def test_one_dead_token_still_fetches_others(self, pg, monkeypatch):
         from sync.core import ad_accounts as T

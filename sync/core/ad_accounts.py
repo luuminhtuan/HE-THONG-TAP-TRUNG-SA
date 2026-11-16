@@ -26,6 +26,14 @@ def meta_tokens(env=None) -> list:
     return [(b, env[b].strip()) for b in TOKEN_VARS if (env.get(b) or "").strip()]
 
 
+def meta_budget_offset(currency, rules: dict) -> int:
+    """Số chia ngân sách Meta (daily_budget / lifetime_budget / budget_remaining) theo tiền của TKQC —
+    Meta trả theo đơn vị nhỏ nhất: USD 100 (xu), VND / TWD / JPY 1. Luật: talpha_rules.json → meta_currency_offset."""
+    cfg = rules.get("meta_currency_offset") or {}
+    offsets = cfg.get("currencies") or {}
+    return int(offsets.get(str(currency or "").strip().upper(), cfg.get("default", 100)))
+
+
 def initial_account_type(account_id: str, currency: str, rules: dict) -> str:
     """Loại của TKQC thấy LẦN ĐẦU: gán sẵn trong luật → theo tiền tệ (VND → mặc định, tiền khác →
     ad_account_categories.non_vnd, vì engine coi chi tiêu là VND). Đã có trong bảng thì KHÔNG gọi hàm này nữa —
@@ -99,10 +107,13 @@ def ad_accounts_to_fetch(conn, tokens: list, rules: dict) -> list:
     if not collected:
         log.error("  Không token nào hỏi được danh sách TKQC — kéo theo danh bạ 7 ngày gần nhất")
         tok0 = tokens[0][1] if tokens else ""
-        return [{"id": f"act_{aid}", "name": name or aid, "token_env_var": token_var, "token": token_by_var.get(token_var) or tok0}
-                for aid, name, token_var in conn.execute(
-                    "SELECT account_id, name, token_env_var FROM ad_accounts WHERE last_seen_at > now() - interval '7 days' ORDER BY name")]
+        return [{"id": f"act_{aid}", "name": name or aid, "currency": currency, "token_env_var": token_var,
+                 "token": token_by_var.get(token_var) or tok0}
+                for aid, name, currency, token_var in conn.execute(
+                    "SELECT account_id, name, currency, token_env_var FROM ad_accounts "
+                    "WHERE last_seen_at > now() - interval '7 days' ORDER BY name")]
     for aid, name, category in write_ad_account_directory(conn, list(collected.values()), rules):
         log.warning(f"  TKQC MỚI: {name} (act_{aid}) — loại '{category}'. Xem lại loại ở /admin → TKQC.")
-    return [{"id": f"act_{aid}", "name": a.get("name") or aid, "token_env_var": a["token_env_var"], "token": token_by_var[a["token_env_var"]]}
+    return [{"id": f"act_{aid}", "name": a.get("name") or aid, "currency": a.get("currency"),
+             "token_env_var": a["token_env_var"], "token": token_by_var[a["token_env_var"]]}
             for aid, a in collected.items()]

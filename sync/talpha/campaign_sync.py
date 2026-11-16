@@ -9,8 +9,9 @@ import time
 import requests
 
 from sync.core import pg_writer
-from sync.core.ad_accounts import meta_tokens
-from sync.talpha.sync_runtime import FB_TOKEN, _ad_accounts, _pg, log, sync_time
+from sync.core.ad_accounts import meta_budget_offset, meta_tokens
+from sync.core.market_config import load_rules
+from sync.talpha.sync_runtime import FB_TOKEN, PROJECT_DIR, _ad_accounts, _pg, log, sync_time
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -100,8 +101,12 @@ def sync_campaign_data() -> int:
         return 0
 
     all_campaigns = []
+    rules = load_rules(repo=PROJECT_DIR)
     for acct in _ad_accounts():
         acct_id = acct['id']
+        # Ngân sách Meta tính theo đơn vị nhỏ nhất của tiền TKQC — VND chia 1, USD chia 100. Trước 16/11/2026
+        # chia 100 cho mọi TK: ngân sách TK VND nhỏ đi 100 lần.
+        offset = meta_budget_offset(acct.get('currency'), rules)
         try:
             resp = requests.get(
                 f'https://graph.facebook.com/v21.0/{acct_id}/campaigns',
@@ -127,9 +132,9 @@ def sync_campaign_data() -> int:
                     'campaign_name':    str(r.get('name', '')),
                     'status':           str(r.get('status', '')),
                     'effective_status': str(r.get('effective_status', '')),
-                    'daily_budget':     float(r.get('daily_budget') or 0) / 100,
-                    'lifetime_budget':  float(r.get('lifetime_budget') or 0) / 100,
-                    'budget_remaining': float(r.get('budget_remaining') or 0) / 100,
+                    'daily_budget':     float(r.get('daily_budget') or 0) / offset,
+                    'lifetime_budget':  float(r.get('lifetime_budget') or 0) / offset,
+                    'budget_remaining': float(r.get('budget_remaining') or 0) / offset,
                     'objective':        str(r.get('objective', '')),
                     'start_time':       str(r.get('start_time', '') or ''),
                     'stop_time':        str(r.get('stop_time', '') or ''),
