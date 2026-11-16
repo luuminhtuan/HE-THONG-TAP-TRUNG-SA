@@ -6,8 +6,8 @@ lệch cứ nằm im — tiền bị trừ hai lần, thẻ lạ tiêu tiền c�
 lỗi mà tiền vẫn ra, phí ngoại tệ đội lên vài phần trăm mỗi giao dịch.
 
 > **Chỗ dùng chính là dashboard**, không phải thư mục này:
-> http://localhost:3000/talpha → mục **💳 Đối soát chi phí QC** (sidebar,
-> ngang hàng với Báo cáo). Kéo thả 2 file vào là xong.
+> `/talpha/ads-recon` → mục **💼 Kế toán → Thanh toán quảng cáo** (chỉ giám đốc).
+> Kéo thả file vào là xong.
 >
 > Thư mục này là bản chạy ở terminal — dùng khi muốn chạy nhanh, chạy tự động
 > theo lịch, hoặc lúc dashboard chưa bật.
@@ -22,7 +22,7 @@ nơi ra hai kết quả khác nhau.
 ## Dùng
 
 ```bash
-cd "/Users/macbook/Desktop/Dashboard Sỹ Anh/Doi-Soat-Chi-Phi-QC" && ./doisoat
+cd <repo>/ads-reconciliation-cli && ./reconcile      # cần Node ≥ 22.18 (nạp thẳng engine .ts)
 ```
 
 Thả file vào `data/inbox/` rồi chạy lệnh trên — nó lấy **hết** file trong đó.
@@ -40,10 +40,13 @@ hệ thống nói ra đã bỏ những gì. Không bỏ thì bản thứ hai kh�
 và nổi lên thành "TKQC thu mà thẻ không trừ" — báo động giả đắt tiền nhất.
 
 ```bash
-./doisoat file1.xlsx file2.xlsx …    # chỉ đích danh, nhiều file cũng được
-./doisoat --gui-tin                  # chạy xong bắn cảnh báo sang chat
-./doisoat --csv ket-qua.csv          # xuất thêm CSV
-./doisoat --khong-luu                # chạy thử, không ghi vào data/ky/
+./reconcile file1.xlsx file2.xlsx …  # chỉ đích danh, nhiều file cũng được
+./reconcile --notify                 # chạy xong bắn cảnh báo sang chat
+./reconcile --password <mk>          # mở sao kê PDF bị khoá mật khẩu
+./reconcile --csv ket-qua.csv        # xuất thêm CSV
+./reconcile --no-save                # chạy thử, không ghi vào data/periods/
+
+# Cờ tiếng Việt cũ (--gui-tin, --mat-khau, --khong-luu) vẫn nhận để cron cũ không gãy.
 npm test                             # 45 phép thử
 ```
 
@@ -115,7 +118,7 @@ lệch thật.
 ## Đọc PDF
 
 Sao kê PDF không có khái niệm "ô" hay "cột" — chỉ là một đống mẩu chữ kèm toạ
-độ. `pdf.mjs` dựng lại bảng theo ba bước: gom theo toạ độ **y** thành dòng →
+độ. `pdf.ts` dựng lại bảng theo ba bước: gom theo toạ độ **y** thành dòng →
 dính mẩu gần nhau thành ô → gom ô của **cả trang** theo toạ độ **x** chồng lấn
 thành cột.
 
@@ -132,7 +135,7 @@ sao kê thật: 6 so với 24). Đặt cứng là sớm muộn cắt nhầm gi�
 Bộ đọc dùng `pdfjs-dist`, **nạp trễ** — tuần nào cũng .xlsx thì không phải trả
 giá cho thư viện 10MB đó.
 
-**Phép thử quan trọng nhất:** `data/mau/` có cùng một sao kê ở hai định dạng
+**Phép thử quan trọng nhất:** `data/samples/` có cùng một sao kê ở hai định dạng
 .xlsx và .pdf, và có test ép hai bản phải ra **đúng cùng một kết quả**. Sai một
 cột là tiền rơi sang cột khác mà vẫn ra số đẹp — nên phải so bằng con số cuối
 cùng chứ không chỉ xem có đọc được hay không.
@@ -142,14 +145,14 @@ cùng chứ không chỉ xem có đọc được hay không.
 ## File mẫu — chạy thử trước khi có file thật
 
 ```bash
-./doisoat --khong-luu data/mau/MAU_chi-phi-tkqc-fb_2026-09-01_07.xlsx data/mau/MAU_sao-ke-the_2026-09-01_08.xlsx
+./reconcile --no-save data/samples/sample-fb-ad-spend_2026-09-01_07.xlsx data/samples/sample-card-statement_2026-09-01_08.xlsx
 ```
 
 Đáp án đúng: **3 nghiêm trọng** (21tr trừ không hoá đơn · trừ trùng 9,9tr ·
 TKQC lạ 4,5tr) và **4 cần xem** (5,6tr chưa thấy trừ · lệch thẻ · phí ẩn 450k ·
 1 cặp ghép nghi ngờ). Tổng cần đòi/làm rõ: **35.400.000₫**.
 
-Sinh lại file mẫu: `python3 data/mau/tao_file_mau.py`
+Sinh lại file mẫu: `python3 data/samples/make_samples.py`
 
 ---
 
@@ -158,15 +161,15 @@ Sinh lại file mẫu: `python3 data/mau/tao_file_mau.py`
 ```
 src/engine.mjs        cầu nối tới engine dùng chung trong repo dashboard
 src/run.mjs           đọc đĩa · lưu kỳ · nhớ kỳ trước (phần engine cố tình không làm)
-bin/doisoat.mjs       dòng lệnh
-tests/                45 phép thử — chạy trên chính engine dùng chung
+bin/reconcile.mjs     dòng lệnh (lối tắt: ./reconcile)
+tests/                51 phép thử — chạy trên chính engine dùng chung
 data/inbox/           thả file tuần này vào đây
-data/ky/<tuần>/       kết quả + bản sao 2 file gốc
-data/mau/             file mẫu đã gài sẵn đủ loại lệch
+data/periods/<tuần>/  result.json + sources/ (bản sao các file gốc)
+data/samples/         file mẫu đã gài sẵn đủ loại lệch
 ```
 
-Kỳ chạy ở dòng lệnh lưu tại `data/ky/`; kỳ chạy trên dashboard lưu ở kho riêng
-của dashboard (`ANTALO/data/ads_recon.json`). **Hai kho tách nhau** —
+Kỳ chạy ở dòng lệnh lưu tại `data/periods/`; kỳ chạy trên dashboard lưu trong Postgres
+(bảng `app_documents`, dòng `ads_recon`). **Hai kho tách nhau** —
 so sánh "tăng so với kỳ trước" chỉ nhìn kỳ cùng kho. Muốn một dòng lịch sử duy
 nhất thì dùng hẳn một lối, đừng chạy xen kẽ.
 
@@ -181,4 +184,4 @@ nhất thì dùng hẳn một lối, đừng chạy xen kẽ.
 - **Không quy được từng cặp về TKQC khi trùng số tiền** — tổng vẫn đúng, từng
   cặp là phỏng đoán (đã gắn nhãn nghi ngờ).
 - **Không xử lý ngoại tệ.** Đang cấu hình VND ↔ VND.
-- **Không tự chạy định kỳ.** Muốn tự động thì bắc cron gọi `./doisoat --gui-tin`.
+- **Không tự chạy định kỳ.** Muốn tự động thì bắc cron gọi `./reconcile --notify`.

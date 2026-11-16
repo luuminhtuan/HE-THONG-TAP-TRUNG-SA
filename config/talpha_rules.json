@@ -952,7 +952,7 @@
       },
       "report_url": "http://localhost:3000/talpha"
     },
-    "_note": "Đối soát chi phí quảng cáo: file thanh toán TKQC Facebook ↔ sao kê thẻ ngân hàng. Khoá ghép là SỐ TIỀN + NGÀY vì sao kê không mang mã giao dịch của Facebook. Engine dùng chung: dashboard-ui/src/lib/talpha/ads-recon/ (màn dashboard + bản dòng lệnh ở Doi-Soat-Chi-Phi-QC/)."
+    "_note": "Đối soát chi phí quảng cáo: file thanh toán TKQC Facebook ↔ sao kê thẻ ngân hàng. Khoá ghép là SỐ TIỀN + NGÀY vì sao kê không mang mã giao dịch của Facebook. Engine dùng chung: dashboard-ui/src/lib/talpha/ads-recon/ (màn dashboard + bản dòng lệnh ở ads-reconciliation-cli/)."
   },
   "_tracking_note": "Theo dõi vận đơn qua 17TRACK. TIỀN: đăng ký 1 mã = 1 quota, tính MỘT LẦN; sau khi đăng ký thì hỏi trạng thái bao nhiêu lần cũng miễn phí. Vì vậy sổ đăng ký (data/tracking.json → registered) là thứ PHẢI giữ — mất nó là đăng ký lại từ đầu và đốt quota. Khoá API để ở biến môi trường TRACK17_API_KEY, KHÔNG khai vào file này.",
   "tracking": {

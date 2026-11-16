@@ -11,14 +11,19 @@
  * lần. Cặp nào có đối thủ ngang điểm thì đánh dấu NGHI NGỜ để người đọc biết
  * máy đang đoán, chứ không im lặng chọn hộ.
  */
-import { daysBetween } from "./normalize.mjs";
+import { daysBetween } from "./normalize.ts";
+import type {
+    AdsSettlementConfig, BankRow, Confidence, FbRow, MatchConfig, MatchPair, MatchResult,
+} from "./types.ts";
+
+type MatchRules = Pick<AdsSettlementConfig, "match" | "fee">;
 
 /** Ngưỡng lệch tiền cho phép của một giao dịch. */
-export function tolerance(amount, m) {
+export function tolerance(amount: number, m: MatchConfig): number {
     return Math.max(m.amount_tolerance_abs || 0, (Math.abs(amount) * (m.amount_tolerance_pct || 0)) / 100);
 }
 
-function scorePair(fb, bank, cfg) {
+function scorePair(fb: FbRow, bank: BankRow, cfg: MatchRules) {
     const m = cfg.match;
     const dd = Math.abs(daysBetween(fb.date, bank.date));
     const diff = bank.amount - fb.amount;
@@ -37,7 +42,7 @@ function scorePair(fb, bank, cfg) {
 }
 
 /** Cặp có được phép tồn tại không (trước khi xét điểm). */
-function feasible(fb, bank, cfg) {
+function feasible(fb: FbRow, bank: BankRow, cfg: MatchRules): boolean {
     const m = cfg.match;
     const dd = Math.abs(daysBetween(fb.date, bank.date));
     if (dd > (m.date_window_days ?? 3)) return false;
@@ -52,12 +57,12 @@ function feasible(fb, bank, cfg) {
     return diff > 0 && diff <= fb.amount * feeRoof;
 }
 
-export function matchTransactions(fbRows, bankRows, cfg) {
+export function matchTransactions(fbRows: FbRow[], bankRows: BankRow[], cfg: MatchRules): MatchResult {
     // Giao dịch FB thất bại không sinh ra tiền — để riêng, xét ở tầng luật
     const chargeable = fbRows.filter((r) => r.status_norm !== "failed");
     const failed = fbRows.filter((r) => r.status_norm === "failed");
 
-    const cands = [];
+    const cands: ({ fb: FbRow; bank: BankRow } & ReturnType<typeof scorePair>)[] = [];
     for (const fb of chargeable) {
         for (const bank of bankRows) {
             if (!feasible(fb, bank, cfg)) continue;
@@ -67,15 +72,15 @@ export function matchTransactions(fbRows, bankRows, cfg) {
     cands.sort((a, b) => a.score - b.score || Math.abs(a.dateDiff) - Math.abs(b.dateDiff));
 
     // Đếm số lựa chọn tương đương của mỗi bên — dùng để gắn nhãn NGHI NGỜ
-    const bestByFb = new Map();
+    const bestByFb = new Map<FbRow, { score: number; ties: number }>();
     for (const c of cands) {
         const cur = bestByFb.get(c.fb);
         if (!cur || c.score < cur.score) bestByFb.set(c.fb, { score: c.score, ties: 1 });
         else if (Math.abs(c.score - cur.score) < 1e-6) cur.ties++;
     }
 
-    const usedFb = new Set(), usedBank = new Set();
-    const pairs = [];
+    const usedFb = new Set<FbRow>(), usedBank = new Set<BankRow>();
+    const pairs: MatchPair[] = [];
     for (const c of cands) {
         if (usedFb.has(c.fb) || usedBank.has(c.bank)) continue;
         usedFb.add(c.fb); usedBank.add(c.bank);
@@ -85,7 +90,7 @@ export function matchTransactions(fbRows, bankRows, cfg) {
         const ambiguous = (bestByFb.get(c.fb)?.ties ?? 1) > 1;
         const cardOK = !(c.fb.card4 && c.bank.card4) || c.fb.card4 === c.bank.card4;
 
-        let confidence = "cao";
+        let confidence: Confidence = "cao";
         if (ambiguous || !cardOK) confidence = "thap";
         else if (!exact || Math.abs(c.dateDiff) > 1) confidence = "vua";
 

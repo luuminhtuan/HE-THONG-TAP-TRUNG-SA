@@ -5,9 +5,9 @@ import { runReconciliation, loadConfig, ROOT } from "../src/run.mjs";
 import { buildMessage } from "../src/engine.mjs";
 import { toCsv } from "../src/engine.mjs";
 
-const MAU = join(ROOT, "data", "mau");
-const FB = join(MAU, "MAU_chi-phi-tkqc-fb_2026-09-01_07.xlsx");
-const BANK = join(MAU, "MAU_sao-ke-the_2026-09-01_08.xlsx");
+const SAMPLES = join(ROOT, "data", "samples");
+const FB = join(SAMPLES, "sample-fb-ad-spend_2026-09-01_07.xlsx");
+const BANK = join(SAMPLES, "sample-card-statement_2026-09-01_08.xlsx");
 
 function chay(a = FB, b = BANK) {
     return runReconciliation([{ path: a }, { path: b }], { cfg: loadConfig(), save: false });
@@ -95,7 +95,7 @@ test("sao kê PDF ra ĐÚNG cùng kết quả với bản .xlsx", async () => {
     // Cùng một sao kê, hai định dạng. Bộ đọc PDF phải dựng lại đúng bảng từ
     // toạ độ chữ — sai một cột là tiền rơi sang cột khác mà vẫn ra số đẹp,
     // nên phải so bằng chính con số cuối cùng chứ không chỉ xem có đọc được.
-    const PDF = join(MAU, "MAU_sao-ke-the_2026-09-01_08.pdf");
+    const PDF = join(SAMPLES, "sample-card-statement_2026-09-01_08.pdf");
     const [xlsx, pdf] = [await chay(FB, BANK), await chay(FB, PDF)];
 
     assert.equal(pdf.summary.bank_total, xlsx.summary.bank_total);

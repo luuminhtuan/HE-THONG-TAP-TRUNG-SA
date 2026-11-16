@@ -2,47 +2,55 @@
 /**
  * DÒNG LỆNH — chạy một lượt đối soát mà không cần mở trình duyệt.
  *
- *   node bin/doisoat.mjs                          # tự lấy 2 file mới nhất trong data/inbox
- *   node bin/doisoat.mjs fileA.xlsx fileB.xlsx    # chỉ đích danh, thứ tự nào cũng được
- *   node bin/doisoat.mjs --gui-tin                # chạy xong bắn cảnh báo sang chat
+ *   node bin/reconcile.mjs                          # tự lấy 2 file mới nhất trong data/inbox
+ *   node bin/reconcile.mjs fileA.xlsx fileB.xlsx    # chỉ đích danh, thứ tự nào cũng được
+ *   node bin/reconcile.mjs --notify                 # chạy xong bắn cảnh báo sang chat
  *
- * Màn web nằm trong dashboard: http://localhost:3000/talpha → Đối soát chi phí QC
+ * Cờ tiếng Việt cũ (--gui-tin, --mat-khau, --khong-luu) vẫn nhận, để cron cũ không gãy.
+ * Màn web nằm trong dashboard: /talpha/ads-recon (Kế toán → Thanh toán quảng cáo)
  */
 import { readdirSync, statSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { runReconciliation, loadConfig, ROOT } from "../src/run.mjs";
-import { sendAlerts } from "../src/engine.mjs";
-import { toCsv } from "../src/engine.mjs";
-import { fmtVND } from "../src/engine.mjs";
+import { sendAlerts, toCsv, fmtVND } from "../src/engine.mjs";
 
 const C = process.stdout.isTTY
     ? { red: "\x1b[31m", yellow: "\x1b[33m", dim: "\x1b[2m", bold: "\x1b[1m", green: "\x1b[32m", off: "\x1b[0m" }
     : { red: "", yellow: "", dim: "", bold: "", green: "", off: "" };
 
 const args = process.argv.slice(2);
-const flag = (n) => args.includes(n);
-const files = args.filter((a) => !a.startsWith("--"));
+const flag = (...names) => names.some((n) => args.includes(n));
+/** Giá trị đứng ngay sau cờ (bỏ qua nếu đó lại là một cờ khác). */
+const optionValue = (...names) => {
+    for (const n of names) {
+        const i = args.indexOf(n);
+        if (i >= 0 && args[i + 1] && !args[i + 1].startsWith("--")) return args[i + 1];
+    }
+    return "";
+};
+const OPTIONS_WITH_VALUE = ["--password", "--mat-khau", "--csv"];
+const files = args.filter((a, i) => !a.startsWith("--") && !OPTIONS_WITH_VALUE.includes(args[i - 1]));
 
-if (flag("--help") || flag("-h")) {
+if (flag("--help", "-h")) {
     console.log(`
 ĐỐI SOÁT CHI PHÍ QUẢNG CÁO
 
-  node bin/doisoat.mjs                        đối soát 2 file mới nhất trong data/inbox
-  node bin/doisoat.mjs <file...>              đối soát các file chỉ định (nhiều cũng được)
+  node bin/reconcile.mjs                      đối soát 2 file mới nhất trong data/inbox
+  node bin/reconcile.mjs <file...>            đối soát các file chỉ định (nhiều cũng được)
 
-  Màn web: http://localhost:3000/talpha → mục Đối soát chi phí QC
+  Màn web: /talpha/ads-recon (Kế toán → Thanh toán quảng cáo)
 
-  --gui-tin        chạy xong gửi cảnh báo sang chat (Telegram/webhook trong config)
-  --mat-khau <mk>  mật khẩu mở file PDF bị khoá (sao kê ngân hàng gửi email)
-  --csv <đường>    xuất thêm file CSV
-  --khong-luu      không ghi kết quả vào data/ky/
+  --notify           chạy xong gửi cảnh báo sang chat (Telegram/webhook trong config)
+  --password <mk>    mật khẩu mở file PDF bị khoá (sao kê ngân hàng gửi email)
+  --csv <đường>      xuất thêm file CSV
+  --no-save          không ghi kết quả vào data/periods/
 `);
     process.exit(0);
 }
 
 {
-    let dsFile = files;
-    if (dsFile.length < 2) {
+    let inputFiles = files;
+    if (inputFiles.length < 2) {
         const inbox = join(ROOT, "data", "inbox");
         const found = existsSync(inbox)
             ? readdirSync(inbox)
@@ -54,18 +62,19 @@ if (flag("--help") || flag("-h")) {
             console.error(`${C.red}Cần 2 file.${C.off} Thả file chi phí TKQC và file sao kê vào ${C.bold}data/inbox/${C.off} rồi chạy lại, hoặc truyền thẳng đường dẫn.`);
             process.exit(1);
         }
-        dsFile = found.map((x) => x.f);
-        console.log(`${C.dim}Lấy ${dsFile.length} file trong data/inbox:${C.off}`);
-        for (const f of dsFile) console.log(`${C.dim}  · ${f}${C.off}`);
+        inputFiles = found.map((x) => x.f);
+        console.log(`${C.dim}Lấy ${inputFiles.length} file trong data/inbox:${C.off}`);
+        for (const f of inputFiles) console.log(`${C.dim}  · ${f}${C.off}`);
         console.log();
     }
 
     const cfg = loadConfig();
     let r;
     try {
-        const mkIdx = args.indexOf("--mat-khau");
-        const matKhau = mkIdx >= 0 && args[mkIdx + 1] && !args[mkIdx + 1].startsWith("--") ? args[mkIdx + 1] : "";
-        r = await runReconciliation(dsFile.map((f) => ({ path: f })), { cfg, save: !flag("--khong-luu"), matKhau });
+        const password = optionValue("--password", "--mat-khau");
+        r = await runReconciliation(inputFiles.map((f) => ({ path: f })), {
+            cfg, save: !flag("--no-save", "--khong-luu"), password,
+        });
     } catch (e) {
         console.error(`${C.red}Không đối soát được:${C.off} ${e.message}`);
         process.exit(1);
@@ -88,14 +97,14 @@ if (flag("--help") || flag("-h")) {
         console.log();
     }
 
-    const csvAt = args[args.indexOf("--csv") + 1];
-    if (flag("--csv") && csvAt && !csvAt.startsWith("--")) {
-        writeFileSync(csvAt, toCsv(r), "utf8");
-        console.log(`${C.dim}Đã ghi CSV: ${csvAt}${C.off}`);
+    const csvPath = optionValue("--csv");
+    if (csvPath) {
+        writeFileSync(csvPath, toCsv(r), "utf8");
+        console.log(`${C.dim}Đã ghi CSV: ${csvPath}${C.off}`);
     }
     if (r.saved_to) console.log(`${C.dim}Đã lưu kỳ: ${r.saved_to}${C.off}`);
 
-    if (flag("--gui-tin")) {
+    if (flag("--notify", "--gui-tin")) {
         const out = await sendAlerts(r, cfg);
         if (out.sent.length) console.log(`${C.green}Đã gửi cảnh báo qua: ${out.sent.join(", ")}${C.off}`);
         if (out.errors.length) console.log(`${C.red}Lỗi gửi: ${out.errors.join(" · ")}${C.off}`);

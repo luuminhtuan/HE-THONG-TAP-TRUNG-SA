@@ -5,8 +5,10 @@ import { readStoreFresh, updateStore } from "@/lib/talpha/store";
 import { MAX_UPLOAD_BYTES, tooBigMessage } from "@/lib/talpha/upload-limit";
 import {
     ingestDocs, reconcileRows, readAnySheets, detectKind, toCsv, sendAlerts,
-    napVaoKho, boNguon, tomTatNguon,
-} from "@/lib/talpha/ads-recon/recon.mjs";
+    addRowsToStore, removeSourceFile, summarizeSources,
+    type AdsSettlementConfig, type BankRow, type FbRow, type HistoryEntry, type PdfPasswordError,
+    type ReconResult, type Roster, type SourceDoc,
+} from "@/lib/talpha/ads-recon/recon";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";           // engine đọc .xlsx bằng node:zlib
@@ -25,7 +27,7 @@ export const runtime = "nodejs";           // engine đọc .xlsx bằng node:zl
 // Facebook). Cùng một câu hỏi theo hai chiều: số có khớp không.
 //
 // Toàn bộ nghiệp vụ nằm ở lib/talpha/ads-recon/ — dùng chung với bản dòng lệnh
-// ở thư mục Doi-Soat-Chi-Phi-QC. Route này chỉ lo nhận file, lưu kho, trả JSON.
+// ở thư mục ads-reconciliation-cli. Route này chỉ lo nhận file, lưu kho, trả JSON.
 // ═══════════════════════════════════════════════════════════════════
 
 const STORE = "ads_recon";
@@ -38,13 +40,12 @@ type Store = { periods: Period[] };
 const EMPTY: Store = { periods: [] };
 
 /** Kho dòng giao dịch — cất lại để lần sau bổ sung file là đối soát tiếp được. */
-type Dong = Record<string, unknown> & { _key: string; file?: string; date?: string; amount?: number };
-type Kho = { fb: Dong[]; bank: Dong[] };
+type Kho = { fb: FbRow[]; bank: BankRow[] };
 const KHO_RONG: Kho = { fb: [], bank: [] };
 
 /** Khối luật ads_settlement trong talpha_rules.json. */
-function cfg() {
-    const c = (RULES as unknown as { ads_settlement?: Record<string, unknown> }).ads_settlement;
+function cfg(): AdsSettlementConfig {
+    const c = (RULES as unknown as { ads_settlement?: AdsSettlementConfig }).ads_settlement;
     if (!c) throw new Error('Thiếu khối "ads_settlement" trong config/talpha_rules.json');
     return c;
 }
@@ -52,7 +53,7 @@ function cfg() {
 /** Roster TKQC = danh bạ TKQC tự động (bảng tkqc, 04/11/2026 — trước đó file ad_accounts.json gõ tay):
  *  mọi TKQC token từng thấy, kể cả loại ngoài báo cáo — vẫn là TK của công ty, thẻ trả cho nó không "lạ".
  *  Kho số lỗi thì engine tự bỏ qua kiểm tra TKQC lạ, không chết. Giữ dạng {projects: {…: {accounts}}}. */
-async function roster() {
+async function roster(): Promise<Roster | null> {
     try {
         const rows = await query<{ account_id: string; ten: string | null }>("SELECT account_id, ten FROM tkqc");
         return { projects: { tkqc: { accounts: rows.map((r) => ({ id: `act_${r.account_id}`, name: r.ten || r.account_id })) } } };
@@ -83,7 +84,7 @@ export async function GET(req: NextRequest) {
             const kho = await readStoreFresh<Kho>(KHO, KHO_RONG);
             return NextResponse.json({
                 kho: { fb: kho.fb.length, bank: kho.bank.length },
-                nguon: [...tomTatNguon(kho.fb, "fb"), ...tomTatNguon(kho.bank, "bank")],
+                nguon: [...summarizeSources(kho.fb, "fb"), ...summarizeSources(kho.bank, "bank")],
                 tkqc_ten: tenTkqc(await roster()),
             });
         }
@@ -101,7 +102,7 @@ export async function GET(req: NextRequest) {
         if (!found) return NextResponse.json({ error: `Chưa có kỳ ${ky}` }, { status: 404 });
 
         if (req.nextUrl.searchParams.get("csv") === "1") {
-            return new NextResponse(toCsv(found), {
+            return new NextResponse(toCsv(found as unknown as ReconResult), {
                 headers: {
                     "content-type": "text/csv; charset=utf-8",
                     "content-disposition": `attachment; filename="doi-soat-ads-${ky}.csv"`,
@@ -126,7 +127,7 @@ export async function POST(req: NextRequest) {
             const store = await readStoreFresh<Store>(STORE, EMPTY);
             const found = store.periods.find((p) => p.ky === ky);
             if (!found) return NextResponse.json({ error: `Chưa có kỳ ${ky}` }, { status: 404 });
-            const out = await sendAlerts(found, c, { force: true });
+            const out = await sendAlerts(found as unknown as ReconResult, c, { force: true });
             return NextResponse.json(out);
         }
 
@@ -154,18 +155,18 @@ export async function POST(req: NextRequest) {
         // Mặc định CỘNG DỒN vào kho. Muốn làm lại từ đầu thì gửi lam_moi=1.
         const lamMoi = String(form.get("lam_moi") || "") === "1";
 
-        const doc = [];
+        const doc: SourceDoc[] = [];
         for (const f of files) {
             const buf = Buffer.from(await f.arrayBuffer());
             try {
                 const sheets = await readAnySheets(f.name, buf, matKhau ? { password: matKhau } : {});
                 doc.push({ sheets, kind: detectKind(sheets, c), name: f.name });
             } catch (e) {
-                const err = e as Error & { canMatKhau?: boolean; matKhauSai?: boolean };
+                const err = e as Partial<PdfPasswordError> & Error;
                 return NextResponse.json({
                     error: `Không mở được "${f.name}": ${err.message}`,
-                    can_mat_khau: err.canMatKhau === true,
-                    mat_khau_sai: err.matKhauSai === true,
+                    can_mat_khau: err.needsPassword === true,
+                    mat_khau_sai: err.wrongPassword === true,
                     file: f.name,
                 }, { status: 422 });
             }
@@ -174,7 +175,7 @@ export async function POST(req: NextRequest) {
         // ── 1. Đọc file thành hai phía (KHÔNG đối soát vội) ──────────────
         let doc2;
         try {
-            doc2 = ingestDocs(doc, c, { chapNhanMotPhia: true });
+            doc2 = ingestDocs(doc, c, { allowSingleSide: true });
         } catch (e) {
             // Lỗi ĐỌC HIỂU file (thiếu cột, không nhận ra nguồn) — nói thẳng
             // thiếu gì để người dùng sửa file, đừng nuốt.
@@ -185,15 +186,15 @@ export async function POST(req: NextRequest) {
         const nap = { fb: { them: 0, trung: 0 }, bank: { them: 0, trung: 0 } };
         const khoMoi = await updateStore<Kho>(KHO, KHO_RONG, (cur) => {
             const goc = lamMoi ? KHO_RONG : cur;
-            const a = napVaoKho(goc.fb, "fb", doc2.fb.rows);
-            const b = napVaoKho(goc.bank, "bank", doc2.bank.rows);
-            nap.fb = { them: a.them.length, trung: a.trung.length };
-            nap.bank = { them: b.them.length, trung: b.trung.length };
-            return { fb: a.kho, bank: b.kho };
+            const a = addRowsToStore(goc.fb, "fb", doc2.fb.rows);
+            const b = addRowsToStore(goc.bank, "bank", doc2.bank.rows);
+            nap.fb = { them: a.added.length, trung: a.duplicates.length };
+            nap.bank = { them: b.added.length, trung: b.duplicates.length };
+            return { fb: a.rows, bank: b.rows };
         });
 
         // ── 3. Đối soát trên TOÀN BỘ kho ─────────────────────────────────
-        const nguon = [...tomTatNguon(khoMoi.fb, "fb"), ...tomTatNguon(khoMoi.bank, "bank")];
+        const nguon = [...summarizeSources(khoMoi.fb, "fb"), ...summarizeSources(khoMoi.bank, "bank")];
         if (!khoMoi.fb.length || !khoMoi.bank.length) {
             // Mới có một phía thì chưa đối soát được, nhưng dữ liệu ĐÃ CẤT rồi —
             // bổ sung phía kia lúc nào cũng chạy tiếp được.
@@ -209,7 +210,7 @@ export async function POST(req: NextRequest) {
         const chay = reconcileRows(
             { ...doc2.fb, rows: khoMoi.fb },
             { ...doc2.bank, rows: khoMoi.bank },
-            c, { roster: await roster(), history: truoc.periods });
+            c, { roster: await roster(), history: truoc.periods as HistoryEntry[] });
 
         const result: Period = {
             ...chay, nap, nguon,
@@ -236,7 +237,7 @@ export async function DELETE(req: NextRequest) {
         const nguon = req.nextUrl.searchParams.get("nguon");
         if (nguon) {
             const kho = await updateStore<Kho>(KHO, KHO_RONG, (cur) => ({
-                fb: boNguon(cur.fb, nguon), bank: boNguon(cur.bank, nguon),
+                fb: removeSourceFile(cur.fb, nguon), bank: removeSourceFile(cur.bank, nguon),
             }));
             return NextResponse.json({ ok: true, kho: { fb: kho.fb.length, bank: kho.bank.length } });
         }

@@ -6,19 +6,23 @@
  * gì đáng bắn — bắn tin "mọi thứ đều ổn" mỗi tuần là cách nhanh nhất khiến
  * mọi người tắt thông báo.
  */
-import { fmtVND } from "./normalize.mjs";
+import { fmtVND } from "./normalize.ts";
+import type { AdsSettlementConfig, ReconResult, Severity } from "./types.ts";
 
-const RANK = { critical: 0, warn: 1, info: 2 };
-const ICON = { critical: "🔴", warn: "🟡", info: "⚪" };
+type NotifySource = Pick<ReconResult, "ky" | "alerts" | "summary">;
+type NotifyConfig = Pick<AdsSettlementConfig, "notify">;
+
+const RANK: Record<Severity, number> = { critical: 0, warn: 1, info: 2 };
+const ICON: Record<Severity, string> = { critical: "🔴", warn: "🟡", info: "⚪" };
 
 /** Soạn tin tóm tắt. Trả về null nếu không có gì vượt ngưỡng cần báo. */
-export function buildMessage(result, cfg, { force = false } = {}) {
+export function buildMessage(result: NotifySource, cfg: NotifyConfig, { force = false } = {}): string | null {
     const min = RANK[cfg.notify?.min_severity || "warn"] ?? 1;
     const worth = result.alerts.filter((a) => RANK[a.severity] <= min);
     if (!worth.length && !force) return null;
 
     const s = result.summary;
-    const L = [];
+    const L: string[] = [];
     L.push(`📊 ĐỐI SOÁT CHI PHÍ QUẢNG CÁO — kỳ ${result.ky}`);
     L.push(`${s.period?.bank_start || "?"} → ${s.period?.bank_end || "?"}`);
     L.push("");
@@ -44,7 +48,7 @@ export function buildMessage(result, cfg, { force = false } = {}) {
     return L.join("\n");
 }
 
-async function postJson(url, body, headers = {}) {
+async function postJson(url: string, body: unknown, headers: Record<string, string> = {}): Promise<string> {
     const res = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json", ...headers },
@@ -55,10 +59,12 @@ async function postJson(url, body, headers = {}) {
     return text;
 }
 
+export type SendAlertsResult = { sent: string[]; skipped: string[]; errors: string[]; message: string | null };
+
 /** Gửi đi mọi kênh đang bật. Không kênh nào được phép làm hỏng lượt chạy. */
-export async function sendAlerts(result, cfg, { force = false } = {}) {
+export async function sendAlerts(result: NotifySource, cfg: NotifyConfig, { force = false } = {}): Promise<SendAlertsResult> {
     const message = buildMessage(result, cfg, { force });
-    const out = { sent: [], skipped: [], errors: [], message };
+    const out: SendAlertsResult = { sent: [], skipped: [], errors: [], message };
     if (!message) { out.skipped.push("không có cảnh báo nào vượt ngưỡng min_severity"); return out; }
 
     const tg = cfg.notify?.telegram;
@@ -71,7 +77,7 @@ export async function sendAlerts(result, cfg, { force = false } = {}) {
                 await postJson(`https://api.telegram.org/bot${token}/sendMessage`,
                     { chat_id: tg.chat_id, text: message, disable_web_page_preview: true });
                 out.sent.push("telegram");
-            } catch (e) { out.errors.push("Telegram: " + e.message); }
+            } catch (e) { out.errors.push("Telegram: " + (e as Error).message); }
         }
     } else out.skipped.push("telegram tắt");
 
@@ -81,12 +87,12 @@ export async function sendAlerts(result, cfg, { force = false } = {}) {
         else {
             try {
                 await postJson(wh.url, {
-                    source: "doi-soat-chi-phi-qc", ky: result.ky, message,
+                    source: "ads-reconciliation", ky: result.ky, message,
                     summary: result.summary,
                     alerts: result.alerts.filter((a) => RANK[a.severity] <= (RANK[cfg.notify?.min_severity || "warn"] ?? 1)),
                 });
                 out.sent.push("webhook");
-            } catch (e) { out.errors.push("Webhook: " + e.message); }
+            } catch (e) { out.errors.push("Webhook: " + (e as Error).message); }
         }
     } else out.skipped.push("webhook tắt");
 

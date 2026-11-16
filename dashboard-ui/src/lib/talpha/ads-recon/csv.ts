@@ -1,14 +1,19 @@
 /** Xuất kết quả ra CSV để mở bằng Excel — mỗi dòng là một giao dịch có nhãn. */
-function esc(v) {
+import type { ReconResult } from "./types.ts";
+
+type CsvSource = Pick<ReconResult, "pairs" | "fb_unmatched" | "bank_unmatched" | "fb_failed">
+    & { other_ads?: ReconResult["other_ads"] };
+
+function esc(v: unknown): string {
     const s = v === null || v === undefined ? "" : String(v);
     return /[",;\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
-export function toCsv(result) {
+export function toCsv(result: CsvSource): string {
     const head = ["Loại", "Kết luận", "Ngày TKQC", "Mã giao dịch", "TKQC", "Số tiền TKQC",
                   "Ngày sao kê", "Nội dung sao kê", "Số tiền thẻ", "Lệch tiền", "Lệch ngày",
                   "Thẻ", "Độ tin cậy", "Dòng TKQC", "Dòng sao kê"];
-    const rows = [head];
+    const rows: unknown[][] = [head];
 
     for (const p of result.pairs) {
         rows.push(["KHỚP", p.exact ? "khớp đúng" : (p.amount_diff > 0 ? "thẻ trừ nhiều hơn" : "thẻ trừ ít hơn"),
@@ -35,5 +40,5 @@ export function toCsv(result) {
     }
 
     // BOM để Excel trên Windows không vỡ tiếng Việt
-    return "\ufeff" + rows.map((r) => r.map(esc).join(",")).join("\r\n");
+    return "﻿" + rows.map((r) => r.map(esc).join(",")).join("\r\n");
 }

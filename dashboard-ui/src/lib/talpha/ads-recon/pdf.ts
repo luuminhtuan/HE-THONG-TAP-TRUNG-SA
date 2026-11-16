@@ -17,6 +17,14 @@
  *
  * KHÔNG đọc được PDF scan (ảnh chụp) — loại đó không có lớp chữ nào bên trong.
  */
+import type { Row, Sheet } from "./types.ts";
+
+/** Lỗi mở PDF bị khoá — route đọc hai cờ này để bật ô nhập mật khẩu. */
+export type PdfPasswordError = Error & { needsPassword: true; wrongPassword: boolean };
+
+type Span = { x0: number; x1: number };
+type TextPiece = Span & { y: number; h: number; s: string; page: number };
+type TextCell = Span & { text: string };
 
 /**
  * GỘP DÒNG BỊ NGẮT.
@@ -35,55 +43,56 @@
  * Luật: dòng chỉ có MỘT ô là mảnh vỡ, dán vào dòng dữ liệu GẦN NHẤT, đúng cột,
  * theo thứ tự đọc (mảnh ở trên dán trước, mảnh ở dưới dán sau).
  */
-function gopDongBiNgat(rows) {
-    const demO = (r) => r.filter((c) => c != null && String(c).trim() !== "").length;
-    const laDuLieu = rows.map((r) => demO(r) >= 2);
-    if (!laDuLieu.some(Boolean)) return rows;
+function mergeWrappedRows(rows: Row[]): Row[] {
+    const countFilled = (r: Row) => r.filter((c) => c != null && String(c).trim() !== "").length;
+    // true = dòng dữ liệu, false = mảnh vỡ hoặc dòng lẻ, null = mảnh đã dán đi
+    const isDataRow: (boolean | null)[] = rows.map((r) => countFilled(r) >= 2);
+    if (!isDataRow.some(Boolean)) return rows;
 
-    const trongO = (r, j) => r == null || r[j] == null || String(r[j]).trim() === "";
+    const isEmptyCell = (r: Row | undefined, j: number) => r == null || r[j] == null || String(r[j]).trim() === "";
 
-    const truoc = rows.map(() => []), sau = rows.map(() => []);
+    const before: Row[][] = rows.map(() => []), after: Row[][] = rows.map(() => []);
     for (let i = 0; i < rows.length; i++) {
-        if (laDuLieu[i] || demO(rows[i]) !== 1) continue;
-        const cot = rows[i].findIndex((c) => c != null && String(c).trim() !== "");
+        if (isDataRow[i] || countFilled(rows[i]) !== 1) continue;
+        const col = rows[i].findIndex((c) => c != null && String(c).trim() !== "");
 
         // Gần nhất thắng; hoà thì dòng nào ĐANG TRỐNG ô đó thắng. Không có luật
         // hoà này thì dòng tiêu đề nuốt mất mảnh của giao dịch đầu tiên: nó
         // cũng cách đúng một dòng, mà ô "ID giao dịch" của nó thì đã có chữ.
-        let gan = -1, diem = -Infinity;
+        let nearest = -1, bestScore = -Infinity;
         for (let d = 1; d <= 2; d++) {
             for (const j of [i - d, i + d]) {
-                if (!laDuLieu[j]) continue;
-                const d2 = -d * 10 + (trongO(rows[j], cot) ? 5 : 0);
-                if (d2 > diem) { diem = d2; gan = j; }
+                if (!isDataRow[j]) continue;
+                const score = -d * 10 + (isEmptyCell(rows[j], col) ? 5 : 0);
+                if (score > bestScore) { bestScore = score; nearest = j; }
             }
         }
-        if (gan < 0) continue;
-        (gan > i ? truoc[gan] : sau[gan]).push(rows[i]);
-        laDuLieu[i] = null;                       // đã dán đi, không xuất riêng nữa
+        if (nearest < 0) continue;
+        (nearest > i ? before[nearest] : after[nearest]).push(rows[i]);
+        isDataRow[i] = null;                      // đã dán đi, không xuất riêng nữa
     }
 
-    const ra = [];
+    const out: Row[] = [];
     for (let i = 0; i < rows.length; i++) {
-        if (laDuLieu[i] === null) continue;
-        if (!laDuLieu[i]) { ra.push(rows[i]); continue; }
+        if (isDataRow[i] === null) continue;
+        if (!isDataRow[i]) { out.push(rows[i]); continue; }
         const r = [...rows[i]];
-        for (const m of [...truoc[i], ...sau[i]]) {
-            m.forEach((c, j) => {
+        for (const piece of [...before[i], ...after[i]]) {
+            piece.forEach((c, j) => {
                 if (c == null || String(c).trim() === "") return;
                 r[j] = r[j] == null || String(r[j]).trim() === "" ? c : String(r[j]) + String(c);
             });
         }
-        ra.push(r);
+        out.push(r);
     }
-    return ra;
+    return out;
 }
 
 /** Gom theo x chồng lấn: ô canh phải (số tiền) lệch đầu nhưng vẫn phủ lên nhau. */
-function clusterColumns(cells) {
-    const cols = [];
+function clusterColumns(cells: Span[]): Span[] {
+    const cols: Span[] = [];
     for (const c of [...cells].sort((a, b) => a.x0 - b.x0)) {
-        let best = null, bestRatio = 0;
+        let best: Span | null = null, bestRatio = 0;
         for (const col of cols) {
             const ov = Math.min(c.x1, col.x1) - Math.max(c.x0, col.x0);
             if (ov <= 0) continue;
@@ -100,7 +109,7 @@ function clusterColumns(cells) {
     return cols.sort((a, b) => a.x0 - b.x0);
 }
 
-function colIndexOf(cell, cols) {
+function colIndexOf(cell: Span, cols: Span[]): number {
     let best = -1, bestOv = 0;
     for (let i = 0; i < cols.length; i++) {
         const ov = Math.min(cell.x1, cols[i].x1) - Math.max(cell.x0, cols[i].x0);
@@ -115,8 +124,8 @@ function colIndexOf(cell, cols) {
  * chiều cao chữ để một trang bảng không có khoảng trắng nào trong ô cũng
  * không đẩy ngưỡng lên cao rồi nuốt luôn ranh giới cột.
  */
-function findGapSplit(byLine, medH) {
-    const gaps = [];
+function findGapSplit(byLine: { items: TextPiece[] }[], medH: number): number {
+    const gaps: number[] = [];
     for (const L of byLine) {
         const s = [...L.items].sort((a, b) => a.x0 - b.x0);
         for (let i = 1; i < s.length; i++) {
@@ -136,19 +145,19 @@ function findGapSplit(byLine, medH) {
     return Math.min(hi, Math.max(lo, best));
 }
 
-const median = (a) => {
+const median = (a: number[]): number => {
     if (!a.length) return 0;
     const s = [...a].sort((x, y) => x - y);
     return s[Math.floor(s.length / 2)];
 };
 
 /**
- * @param {Buffer|Uint8Array} buffer
- * @param {{password?: string}} [opts] mật khẩu mở file, nếu PDF bị khoá
- * @returns {Promise<{name: string, rows: any[][]}[]>} MỘT bảng gộp mọi trang
+ * @param buffer nội dung file PDF
+ * @param opts   mật khẩu mở file, nếu PDF bị khoá
+ * @returns MỘT bảng gộp mọi trang
  */
-export async function readPdfSheets(buffer, opts = {}) {
-    let pdfjs;
+export async function readPdfSheets(buffer: Buffer | Uint8Array, opts: { password?: string } = {}): Promise<Sheet[]> {
+    let pdfjs: typeof import("pdfjs-dist/legacy/build/pdf.mjs");
     try {
         pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
     } catch {
@@ -160,22 +169,26 @@ export async function readPdfSheets(buffer, opts = {}) {
     // pdfjs từ chối thẳng Buffer của Node (dù Buffer là con của Uint8Array),
     // nên phải sao ra một Uint8Array thuần.
     const data = new Uint8Array(buffer);
+    // isEvalSupported: pdfjs-dist v6 đã bỏ khỏi kiểu tham số nhưng vẫn gửi kèm — bản cũ hơn
+    // cài lại thì vẫn tắt eval như trước.
+    const params = {
+        data, isEvalSupported: false, useSystemFonts: true,
+        ...(opts.password ? { password: opts.password } : {}),
+    } as Parameters<typeof pdfjs.getDocument>[0];
     let doc;
     try {
-        doc = await pdfjs.getDocument({
-            data, isEvalSupported: false, useSystemFonts: true,
-            ...(opts.password ? { password: opts.password } : {}),
-        }).promise;
+        doc = await pdfjs.getDocument(params).promise;
     } catch (e) {
         // Sao kê ngân hàng gửi qua email gần như luôn bị khoá mật khẩu. Thông
         // báo gốc của pdfjs là "No password given" — người dùng đọc xong không
         // biết phải làm gì. Gắn cờ để màn hình bật ô nhập mật khẩu.
-        if (e?.name === "PasswordException") {
-            const err = new Error(e.code === 2
+        const pe = e as { name?: string; code?: number } | null;
+        if (pe?.name === "PasswordException") {
+            const err = new Error(pe.code === 2
                 ? "Mật khẩu không đúng — kiểm tra lại rồi thử lần nữa."
-                : "File PDF này bị khoá bằng mật khẩu. Nhập mật khẩu ngân hàng gửi kèm sao kê rồi chạy lại.");
-            err.canMatKhau = true;
-            err.matKhauSai = e.code === 2;
+                : "File PDF này bị khoá bằng mật khẩu. Nhập mật khẩu ngân hàng gửi kèm sao kê rồi chạy lại.") as PdfPasswordError;
+            err.needsPassword = true;
+            err.wrongPassword = pe.code === 2;
             throw err;
         }
         throw e;
@@ -185,27 +198,27 @@ export async function readPdfSheets(buffer, opts = {}) {
     // Sao kê nhiều trang là chuyện thường (bản kê 9 tháng của Facebook). Xử lý
     // từng trang riêng rồi để tầng trên chọn MỘT trang là mất sạch phần còn
     // lại — và mất im lặng, vì các trang sau trông vẫn "đọc được".
-    const items = [];
+    const items: TextPiece[] = [];
     for (let p = 1; p <= doc.numPages; p++) {
         const page = await doc.getPage(p);
         const content = await page.getTextContent();
-        const cao = page.view?.[3] || 800;
+        const pageHeight = page.view?.[3] || 800;
         for (const it of content.items) {
-            if (!it.str || !it.str.trim()) continue;
+            if (!("str" in it) || !it.str || !it.str.trim()) continue;
             const t = it.transform;
             const w = it.width || 0;
             const h = Math.abs(it.height || t[3] || 10);
             // Dời y theo số trang để dòng của hai trang không dính vào nhau
-            items.push({ x0: t[4], x1: t[4] + w, y: t[5] - (p - 1) * (cao + 1000), h, s: it.str, trang: p });
+            items.push({ x0: t[4], x1: t[4] + w, y: t[5] - (p - 1) * (pageHeight + 1000), h, s: it.str, page: p });
         }
     }
 
-    const sheets = [];
+    const sheets: Sheet[] = [];
     if (items.length) {
         const medH = median(items.map((i) => i.h)) || 10;
 
         // ── 1. Gom theo dòng ─────────────────────────────────────────────
-        const byLine = [];
+        const byLine: { y: number; items: TextPiece[] }[] = [];
         for (const it of [...items].sort((a, b) => b.y - a.y || a.x0 - b.x0)) {
             const last = byLine[byLine.length - 1];
             if (last && Math.abs(last.y - it.y) <= medH * 0.5) { last.items.push(it); last.y = (last.y + it.y) / 2; }
@@ -219,8 +232,8 @@ export async function readPdfSheets(buffer, opts = {}) {
         // (đo trên sao kê thật: 6 so với 24), nhưng con số cụ thể đổi theo cỡ
         // chữ và bề rộng khổ giấy — đoán cứng là sớm muộn cắt nhầm giữa ô.
         const gapMax = findGapSplit(byLine, medH);
-        const lines = byLine.map((L) => {
-            const cells = [];
+        const lines: TextCell[][] = byLine.map((L) => {
+            const cells: TextCell[] = [];
             for (const it of L.items.sort((a, b) => a.x0 - b.x0)) {
                 const cur = cells[cells.length - 1];
                 if (cur && it.x0 - cur.x1 <= gapMax) {
@@ -239,11 +252,11 @@ export async function readPdfSheets(buffer, opts = {}) {
         // qua nhiều cột; cho chúng tham gia thì hai cột cạnh nhau bị kéo dính
         // làm một, và ngày với mã tham chiếu rơi chung vào một ô.
         const widest = Math.max(...lines.map((c) => c.length));
-        const khungBang = lines.filter((c) => c.length >= Math.max(3, Math.ceil(widest * 0.6)));
-        const cols = clusterColumns((khungBang.length >= 2 ? khungBang : lines).flat());
+        const tableLines = lines.filter((c) => c.length >= Math.max(3, Math.ceil(widest * 0.6)));
+        const cols = clusterColumns((tableLines.length >= 2 ? tableLines : lines).flat());
 
-        const rows = lines.map((cells) => {
-            const row = new Array(cols.length).fill(null);
+        const rows: Row[] = lines.map((cells) => {
+            const row: (string | null)[] = new Array(cols.length).fill(null);
             for (const c of cells) {
                 const i = colIndexOf(c, cols);
                 row[i] = row[i] == null ? c.text : row[i] + " " + c.text;
@@ -251,7 +264,7 @@ export async function readPdfSheets(buffer, opts = {}) {
             return row;
         });
 
-        sheets.push({ name: doc.numPages > 1 ? `pdf ${doc.numPages} trang` : "pdf", rows: gopDongBiNgat(rows) });
+        sheets.push({ name: doc.numPages > 1 ? `pdf ${doc.numPages} trang` : "pdf", rows: mergeWrappedRows(rows) });
     }
 
     if (!sheets.some((s) => s.rows.length)) {

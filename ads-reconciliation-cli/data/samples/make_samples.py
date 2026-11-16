@@ -35,7 +35,7 @@ for r in FB:
     ws.append(list(r))
 for c in ws["B"][1:]:
     c.number_format = "dd/mm/yyyy"
-wb.save(os.path.join(HERE, "MAU_chi-phi-tkqc-fb_2026-09-01_07.xlsx"))
+wb.save(os.path.join(HERE, "sample-fb-ad-spend_2026-09-01_07.xlsx"))
 
 # ── File 2: sao kê thẻ ngân hàng ──────────────────────────────────────────
 wb2 = Workbook()
@@ -65,6 +65,6 @@ for r in BANK:
     ws2.append(list(r))
 for c in ws2["A"][1:]:
     c.number_format = "dd/mm/yyyy"
-wb2.save(os.path.join(HERE, "MAU_sao-ke-the_2026-09-01_08.xlsx"))
+wb2.save(os.path.join(HERE, "sample-card-statement_2026-09-01_08.xlsx"))
 
 print("Đã tạo 2 file mẫu trong", HERE)

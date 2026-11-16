@@ -10,11 +10,14 @@
  */
 import { readFileSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
+import type { Cell, Row, Sheet } from "./types.ts";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tầng ZIP
 // ─────────────────────────────────────────────────────────────────────────
-function openZip(buf) {
+type ZipEntry = { method: number; compSize: number; lho: number };
+
+function openZip(buf: Buffer) {
     // End of Central Directory nằm ở cuối file, tối đa 65535 byte comment phía sau
     let eocd = -1;
     const min = Math.max(0, buf.length - 66000);
@@ -25,7 +28,7 @@ function openZip(buf) {
 
     const count = buf.readUInt16LE(eocd + 10);
     const cdOffset = buf.readUInt32LE(eocd + 16);
-    const files = new Map();
+    const files = new Map<string, ZipEntry>();
 
     let p = cdOffset;
     for (let i = 0; i < count; i++) {
@@ -42,8 +45,8 @@ function openZip(buf) {
     }
 
     return {
-        names: () => [...files.keys()],
-        read(name) {
+        names: (): string[] => [...files.keys()],
+        read(name: string): Buffer | null {
             const e = files.get(name);
             if (!e) return null;
             if (buf.readUInt32LE(e.lho) !== 0x04034b50) throw new Error("ZIP hỏng ở " + name);
@@ -59,22 +62,22 @@ function openZip(buf) {
 // ─────────────────────────────────────────────────────────────────────────
 // Tầng XML (đủ dùng cho SpreadsheetML, không cần parser tổng quát)
 // ─────────────────────────────────────────────────────────────────────────
-function decodeEntities(s) {
+function decodeEntities(s: string): string {
     return s
         .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
         .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
-        .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-        .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+        .replace(/&#x([0-9a-fA-F]+);/g, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
+        .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(parseInt(d, 10)))
         .replace(/&amp;/g, "&");
 }
 
-function attr(tag, name) {
+function attr(tag: string, name: string): string | null {
     const m = tag.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`));
     return m ? m[1] : null;
 }
 
 /** "BK12" → 1493 (0-based) */
-function colToIndex(ref) {
+function colToIndex(ref: string): number {
     const letters = (ref.match(/^[A-Z]+/) || [""])[0];
     let n = 0;
     for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
@@ -86,7 +89,7 @@ function colToIndex(ref) {
 // ─────────────────────────────────────────────────────────────────────────
 const BUILTIN_DATE_FMT = new Set([14, 15, 16, 17, 18, 19, 20, 21, 22, 27, 30, 36, 45, 46, 47, 50, 57]);
 
-function isDateFormat(numFmtId, code) {
+function isDateFormat(numFmtId: number, code: string | undefined): boolean {
     if (BUILTIN_DATE_FMT.has(numFmtId)) return true;
     if (!code) return false;
     const stripped = code.replace(/"[^"]*"/g, "").replace(/\[[^\]]*\]/g, "");
@@ -94,7 +97,7 @@ function isDateFormat(numFmtId, code) {
 }
 
 /** Số serial của Excel → Date (UTC). 25569 = 01/01/1970. */
-export function excelSerialToDate(serial) {
+export function excelSerialToDate(serial: number): Date {
     const ms = Math.round((serial - 25569) * 86400 * 1000);
     return new Date(ms);
 }
@@ -102,11 +105,11 @@ export function excelSerialToDate(serial) {
 // ─────────────────────────────────────────────────────────────────────────
 // Đọc .xlsx
 // ─────────────────────────────────────────────────────────────────────────
-function readXlsx(buf) {
+function readXlsx(buf: Buffer): Sheet[] {
     const zip = openZip(buf);
 
     // 1. Chuỗi dùng chung
-    const shared = [];
+    const shared: string[] = [];
     const ssXml = zip.read("xl/sharedStrings.xml");
     if (ssXml) {
         const text = ssXml.toString("utf8");
@@ -118,8 +121,8 @@ function readXlsx(buf) {
     }
 
     // 2. Định dạng số — để biết ô nào là ngày
-    const numFmtById = new Map();
-    const styleFmtIds = [];
+    const numFmtById = new Map<number, string>();
+    const styleFmtIds: number[] = [];
     const stylesXml = zip.read("xl/styles.xml");
     if (stylesXml) {
         const text = stylesXml.toString("utf8");
@@ -136,14 +139,14 @@ function readXlsx(buf) {
     const styleIsDate = styleFmtIds.map((id) => isDateFormat(id, numFmtById.get(id)));
 
     // 3. Danh sách sheet theo đúng thứ tự trong workbook
-    const rels = new Map();
+    const rels = new Map<string | null, string | null>();
     const relsXml = zip.read("xl/_rels/workbook.xml.rels");
     if (relsXml) {
         for (const m of relsXml.toString("utf8").matchAll(/<Relationship\b([^>]*)\/>/g)) {
             rels.set(attr(m[1], "Id"), attr(m[1], "Target"));
         }
     }
-    const sheetRefs = [];
+    const sheetRefs: { name: string; path: string }[] = [];
     const wbXml = zip.read("xl/workbook.xml");
     if (wbXml) {
         for (const m of wbXml.toString("utf8").matchAll(/<sheet\b([^>]*)\/>/g)) {
@@ -159,15 +162,16 @@ function readXlsx(buf) {
     }
 
     // 4. Từng sheet → mảng 2 chiều
-    const sheets = sheetRefs.map(({ name, path }) => {
+    return sheetRefs.map(({ name, path }): Sheet => {
         const xml = zip.read(path);
         if (!xml) return { name, rows: [] };
         const text = xml.toString("utf8");
-        const rows = [];
+        // Mảng THƯA: ô / dòng trống trong XML để lỗ hổng, lấp ở cuối.
+        const rows: (Cell | undefined)[][] = [];
 
         for (const rm of text.matchAll(/<row\b([^>]*)>([\s\S]*?)<\/row>/g)) {
             const rowIdx = Number(attr(rm[1], "r") || rows.length + 1) - 1;
-            const cells = [];
+            const cells: (Cell | undefined)[] = [];
             for (const cm of rm[2].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
                 const tag = cm[1];
                 const body = cm[2] || "";
@@ -175,7 +179,7 @@ function readXlsx(buf) {
                 const type = attr(tag, "t");
                 const style = Number(attr(tag, "s") || -1);
 
-                let value = null;
+                let value: Cell = null;
                 if (type === "inlineStr") {
                     let s = "";
                     for (const t of body.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)) s += decodeEntities(t[1]);
@@ -201,27 +205,25 @@ function readXlsx(buf) {
         }
 
         // Lấp lỗ hổng để mọi dòng đều là mảng thật
-        const out = [];
+        const out: Row[] = [];
         for (let i = 0; i < rows.length; i++) out.push(rows[i] ? [...rows[i]].map((c) => (c === undefined ? null : c)) : []);
         return { name, rows: out };
     });
-
-    return sheets;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
 // Đọc CSV / TSV — tự đoán dấu phân cách, hỗ trợ ô bọc nháy kép
 // ─────────────────────────────────────────────────────────────────────────
-export function parseDelimited(text) {
+export function parseDelimited(text: string): string[][] {
     const clean = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
     const head = clean.slice(0, clean.indexOf("\n") === -1 ? clean.length : clean.indexOf("\n"));
-    const delim = [["\t", (head.match(/\t/g) || []).length],
-                   [";", (head.match(/;/g) || []).length],
-                   [",", (head.match(/,/g) || []).length]]
+    const delim = ([["\t", (head.match(/\t/g) || []).length],
+                    [";", (head.match(/;/g) || []).length],
+                    [",", (head.match(/,/g) || []).length]] as [string, number][])
         .sort((a, b) => b[1] - a[1])[0][0];
 
-    const rows = [];
-    let row = [], cell = "", inQ = false;
+    const rows: string[][] = [];
+    let row: string[] = [], cell = "", inQ = false;
     for (let i = 0; i < clean.length; i++) {
         const ch = clean[i];
         if (inQ) {
@@ -243,11 +245,10 @@ export function parseDelimited(text) {
 // ─────────────────────────────────────────────────────────────────────────
 /**
  * Trả về [{ name, rows }] cho mọi định dạng được hỗ trợ.
- * @param {string} filePath  đường dẫn, hoặc chỉ tên file khi đã có sẵn buffer
- * @param {Buffer|null} [buffer]  nội dung file — truyền vào thì không đọc đĩa
- * @returns {{name: string, rows: any[][]}[]}
+ * @param filePath  đường dẫn, hoặc chỉ tên file khi đã có sẵn buffer
+ * @param buffer    nội dung file — truyền vào thì không đọc đĩa
  */
-export function readSheets(filePath, buffer = null) {
+export function readSheets(filePath: string, buffer: Buffer | null = null): Sheet[] {
     const buf = buffer || readFileSync(filePath);
     const lower = String(filePath).toLowerCase();
 
@@ -273,15 +274,16 @@ export function readSheets(filePath, buffer = null) {
  * Bất đồng bộ vì bộ đọc PDF nặng (~10MB) nên chỉ nạp khi thật sự gặp PDF —
  * tuần nào cũng .xlsx thì không phải trả giá cho nó.
  *
- * @param {string} filePath
- * @param {Buffer|null} [buffer]
- * @param {{password?: string}} [opts] mật khẩu, nếu là PDF bị khoá
- * @returns {Promise<{name: string, rows: any[][]}[]>}
+ * @param opts mật khẩu, nếu là PDF bị khoá
  */
-export async function readAnySheets(filePath, buffer = null, opts = {}) {
+export async function readAnySheets(
+    filePath: string,
+    buffer: Buffer | null = null,
+    opts: { password?: string } = {},
+): Promise<Sheet[]> {
     const buf = buffer || readFileSync(filePath);
     if (buf.length >= 5 && buf.subarray(0, 5).toString("latin1") === "%PDF-") {
-        const { readPdfSheets } = await import("./pdf.mjs");
+        const { readPdfSheets } = await import("./pdf.ts");
         return readPdfSheets(buf, opts);
     }
     return readSheets(filePath, buf);

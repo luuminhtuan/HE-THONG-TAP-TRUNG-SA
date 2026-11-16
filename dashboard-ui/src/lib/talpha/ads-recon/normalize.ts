@@ -6,9 +6,10 @@
  * là phải sửa code. Ở đây chỉ có "đọc hiểu", không có nghiệp vụ — nên test
  * được từng hàm một.
  */
+import type { Row } from "./types.ts";
 
 /** Bỏ dấu tiếng Việt, thường hoá, gộp mọi ký tự lạ thành khoảng trắng. */
-export function normText(s) {
+export function normText(s: unknown): string {
     return String(s ?? "")
         .normalize("NFD").replace(/[̀-ͯ]/g, "")
         .replace(/đ/g, "d").replace(/Đ/g, "D")
@@ -22,7 +23,7 @@ export function normText(s) {
  *   "12.500.000"  "12,500,000"  "12 500 000,50"  "(1.200)"  "-1200"  "12.500.000 VND"
  * Trả về null nếu ô không phải số tiền.
  */
-export function parseAmount(v) {
+export function parseAmount(v: unknown): number | null {
     if (v === null || v === undefined || v === "") return null;
     if (typeof v === "number") return Number.isFinite(v) ? v : null;
     if (v instanceof Date) return null;
@@ -61,9 +62,9 @@ export function parseAmount(v) {
  * Đọc ngày → chuỗi "YYYY-MM-DD" (không giờ, vì đối soát chỉ cần tới ngày).
  * Ưu tiên dd/mm/yyyy — chuẩn Việt Nam. Ô ngày thật từ Excel thì đọc thẳng.
  */
-export function parseDate(v) {
+export function parseDate(v: unknown): string | null {
     if (v === null || v === undefined || v === "") return null;
-    if (v instanceof Date && !isNaN(v)) return toISODate(v);
+    if (v instanceof Date && !isNaN(v.getTime())) return toISODate(v);
     if (typeof v === "number") {
         // Serial Excel (khoảng 1900-2100) — trường hợp ô không gắn định dạng ngày
         if (v > 20000 && v < 80000) return toISODate(new Date(Math.round((v - 25569) * 86400000)));
@@ -78,7 +79,8 @@ export function parseDate(v) {
 
     m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/);
     if (m) {
-        let [, a, b, y] = m;
+        const [, a, b] = m;
+        let y = m[3];
         if (y.length === 2) y = String(2000 + Number(y));
         // Mặc định dd/mm; chỉ lật sang mm/dd khi ngày > 12 ở vế thứ hai
         if (Number(a) > 12 && Number(b) <= 12) return fmt(y, b, a);
@@ -87,39 +89,39 @@ export function parseDate(v) {
     }
 
     const d = new Date(s);
-    if (!isNaN(d)) return toISODate(d);
+    if (!isNaN(d.getTime())) return toISODate(d);
     return null;
 
-    function fmt(y, mo, da) {
+    function fmt(y: string, mo: string, da: string): string {
         return `${y}-${String(Number(mo)).padStart(2, "0")}-${String(Number(da)).padStart(2, "0")}`;
     }
 }
 
-export function toISODate(d) {
+export function toISODate(d: Date): string {
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
-export function daysBetween(a, b) {
+export function daysBetween(a: string, b: string): number {
     return Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86400000);
 }
 
-export function addDays(iso, n) {
+export function addDays(iso: string, n: number): string {
     return toISODate(new Date(Date.parse(iso + "T00:00:00Z") + n * 86400000));
 }
 
 /** Tuần ISO — dùng làm mã kỳ đối soát, ví dụ "2026-W37". */
-export function isoWeek(iso) {
+export function isoWeek(iso: string): string {
     const d = new Date(Date.parse(iso + "T00:00:00Z"));
     const day = (d.getUTCDay() + 6) % 7;                 // thứ 2 = 0
     d.setUTCDate(d.getUTCDate() - day + 3);              // về thứ 5 cùng tuần
     const year = d.getUTCFullYear();
     const jan4 = new Date(Date.UTC(year, 0, 4));
-    const week = 1 + Math.round(((d - jan4) / 86400000 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7);
+    const week = 1 + Math.round(((d.getTime() - jan4.getTime()) / 86400000 - 3 + ((jan4.getUTCDay() + 6) % 7)) / 7);
     return `${year}-W${String(week).padStart(2, "0")}`;
 }
 
 /** 4 số cuối thẻ, moi từ "Visa *4281", "MASTER*7733", "**** 1234", "x-9911". */
-export function cardLast4(s) {
+export function cardLast4(s: unknown): string | null {
     if (!s) return null;
     const t = String(s);
     const m = t.match(/(?:\*+|x+|X+|#+|-|\s)(\d{4})(?!\d)/) || t.match(/(\d{4})(?!\d)\s*$/);
@@ -131,7 +133,7 @@ export function cardLast4(s) {
  * Khớp chính xác trước, khớp chứa sau — để "so tien ghi no" không nuốt mất
  * cột "so tien" khi cả hai cùng tồn tại.
  */
-export function findColumn(headers, aliases) {
+export function findColumn(headers: readonly unknown[], aliases: readonly string[]): number {
     const H = headers.map(normText);
     const A = aliases.map(normText);
     for (const a of A) { const i = H.indexOf(a); if (i >= 0) return i; }
@@ -150,7 +152,11 @@ export function findColumn(headers, aliases) {
  * dòng. Quét 80 dòng đầu cho chắc — quét thừa chỉ tốn vài mili-giây, quét
  * thiếu là bó tay trước cả file đọc được hoàn toàn bình thường.
  */
-export function findHeaderRow(rows, aliasGroups, maxScan = 80) {
+export function findHeaderRow(
+    rows: readonly Row[],
+    aliasGroups: readonly (readonly string[])[],
+    maxScan = 80,
+): { idx: number; score: number } {
     let best = { idx: -1, score: 0 };
     const limit = Math.min(rows.length, maxScan);
     for (let i = 0; i < limit; i++) {
@@ -164,11 +170,11 @@ export function findHeaderRow(rows, aliasGroups, maxScan = 80) {
 }
 
 /** Ô có chữ thật hay không (dùng để bỏ dòng tổng cộng, dòng trống). */
-export function isBlankRow(row) {
+export function isBlankRow(row: readonly unknown[] | null | undefined): boolean {
     return !row || row.every((c) => c === null || c === undefined || String(c).trim() === "");
 }
 
-export function fmtVND(n) {
+export function fmtVND(n: unknown): string {
     if (n === null || n === undefined || !Number.isFinite(Number(n))) return "—";
     return Math.round(Number(n)).toLocaleString("vi-VN") + " ₫";
 }

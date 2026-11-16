@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { readSheets, parseDelimited } from "../src/engine.mjs";
 import { ROOT } from "../src/run.mjs";
 
-const MAU = join(ROOT, "data", "mau");
+const SAMPLES = join(ROOT, "data", "samples");
 
 test("đọc .xlsx thật không cần thư viện ngoài", () => {
-    const sheets = readSheets(join(MAU, "MAU_chi-phi-tkqc-fb_2026-09-01_07.xlsx"));
+    const sheets = readSheets(join(SAMPLES, "sample-fb-ad-spend_2026-09-01_07.xlsx"));
     assert.equal(sheets.length, 1);
     assert.equal(sheets[0].name, "Payment activity");
     assert.equal(sheets[0].rows[0][0], "Transaction ID");
@@ -18,7 +18,7 @@ test("đọc .xlsx thật không cần thư viện ngoài", () => {
 });
 
 test("đọc được tiếng Việt có dấu trong sharedStrings", () => {
-    const sheets = readSheets(join(MAU, "MAU_chi-phi-tkqc-fb_2026-09-01_07.xlsx"));
+    const sheets = readSheets(join(SAMPLES, "sample-fb-ad-spend_2026-09-01_07.xlsx"));
     assert.equal(sheets[0].rows[1][3], "Sỹ Anh Taiwan 4");
 });
 
@@ -39,7 +39,7 @@ test("PDF NHIỀU TRANG phải đọc hết mọi trang, không chỉ trang đ�
     // Bản đầu coi mỗi trang là một sheet rồi để tầng trên chọn MỘT — mất sạch
     // phần còn lại, mà mất im lặng vì kết quả vẫn trông như đọc được.
     const { readAnySheets } = await import("../src/engine.mjs");
-    const sheets = await readAnySheets(join(MAU, "MAU_sao-ke-2-trang.pdf"));
+    const sheets = await readAnySheets(join(SAMPLES, "sample-statement-2-pages.pdf"));
 
     assert.equal(sheets.length, 1, "mọi trang phải gộp thành MỘT bảng");
     assert.match(sheets[0].name, /2 trang/);
@@ -51,17 +51,17 @@ test("PDF khoá mật khẩu: báo rõ và gắn cờ, có mật khẩu đúng t
     // Sao kê ngân hàng gửi qua email gần như luôn bị khoá. Thông báo gốc của
     // pdfjs là "No password given" — người dùng đọc xong không biết làm gì.
     const { readAnySheets } = await import("../src/engine.mjs");
-    const F = join(MAU, "MAU_sao-ke-CO-MAT-KHAU.pdf");
+    const F = join(SAMPLES, "sample-statement-password.pdf");
     const buf = (await import("node:fs")).readFileSync(F);
 
     await assert.rejects(() => readAnySheets(F, buf), (e) => {
         assert.match(e.message, /khoá bằng mật khẩu/);
-        assert.equal(e.canMatKhau, true, "phải gắn cờ để màn hình bật ô nhập mật khẩu");
+        assert.equal(e.needsPassword, true, "phải gắn cờ để màn hình bật ô nhập mật khẩu");
         return true;
     });
     await assert.rejects(() => readAnySheets(F, buf, { password: "sai" }), (e) => {
         assert.match(e.message, /không đúng/);
-        assert.equal(e.matKhauSai, true);
+        assert.equal(e.wrongPassword, true);
         return true;
     });
     const sheets = await readAnySheets(F, buf, { password: "123456" });

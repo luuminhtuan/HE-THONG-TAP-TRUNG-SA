@@ -1,0 +1,4 @@
+{
+  "description": "Engine đối soát chi phí quảng cáo (ESM). Node nạp thẳng các file .ts ở đây (bỏ kiểu lúc chạy) cho ads-reconciliation-cli và phép thử — khai type module để Node khỏi đoán và in cảnh báo MODULE_TYPELESS_PACKAGE_JSON.",
+  "type": "module"
+}

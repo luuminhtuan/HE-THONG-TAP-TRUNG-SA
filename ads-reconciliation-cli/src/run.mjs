@@ -10,8 +10,13 @@ import { fileURLToPath } from "node:url";
 import { reconcile, readAnySheets, detectKind, REPO_ROOT } from "./engine.mjs";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-export const KY_DIR = join(ROOT, "data", "ky");
+/** Mỗi kỳ một thư mục: data/periods/<tuần ISO>/result.json + sources/ (bản sao file gốc). */
+export const PERIODS_DIR = join(ROOT, "data", "periods");
 export const RULES_FILE = join(REPO_ROOT, "config", "talpha_rules.json");
+
+const RESULT_FILE = "result.json";
+// Kỳ chạy trước khi đổi tên (16/11/2026) lưu "ket-qua.json" — vẫn đọc làm lịch sử nếu ai chép sang.
+const LEGACY_RESULT_FILE = "ket-qua.json";
 
 /** Luật nằm chung trong talpha_rules.json → khối ads_settlement. */
 export function loadConfig(path = RULES_FILE) {
@@ -21,6 +26,7 @@ export function loadConfig(path = RULES_FILE) {
     return cfg;
 }
 
+/** Roster TKQC cho bản dòng lệnh: file roster_file (dashboard thì lấy từ bảng tkqc). */
 function loadRoster(cfg) {
     try {
         const p = resolve(REPO_ROOT, cfg.ad_accounts?.roster_file || "");
@@ -32,13 +38,13 @@ function loadRoster(cfg) {
  * Các kỳ đã đối soát, cũ → mới. Lọc kỳ cũ hơn kỳ đang chạy để so tăng/giảm
  * không bị ngược chiều khi chạy lại một kỳ cũ.
  */
-export function loadHistory(excludeKy = null) {
-    if (!existsSync(KY_DIR)) return [];
+export function loadHistory(excludePeriod = null) {
+    if (!existsSync(PERIODS_DIR)) return [];
     const out = [];
-    for (const d of readdirSync(KY_DIR).sort()) {
-        if (excludeKy && d >= excludeKy) continue;
-        const f = join(KY_DIR, d, "ket-qua.json");
-        if (!existsSync(f)) continue;
+    for (const d of readdirSync(PERIODS_DIR).sort()) {
+        if (excludePeriod && d >= excludePeriod) continue;
+        const f = [RESULT_FILE, LEGACY_RESULT_FILE].map((n) => join(PERIODS_DIR, d, n)).find(existsSync);
+        if (!f) continue;
         try {
             const j = JSON.parse(readFileSync(f, "utf8"));
             out.push({ ky: j.ky, chay_luc: j.chay_luc, summary: j.summary, files: j.files });
@@ -56,25 +62,26 @@ export async function loadFile(path, cfg, buffer = null, opts = {}) {
 /**
  * @param {Array<{path:string, buffer?:Buffer, name?:string}>} files — mọi file
  *        của kỳ này; không cần đúng thứ tự, mỗi phía bao nhiêu file cũng được.
+ * @param {{cfg?: object, save?: boolean, password?: string}} [opts] password — mở PDF bị khoá
  */
-export async function runReconciliation(files, { cfg = loadConfig(), save = true, matKhau = "" } = {}) {
+export async function runReconciliation(files, { cfg = loadConfig(), save = true, password = "" } = {}) {
     const list = Array.isArray(files) ? files : [files];
     if (list.length < 2) throw new Error("Cần ít nhất 2 file: chi phí TKQC và sao kê thẻ");
 
     const docs = [];
-    const doc = matKhau ? { password: matKhau } : {};
-    for (const f of list) docs.push({ ...(await loadFile(f.path, cfg, f.buffer || null, doc)), src: f });
+    const readOpts = password ? { password } : {};
+    for (const f of list) docs.push({ ...(await loadFile(f.path, cfg, f.buffer || null, readOpts)), src: f });
 
     const result = reconcile(docs, cfg, { roster: loadRoster(cfg), history: loadHistory() });
 
     if (save) {
-        const dir = join(KY_DIR, result.ky);
-        mkdirSync(join(dir, "nguon"), { recursive: true });
-        writeFileSync(join(dir, "ket-qua.json"), JSON.stringify(result, null, 2), "utf8");
+        const dir = join(PERIODS_DIR, result.ky);
+        mkdirSync(join(dir, "sources"), { recursive: true });
+        writeFileSync(join(dir, RESULT_FILE), JSON.stringify(result, null, 2), "utf8");
         for (const f of list) {
             try {
-                if (f.buffer) writeFileSync(join(dir, "nguon", f.name || basename(f.path)), f.buffer);
-                else if (existsSync(f.path)) copyFileSync(f.path, join(dir, "nguon", basename(f.path)));
+                if (f.buffer) writeFileSync(join(dir, "sources", f.name || basename(f.path)), f.buffer);
+                else if (existsSync(f.path)) copyFileSync(f.path, join(dir, "sources", basename(f.path)));
             } catch { /* lưu bản gốc là tiện lợi, hỏng thì không được chặn kết quả */ }
         }
         result.saved_to = dir;

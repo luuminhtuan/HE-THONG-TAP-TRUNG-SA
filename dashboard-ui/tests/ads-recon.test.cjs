@@ -5,11 +5,13 @@ const RULES = require("../../config/talpha_rules.json");
 /**
  * ĐỐI SOÁT CHI PHÍ QUẢNG CÁO — phép thử cho engine dùng chung.
  *
- * Engine là ESM thuần (.mjs) nên nạp bằng import động, không qua .test-build.
+ * Engine là TypeScript ESM (src/lib/talpha/ads-recon/*.ts): nạp thẳng bằng import động — Node
+ * ≥ 22.18 tự bỏ kiểu lúc chạy — không qua .test-build. Nhờ vậy phép thử này cũng giữ engine chỉ
+ * dùng cú pháp TypeScript "xoá được" (bản dòng lệnh ads-reconciliation-cli nạp đúng như thế).
  * Dữ liệu dựng thẳng trong bộ nhớ dưới dạng "sheet" — không đọc file — để phép
  * thử này chạy được ở mọi nơi, kể cả trên máy chủ không có thư mục file mẫu.
  */
-const ENGINE = path.join(__dirname, "..", "src", "lib", "talpha", "ads-recon", "recon.mjs");
+const ENGINE = path.join(__dirname, "..", "src", "lib", "talpha", "ads-recon", "recon.ts");
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ✓", name); };

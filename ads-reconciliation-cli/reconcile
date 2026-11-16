@@ -1,0 +1,4 @@
+#!/bin/bash
+# Lối tắt: ./reconcile            → đối soát 2 file mới nhất trong data/inbox
+#          ./reconcile --help     → xem các cờ
+cd "$(dirname "$0")" && exec node bin/reconcile.mjs "$@"

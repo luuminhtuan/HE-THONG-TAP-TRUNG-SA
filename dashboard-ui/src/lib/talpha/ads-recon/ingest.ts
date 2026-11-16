@@ -5,11 +5,17 @@
  * soát chỉ còn nhìn thấy: NGÀY · SỐ TIỀN · THẺ · MÔ TẢ. Mọi khác biệt về định
  * dạng chết ở đây, không rò rỉ xuống dưới.
  */
-import { readSheets } from "./xlsx.mjs";
+import { readSheets } from "./xlsx.ts";
 import {
     normText, parseAmount, parseDate, cardLast4,
     findColumn, findHeaderRow, isBlankRow,
-} from "./normalize.mjs";
+} from "./normalize.ts";
+import type {
+    AdsSettlementConfig, BankIngest, BankRow, FbIngest, FbRow, PaymentStatus, Row, Sheet,
+    SkippedRow, SourceKind, TxnRow,
+} from "./types.ts";
+
+type IngestConfig = Pick<AdsSettlementConfig, "columns" | "bank_filter" | "currency" | "sanity">;
 
 /**
  * Kể ra ĐỌC ĐƯỢC GÌ khi không nhận ra dòng tiêu đề.
@@ -19,13 +25,13 @@ import {
  * mù, vì bảng là do dựng lại từ toạ độ chữ chứ không có sẵn. In vài dòng đầu
  * ra là đủ để biết nên thêm bí danh cột hay là bộ dựng bảng đang sai.
  */
-function doDuocGi(sheets) {
-    const sh = sheets.reduce((m, x) => (x.rows.length > (m?.rows.length || 0) ? x : m), null);
+function describeReadableContent(sheets: Sheet[]): string {
+    const sh = sheets.reduce<Sheet | null>((m, x) => (x.rows.length > (m?.rows.length || 0) ? x : m), null);
     if (!sh || !sh.rows.length) return "File không có dòng nào đọc được.";
-    const mau = sh.rows.slice(0, 4)
+    const sample = sh.rows.slice(0, 4)
         .map((r, i) => `  dòng ${i + 1}: ${JSON.stringify(r.slice(0, 8).map((c) => (c instanceof Date ? c.toISOString().slice(0, 10) : c)))}`)
         .join("\n");
-    return `Đọc được ${sh.rows.length} dòng ở "${sh.name}" nhưng không dòng nào giống tiêu đề bảng. Mấy dòng đầu:\n${mau}`;
+    return `Đọc được ${sh.rows.length} dòng ở "${sh.name}" nhưng không dòng nào giống tiêu đề bảng. Mấy dòng đầu:\n${sample}`;
 }
 
 /**
@@ -39,34 +45,34 @@ function doDuocGi(sheets) {
  * Một dòng vượt trần thì bỏ dòng. Quá nhiều dòng vượt trần thì cả file đọc
  * sai, bỏ nguyên file — nhặt vài dòng còn lại chỉ đẻ ra kết luận sai.
  */
-function chanSoVoLy(rows, skipped, cfg, tenFile) {
-    const tran = cfg.sanity?.max_amount_row ?? 1e9;
-    const tyLe = cfg.sanity?.max_bad_ratio ?? 0.3;
-    const xau = rows.filter((r) => Math.abs(r.amount) > tran);
-    if (!xau.length) return rows;
+function dropAbsurdAmounts<R extends TxnRow>(rows: R[], skipped: SkippedRow[], cfg: IngestConfig, fileName: string): R[] {
+    const maxAmount = cfg.sanity?.max_amount_row ?? 1e9;
+    const maxBadRatio = cfg.sanity?.max_bad_ratio ?? 0.3;
+    const bad = rows.filter((r) => Math.abs(r.amount) > maxAmount);
+    if (!bad.length) return rows;
 
-    const tot = rows.filter((r) => Math.abs(r.amount) <= tran);
-    if (xau.length / rows.length > tyLe) {
+    const good = rows.filter((r) => Math.abs(r.amount) <= maxAmount);
+    if (bad.length / rows.length > maxBadRatio) {
         throw new Error(
-            `${xau.length}/${rows.length} dòng có số tiền vô lý (lớn nhất: ${Math.abs(xau[0].amount).toExponential(2)} ₫) ` +
+            `${bad.length}/${rows.length} dòng có số tiền vô lý (lớn nhất: ${Math.abs(bad[0].amount).toExponential(2)} ₫) ` +
             `— gần như chắc chắn bảng bị dựng sai cột khi đọc file này, không phải tiền thật. Bỏ cả file.`);
     }
-    for (const r of xau) {
-        skipped.push({ file: tenFile, line: r.line, reason: `số tiền vô lý (${Math.abs(r.amount).toExponential(2)} ₫) — nhiều khả năng đọc dính hai cột số`, raw: r.raw });
+    for (const r of bad) {
+        skipped.push({ file: fileName, line: r.line, reason: `số tiền vô lý (${Math.abs(r.amount).toExponential(2)} ₫) — nhiều khả năng đọc dính hai cột số`, raw: r.raw });
     }
-    return tot;
+    return good;
 }
 
 const TOTAL_ROW = /^(tong|tong cong|total|grand total|cong|sum|so du dau|so du cuoi|ket chuyen)\b/;
 
 /** Moi số tài khoản quảng cáo từ phần đầu bản kê Facebook. */
-function moiSoTaiKhoan(rowsDau) {
-    const blob = rowsDau.flat().map((c) => String(c ?? "")).join(" ");
+function extractAccountNumber(headRows: Row[]): string {
+    const blob = headRows.flat().map((c) => String(c ?? "")).join(" ");
     const m = blob.match(/(?:t[aà]i kho[aả]n|account)\s*(?:id)?\s*[:#]?\s*(act_)?(\d{8,})/i);
     return m ? "act_" + m[2] : "";
 }
 
-function statusNorm(s) {
+function statusNorm(s: unknown): PaymentStatus {
     const t = normText(s);
     if (!t) return "unknown";
     if (/(paid|success|completed|settled|thanh cong|da thanh toan|da tra)/.test(t)) return "paid";
@@ -75,9 +81,11 @@ function statusNorm(s) {
     return "other";
 }
 
+type SheetPick = { sheet: Sheet; headerRow: number; matched: number; score: number };
+
 /** Chọn sheet có nhiều dòng dữ liệu nhất khớp bộ cột cần tìm. */
-function pickSheet(sheets, aliasGroups) {
-    let best = null;
+function pickSheet(sheets: Sheet[], aliasGroups: string[][]): SheetPick | null {
+    let best: SheetPick | null = null;
     for (const sh of sheets) {
         const hit = findHeaderRow(sh.rows, aliasGroups);
         if (hit.idx < 0) continue;
@@ -88,19 +96,25 @@ function pickSheet(sheets, aliasGroups) {
     return best;
 }
 
+/** Chỉ số cột của từng khoá bí danh (-1 = không có cột đó). */
+function locateColumns(headers: Row, aliases: Record<string, string[]>): Record<string, number> {
+    const col: Record<string, number> = {};
+    for (const [key, names] of Object.entries(aliases)) col[key] = findColumn(headers, names);
+    return col;
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // File 1 — chi phí thanh toán từ TKQC Facebook
 // ─────────────────────────────────────────────────────────────────────────
-export function ingestFb(sheets, cfg, sourceName = "") {
+export function ingestFb(sheets: Sheet[], cfg: IngestConfig, sourceName = ""): FbIngest {
     const A = cfg.columns.fb;
     const pick = pickSheet(sheets, [A.date, A.amount, A.transaction_id, A.account_id, A.status]);
-    if (!pick) throw new Error("Không tìm thấy dòng tiêu đề trong file TKQC. " + doDuocGi(sheets));
+    if (!pick) throw new Error("Không tìm thấy dòng tiêu đề trong file TKQC. " + describeReadableContent(sheets));
 
     const headers = pick.sheet.rows[pick.headerRow] || [];
-    const col = {};
-    for (const [key, aliases] of Object.entries(A)) col[key] = findColumn(headers, aliases);
+    const col = locateColumns(headers, A);
 
-    const warnings = [];
+    const warnings: string[] = [];
     if (col.date < 0) throw new Error("File TKQC thiếu cột NGÀY. Cột đọc được: " + headers.join(" | "));
     if (col.amount < 0) throw new Error("File TKQC thiếu cột SỐ TIỀN. Cột đọc được: " + headers.join(" | "));
     if (col.account_id < 0 && col.account_name < 0) warnings.push("File TKQC không có cột tài khoản quảng cáo — bỏ qua kiểm tra TKQC lạ");
@@ -111,11 +125,11 @@ export function ingestFb(sheets, cfg, sourceName = "") {
     // trang ("Tài khoản: 2033341657422931"). Không moi ra thì mọi dòng đều
     // không biết thuộc TKQC nào, và không đời nào phát hiện được là đang thiếu
     // bản kê của các tài khoản còn lại.
-    const tkTuDauTrang = col.account_id >= 0 ? "" : moiSoTaiKhoan(pick.sheet.rows.slice(0, pick.headerRow + 1));
-    if (tkTuDauTrang) warnings.push(`File không có cột tài khoản quảng cáo — lấy từ đầu trang: ${tkTuDauTrang}`);
+    const headerAccountId = col.account_id >= 0 ? "" : extractAccountNumber(pick.sheet.rows.slice(0, pick.headerRow + 1));
+    if (headerAccountId) warnings.push(`File không có cột tài khoản quảng cáo — lấy từ đầu trang: ${headerAccountId}`);
 
-    const rows = [];
-    const skipped = [];
+    const rows: FbRow[] = [];
+    const skipped: SkippedRow[] = [];
     for (let i = pick.headerRow + 1; i < pick.sheet.rows.length; i++) {
         const r = pick.sheet.rows[i] || [];
         if (isBlankRow(r)) continue;
@@ -135,8 +149,8 @@ export function ingestFb(sheets, cfg, sourceName = "") {
             txn_id: col.transaction_id >= 0 ? String(r[col.transaction_id] ?? "").trim() : "",
             date,
             amount: Math.abs(amount),
-            currency: col.currency >= 0 ? String(r[col.currency] ?? "").trim().toUpperCase() : cfg.currency,
-            account_id: col.account_id >= 0 ? String(r[col.account_id] ?? "").trim() : tkTuDauTrang,
+            currency: col.currency >= 0 ? String(r[col.currency] ?? "").trim().toUpperCase() : (cfg.currency as string),
+            account_id: col.account_id >= 0 ? String(r[col.account_id] ?? "").trim() : headerAccountId,
             account_name: col.account_name >= 0 ? String(r[col.account_name] ?? "").trim() : "",
             method,
             card4: cardLast4(method),
@@ -147,7 +161,7 @@ export function ingestFb(sheets, cfg, sourceName = "") {
     }
 
     return {
-        rows: chanSoVoLy(rows, skipped, cfg, sourceName),
+        rows: dropAbsurdAmounts(rows, skipped, cfg, sourceName),
         skipped,
         meta: {
             sheet: pick.sheet.name, header_row: pick.headerRow + 1,
@@ -160,16 +174,15 @@ export function ingestFb(sheets, cfg, sourceName = "") {
 // ─────────────────────────────────────────────────────────────────────────
 // File 2 — sao kê thẻ ngân hàng
 // ─────────────────────────────────────────────────────────────────────────
-export function ingestBank(sheets, cfg, sourceName = "") {
+export function ingestBank(sheets: Sheet[], cfg: IngestConfig, sourceName = ""): BankIngest {
     const A = cfg.columns.bank;
     const pick = pickSheet(sheets, [A.date, A.debit, A.desc, A.credit, A.balance, A.amount]);
-    if (!pick) throw new Error("Không tìm thấy dòng tiêu đề trong sao kê. " + doDuocGi(sheets));
+    if (!pick) throw new Error("Không tìm thấy dòng tiêu đề trong sao kê. " + describeReadableContent(sheets));
 
     const headers = pick.sheet.rows[pick.headerRow] || [];
-    const col = {};
-    for (const [key, aliases] of Object.entries(A)) col[key] = findColumn(headers, aliases);
+    const col = locateColumns(headers, A);
 
-    const warnings = [];
+    const warnings: string[] = [];
     if (col.date < 0) throw new Error("Sao kê thiếu cột NGÀY. Cột đọc được: " + headers.join(" | "));
     if (col.debit < 0 && col.amount < 0) throw new Error("Sao kê thiếu cột SỐ TIỀN GHI NỢ. Cột đọc được: " + headers.join(" | "));
     if (col.desc < 0) warnings.push("Sao kê không có cột nội dung — không lọc được dòng nào là chi cho Facebook, sẽ lấy TẤT CẢ dòng ghi nợ");
@@ -178,8 +191,8 @@ export function ingestBank(sheets, cfg, sourceName = "") {
     const otherKeys = (cfg.bank_filter.other_ads_keywords || []).map(normText);
     const ignoreKeys = (cfg.bank_filter.ignore_keywords || []).map(normText);
 
-    const all = [];
-    const skipped = [];
+    const all: BankRow[] = [];
+    const skipped: SkippedRow[] = [];
     for (let i = pick.headerRow + 1; i < pick.sheet.rows.length; i++) {
         const r = pick.sheet.rows[i] || [];
         if (isBlankRow(r)) continue;
@@ -193,7 +206,7 @@ export function ingestBank(sheets, cfg, sourceName = "") {
         const plain = col.amount >= 0 ? parseAmount(r[col.amount]) : null;
 
         // Tiền RA khỏi thẻ: cột ghi nợ, hoặc cột số tiền mang dấu âm
-        let out = null;
+        let out: number | null = null;
         if (debit !== null && debit !== 0) out = Math.abs(debit);
         else if (plain !== null && plain !== 0 && (credit === null || credit === 0)) out = plain < 0 ? Math.abs(plain) : plain;
 
@@ -224,7 +237,7 @@ export function ingestBank(sheets, cfg, sourceName = "") {
     }
 
     return {
-        rows: chanSoVoLy(all.filter((r) => r.is_fb), skipped, cfg, sourceName),
+        rows: dropAbsurdAmounts(all.filter((r) => r.is_fb), skipped, cfg, sourceName),
         other_ads: all.filter((r) => !r.is_fb && r.is_other_ads),
         other: all.filter((r) => !r.is_fb && !r.is_other_ads),
         skipped,
@@ -240,17 +253,17 @@ export function ingestBank(sheets, cfg, sourceName = "") {
 // Tự nhận biết file nào là file nào — để Sỹ Anh thả 2 file vào là chạy,
 // không phải nhớ thứ tự tham số.
 // ─────────────────────────────────────────────────────────────────────────
-export function detectKind(sheets, cfg) {
+export function detectKind(sheets: Sheet[], cfg: Pick<AdsSettlementConfig, "columns">): SourceKind {
     const fbA = cfg.columns.fb, bkA = cfg.columns.bank;
     let fbScore = 0, bkScore = 0;
 
     for (const sh of sheets) {
         const hit = findHeaderRow(sh.rows, [fbA.date, fbA.amount, fbA.transaction_id, fbA.account_id, fbA.method, fbA.status]);
         const headers = hit.idx >= 0 ? sh.rows[hit.idx] : (sh.rows[0] || []);
-        for (const key of ["transaction_id", "account_id", "account_name", "method", "status", "currency"]) {
+        for (const key of ["transaction_id", "account_id", "account_name", "method", "status", "currency"] as const) {
             if (findColumn(headers, fbA[key]) >= 0) fbScore++;
         }
-        for (const key of ["debit", "credit", "balance", "ref", "desc"]) {
+        for (const key of ["debit", "credit", "balance", "ref", "desc"] as const) {
             if (findColumn(headers, bkA[key]) >= 0) bkScore++;
         }
         // Nội dung cũng là bằng chứng: sao kê có "FACEBK *xxxx", TKQC có "act_..."
@@ -264,7 +277,7 @@ export function detectKind(sheets, cfg) {
 }
 
 /** Đọc file từ đĩa rồi phân loại — dùng cho CLI và web. */
-export function loadFile(path, cfg, buffer = null) {
+export function loadFile(path: string, cfg: Pick<AdsSettlementConfig, "columns">, buffer: Buffer | null = null) {
     const sheets = readSheets(path, buffer);
     return { sheets, kind: detectKind(sheets, cfg) };
 }
