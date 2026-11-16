@@ -12,7 +12,7 @@
 //   · /bot — luôn trả số của NƯỚC CỦA NHÓM, không bao giờ số nước khác.
 // - Sync đang đứng thì tin vẫn gửi ĐÚNG KHUNG GIỜ (mang dòng "SỐ CHƯA ĐỦ") và bot NHỚ số đã
 //   báo; vòng sync nào lấy đủ số thì tự gửi thêm MỘT tin ĐÍNH CHÍNH vào đúng nhóm nước đó
-//   (Sỹ Anh chốt 22/09/2026). Lịch chờ nằm trong state.json → restart không mất.
+//   (Sỹ Anh chốt 22/09/2026). Lịch chờ nằm trong trạng thái bot (bảng zalo_bot_state) → restart không mất.
 // Nguồn số: bảng market_monthly_reports qua /api/talpha/market-report (format_all.py ghi cùng lúc file TỔNG TEAM),
 // realtime = Meta + POS live (chi tiết camp), tracking = vận đơn, sync-health = tuổi số. Gửi
 // bằng nick Zalo PHỤ (zca-js) — xem README.md.
@@ -26,7 +26,8 @@
 //       thêm --dry-run: IN tin ra màn hình, không đăng nhập, không gửi.
 //
 // Tách 16/11/2026 — file này chỉ còn điểm chạy: nạp luật phủ thị trường rồi gọi bot_main.js (runService, main):
-//   bot_config.js   — hằng từ config.json / talpha_rules.json, cờ dòng lệnh, state.json, giờ VN, mốc
+//   bot_config.js   — hằng từ config.json / talpha_rules.json, cờ dòng lệnh, trạng thái bot, giờ VN, mốc
+//   bot_store.js    — phiên Zalo, nhóm từng nước, trạng thái bot trong database (qua dashboard)
 //   bot_sources.js  — hỏi dashboard: sync-health, market-report, realtime, pancake-messages
 //   bot_session.js  — phiên Zalo, hàng gửi tin, nhóm từng nước, bộ nhận lệnh
 //   bot_reports.js  — dựng + gửi tin ads, tin mỗi giờ, tin vận đơn, tin đính chính

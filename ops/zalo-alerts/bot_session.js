@@ -30,7 +30,7 @@ const getMarketGroups = () => marketGroups;
 // ─── Mất đăng nhập — trang biết để hiện băng đỏ (12/11/2026) ───
 // 03/11 Zalo đá phiên web của nick phụ (mã 1006 — thường là có người mở Zalo PC/Web bằng nick đó), cookie
 // chết hẳn, bot thử lại mỗi 10' suốt 9 ngày mà không ai biết: bot mất đăng nhập thì không nhắn được vào Zalo.
-// File phiên vẫn còn nên "đã ghép nick" không nói được gì — phải nhớ lần đăng nhập gần nhất hỏng hay không.
+// Phiên vẫn còn trong kho nên "đã ghép nick" không nói được gì — phải nhớ lần đăng nhập gần nhất hỏng hay không.
 // bot_control.js đẩy cái này lên zalo_bot_status (logged_in = false + last_error); dashboard hiện băng đỏ.
 let loginProblem = null;        // null = đăng nhập được / chưa thử; { error, since, needsQr }
 const NETWORK_ERROR = /fetch failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN/i;
@@ -154,7 +154,7 @@ function resetSession() {
     api = null;
 }
 
-/** Bỏ ghép: tắt phiên + xoá file phiên trên máy này. Nhóm đã chọn giữ nguyên (ghép lại là gửi tiếp). */
+/** Bỏ ghép: tắt phiên + xoá phiên trong kho (bảng zalo_session). Nhóm đã chọn giữ nguyên (ghép lại là gửi tiếp). */
 function logout() {
     resetSession();
     loginProblem = null;                 // bỏ ghép là chủ ý, không phải "mất đăng nhập"
@@ -208,7 +208,7 @@ function pruneGroups(groups) {
     return dropped;
 }
 
-/** Lúc khởi động: đọc danh sách nhóm của nick đang ghép, bỏ nhóm nick không ở (file nhóm còn từ nick cũ). */
+/** Lúc khởi động: đọc danh sách nhóm của nick đang ghép, bỏ nhóm nick không ở (nhóm còn từ nick cũ). */
 async function pruneStaleGroups() {
     if (!zalo) zalo = require("./zalo");
     return pruneGroups(await zalo.listGroups(await connect()));
@@ -234,7 +234,7 @@ function loadGroups() {
     marketGroups = Object.fromEntries(MARKET_CODES.map((m) => [m, zalo.readMarketGroup(m)]).filter(([, g]) => g));
 }
 
-// Nước chưa có file nhóm → tìm trong các nhóm nick phụ đang ở, theo đúng mẫu tên "ADS + VẬN ĐƠN
+// Nước chưa có nhóm → tìm trong các nhóm nick phụ đang ở, theo đúng mẫu tên "ADS + VẬN ĐƠN
 // <nước>" (rules.nuocTuTenNhom). Một nước khớp hai nhóm trở lên thì KHÔNG đoán.
 async function autoAssignGroups() {
     if (pageManaged()) return;           // nhóm do trang quản lý — chỉ người chọn trên trang

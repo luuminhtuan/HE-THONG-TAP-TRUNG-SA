@@ -33,19 +33,19 @@ Nguyên tắc: **đọc xong tin là làm được ngay**, không mở dashboard
 | Tin | 08:30 | 22:00 |
 |---|---|---|
 | **Ads** (mọi nhóm) | Kết quả hôm qua CỦA NƯỚC ĐÓ: tiền ads · DS · %ads · đơn · mess · chốt, **xếp hạng người trong nước**, **chi tiết mọi camp của nước đó** (tên đầy đủ như trên Meta, theo marketer, tiêu nhiều trước). Nhật: tiền ads · mess · giá/mess, chưa có đơn | Cùng khuôn, số hôm nay, **▲▼ so với cả ngày hôm qua của nước đó** |
-| **Vận đơn Đài** (nhóm TAIWAN) | Hôm qua (khách đã lấy, mới tới, bắt đầu hoàn) + **@Thương gọi khách sắp bị trả về** và **nhắn khách mới tới** + **🔁 nhắc lại khách đã nhắn mà chưa lấy** (mỗi sáng tới khi lấy; sổ nhắc ở state.json → vanDonNhac): mỗi khách đủ tên, SĐT, cửa hàng, mã lấy hàng (= mã tracking), hạn, **💬 tin tiếng Trung soạn sẵn** (lần đầu nhẹ nhàng, nhắc lại gấp hơn) · hỏi đối tác · kiểm đơn lệch | Khách phải gọi sáng nay: đã lấy (cứu bao nhiêu tiền) / chưa lấy (MAI HẾT HẠN) / bị trả về · khách mới tới đã lấy chưa · số cả ngày |
+| **Vận đơn Đài** (nhóm TAIWAN) | Hôm qua (khách đã lấy, mới tới, bắt đầu hoàn) + **@Thương gọi khách sắp bị trả về** và **nhắn khách mới tới** + **🔁 nhắc lại khách đã nhắn mà chưa lấy** (mỗi sáng tới khi lấy; sổ nhắc ở zalo_bot_state → vanDonNhac): mỗi khách đủ tên, SĐT, cửa hàng, mã lấy hàng (= mã tracking), hạn, **💬 tin tiếng Trung soạn sẵn** (lần đầu nhẹ nhàng, nhắc lại gấp hơn) · hỏi đối tác · kiểm đơn lệch | Khách phải gọi sáng nay: đã lấy (cứu bao nhiêu tiền) / chưa lấy (MAI HẾT HẠN) / bị trả về · khách mới tới đã lấy chưa · số cả ngày |
 | **Vận đơn Singapore** (nhóm SGP) | Cùng khuôn; gọi = **đơn giao hỏng / khách hẹn giao lại**, kèm khu vực, ghi chú đối tác, **💬 tin tiếng Anh soạn sẵn** | Đơn hẹn lại đã giao chưa · số cả ngày |
 | **Vận đơn UAE** (nhóm UAE, 28/09/2026) | Cùng khuôn Singapore; trạng thái tra ở **trang WeShip** (không qua 17TRACK). Gọi = khách **từ chối / không nghe máy / hẹn giao lại** kèm số lần, khu vực, ghi chú đơn POS, **💬 tin tiếng Anh theo lý do** | Như Singapore |
 
 * Bỏ phần "việc hôm nay" của ads, bỏ lệnh /tin và /xong (Sỹ Anh chốt).
 * **Ads 13:00 (TRƯA) · 18:00 (CHIỀU)** — Sỹ Anh thêm 29/09/2026. Cùng khuôn tin 22:00, số
   lấy từ vòng ghi Sheet mới nhất (chạy phút :20 mỗi giờ, dòng nguồn in giờ sync). ▲▼ so với
-  **cùng mốc hôm qua** (bot nhớ số đã báo mỗi mốc ở `state.json → soMoc`), KHÔNG so với cả
+  **cùng mốc hôm qua** (bot nhớ số đã báo mỗi mốc ở `zalo_bot_state → soMoc`), KHÔNG so với cả
   ngày hôm qua — 13:00 mà so cả ngày thì chữ nào cũng ▼ nửa. Ngày đầu chưa có số hôm qua thì
   tin không có ▲▼. Mốc sau đã gửi thì đính chính còn chờ của mốc trước cùng ngày bị bỏ (tin
   mới nhất đã mang số mới hơn). In thử: `node bot.js --dry-run --moc 13:00`.
 * @Thương là **nhắc tên thật** (mention Zalo) — `vanDon.phuTrach` trong `config.json`.
-* Tin sáng lưu danh sách khách phải gọi/nhắn vào `state.json → vanDonSang` để tin tối chấm.
+* Tin sáng lưu danh sách khách phải gọi/nhắn vào `zalo_bot_state → vanDonSang` để tin tối chấm.
   17TRACK cập nhật lại 21:30 (`talpha-tracking.timer`) trước tin 22:00.
 * Ngày đông khách: tin vận đơn tự tách thành 2–3 tin Zalo (khung 1800 ký tự).
 * Mỗi nước một nhóm, một mốc riêng: nước này hỏng không kéo nước kia. Trong một nhóm, tin ads
@@ -54,7 +54,7 @@ Nguyên tắc: **đọc xong tin là làm được ngay**, không mở dashboard
   trước đó file `data/bao_cao_nuoc/<tháng>.json`) — `format_all.py` ghi ngay sau khi ghi bảng TỔNG TEAM, cùng bộ ô, nên tổng người trong nước = đúng tab nước của Sheet, và có xếp
   hạng người TRONG nước (file TỔNG TEAM không có: tab người gộp mọi nước). Chưa có file (hoặc cũ
   hơn vòng ghi Sheet OK gần nhất quá 45') → đọc tab nước của TỔNG TEAM, tin ghi rõ thiếu xếp hạng.
-* ▲▼ trưa/chiều nhớ theo nước: `state.json → soMoc["TW|13:00"]`. Mốc ghi `state.json → moc["ads:TW:sang"]`.
+* ▲▼ trưa/chiều nhớ theo nước: `zalo_bot_state → soMoc["TW|13:00"]`. Mốc ghi `zalo_bot_state → moc["ads:TW:sang"]`.
 
 Chọn nhóm (nick phụ phải nằm sẵn trong nhóm). **Bot tự nhận** lúc khởi động và mỗi vòng 5' khi
 còn nước thiếu nhóm — chỉ nhận nhóm đúng mẫu tên `ADS + VẬN ĐƠN <nước>` (TAIWAN · SGP · UAE ·
@@ -62,9 +62,8 @@ JAPAN); một nước khớp hai nhóm thì không đoán:
 
 ```bash
 node pair.js --groups                                  # xem id nhóm
-node pair.js --tu-nhan                                 # nhận nhóm từng nước theo tên → zalo_group_nuoc_<mã>.json
-node pair.js --chon-nuoc <id> --nuoc JP                # chọn tay một nước
-pm2 restart talpha-zalo-alerts
+node pair.js --tu-nhan                                 # nhận nhóm từng nước theo tên (lưu vào database)
+node pair.js --chon-nuoc <id> --nuoc JP                # chọn tay một nước — bot dịch vụ tự đọc lại trong ≤ 5 phút
 node bot.js --dry-run --report --nuoc TW               # IN thử tin ads sáng của Đài, không gửi
 node bot.js --dry-run --vandon sang --nuoc SG          # IN thử vận đơn, không gửi
 node bot.js --vandon toi                               # gửi ngay tin vận đơn tối mọi nước
@@ -119,7 +118,7 @@ số đúng**.
 
 Cách chạy:
 
-1. Gửi tin tạm xong, thấy cờ `chuaDu` → bot ghi lại **số đã báo** vào `state.json → dinhChinh`
+1. Gửi tin tạm xong, thấy cờ `chuaDu` → bot ghi lại **số đã báo** vào `zalo_bot_state → dinhChinh`
    (ghi ra file nên pm2 restart / máy chủ reboot giữa lúc chờ không mất lịch — đúng ca hay
    gặp, vì sync đứng thường đi kèm máy chủ vừa có sự cố).
 2. Vòng rà 5 phút hỏi `/api/talpha/sync-health`. "Đủ số" = có vòng **OK** (sync_rc 0 **và**
@@ -158,8 +157,8 @@ giả làm Zalo Web bằng một nick thật. Không cần trình duyệt (bot W
 * Trái điều khoản Zalo — nick **có thể bị khoá**. Chỉ dùng nick phụ.
 * Zalo chỉ cho **một phiên web** mỗi nick. Mở Zalo Web hay Zalo PC bằng nick phụ ở máy
   khác là bot bị đá ra: không gửi được, không nghe lệnh. Điện thoại thì không sao.
-* `.zalo_session.json` là **khoá đăng nhập** của nick đó: quyền 600, gitignore, không chép
-  đi đâu. Mất file → ghép lại.
+* Phiên đăng nhập là **khoá** của nick đó: nằm trong database (bảng `zalo_session`, MÃ HOÁ như
+  khoá kết nối — 16/11/2026, trước là file `.zalo_session.json`). Mất / đổi chìa mã hoá → ghép lại.
 
 ## Ghép nick / đổi nhóm (trên máy chủ)
 
@@ -229,7 +228,8 @@ Chạy thử từ máy Mac: `TALPHA_DASHBOARD_URL=http://139.180.131.21:3000 nod
 |---|---|
 | `bot.js` | Điểm chạy (16/11/2026): nạp luật phủ thị trường (`market_config.js`, hỏi dashboard) rồi gọi `bot_main.js` |
 | `bot_main.js` · `bot_slots.js` | Thân bot: dịch vụ + chạy tay theo cờ dòng lệnh; vòng rà mốc tự gửi |
-| `bot_config.js` · `bot_sources.js` | Hằng từ `config.json` / luật, `state.json`, giờ VN; hỏi số của dashboard |
+| `bot_config.js` · `bot_sources.js` | Hằng từ `config.json` / luật, trạng thái bot, giờ VN; hỏi số của dashboard |
+| `bot_store.js` | Phiên đăng nhập, nhóm từng nước, trạng thái bot trong database (qua dashboard); lần đầu chép file cũ vào |
 | `bot_session.js` · `bot_reports.js` · `bot_commands.js` | Phiên Zalo + hàng gửi + nhóm; dựng + gửi từng loại tin; chạy lệnh gõ |
 | `commands.js` | Đọc lệnh gõ trong nhóm (hàm thuần, có test) |
 | `pair.js` | Ghép nick bằng QR, chọn nhóm |

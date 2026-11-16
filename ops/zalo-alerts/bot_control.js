@@ -3,11 +3,12 @@
 //
 // Trang ghi YÊU CẦU vào bảng zalo_requests; ở đây bot nhặt từng cái (GET /api/talpha/zalo/bot?claim=1, chìa nội bộ),
 // làm, rồi ghi kết quả + TRẠNG THÁI (POST /api/talpha/zalo/bot) — như nút "Cập nhật ngay" với lịch việc nền:
-//   pair            ghép nick phụ bằng mã QR — ảnh QR đẩy lên trang để quét từ xa (phiên vẫn ghi file trên máy này)
+//   pair            ghép nick phụ bằng mã QR — ảnh QR đẩy lên trang để quét từ xa; phiên lưu vào bảng zalo_session
 //   refresh_groups  đọc lại danh sách nhóm nick phụ đang ở
-//   set_group       chọn nhóm nhận tin của một nước (ghi zalo_group_nuoc_<mã>.json như `node pair.js --chon-nuoc`)
+//   set_group       chọn nhóm nhận tin của một nước (bảng zalo_market_groups, như `node pair.js --chon-nuoc`)
 //   send_test       gửi một tin thử vào nhóm của một nước
-//   unpair          bỏ ghép: tắt phiên, xoá file phiên
+//   unpair          bỏ ghép: tắt phiên, xoá phiên trong kho
+// Phiên / nhóm / trạng thái nằm trong database qua bot_store.js — việc nào đổi chúng thì ĐỢI ghi xong mới báo "xong".
 // Nhịp tim mỗi 30 giây — trang biết bot còn chạy không.
 //
 // createControl() nhận phụ thuộc từ ngoài (phiên, zca-js, http) để thử được mà không đăng nhập Zalo — bot_control.test.js.
@@ -35,8 +36,13 @@ function testMessage(market, info, at) {
  * thiệu — chỉ gửi vào nhóm người chọn, tin thử chỉ khi bấm "Gửi thử". (16/11/2026: ghép một nick đang ở sẵn nhóm
  * thật của team, bot tự nhận 4 nhóm và nhắn giới thiệu vào cả 4 ngay lúc ghép.)
  * http    — {get(path), post(path, body)} → JSON
+ * store   — bot_store.js (flush): đợi phiên / nhóm vừa đổi ghi xong vào database
  */
-function createControl({ session, zalo, http, log, markets, marketInfo = {}, now = () => new Date() }) {
+function createControl({ session, zalo, http, log, markets, marketInfo = {}, now = () => new Date(), store = { flush: async () => true } }) {
+    /** Đợi thay đổi phiên / nhóm ghi xong vào database — chưa ghi được thì báo lỗi chứ không báo "xong". */
+    async function persisted(what) {
+        if (!(await store.flush())) throw new Error(`chưa lưu được ${what} vào database (dashboard không trả lời) — bot vẫn thử ghi lại`);
+    }
     // Mất đăng nhập (cookie chết, Zalo đóng kết nối — bot_session.js): logged_in = false + last_error để trang hiện
     // băng đỏ. Đăng nhập lại được thì xoá đúng dòng lỗi mình đã ghi (lỗi khác của last_error giữ nguyên).
     let reportedLoginProblem = false;
@@ -77,10 +83,12 @@ function createControl({ session, zalo, http, log, markets, marketInfo = {}, now
                     else if (ev.stage === "scanned") await pairingStatus("scanned", `Đã quét bởi "${ev.name}" — bấm XÁC NHẬN đăng nhập trên điện thoại`);
                 },
             });
+            await persisted("phiên đăng nhập");
             session.resetSession();              // bỏ phiên cũ (nếu đang ghép nick khác) — connect() đọc phiên vừa ghép
             session.markPageManaged();
             const groups = await readGroups();
             const dropped = session.pruneGroups(groups);   // nhóm chọn cho nick cũ mà nick này không ở → bỏ
+            await persisted("nhóm");
             const note = dropped.length ? ` · bỏ nhóm cũ của ${dropped.join(", ")} (nick này không ở trong)` : "";
             await pushStatus({ groups, last_error: null, pairing: { stage: "done", message: `Đã ghép nick "${name}" · nick đang ở ${groups.length} nhóm${note}. Chọn nhóm cho từng nước ở dưới.`, qr_png: null } });
             session.wakeUp();
@@ -99,6 +107,7 @@ function createControl({ session, zalo, http, log, markets, marketInfo = {}, now
             session.markPageManaged();
             if (!groupId) {                       // chọn "chưa có nhóm" → nước đó thôi nhận tin
                 zalo.removeMarketGroup(market);
+                await persisted(`nhóm ${market}`);
                 session.loadGroups();
                 await pushStatus();
                 return `Bỏ nhóm ${market} — không gửi gì cho ${market}`;
@@ -108,6 +117,7 @@ function createControl({ session, zalo, http, log, markets, marketInfo = {}, now
             if (!group) throw new Error("nick phụ không ở nhóm này — thêm nick vào nhóm rồi tải lại danh sách");
             zalo.saveMarketGroup(market, group, "trang");
             session.markIntroduced(group.id);     // không tự nhắn giới thiệu — muốn thì bấm "Gửi thử"
+            await persisted(`nhóm ${market}`);
             session.loadGroups();
             await pushStatus({ groups });
             session.wakeUp();
@@ -127,6 +137,7 @@ function createControl({ session, zalo, http, log, markets, marketInfo = {}, now
 
         async unpair() {
             session.logout();
+            await persisted("việc bỏ ghép");
             await pushStatus({ logged_in: false, account_name: null, groups: [], pairing: null });
             return "Đã bỏ ghép — bot ngừng gửi tới khi ghép lại";
         },
@@ -174,21 +185,12 @@ function createControl({ session, zalo, http, log, markets, marketInfo = {}, now
 
 /** Bot dịch vụ (bot_main.js) gọi: nối phụ thuộc thật rồi chạy vòng nhặt yêu cầu + nhịp tim. */
 function startControl() {
-    const CFG = require("./config");
     const session = require("./bot_session");
     const { log, MARKET_CODES } = require("./bot_config");
     const { MARKETS } = require("./rules");
-    const call = async (path, init = {}) => {
-        const r = await fetch(`${CFG.dashboardBaseUrl}${path}`, { ...init, signal: AbortSignal.timeout(15_000) });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-        return j;
-    };
-    const http = {
-        get: (path) => call(path),
-        post: (path, body) => call(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
-    };
-    const control = createControl({ session, zalo: require("./zalo"), http, log, markets: MARKET_CODES, marketInfo: MARKETS });
+    const { dashboardHttp, getStore } = require("./bot_store");
+    const control = createControl({ session, zalo: require("./zalo"), http: dashboardHttp(), log, markets: MARKET_CODES,
+        marketInfo: MARKETS, store: getStore() });
     control.start();
     return control;
 }

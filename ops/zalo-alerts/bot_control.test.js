@@ -10,7 +10,7 @@ const t = async (name, fn) => {
     catch (e) { console.error(`✗ ${name}`); throw e; }
 };
 
-function harness({ requests = [], groups = [{ id: "111", name: "ADS + VẬN ĐƠN TAIWAN" }, { id: "222", name: "TEST BOT" }], paired = true } = {}) {
+function harness({ requests = [], groups = [{ id: "111", name: "ADS + VẬN ĐƠN TAIWAN" }, { id: "222", name: "TEST BOT" }], paired = true, store } = {}) {
     const queue = [...requests];
     const posts = [], sent = [], saved = [], removed = [], introduced = [];
     const state = { marketGroups: {}, loggedIn: paired, account: paired ? "Nick phụ" : null, reset: 0, logout: 0, woke: 0, pageManaged: false };
@@ -53,7 +53,7 @@ function harness({ requests = [], groups = [{ id: "111", name: "ADS + VẬN ĐƠ
     };
     const control = createControl({
         session, zalo, http, log: () => {}, markets: ["TW", "SG"], marketInfo: { TW: { ten: "Đài Loan", flag: "🇹🇼" } },
-        now: () => new Date("2026-11-16T09:30:00Z"),
+        now: () => new Date("2026-11-16T09:30:00Z"), ...(store ? { store } : {}),
     });
     const finishes = () => posts.filter((p) => p.finish).map((p) => p.finish);
     const statuses = () => posts.filter((p) => p.status).map((p) => p.status);
@@ -118,6 +118,14 @@ function harness({ requests = [], groups = [{ id: "111", name: "ADS + VẬN ĐƠ
         assert.ok(/không ở nhóm này/.test(r.result));
         assert.strictEqual(h.saved.length, 0);
         assert.ok(h.statuses().some((s) => /set_group/.test(s.last_error || "")));
+    });
+
+    await t("chọn nhóm mà database chưa ghi được: báo lỗi, không báo xong", async () => {
+        const h = harness({ requests: [{ id: 14, action: "set_group", payload: { market: "TW", group_id: "222" } }], store: { flush: async () => false } });
+        const r = await h.control.pollOnce();
+        assert.strictEqual(r.ok, false);
+        assert.ok(/chưa lưu được nhóm TW vào database/.test(r.result), r.result);
+        assert.strictEqual(h.finishes()[0].ok, false);
     });
 
     await t("gửi thử: đúng nhóm của nước, tin có tên nước", async () => {

@@ -11,7 +11,8 @@ nước và trả lời lệnh gõ trong nhóm. **Bot không tự tính số** �
 
 Từ 16/11/2026 `bot.js` chỉ là điểm chạy: nạp luật phủ thị trường (`market_config.js → primeMarketOverrides()`,
 hỏi dashboard bằng `fetch`) rồi gọi `bot_main.js`. Thân bot chia theo việc: `bot_config.js` (hằng, cờ dòng lệnh,
-`state.json`), `bot_sources.js` (hỏi dashboard), `bot_session.js` (phiên Zalo, hàng gửi, nhóm), `bot_reports.js`
+trạng thái), `bot_store.js` (phiên, nhóm, trạng thái trong database), `bot_sources.js` (hỏi dashboard),
+`bot_session.js` (phiên Zalo, hàng gửi, nhóm), `bot_reports.js`
 (dựng + gửi từng loại tin), `bot_commands.js` (lệnh gõ), `bot_slots.js` (vòng rà mốc). Tin ads ở
 `daily_report.js` + `daily_report_*.js`, tin vận đơn ở `shipment_alerts.js` + `shipment_*.js`.
 
@@ -24,17 +25,17 @@ hỏi dashboard bằng `fetch`) rồi gọi `bot_main.js`. Thân bot chia theo v
    │                     │  tracking · sync-health                  └─ gọi thẳng Meta / POS / Pancake /
    │                     ▼                                             17TRACK / WeShip
    └──── zca-js ────► nhóm Zalo "ADS + VẬN ĐƠN <nước>"
-   state.json: mốc đã gửi, số đã báo, lịch đính chính, sổ nhắc khách
+   database (qua dashboard): phiên đăng nhập, nhóm từng nước, mốc đã gửi, số đã báo, lịch đính chính, sổ nhắc khách
 ```
 
 | Thành phần | Chi tiết |
 |---|---|
 | Gửi bằng | Nick Zalo **phụ** "Hoàng Rin", thư viện zca-js (giả làm Zalo Web). Trái điều khoản Zalo — nick có thể bị khoá. Zalo chỉ cho **một phiên web** mỗi nick |
-| Khoá đăng nhập | `.zalo_session.json` (cookie + imei + userAgent), tạo bằng `node pair.js` quét QR. Quyền 600, gitignore |
+| Khoá đăng nhập | Bảng `zalo_session` (cookie + imei + userAgent, MÃ HOÁ pgcrypto bằng `TALPHA_ENCRYPTION_KEY` như khoá kết nối), tạo khi ghép nick trên trang hoặc `node pair.js` |
 | Gọi dashboard | `TALPHA_DASHBOARD_URL` (mặc định `http://localhost:3000`; Docker `http://dashboard:3000`). `config.js` bọc `fetch` toàn cục: mọi lượt gọi tới dashboard tự gắn `x-talpha-token`, chìa đọc từ `data/.internal_token` mỗi lượt |
 | Chạy ở đâu | VPS: pm2 `talpha-zalo-alerts` (`ops/pm2/ecosystem.vps.config.js`). Docker: `docker compose --profile zalo up -d` |
 | Nhịp | Vòng rà **5 phút** (mốc đến hạn + đính chính) · giữ phiên Zalo **mỗi giờ** · so "vân tay" thị trường **mỗi 60 giây** |
-| Bộ nhớ | `state.json` (cạnh `bot.js`) |
+| Bộ nhớ | Bảng `zalo_bot_state` + `zalo_market_groups` (migration 0003) — bot đọc / ghi qua dashboard (`bot_store.js`) |
 
 Dùng vòng rà thay cho hẹn giờ vì pm2 restart lúc 08:29 là mất sạch hẹn giờ. Mọi lần gửi xếp chung
 **một hàng** (`bot_session.js → enqueue`): lệnh gõ trúng lúc tin 08:30 đang đi thì đợi, không xen vào giữa.
@@ -47,8 +48,8 @@ vận đơn của nước đó chung một nhóm; nhóm nào chỉ thấy số n
 * **Tự nhận nhóm theo tên** lúc khởi động, và mỗi vòng 5' nếu còn nước thiếu nhóm. Tên nhóm được bỏ
   dấu, viết hoa rồi so với tên nước, mã nước và `market_aliases` (`rules.js → marketFromGroupName`).
 * **Một nước khớp ≥ 2 nhóm thì không đoán**, chỉ ghi log → chọn tay `node pair.js --chon-nuoc <id> --nuoc TW`.
-* Nhóm đã nhận lưu ở `zalo_group_nuoc_<mã>.json`. Nick phụ phải nằm sẵn trong nhóm.
-* Lần đầu vào một nhóm, bot gửi **một** tin hướng dẫn lệnh (`state.json → gioiThieu`, restart không gửi lại).
+* Nhóm đã nhận lưu ở bảng `zalo_market_groups`. Nick phụ phải nằm sẵn trong nhóm.
+* Lần đầu vào một nhóm, bot gửi **một** tin hướng dẫn lệnh (`zalo_bot_state → gioiThieu`, restart không gửi lại).
 * **Chỉ nghe 4 nhóm nước.** Nick phụ còn ở nhóm COD có người đối tác và nhóm cũ — gõ lệnh ở đó bot im.
 * Nước `disabled` (đã tắt) bị lọc khỏi mọi lịch gửi dù `config.json` còn ghi tên.
 
@@ -67,7 +68,7 @@ vận đơn của nước đó chung một nhóm; nhóm nào chỉ thấy số n
 Luật của mỗi mốc (`schedule.js → slotAction`, `bot_slots.js → runSlot`):
 
 1. **Chưa tới giờ, hoặc hôm nay đã gửi** → bỏ qua. Mốc đã gửi ghi theo từng mốc × từng nước ở
-   `state.json → moc` (`ads:TW:sang`, `vandon:SG`, `ads:AE:13:00`, `vandon_toi:TW`, `gio:JP:09:05`).
+   `zalo_bot_state → moc` (`ads:TW:sang`, `vandon:SG`, `ads:AE:13:00`, `vandon_toi:TW`, `gio:JP:09:05`).
 2. **Quá cửa sổ trễ** → đánh dấu xong, **không gửi** (tin nhãn "13:00" bắn lúc 21h vừa sai nhãn vừa dẫm mốc 22:00).
 3. **Dựng tin lỗi** (dashboard lỗi, bảng số chưa có dòng ngày) → chưa đánh dấu, 5' sau thử lại trong cửa sổ.
    Đã gửi được ít nhất một tin rồi mới hỏng → vẫn đánh dấu, không gửi lặp.
@@ -76,7 +77,7 @@ Luật của mỗi mốc (`schedule.js → slotAction`, `bot_slots.js → runSlo
 5. **Thứ tự một vòng**: ads sáng mọi nước → vận đơn sáng → các mốc ads giữa ngày → vận đơn tối → tin mỗi giờ.
    Trong một nhóm, tin ads luôn đứng trước tin vận đơn cùng mốc. Nước này hỏng không kéo nước kia.
 
-Số ▲▼ của mốc trưa/chiều là số **bot đã báo** cùng mốc hôm qua (`state.json → soMoc["TW|13:00"]`). Chỉ
+Số ▲▼ của mốc trưa/chiều là số **bot đã báo** cùng mốc hôm qua (`zalo_bot_state → soMoc["TW|13:00"]`). Chỉ
 mốc tự gửi đúng giờ và số đã đủ mới được nhớ — gửi tay `--moc` không ghi đè.
 
 ## 4. Nội dung từng loại tin và nguồn số
@@ -87,9 +88,9 @@ mốc tự gửi đúng giờ và số đã đủ mới được nhớ — gửi
 | Ads — khi bảng trên thiếu, hoặc cũ hơn vòng OK gần nhất quá 45' | Cùng số đầu tin, **không có xếp hạng người** (tin ghi rõ) | `/api/talpha/sheet-report?date=` → bảng `monthly_report_tabs`, tab nước của TỔNG TEAM |
 | Ads — chi tiết camp | Mọi camp của nước đó, tên đầy đủ, theo marketer, tiêu nhiều trước. Lỗi thì tin vẫn đi, thiếu phần camp | `/api/talpha/realtime` (Meta + POS gọi thẳng). Một lượt dùng chung cho mọi nước trong 3', lọc nước theo tên camp |
 | Ads Nhật — số mess | Thay số mess của Meta (Meta không báo tin nhắn ở Nhật) | `/api/talpha/pancake-messages` |
-| Tin mỗi giờ (JP) | Ads · tin nhắn · bình luận mới · SĐT · đơn · doanh số **theo page**, "(+N)" so giờ trước | `realtime` + `pancake-messages`; tổng giờ trước ở `state.json → gioTruoc` |
+| Tin mỗi giờ (JP) | Ads · tin nhắn · bình luận mới · SĐT · đơn · doanh số **theo page**, "(+N)" so giờ trước | `realtime` + `pancake-messages`; tổng giờ trước ở `zalo_bot_state → gioTruoc` |
 | Vận đơn sáng | Hôm qua (đã lấy, mới tới, bắt đầu hoàn); @Thương; khách phải gọi / nhắn (tên, SĐT, cửa hàng, mã lấy hàng, hạn, **câu nhắn soạn sẵn**); nhắc lại khách chưa lấy; sắp giao; nên huỷ; hỏi đối tác; đơn lệch | `/api/talpha/tracking?market=&from=<60 ngày trước>&to=<hôm nay>` — **cùng route màn Theo dõi vận đơn**, cùng luật cảnh báo `buildAlerts` |
-| Vận đơn tối | Khách phải gọi sáng nay: đã lấy (cứu bao nhiêu tiền) / chưa lấy / bị trả về; khách mới tới đã lấy chưa; số cả ngày | `tracking` + danh sách sáng ở `state.json → vanDonSang` |
+| Vận đơn tối | Khách phải gọi sáng nay: đã lấy (cứu bao nhiêu tiền) / chưa lấy / bị trả về; khách mới tới đã lấy chưa; số cả ngày | `tracking` + danh sách sáng ở `zalo_bot_state → vanDonSang` |
 | `/canhbao` | Camp của nước tiêu ≥ 300.000đ mà 0 tin nhắn (tối đa 12 camp) | `/api/talpha/realtime` |
 | Dòng "⚠️ SỐ CHƯA ĐỦ" | Sync đứng bao lâu, TKQC / shop nào đọc lỗi | `/api/talpha/sync-health` → bảng `sync_health` (`daily_guarded.sh` ghi mỗi vòng :20) |
 | Dòng ⚠️ cảnh báo hệ thống (12/11/2026, tin ads của nhóm nước) | Bộ soát từng TKQC/shop không chạy quá `health_check_stale_minutes` (chỉ khi sync vẫn chạy); TKQC / shop mất sạch hoặc tụt dòng (shop chỉ báo vào nhóm nước đó); **shop đứng im** — ads nước đó tiêu ≥ `stalled_shop_min_ads_vnd` trong `stalled_shop_days` ngày mà shop POS không có đơn mới | `/api/talpha/sync-health` → `accounts` (bảng `sync_health_accounts`), `stalled_shops` (`lib/talpha/stalled-shops.ts`); ngưỡng ở `talpha_rules.json → thresholds`; chữ ở `daily_report_stale.js → systemHealthNotes` |
@@ -97,7 +98,7 @@ mốc tự gửi đúng giờ và số đã đủ mới được nhớ — gửi
 Vận đơn theo nước:
 
 * **Đài Loan** (lấy ở cửa hàng): gọi khách sắp bị trả về, nhắn khách mới tới, **nhắc lại mỗi sáng** khách đã
-  nhắn mà chưa lấy (sổ nhắc `state.json → vanDonNhac`, chỉ ghi sau khi gửi thật). Câu nhắn tiếng Trung.
+  nhắn mà chưa lấy (sổ nhắc `zalo_bot_state → vanDonNhac`, chỉ ghi sau khi gửi thật). Câu nhắn tiếng Trung.
 * **Singapore, Nhật** (giao tận nhà): gọi đơn giao hỏng / hẹn giao lại, báo trước đơn sắp giao. Câu nhắn
   tiếng Anh + bản dịch. Nhật: 17TRACK hãng Japan Post.
 * **Việt Nam** (giao tận nhà, J&T, mở 11/11/2026): trạng thái J&T đọc thẳng từ đơn POS (`provider: "pos"`,
@@ -126,7 +127,7 @@ có `ok` (sync_rc 0 **và** format_rc 0 — đã ghi được báo cáo):
 
 **Vòng đời một lịch đính chính:**
 
-1. Gửi tin tạm. Thấy cờ `chuaDu` → ghi `state.json → dinhChinh[khoá]` = `{ngay, nuoc, intraday, label, luc, so, hanTs}`.
+1. Gửi tin tạm. Thấy cờ `chuaDu` → ghi `zalo_bot_state → dinhChinh[khoá]` = `{ngay, nuoc, intraday, label, luc, so, hanTs}`.
    Ghi ra file nên pm2 restart / máy chủ reboot giữa lúc chờ không mất lịch.
 2. Mỗi vòng 5', `checkCorrections` (`bot_reports.js`) hỏi `sync-health` rồi `correctionAction` (`schedule.js`):
    * tin ngày đã qua: **gửi** khi có vòng OK sau khi hết ngày đó;
@@ -153,7 +154,7 @@ Thêm:
 
 | Cơ chế | Chặn cái gì |
 |---|---|
-| `state.json → moc` theo mốc × nước × ngày | Bắn lại cùng mốc sau restart |
+| `zalo_bot_state → moc` theo mốc × nước × ngày | Bắn lại cùng mốc sau restart |
 | `markState`: đọc lại file ngay trước khi ghi một thay đổi nhỏ | Vòng này ghi đè mất khoá vòng kia vừa ghi |
 | Cờ `scanning` (`bot_main.js`) | Hai vòng rà chồng nhau khi một vòng gửi lâu |
 | Hàng gửi chung `enqueue` | Tin của hai loạt (lệnh + mốc tự gửi) xen vào nhau |
@@ -186,12 +187,12 @@ Lệnh lỗi → bot trả một dòng `⚠️ Chưa lấy được số lúc n�
 1. Bật bot trên máy chủ (Docker: `docker compose --profile zalo up -d zalo`; pm2: `talpha-zalo-alerts`). Trang báo
    "Bot Zalo đang chạy" khi thấy nhịp tim (30 giây/lần).
 2. **Ghép nick Zalo** → mã QR hiện trên trang → quét bằng app Zalo của NICK PHỤ → bấm xác nhận trên điện thoại.
-   Mã do chính bot xin (phiên sinh ra ở máy chạy bot, ghi `.zalo_session.json` ở đó — không về trang).
+   Mã do chính bot xin; phiên lưu vào bảng `zalo_session` (mã hoá) — ảnh QR về trang, phiên thì không.
 3. **Nhóm nhận tin từng nước**: chọn trong danh sách nhóm nick phụ đang ở; chọn "chưa có nhóm" là nước đó thôi nhận.
    Nhóm đã chọn nhận báo cáo THEO LỊCH từ mốc kế tiếp.
 4. **Gửi thử** từng nước — một tin "TIN THỬ" vào nhóm đã chọn; kết quả hiện ở "Việc gần đây".
 
-**Nhóm do trang quản lý** (cờ `nhomTuTrang` trong `state.json`, ghi khi ghép nick / chọn nhóm trên trang): bot THÔI tự nhận
+**Nhóm do trang quản lý** (cờ `nhomTuTrang` trong `zalo_bot_state`, ghi khi ghép nick / chọn nhóm trên trang): bot THÔI tự nhận
 nhóm theo tên và THÔI tự gửi tin giới thiệu — chỉ gửi vào nhóm người chọn. Lý do (16/11/2026): ghép một nick đang ở sẵn
 4 nhóm thật của team, bot tự nhận cả 4 và nhắn giới thiệu vào cả 4 ngay lúc ghép. Đổi nick thì nhóm chọn cho nick cũ mà
 nick mới không ở trong bị bỏ (gửi vào đó Zalo báo "Tham số không hợp lệ"); lúc khởi động bot cũng soát lại như vậy.
@@ -207,7 +208,7 @@ yêu cầu (để dồn lại là lúc bot bật lên nó gửi / đổi nhóm b
   đứng chờ, 10' thử lại.
 * Bộ nhận lệnh bị Zalo đóng (thường do ai mở Zalo Web/PC bằng nick phụ) → đăng nhập lại sau 10', 20', 40'…
   tối đa 2 giờ. Kết nối lại được thì nhịp chờ về 10'.
-* `keepAlive` mỗi giờ và lưu lại cookie mới vào `.zalo_session.json`. `keepAlive` hỏng → đăng nhập lại NGAY (không
+* `keepAlive` mỗi giờ và lưu lại cookie mới vào `zalo_session` (cookie không đổi thì không ghi). `keepAlive` hỏng → đăng nhập lại NGAY (không
   đợi lần gửi tới) để trang biết sớm.
 * **Mất đăng nhập hiện trên dashboard** (12/11/2026 — 03/11 Zalo đá phiên web của nick phụ, cookie chết, bot câm 9
   ngày không ai biết): đăng nhập hỏng / Zalo đóng kết nối thì bot ghi `zalo_bot_status.logged_in = false` +
@@ -232,13 +233,22 @@ node bot.js --lenh "/baocao homqua" --nuoc TW   # như có người gõ lệnh �
 node pair.js | --tu-nhan | --groups | --chon-nuoc <id> --nuoc JP
 ```
 
-**File của bot** (sinh trên máy chạy bot, không chép đi đâu):
+**Kho của bot trong database** (16/11/2026, migration 0003 — trước là ba loại file cạnh `bot.js`):
 
-| File | Giữ gì |
+| Bảng | Giữ gì |
 |---|---|
-| `.zalo_session.json` | Khoá đăng nhập nick phụ. Mất → `node pair.js` ghép lại |
-| `zalo_group_nuoc_<mã>.json` | Nhóm đã nhận của từng nước |
-| `state.json` | `moc`, `soMoc`, `dinhChinh`, `vanDonSang`, `vanDonNhac`, `gioTruoc`, `gioiThieu` |
+| `zalo_session` | Khoá đăng nhập nick phụ, MÃ HOÁ như khoá kết nối. Mất / đổi `TALPHA_ENCRYPTION_KEY` → ghép lại nick trên trang |
+| `zalo_market_groups` | Nhóm nhận tin của từng nước (`market`, `group_id`, `group_name`, cách chọn) |
+| `zalo_bot_state` | Mỗi dòng một mục `(section, item)`: `moc`, `soMoc`, `dinhChinh`, `vanDonSang`, `vanDonNhac`, `gioTruoc`, `gioiThieu`, `nhomTuTrang` |
+
+Bot KHÔNG nối thẳng Postgres: `bot_store.js` đọc cả kho qua `GET /api/talpha/zalo/bot?store=1` (chìa nội bộ) lúc
+khởi động và đầu mỗi vòng rà, giữ trong bộ nhớ (code cũ đọc đồng bộ). Ghi = sửa bộ nhớ + xếp hàng
+`POST {store_ops}` — chỉ mục đổi, nên bot dịch vụ và lệnh chạy tay sửa hai mục khác nhau không đè nhau; dashboard
+không trả lời thì giữ hàng và thử lại. Việc bấm trên trang (ghép nick, chọn nhóm, bỏ ghép) đợi ghi xong mới báo
+"xong"; bot thoát cũng đợi. Dashboard chưa lên lúc bot khởi động → bot ĐỢI chứ không đoán (đoán sai mốc nào đã gửi
+là bắn lặp tin). **Lần đầu chạy bản này**: file cũ còn trên máy (`.zalo_session.json`, `zalo_group_nuoc_<mã>.json`,
+`state.json`) thì bot chép vào kho (chỉ chỗ kho còn trống), soát khớp rồi xoá file — kho đã có bản khác thì giữ file
+và ghi log để xem tay.
 
 **Bot im lặng thì soát** `pm2 logs talpha-zalo-alerts` (Docker: `docker compose logs zalo`):
 `Bộ nhận lệnh bị đóng` / `Đăng nhập Zalo lỗi` → phiên bị đá; `Mốc … lỗi — vòng sau thử lại` → dashboard
@@ -252,8 +262,8 @@ hoặc báo cáo chưa có số; gõ `/baocao` mà không thấy dòng `Lệnh "
 * **Danh sách nước của bot đang gõ cứng trong `config.json`**: `nhomNuoc.markets`, `vanDon.markets` (TW, SG, AE, JP,
   VN — Việt Nam thêm 11/11/2026), `moiGio.markets`, `nhomNuoc.messPancake` (JP). Thêm nước mới ở `/admin` → Thị trường thì bot
   **chưa** gửi gì cho nước đó — phải thêm mã vào các danh sách này (nước `disabled` thì tự lọc).
-* `ops/zalo-alerts/.gitignore` có `.zalo_session.json`, `state.json`, `zalo_group_nuoc_*.json` (thêm 16/11/2026),
-  `qr.png`, `groups.txt` — file sinh ra trên máy chạy bot, không vào git.
+* `ops/zalo-alerts/.gitignore` vẫn chặn `.zalo_session.json`, `state.json`, `zalo_group_nuoc_*.json` (file cũ — máy
+  chưa chạy bản kho database còn giữ), `qr.png`, `groups.txt` — không vào git.
 * Hàm dựng tin là hàm thuần, có test: `cd ops/zalo-alerts && npm test` (không gọi mạng, không đăng nhập).
   `require("./bot")` là đăng nhập Zalo luôn — logic cần test thì tách ra file riêng như `schedule.js`.
 * Giờ VN phải dùng `hourCycle: "h23"` — `hour12: false` trả "24" lúc nửa đêm (bot cũ từng bắn tin 8h lúc 0h05).

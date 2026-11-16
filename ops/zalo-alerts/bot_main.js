@@ -15,13 +15,25 @@ const {
     connect, groupOf, keepSessionAlive, introduceNewGroups, loadGroups, autoAssignGroups, waitOrWake, pruneStaleGroups,
 } = require("./bot_session");
 const { startControl } = require("./bot_control");
+const { getStore } = require("./bot_store");
 const { sendReport, sendHourly, sendShipmentDigest, checkCorrections } = require("./bot_reports");
 const { runCommand } = require("./bot_commands");
 const { checkSlots } = require("./bot_slots");
 
+/** Thoát sau khi ghi xong hàng đợi lên kho (mốc đã gửi mà chưa ghi là lần chạy sau gửi lặp). */
+async function exitAfterFlush(code) {
+    const ok = await getStore().flush(10_000);
+    if (!ok) log(`Thoát khi còn ${getStore().pending()} thao tác chưa ghi được lên database.`);
+    process.exit(code);
+}
+
 async function runService() {
     enableServiceMode(runCommand);   // từ đây mỗi lần đăng nhập đều bật lại bộ nhận lệnh
     log(`Dashboard base: ${CFG.dashboardBaseUrl}${process.env.TALPHA_DASHBOARD_URL ? " (env TALPHA_DASHBOARD_URL)" : ""}`);
+    // Phiên đăng nhập, nhóm từng nước, trạng thái nằm trong database (bot_store.js, 16/11/2026) — nạp TRƯỚC mọi
+    // việc và ĐỢI tới khi dashboard trả lời: đoán state (mốc nào đã gửi) mà sai là bắn lặp tin vào nhóm.
+    await getStore().prime({ retryForever: true });
+    for (const sig of ["SIGTERM", "SIGINT"]) process.once(sig, () => { exitAfterFlush(0); });
     loadZalo();
     // Nạp nhóm từng nước TRƯỚC khi ghi trạng thái lên trang — không thì lượt ghi đầu báo "chưa có nhóm" tới nhịp tim sau.
     loadGroups();
@@ -53,6 +65,8 @@ async function runService() {
         if (scanning) return;
         scanning = true;
         try {
+            // Đọc lại kho: lệnh chạy tay (node bot.js --report, node pair.js) có thể vừa ghi mốc / chọn nhóm.
+            await getStore().refresh().then(loadGroups, (e) => log("Đọc lại kho bot lỗi — dùng bản đang giữ:", e.message));
             // Nhóm nào còn thiếu thì mỗi vòng thử tự nhận lại — Sỹ Anh thêm nick vào nhóm là vòng sau tự gửi.
             if (MARKET_CODES.some((m) => !getMarketGroups()[m])) { await autoAssignGroups(); await introduceNewGroups(); }
             await checkSlots(); await checkCorrections();
@@ -72,18 +86,19 @@ async function runService() {
         const latest = await fetchOverridesFingerprint();
         if (latest === null || latest === marketFingerprint) return;
         log("Thị trường nhập trên trang đã đổi — khởi động lại để nạp luật mới.");
-        process.exit(0);
+        await exitAfterFlush(0);
     }, 60 * 1000);
 }
 
 async function main() {
     const command = argAfter("--lenh");
     if (command || ["--report", "--vandon", "--moc", "--gio", "--dinh-chinh"].some((a) => ARGS.includes(a))) {
+        await getStore().prime();          // chạy tay: dashboard không trả lời ~75 giây thì báo lỗi, không đoán state
         if (!DRY) { loadZalo(); loadGroups(); }
         const markets = argAfter("--nuoc") ? [argAfter("--nuoc").toUpperCase()] : null;
         if (markets && !MARKETS[markets[0]]) throw new Error(`--nuoc lạ: ${markets[0]} (có: ${MARKET_CODES.join(", ")})`);
         if (ARGS.includes("--dinh-chinh")) {
-            // --dinh-chinh [--nuoc SG]: gửi ngay các tin đính chính đang chờ (state.json), bỏ qua giờ yên.
+            // --dinh-chinh [--nuoc SG]: gửi ngay các tin đính chính đang chờ (trạng thái bot), bỏ qua giờ yên.
             await checkCorrections({ goiTay: true, chiNuoc: markets ? markets[0] : null });
         } else if (ARGS.includes("--gio")) {
             // --gio [--nuoc JP]: gửi ngay tin mỗi giờ (không ghi mốc "lần trước").
@@ -129,7 +144,7 @@ async function main() {
 
 function start() {
     return main()
-        .then((oneShot) => { if (oneShot) setTimeout(() => process.exit(0), 1000); })
+        .then((oneShot) => { if (oneShot) return exitAfterFlush(0); })
         .catch((e) => { log("LỖI:", e.message); process.exit(1); });
 }
 

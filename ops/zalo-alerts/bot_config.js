@@ -1,15 +1,12 @@
 // Cấu hình chạy của bot.js (tách 16/11/2026): hằng lấy từ config.json + talpha_rules.json, cờ dòng
-// lệnh, state.json, giờ Việt Nam, các mốc gửi, tin giới thiệu / trợ giúp. Chỉ khai hằng và hàm —
-// require module này không đăng nhập, không gửi, không hẹn giờ gì.
-const fs = require("fs");
-const path = require("path");
+// lệnh, trạng thái bot (bảng zalo_bot_state — bot_store.js), giờ Việt Nam, các mốc gửi, tin giới thiệu / trợ giúp.
+// Chỉ khai hằng và hàm — require module này không đăng nhập, không gửi, không hẹn giờ gì.
 const CFG = require("./config");
+const { getStore } = require("./bot_store");
 const { marketHelpMessage } = require("./commands");
 const { toMin } = require("./schedule");
 const { MARKETERS, DISPLAY, MARKETS } = require("./rules");
 
-const DIR = __dirname;
-const STATE_FILE = path.join(DIR, "state.json");
 const ARGS = process.argv.slice(2);
 const DRY = ARGS.includes("--dry-run");
 const DR = CFG.dailyReport || {};
@@ -41,19 +38,12 @@ function argAfter(flag) {
     return v && !v.startsWith("--") ? v : "";
 }
 
-// ─── State: ghi MỘT thay đổi nhỏ, đọc lại file ngay trước khi ghi ───
-// Các vòng rà ôm state qua nhiều await mạng; ai ghi sau mà dùng bản cũ là xoá khoá của
-// vòng kia — mốc đã gửi bị quên và vòng sau bắn lại tin thứ hai vào nhóm.
-function loadState() {
-    try { return JSON.parse(fs.readFileSync(STATE_FILE, "utf8")); } catch { return {}; }
-}
-function markState(mut) {
-    const st = loadState();
-    mut(st);
-    try { fs.writeFileSync(STATE_FILE, JSON.stringify(st, null, 2)); }
-    catch (e) { log("Lỗi ghi state:", e.message); }
-    return st;
-}
+// ─── State: trạng thái bot (mốc đã gửi, số đã báo, tin đính chính chờ…) — bảng zalo_bot_state (16/11/2026,
+// trước là state.json). Đọc từ bộ nhớ (bản sao — sửa bản đọc ra không đổi gì); ghi qua markState: sửa MỘT
+// thay đổi nhỏ trên bản đang giữ rồi xếp hàng ghi đúng các mục đổi. Các vòng rà ôm state qua nhiều await
+// mạng — ai ghi sau mà dùng bản cũ là xoá khoá của vòng kia, mốc đã gửi bị quên, vòng sau bắn lại tin thứ hai.
+const loadState = () => getStore().loadState();
+const markState = (mut) => getStore().markState(mut);
 
 // ─── Giờ Việt Nam. hourCycle h23 BẮT BUỘC: hour12:false trả "24" lúc nửa đêm, báo cáo 8h
 // của bot WhatsApp từng bắn lúc 0h05 vì đúng chuyện này. ───

@@ -4,45 +4,30 @@
 //   - Trái điều khoản Zalo, nick có thể bị khoá → chỉ dùng nick PHỤ, không dùng nick chính.
 //   - Zalo chỉ cho MỘT phiên web mỗi nick: mở Zalo Web / Zalo PC bằng nick phụ ở máy khác
 //     là phiên của bot bị đá ra, bot im lặng cho tới khi ghép lại (`node pair.js`).
-//   - Phiên (cookie + imei + userAgent) là KHOÁ ĐĂNG NHẬP: nằm trong .zalo_session.json,
-//     quyền 600, gitignore, không in ra log, không chép đi đâu.
+//   - Phiên (cookie + imei + userAgent) là KHOÁ ĐĂNG NHẬP: từ 16/11/2026 nằm trong database (bảng
+//     zalo_session, MÃ HOÁ như khoá kết nối — bot_store.js; trước là file .zalo_session.json). Không in ra log.
 const fs = require("fs");
-const path = require("path");
 const { Zalo, ThreadType } = require("zca-js");
 const { toZalo, splitMessage } = require("./zalo_text");
+const { getStore } = require("./bot_store");
 
-const DIR = __dirname;
-const SESSION_FILE = path.join(DIR, ".zalo_session.json");
 // MỖI NƯỚC MỘT NHÓM "ADS + VẬN ĐƠN <nước>" (Sỹ Anh chốt 08/10/2026) — tin ads của nước đó
-// và tin vận đơn của nước đó chung một nhóm. Nhóm cũ (BÁO CÁO ADS gộp các nước: zalo_group.json;
-// VẬN ĐƠN TW/SGP/UAE: zalo_group_vandon*.json) bỏ hẳn — bot không đọc các file đó nữa.
-//   zalo_group_nuoc_<mã>.json   `node pair.js --tu-nhan` (theo tên nhóm) hoặc `--chon-nuoc <id> --nuoc TW`
-const marketGroupFile = (m) => path.join(DIR, `zalo_group_nuoc_${String(m).toLowerCase().replace(/[^a-z]/g, "")}.json`);
+// và tin vận đơn của nước đó chung một nhóm. Nhóm từng nước nằm trong bảng zalo_market_groups (16/11/2026 —
+// trước là file zalo_group_nuoc_<mã>.json): chọn ở /admin → Khoá kết nối → Zalo, hoặc `node pair.js --tu-nhan`
+// (theo tên nhóm) / `--chon-nuoc <id> --nuoc TW`.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-function readJson(file) {
-    try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; }
-}
-
-// Ghi file quyền 600 qua file tạm rồi đổi tên: chết giữa chừng không để lại phiên cụt.
-function writePrivateFile(file, obj) {
-    const tmpFile = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2), { mode: 0o600 });
-    fs.renameSync(tmpFile, file);
-    fs.chmodSync(file, 0o600);
-}
 
 // checkUpdate: false — không gọi npm mỗi lần đăng nhập. logging: false — log của bot tự lo.
 // selfListen: true — người cầm điện thoại nick phụ gõ /baocao cũng phải được nghe. Tin
 // báo cáo của chính bot cũng lọt vào, nhưng không bắt đầu bằng "/" nên bộ đọc lệnh bỏ qua.
 const createZalo = () => new Zalo({ selfListen: true, checkUpdate: false, logging: false });
 
-/** Lưu lại phiên từ api đang chạy (cookie Zalo có thể được làm mới sau đăng nhập). */
+/** Lưu lại phiên từ api đang chạy (cookie Zalo có thể được làm mới sau đăng nhập). Không đổi thì không ghi. */
 function saveSession(api, extra = {}) {
-    const previous = readJson(SESSION_FILE) || {};
+    const previous = getStore().getSession() || {};
     const ctx = api.getContext();
     const jar = ctx.cookie && typeof ctx.cookie.toJSON === "function" ? ctx.cookie.toJSON() : null;
-    writePrivateFile(SESSION_FILE, {
+    getStore().setSession({
         ...previous, ...extra,
         imei: ctx.imei || previous.imei,
         userAgent: ctx.userAgent || previous.userAgent,
@@ -59,6 +44,7 @@ const MAX_QR_ATTEMPTS = 5;
  * onEvent nhận {stage: "qr", qrPng, attempt} · {stage: "expired", final} · {stage: "scanned", name} ·
  * {stage: "declined"} · {stage: "saved"}. qrPath (tuỳ chọn): ghi thêm mã ra file PNG. Trả {api, name}.
  * Phiên ghi NGAY khi Zalo trả (GotLoginInfo), chưa đợi đăng nhập xong: bước sau hỏng thì không phải quét lại.
+ * Ghi vào kho (bảng zalo_session) — bên gọi đợi getStore().flush() nếu cần chắc đã lưu.
  */
 async function pairByQr({ qrPath = null, onEvent = async () => {} } = {}) {
     const { LoginQRCallbackEventType: E } = require("zca-js");
@@ -87,7 +73,7 @@ async function pairByQr({ qrPath = null, onEvent = async () => {} } = {}) {
                     ev.actions.abort();
                     break;
                 case E.GotLoginInfo:
-                    writePrivateFile(SESSION_FILE, { ...ev.data, language: "vi", name: displayName, savedAt: new Date().toISOString() });
+                    getStore().setSession({ ...ev.data, language: "vi", name: displayName, savedAt: new Date().toISOString() });
                     await onEvent({ stage: "saved" });
                     break;
             }
@@ -102,18 +88,18 @@ async function pairByQr({ qrPath = null, onEvent = async () => {} } = {}) {
 
 /** Tên nick đã ghép (ghi lúc ghép) — null nếu chưa ghép. */
 function sessionAccountName() {
-    const s = readJson(SESSION_FILE);
+    const s = getStore().getSession();
     return s && s.cookie ? (s.name || null) : null;
 }
 
-/** Bỏ ghép: xoá phiên trên máy này. Lần đăng nhập sau báo "chưa ghép nick". */
+/** Bỏ ghép: xoá phiên trong kho. Lần đăng nhập sau báo "chưa ghép nick". */
 function removeSession() {
-    try { fs.unlinkSync(SESSION_FILE); } catch { /* chưa có phiên */ }
+    getStore().clearSession();
 }
 
-/** Đăng nhập bằng phiên đã ghép. Chưa ghép → lỗi nói rõ phải làm gì. */
+/** Đăng nhập bằng phiên đã ghép (đọc lại từ kho — `node pair.js` có thể vừa ghép). Chưa ghép → lỗi nói rõ phải làm gì. */
 async function login() {
-    const s = readJson(SESSION_FILE);
+    const s = await getStore().refreshSession();
     if (!s || !s.imei || !s.cookie || !s.userAgent) {
         throw new Error("chưa ghép nick Zalo — ghép ở /admin → Khoá kết nối → Zalo (hoặc `node pair.js`) rồi quét QR");
     }
@@ -122,22 +108,14 @@ async function login() {
     return api;
 }
 
-/** Nhóm "ADS + VẬN ĐƠN" của một nước. null = chưa chọn → bot không gửi gì cho nước đó. */
-function readMarketGroup(m) {
-    const g = readJson(marketGroupFile(m));
-    return g && g.id ? g : null;
-}
+/** Nhóm "ADS + VẬN ĐƠN" của một nước ({id, name, method, chosen_at}). null = chưa chọn → bot không gửi gì cho nước đó. */
+const readMarketGroup = (m) => getStore().readGroup(String(m).toUpperCase());
 
-function saveMarketGroup(m, g, method = "") {
-    fs.writeFileSync(marketGroupFile(m), JSON.stringify({ id: g.id, name: g.name, nuoc: String(m).toUpperCase(),
-        chonLuc: new Date().toISOString(), ...(method ? { cach: method } : {}) }, null, 2) + "\n");
-    return marketGroupFile(m);
-}
+/** Chọn nhóm cho một nước (method: trang · tu-nhan · chon-tay). Bên gọi đợi getStore().flush() nếu cần chắc đã lưu. */
+const saveMarketGroup = (m, g, method = "") => getStore().saveGroup(m, g, method);
 
 /** Bỏ nhóm của một nước — nước đó không nhận tin nữa tới khi chọn lại. */
-function removeMarketGroup(m) {
-    try { fs.unlinkSync(marketGroupFile(m)); } catch { /* chưa chọn */ }
-}
+const removeMarketGroup = (m) => getStore().removeGroup(m);
 
 async function listGroups(api) {
     const { gridVerMap } = await api.getAllGroups();
@@ -180,7 +158,7 @@ function startListening(api, { onMessage, onClosed, log }) {
 }
 
 module.exports = {
-    SESSION_FILE, MAX_QR_ATTEMPTS, marketGroupFile, ThreadType,
-    createZalo, writePrivateFile, saveSession, pairByQr, sessionAccountName, removeSession,
+    MAX_QR_ATTEMPTS, ThreadType,
+    createZalo, saveSession, pairByQr, sessionAccountName, removeSession,
     login, readMarketGroup, saveMarketGroup, removeMarketGroup, listGroups, sendToGroup, startListening,
 };

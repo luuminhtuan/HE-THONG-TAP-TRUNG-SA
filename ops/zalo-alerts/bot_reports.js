@@ -28,7 +28,7 @@ async function buildReport(m, date, isToday, label, knownStale, kind = "", slotT
         title = `${kind === "trua" ? "🌤 ADS" : "🌇 ADS"} ${marketTitle} · ${kind === "trua" ? "TRƯA" : "CHIỀU"} ${ddmm(date)} · KẾT QUẢ TỚI ${slotTime || nowTime}`;
         sourceLine = "Số đang chạy" + (stale && stale.lastOkTs ? ` · sync ${formatHHMM(stale.lastOkTs)} ✓` : "")
             + " · ngày chưa chốt, còn lên tiếp";
-        // So với CÙNG MỐC hôm qua (số bot đã báo lúc đó, state.json → soMoc). Chưa có thì
+        // So với CÙNG MỐC hôm qua (số bot đã báo lúc đó, trạng thái bot → soMoc). Chưa có thì
         // không ▲▼ — so 13:00 với cả ngày hôm qua thì chữ nào cũng ▼ nửa, báo động giả.
         const previous = (loadState().soMoc || {})[slotNumbersKey(m, slotTime)];
         extra = { khongSoCaNgay: true, soCungGio: previous && previous.ngay === dayBefore(date) ? { so: previous.so, nhan: `${slotTime} hôm qua` } : null };
@@ -112,7 +112,7 @@ function sendHourly(m, remember = true) {
 // Sỹ Anh duyệt mẫu 26/09/2026: 08:30 SÁNG (hôm qua + khách phải gọi/nhắn, đủ chi tiết từng
 // khách) và 22:00 TỐI (hôm nay làm được gì). Từ 08/10/2026 gửi vào nhóm "ADS + VẬN ĐƠN" của
 // nước đó. Mỗi nước một mốc riêng — nước này hỏng không kéo nước kia.
-// Tin sáng lưu danh sách khách phải gọi/nhắn vào state.json để tin tối chấm "đã lấy chưa".
+// Tin sáng lưu danh sách khách phải gọi/nhắn vào trạng thái bot để tin tối chấm "đã lấy chưa".
 
 // kieu: "sang" · "toi" · "" (gõ /vandon trong ngày — khuôn tin sáng, đề giờ lúc gõ).
 async function buildShipmentDigest(m, kind) {
@@ -150,7 +150,7 @@ function sendShipmentDigest(m, kind = "sang") {
 // ─── Gửi TẠM đúng khung giờ, có số đủ thì tự ĐÍNH CHÍNH ───
 // Sỹ Anh chốt 22/09/2026. Tin tạm vẫn gửi (giữ khung giờ), bot NHỚ số đã báo; vòng rà sau
 // thấy sync đã chạy đủ số thì gửi thêm một tin nói rõ lệch bao nhiêu — vào đúng nhóm nước đó.
-// Ghi vào state.json nên pm2 restart / máy chủ reboot giữa lúc chờ vẫn không mất lịch.
+// Ghi vào trạng thái bot (bảng zalo_bot_state) nên pm2 restart / máy chủ reboot giữa lúc chờ vẫn không mất lịch.
 function queueCorrection(entryKey, r, date, isToday, m) {
     const pending = { ngay: date, nuoc: m, intraday: !!isToday, label: r.label, luc: Date.now(), so: r.so };
     pending.hanTs = correctionDeadline(pending, CORRECTION_DEADLINE_HOURS);

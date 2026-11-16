@@ -7,7 +7,7 @@ const { daysWaiting, deliveryStage } = require("./shipment_customer_messages");
 // ─── Sổ nhắc: khách nào đã được nhắn, mấy lần ───────────────────────────────
 // Sỹ Anh 30/09/2026: khách đã được nhắn mà 17TRACK vẫn thấy chưa lấy thì NHẮC LẠI mỗi sáng
 // trong tin Zalo cho anh em nắm, kèm câu gửi khách gấp hơn. Bot ghi sổ mỗi sáng GỬI THẬT
-// (state.json → vanDonNhac[nước][mã vận đơn] = { lan, dau, cuoi }).
+// (trạng thái bot → vanDonNhac[nước][mã vận đơn] = { lan, dau, cuoi }).
 
 /** Số NGÀY TRƯỚC HÔM NAY khách đã có trong tin sáng (tin hôm nay chưa tính). */
 function priorNudges(nudgeLog, tracking, today) {

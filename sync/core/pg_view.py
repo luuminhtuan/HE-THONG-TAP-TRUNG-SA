@@ -24,7 +24,8 @@ RULES_FILE = REPO / "config" / "talpha_rules.json"
 YAML_FILE = REPO / "config" / "projects" / "talpha.yaml"
 # Bảng vai chỉ đọc (/api/query, "CEO hỏi") KHÔNG được thấy — cùng danh sách REVOKE cuối migration 0001.
 PRIVATE_TABLES = ("app_documents", "market_overrides", "market_monthly_reports", "users",
-              "api_credentials", "file_imports", "zalo_bot_status", "zalo_requests")
+              "api_credentials", "file_imports", "zalo_bot_status", "zalo_requests",
+              "zalo_session", "zalo_market_groups", "zalo_bot_state")
 
 
 def _rules() -> dict:

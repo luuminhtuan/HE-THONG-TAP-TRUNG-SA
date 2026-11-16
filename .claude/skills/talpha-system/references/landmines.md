@@ -78,7 +78,7 @@ không có bản chép runtime.
 - Nhánh `kho-postgres`: token Meta, key POS… nằm MÃ HOÁ trong bảng `api_credentials` — mất / đổi
   `TALPHA_ENCRYPTION_KEY` là phải nhập lại mọi khoá; sao kê, vận đơn, chi phí vận hành nằm trong bảng
   `app_documents` (volume `pgdata` — `docker compose down -v` là mất).
-- Bot Zalo: phiên `.zalo_session.json`, `state.json`, file nhóm `zalo_group_nuoc_*.json` (ngoài git).
+- Bot Zalo: phiên đăng nhập (mã hoá), nhóm từng nước, trạng thái nằm trong database (`zalo_session`, `zalo_market_groups`, `zalo_bot_state`, 16/11/2026 — trước là file `.zalo_session.json`, `zalo_group_nuoc_*.json`, `state.json`).
   Bot WhatsApp (`.wwebjs_auth/`) đã xoá 30/10/2026.
 
 ## 5. Vận hành
