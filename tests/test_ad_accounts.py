@@ -29,21 +29,21 @@ RULES = json.loads((ROOT / "config" / "talpha_rules.json").read_text(encoding="u
 
 class TestInitialAccountType:
     def test_vnd_gets_default_type(self):
-        assert initial_account_type("111", "VND", RULES) == RULES["tkqc_loai"]["mac_dinh"] == "antalo"
+        assert initial_account_type("111", "VND", RULES) == RULES["ad_account_categories"]["default"] == "antalo"
 
     def test_other_currency_excluded_from_reports(self):
         account_type = initial_account_type("222", "USD", RULES)
-        assert account_type == "khac" and not RULES["tkqc_loai"]["loai"][account_type]["vao_bao_cao"]
+        assert account_type == "other" and not RULES["ad_account_categories"]["categories"][account_type]["include_in_report"]
 
     def test_seed_account_preassigned(self):
         category = initial_account_type("2332183394212686", "VND", RULES)
-        assert category == "hat_giong" and not RULES["tkqc_loai"]["loai"][category]["vao_bao_cao"]
+        assert category == "seed" and not RULES["ad_account_categories"]["categories"][category]["include_in_report"]
 
     def test_every_preassigned_type_is_declared(self):
-        cfg = RULES["tkqc_loai"]
-        category = {k for k in cfg["loai"] if not k.startswith("_")}
-        preassigned = {v for k, v in cfg["gan_san"].items() if not k.startswith("_")}
-        assert preassigned | {cfg["mac_dinh"], cfg["loai_tien_khac"]} <= category
+        cfg = RULES["ad_account_categories"]
+        category = {k for k in cfg["categories"] if not k.startswith("_")}
+        preassigned = {v for k, v in cfg["preassigned"].items() if not k.startswith("_")}
+        assert preassigned | {cfg["default"], cfg["non_vnd"]} <= category
 
 
 @pytest.fixture
@@ -75,11 +75,11 @@ def _meta(aid, name, currency="VND", tz="Asia/Ho_Chi_Minh", st=1):
 class TestAdAccountDirectory:
     def test_new_account_gets_type_existing_keeps_user_choice(self, pg):
         new_accounts = write_ad_account_directory(pg, [_meta("111", "Hồ Lý 11"), _meta("2332183394212686", "XUAN THAI (việt)")], RULES)
-        assert sorted(new_accounts) == [("111", "Hồ Lý 11", "antalo"), ("2332183394212686", "XUAN THAI (việt)", "hat_giong")]
-        pg.execute("UPDATE ad_accounts SET category = 'khac', is_confirmed = true WHERE account_id = '111'")   # người đổi trên trang
+        assert sorted(new_accounts) == [("111", "Hồ Lý 11", "antalo"), ("2332183394212686", "XUAN THAI (việt)", "seed")]
+        pg.execute("UPDATE ad_accounts SET category = 'other', is_confirmed = true WHERE account_id = '111'")   # người đổi trên trang
         assert write_ad_account_directory(pg, [_meta("111", "Hồ Lý 11 (đổi tên)", st=2)], RULES) == []
         assert pg.execute("SELECT category, name, account_status, is_confirmed FROM ad_accounts WHERE account_id = '111'").fetchone() == (
-            "khac", "Hồ Lý 11 (đổi tên)", 2, True)
+            "other", "Hồ Lý 11 (đổi tên)", 2, True)
 
     def test_view_counts_only_report_accounts_type_change_is_immediate(self, pg):
         from sync.core import pg_writer
@@ -95,7 +95,7 @@ class TestAdAccountDirectory:
         assert total("fb_ads_all") == 160.0                 # thống kê đủ mọi TK
         assert total("fb_ads_data") == 103.0                   # Hồ Lý (antalo) + TK chưa có trong danh bạ (mặc định)
         assert total("vw_fb_ads_std") == 103.0
-        pg.execute("UPDATE ad_accounts SET category = 'hat_giong' WHERE account_id = '111'")
+        pg.execute("UPDATE ad_accounts SET category = 'seed' WHERE account_id = '111'")
         assert total("fb_ads_data") == 3.0                     # không cần dựng lại view
 
 

@@ -206,7 +206,7 @@ export default function IncomeStatementTab({ dateRange }: Props) {
                                 UAE tra theo mã vạch / tên hàng trên POS (<code className="rounded bg-muted px-1">markets.UAE.product_costs_vnd</code>). Danh sách tên/mã thiếu ở tab P&L (mục Báo cáo).</li>
                         )}
                         {provisionalMarkets.map((n) => (
-                            <li key={n.code}><strong>Tỉ lệ giao {n.ten} còn tạm</strong> — {n.ty_le?.r == null ? "chưa có kiện nào giao xong hay hoàn để đo" : `mới đo trên ${formatNumber((n.ty_le?.giao || 0) + (n.ty_le?.hoan || 0))} kiện (cần ${data.cfg.ty_le.mau_toi_thieu} kiện lên đơn từ ${data.cfg.ty_le.bo_gan_ngay} ngày trước)`}; doanh thu dự kiến nước này còn trôi.</li>
+                            <li key={n.code}><strong>Tỉ lệ giao {n.ten} còn tạm</strong> — {n.ty_le?.r == null ? "chưa có kiện nào giao xong hay hoàn để đo" : `mới đo trên ${formatNumber((n.ty_le?.giao || 0) + (n.ty_le?.hoan || 0))} kiện (cần ${data.cfg.delivery_rate.min_sample} kiện lên đơn từ ${data.cfg.delivery_rate.exclude_recent_days} ngày trước)`}; doanh thu dự kiến nước này còn trôi.</li>
                         ))}
                     </ul>
                 </section>
@@ -218,14 +218,14 @@ export default function IncomeStatementTab({ dateRange }: Props) {
                 warning={
                     <>
                         <strong>Hai mức lãi.</strong> &ldquo;Dự kiến&rdquo; nhân kiện còn đang đi với tỉ lệ giao thật của nước đó (đo trên kiện lên đơn
-                        {" "}{data.cfg.ty_le.cua_so_ngay} → {data.cfg.ty_le.bo_gan_ngay} ngày trước — bỏ kiện mới vì kiện giao xong trước, kiện hoàn về sau).
+                        {" "}{data.cfg.delivery_rate.window_days} → {data.cfg.delivery_rate.exclude_recent_days} ngày trước — bỏ kiện mới vì kiện giao xong trước, kiện hoàn về sau).
                         &ldquo;Tối thiểu&rdquo; coi mọi kiện đang đi đều hoàn. Tiền về tài khoản thật xem tab Tiền COD về.
                     </>
                 }
                 notes={[
                     <>Doanh số, số đơn, tiền ads: file TỔNG TEAM theo tab từng nước — cùng số tab Tổng quan và bot Zalo.</>,
                     <>Doanh thu: tiền COD trên kiện 3PL, quy theo tỷ giá niêm yết (như Doanh số). Phần 3PL quy đổi lệch tỷ giá nằm ở dòng &ldquo;tỷ giá&rdquo; của Chi phí 3PL.
-                        {" "}{data.cfg.cho_len_3pl_ngay} ngày cuối kỳ, đơn đã chốt mà chưa lên 3PL được ước như kiện đang đi.</>,
+                        {" "}{data.cfg.await_3pl_days} ngày cuối kỳ, đơn đã chốt mà chưa lên 3PL được ước như kiện đang đi.</>,
                     <>Chi phí khai thác = tiền ads + chi phí vận hành. Khoản vận hành &ldquo;chung&rdquo; chia cho các nước theo phần doanh số của nước trên doanh số mọi nước.</>,
                     ...okMarkets.flatMap((n) => n.co_so.map((c, i) => <><strong>{n.ten}</strong>{i === 0 ? ` (${n.nguon})` : ""}: {c}</>)),
                 ]}

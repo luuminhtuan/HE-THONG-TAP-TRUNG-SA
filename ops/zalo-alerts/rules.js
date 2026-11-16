@@ -38,7 +38,7 @@ const MARKETS = Object.fromEntries(Object.entries(withoutNotes(RULES.markets))
     .filter(([, v]) => v && typeof v === "object" && v.shop_label)
     .map(([key, v]) => {
         const code = String(v.shop_label).toUpperCase();
-        return [code, { ma: code, key, ten: v.display || key, flag: v.flag || "", sapChay: v.status === "sap_chay", daTat: v.status === "da_tat" }];
+        return [code, { ma: code, key, ten: v.display || key, flag: v.flag || "", sapChay: v.status === "upcoming", daTat: v.status === "disabled" }];
     }));
 
 const CAMP_TOKENS = withoutNotes(RULES.camp_marketer_tokens);
@@ -180,10 +180,10 @@ for (const t of Object.values(withoutNotes((RULES.access || {}).teams))) {
     if (!t || typeof t !== "object") continue;
     for (const member of t.members || []) for (const m of t.markets || []) (MARKETS_BY_MARKETER[member] = MARKETS_BY_MARKETER[member] || new Set()).add(m);
 }
-const MARKET_OWNERS = Object.fromEntries(Object.entries(withoutNotes(RULES.markets)).filter(([, v]) => v && v.nguoi_cam).map(([k, v]) => [k, v.nguoi_cam]));
-// Người đã ngừng chạy (marketers.*.ngung_chay_tu — Thương từ 01/10/2026, Sỹ Anh chốt 03/11/2026):
+const MARKET_OWNERS = Object.fromEntries(Object.entries(withoutNotes(RULES.markets)).filter(([, v]) => v && v.owner).map(([k, v]) => [k, v.owner]));
+// Người đã ngừng chạy (marketers.*.inactive_from — Thương từ 01/10/2026, Sỹ Anh chốt 03/11/2026):
 // từ ngày đó số mang tên họ tính cho người cầm nước. Không truyền ngày = số hiện tại.
-const STOPPED_SINCE = Object.fromEntries(Object.entries(MARKETERS).filter(([, v]) => v && v.ngung_chay_tu).map(([k, v]) => [k, v.ngung_chay_tu]));
+const STOPPED_SINCE = Object.fromEntries(Object.entries(MARKETERS).filter(([, v]) => v && v.inactive_from).map(([k, v]) => [k, v.inactive_from]));
 function creditedMarketer(key, marketKey, date) {
     const since = STOPPED_SINCE[key];
     if (since && (!date || String(date).slice(0, 10) >= since)) return MARKET_OWNERS[marketKey] || key;

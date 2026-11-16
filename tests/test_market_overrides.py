@@ -25,7 +25,7 @@ FIXTURE = json.loads((ROOT / "tests" / "fixtures" / "market_overrides.json").rea
 
 THAILAND = {"markets": {"Thailand": {
     "shop_label": "TH", "shop_id": "123456", "currency": "THB", "currency_symbol": "฿",
-    "rate_vnd": 700, "pos_money_divisor": 1, "display": "Thái Lan", "status": "dang_ban",
+    "rate_vnd": 700, "pos_money_divisor": 1, "display": "Thái Lan", "status": "active",
     "tokens": ["TH", "THAI"], "team": "dong_nam_a"}}}
 
 
@@ -89,7 +89,7 @@ class TestNewMarketPropagates:
     def test_sync_fetches_new_shop_orders(self):
         rules = apply_market_overrides(json.loads((ROOT / "config" / "talpha_rules.json").read_text(encoding="utf-8")), THAILAND)
         ds = {s["label"]: s for s in pos_shops_from_markets(rules["markets"], {"TALPHA_POSCAKE_TH_KEY": "k-th"})}
-        assert ds["TH"]["shop_id"] == "123456" and ds["TH"]["key"] == "k-th" and ds["TH"]["keo"] is True
+        assert ds["TH"]["shop_id"] == "123456" and ds["TH"]["key"] == "k-th" and ds["TH"]["fetch_orders"] is True
         assert {"TW", "SG", "AE", "JP"} <= set(ds)
 
     def test_view_has_new_market_rate_and_divisor(self, tmp_path, monkeypatch):

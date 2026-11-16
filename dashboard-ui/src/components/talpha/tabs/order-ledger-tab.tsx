@@ -42,7 +42,7 @@ export default function TALPHAOrderLedgerTab(props: Props) {
             .then((d: { markets?: { code: string; display: string; status?: string; co_van_don?: boolean }[] }) => {
                 // Chỉ nước đang bán: nước sắp chạy chưa có đơn, nước đã tắt (04/11/2026) không còn sổ
                 // để làm việc — đơn cũ chờ thu tiền xem ở Kế toán → Tiền COD về.
-                const activeMarkets = (d.markets || []).filter((m) => (m.status || "dang_ban") === "dang_ban");
+                const activeMarkets = (d.markets || []).filter((m) => (m.status || "active") === "active");
                 // Sổ đơn đọc đơn + trạng thái giao qua hãng vận chuyển: nước chưa khai tracking.markets
                 // (Nhật Bản lúc mới mở) gọi sổ là máy chủ trả 400 — ẩn nút thay vì hiện màn lỗi.
                 const list = activeMarkets.filter((m) => m.co_van_don !== false).map((m) => ({ code: m.code, display: m.display }));

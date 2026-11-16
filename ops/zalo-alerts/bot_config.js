@@ -20,7 +20,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const ddmm = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : String(d || ""));
 
-// Nước còn chạy: nước đã tắt (talpha_rules.json → status "da_tat", 04/11/2026) bị lọc khỏi MỌI lịch
+// Nước còn chạy: nước đã tắt (talpha_rules.json → status "disabled", 04/11/2026) bị lọc khỏi MỌI lịch
 // gửi dưới đây, kể cả khi config.json còn ghi tên nó — tắt nước chỉ cần sửa một chỗ.
 const isActiveMarket = (m) => !!MARKETS[m] && !MARKETS[m].daTat;
 // Nước có nhóm "ADS + VẬN ĐƠN" — thứ tự gửi trong một mốc.

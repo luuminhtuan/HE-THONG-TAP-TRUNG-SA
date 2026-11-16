@@ -59,7 +59,7 @@ export default function TALPHACodReconTab(props: CodReconTabProps) {
         fetch("/api/talpha/markets").then((r) => r.json())
             .then((d: { markets?: { code: string; display: string; status?: string }[] }) => {
                 // Nước đã tắt VẪN có ở đây (04/11/2026): tắt rồi đối tác còn chuyển tiền đơn cũ về vài tuần.
-                const list = (d.markets || []).filter((m) => m.status !== "sap_chay").map((m) => ({ code: m.code, display: m.display }));
+                const list = (d.markets || []).filter((m) => m.status !== "upcoming").map((m) => ({ code: m.code, display: m.display }));
                 setDs(list);
             })
             .catch(() => setDs([]));   // không lấy được danh sách nước thì vẫn hiện màn Đài như cũ

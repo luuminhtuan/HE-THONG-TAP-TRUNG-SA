@@ -4,7 +4,7 @@ sync/core/ad_accounts.py — danh bạ TKQC tự động (04/11/2026).
 Trước: danh sách TKQC gõ tay ở config/projects/talpha.yaml. Token đổi, BM đổi, TK chết / TK mới là phải
 sửa file rồi deploy — 28/10 và 03/11/2026 đều mất nửa ngày chi tiêu vì danh sách lệch với token.
 Nay mỗi vòng sync hỏi Meta token đọc được TKQC nào (/me/adaccounts) rồi kéo chi tiêu của TẤT CẢ; danh bạ
-ghi ở bảng ad_accounts. Loại của từng TKQC (vào báo cáo hay không) quyết ở talpha_rules.json → tkqc_loai và
+ghi ở bảng ad_accounts. Loại của từng TKQC (vào báo cáo hay không) quyết ở talpha_rules.json → ad_account_categories và
 /admin → TKQC — bản dashboard của file này: dashboard-ui/src/lib/talpha/ad-accounts.ts (cùng luật, có test).
 """
 import logging
@@ -28,15 +28,15 @@ def meta_tokens(env=None) -> list:
 
 def initial_account_type(account_id: str, currency: str, rules: dict) -> str:
     """Loại của TKQC thấy LẦN ĐẦU: gán sẵn trong luật → theo tiền tệ (VND → mặc định, tiền khác →
-    loai_tien_khac, vì engine coi chi tiêu là VND). Đã có trong bảng thì KHÔNG gọi hàm này nữa —
+    ad_account_categories.non_vnd, vì engine coi chi tiêu là VND). Đã có trong bảng thì KHÔNG gọi hàm này nữa —
     loại người chọn trên trang giữ nguyên."""
-    cfg = rules.get("tkqc_loai") or {}
-    preassigned = {k: v for k, v in (cfg.get("gan_san") or {}).items() if not str(k).startswith("_")}
+    cfg = rules.get("ad_account_categories") or {}
+    preassigned = {k: v for k, v in (cfg.get("preassigned") or {}).items() if not str(k).startswith("_")}
     if str(account_id) in preassigned:
         return preassigned[str(account_id)]
     if (currency or "VND").upper() != "VND":
-        return cfg.get("loai_tien_khac") or "khac"
-    return cfg.get("mac_dinh") or "antalo"
+        return cfg.get("non_vnd") or "other"
+    return cfg.get("default") or "antalo"
 
 
 def list_token_ad_accounts(token: str, timeout: int = 60) -> list:

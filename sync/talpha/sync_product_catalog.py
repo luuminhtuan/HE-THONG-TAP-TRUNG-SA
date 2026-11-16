@@ -37,7 +37,7 @@ TABLE = "product_catalog"
 
 def load_shops() -> list[dict]:
     """Shop POS — CÙNG danh sách với sync đơn: talpha_rules.json → markets đã phủ thị trường nhập ở
-    /admin (pos_shops_from_markets, 04/11/2026). Mỗi shop có label, shop_id, keo (chỉ nước đang bán
+    /admin (pos_shops_from_markets, 04/11/2026). Mỗi shop có label, shop_id, fetch_orders (chỉ nước đang bán
     mới gọi POS; nước đã tắt / sắp chạy thì giữ SP đang có).
 
     Danh sách shop CHỈ có 1 nguồn. Bản hardcode cũ thiếu Taiwan → 100% order_items của TW không
@@ -108,7 +108,7 @@ def main():
     args = ap.parse_args()
 
     # Chỉ nước đang bán gọi POS. Nước đã tắt (key có thể đã bỏ) / sắp chạy: SP đang có giữ nguyên, xem dưới.
-    to_fetch = [(s["label"], s["shop_id"]) for s in SHOPS if s["keo"]]
+    to_fetch = [(s["label"], s["shop_id"]) for s in SHOPS if s["fetch_orders"]]
     missing = [lb for lb, _ in to_fetch if not os.environ.get(f"TALPHA_POSCAKE_{lb}_KEY", "")]
     if to_fetch and len(missing) == len(to_fetch):
         # Không có key nào = chưa nạp được khoá. Chạy tiếp sẽ thay bảng bằng 0 dòng
@@ -142,7 +142,7 @@ def main():
     named = sum(1 for r in deduped if r["product_name"])
     print(f"Có tên SP: {named}/{len(deduped)} ({100*named/max(len(deduped),1):.0f}%)")
 
-    inactive = sorted({s["label"] for s in SHOPS if not s["keo"]})
+    inactive = sorted({s["label"] for s in SHOPS if not s["fetch_orders"]})
     if args.dry_run:
         if inactive:
             print(f"Nước không gọi POS {', '.join(inactive)}: khi ghi thật sẽ giữ nguyên SP đang có trong {TABLE}")

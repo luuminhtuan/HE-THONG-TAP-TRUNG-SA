@@ -39,15 +39,15 @@ console.log("── Thị trường: soát nước nhập trên trang ──");
 const BASE_RULES = T.applyMarketOverrides(FIXTURE.luat, null);
 const thailand = (patch = {}) => ({
     key: "Thailand", display: "Thái Lan", shop_label: "TH", currency: "THB", currency_symbol: "฿",
-    rate_vnd: 700, pos_money_divisor: 1, shop_id: "123456", status: "dang_ban", orders_from: "2026-11-05",
+    rate_vnd: 700, pos_money_divisor: 1, shop_id: "123456", status: "active", orders_from: "2026-11-05",
     flag: "🇹🇭", tokens: ["TH", "THAI"], team: "dong_nam_a", ...patch,
 });
 t("nước mới khai đủ thì không lỗi", () => {
     assert.deepStrictEqual(T.marketInputErrors(thailand(), BASE_RULES, true), []);
 });
 t("sắp chạy được để trống tỷ giá, số chia, shop; đang bán / đã tắt thì không", () => {
-    assert.deepStrictEqual(T.marketInputErrors(thailand({ status: "sap_chay", rate_vnd: null, pos_money_divisor: null, shop_id: "" }), BASE_RULES, true), []);
-    for (const status of ["dang_ban", "da_tat"]) {
+    assert.deepStrictEqual(T.marketInputErrors(thailand({ status: "upcoming", rate_vnd: null, pos_money_divisor: null, shop_id: "" }), BASE_RULES, true), []);
+    for (const status of ["active", "disabled"]) {
         const errors = T.marketInputErrors(thailand({ status, rate_vnd: null, pos_money_divisor: null, shop_id: "" }), BASE_RULES, true).join(" | ");
         assert.ok(/tỷ giá/.test(errors) && /số chia/.test(errors) && /shop POS/.test(errors), errors);
     }

@@ -45,9 +45,9 @@ def _with_market_overrides(rules):
 RULES = _with_market_overrides(RULES)
 
 # ── Thị trường & tỷ giá (tương đương RATE/LOCALCUR/ALLM/MARKETS/SHOP2MKT cũ) ──
-# Nước "sap_chay" chưa có tỷ giá và số chia — khai null
+# Nước "upcoming" chưa có tỷ giá và số chia — khai null
 # trong JSON. Ở đây null → tỷ giá 0 (doanh thu 0, KHÔNG đoán) và số chia 1 (chưa có đơn
-# nào để chia). Nước "dang_ban" thiếu hai số này là cấu hình sai — test chặn trước deploy.
+# nào để chia). Nước "active" thiếu hai số này là cấu hình sai — test chặn trước deploy.
 def _positive_or(v, default):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else default
 
@@ -55,25 +55,25 @@ _MK = {m: v for m, v in RULES["markets"].items() if isinstance(v, dict)}
 RATE     = {m: _positive_or(v.get("rate_vnd"), 0) for m, v in _MK.items()}
 LOCALCUR = {m: v["currency"] for m, v in _MK.items()}
 CURRENCY_SYMBOL = {m: v.get("currency_symbol") or v["currency"] for m, v in _MK.items()}
-STATUS   = {m: v.get("status", "dang_ban") for m, v in _MK.items()}
-ACTIVE_MARKETS = [m for m in _MK if STATUS[m] == "dang_ban"]
-# "da_tat" (04/11/2026): ngừng kéo số mới nhưng GIỮ tỷ giá, số chia — vẫn nằm trong ALLM để báo
+STATUS   = {m: v.get("status", "active") for m, v in _MK.items()}
+ACTIVE_MARKETS = [m for m in _MK if STATUS[m] == "active"]
+# "disabled" (04/11/2026): ngừng kéo số mới nhưng GIỮ tỷ giá, số chia — vẫn nằm trong ALLM để báo
 # cáo những ngày nước đó còn chạy không đổi. Chỉ việc nhìn về phía trước (file tháng mới) bỏ nó.
-DISABLED_MARKETS   = [m for m in _MK if STATUS[m] == "da_tat"]
+DISABLED_MARKETS   = [m for m in _MK if STATUS[m] == "disabled"]
 # ── Ai cầm nước nào (Sỹ Anh chốt 10/10/2026) ──
 # Số một người chạy LẤN sang nước của team khác (camp cũ chưa đổi tên: Lộc còn camp Đài + Sing,
 # Thái còn camp Đài, Thương còn camp Sing) tính cho NGƯỜI CẦM nước đó. Thành viên team ở
-# access.teams.*.members, người cầm ở markets.*.nguoi_cam. Người không thuộc team nào: giữ nguyên.
+# access.teams.*.members, người cầm ở markets.*.owner. Người không thuộc team nào: giữ nguyên.
 PERSON_MARKETS = {}
 for _t in (RULES.get("access", {}).get("teams") or {}).values():
     if isinstance(_t, dict):
         for _nv in _t.get("members") or []:
             PERSON_MARKETS.setdefault(_nv, set()).update(_t.get("markets") or [])
-MARKET_OWNER = {m: v["nguoi_cam"] for m, v in _MK.items() if v.get("nguoi_cam")}
-# Người ĐÃ NGỪNG CHẠY (marketers.*.ngung_chay_tu, Sỹ Anh chốt 03/11/2026 — Thương từ 01/10/2026):
+MARKET_OWNER = {m: v["owner"] for m, v in _MK.items() if v.get("owner")}
+# Người ĐÃ NGỪNG CHẠY (marketers.*.inactive_from, Sỹ Anh chốt 03/11/2026 — Thương từ 01/10/2026):
 # từ ngày đó mọi số mang tên họ (tag POS khi họ tạo đơn với vai sale, camp cũ) về người cầm nước.
-INACTIVE_SINCE = {k: v["ngung_chay_tu"] for k, v in RULES["marketers"].items()
-              if isinstance(v, dict) and v.get("ngung_chay_tu")}
+INACTIVE_SINCE = {k: v["inactive_from"] for k, v in RULES["marketers"].items()
+              if isinstance(v, dict) and v.get("inactive_from")}
 
 
 def credited_marketer(nv, mkt, date=None):

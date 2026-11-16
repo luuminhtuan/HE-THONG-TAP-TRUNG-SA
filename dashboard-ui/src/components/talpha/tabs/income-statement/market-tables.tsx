@@ -87,7 +87,7 @@ export function ParcelTable({ data }: { data: Data }) {
         { key: "di", label: "Đang đi", align: "right", render: (n) => o(n.tk!.kien.dang_di) },
         { key: "cho", label: "Chờ gửi", align: "right", render: (n) => o(n.tk!.kien.cho_gui) },
         {
-            key: "len", label: "Chưa lên 3PL", align: "right", title: `${data.cfg.cho_len_3pl_ngay} ngày cuối kỳ: doanh số chưa thành kiện, ước như kiện đang đi`,
+            key: "len", label: "Chưa lên 3PL", align: "right", title: `${data.cfg.await_3pl_days} ngày cuối kỳ: doanh số chưa thành kiện, ước như kiện đang đi`,
             render: (n) => (n.cho_len_3pl?.vnd ? formatVNDCompact(n.cho_len_3pl.vnd) : DASH),
         },
         {

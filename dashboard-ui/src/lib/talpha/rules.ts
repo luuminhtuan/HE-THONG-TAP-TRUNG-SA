@@ -60,11 +60,11 @@ export const SHOP2MKT: Record<string, string> = Object.fromEntries(
  * nước đó còn chạy phải ra đúng số, và Tiền COD về còn thu nốt tiền đơn cũ.
  */
 export const DISABLED_MARKETS: ReadonlySet<string> = new Set(
-    MARKET_ENTRIES.filter(([, v]) => v.status === "da_tat").map(([k]) => k));
+    MARKET_ENTRIES.filter(([, v]) => v.status === "disabled").map(([k]) => k));
 /** Nước ĐANG BÁN — chỉ những nước này được gọi POS sống. Nước sắp chạy có thể đã khai shop (thêm ở
  *  /admin → Thị trường) nhưng chưa bán, thường chưa có key: gọi là chờ timeout mỗi lần mở tab Kho. */
 export const ACTIVE_MARKETS: ReadonlySet<string> = new Set(
-    MARKET_ENTRIES.filter(([, v]) => (v.status || "dang_ban") === "dang_ban").map(([k]) => k));
+    MARKET_ENTRIES.filter(([, v]) => (v.status || "active") === "active").map(([k]) => k));
 
 /** Shop POS của mọi nước có shop_id (kể cả nước đã tắt — nơi gọi tự lọc MARKET_DA_TAT).
  *  CÙNG luật với pos_shops_from_markets bên Python: key nằm ở biến TALPHA_POSCAKE_<mã shop>_KEY.
@@ -137,7 +137,7 @@ export const MARKETS_PUBLIC: { primary: string | null; markets: MarketPublic[] }
         currency: v.currency,
         symbol: v.currency_symbol || v.currency,
         rate_vnd: isPositive(v.rate_vnd) ? v.rate_vnd : 0,
-        status: v.status || "dang_ban",
+        status: v.status || "active",
         tokens: RULES.camp_market_tokens.filter((t) => RULES.market_aliases[t] === key),
     })),
 };

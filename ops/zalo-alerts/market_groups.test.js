@@ -82,7 +82,7 @@ const noNetworkFetch = async (url) => { throw new Error(`không được gọi m
     });
 
     await t("nước chưa có shop POS (như Nhật 08/10): chỉ tiền ads + tin nhắn, không %ads, không chấm 🔴 camp", async () => {
-        // Nhật nối shop 09/10/2026 nên trong rules đã là dang_ban — giả lập lại lúc chưa có shop.
+        // Nhật nối shop 09/10/2026 nên trong rules đã là active — giả lập lại lúc chưa có shop.
         const savedValue = MARKETS.JP.sapChay;
         MARKETS.JP.sapChay = true;
         let r;

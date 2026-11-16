@@ -41,7 +41,7 @@ t("bỏ kiện mới (dưới 21 ngày), tính theo tiền COD", () => {
         parcel({ ngay: "2026-09-02", nhom: "hoan", cod_vnd: 1000 }),
         parcel({ ngay: "2026-10-30", nhom: "giao", cod_vnd: 9999 }),  // quá gần — bỏ
     ];
-    const r = L.computeDeliveryRate(ks, "2026-11-04", { cua_so_ngay: 90, bo_gan_ngay: 21, mau_toi_thieu: 2 });
+    const r = L.computeDeliveryRate(ks, "2026-11-04", { window_days: 90, exclude_recent_days: 21, min_sample: 2 });
     approx(r.r, 0.75); assert.strictEqual(r.giao, 1); assert.strictEqual(r.tam, false);
 });
 t("mẫu nhỏ → lấy mọi kiện xong và báo tạm", () => {

@@ -95,7 +95,7 @@ def _fake_repo(tmp_path: Path) -> Path:
     (tmp_path / "data" / "cod_statements.json").write_text(json.dumps({"statements": [{"ky": "2026-09-11"}]}))
     (tmp_path / "data" / "tracking.json").write_text(json.dumps({"statuses": {"A1": {"status": "giao"}}}))
     (tmp_path / "data" / "thi_truong.json").write_text(json.dumps(
-        {"markets": {"Thailand": {"display": "Thái Lan", "status": "sap_chay"}}, "updated_by": "sa"}))
+        {"markets": {"Thailand": {"display": "Thái Lan", "status": "upcoming"}}, "updated_by": "sa"}))
     (tmp_path / "data" / "bao_cao_nuoc" / "2026-11.json").write_text(json.dumps({"thang": "2026-11", "nuoc": {}}))
     (tmp_path / "config" / "users.json").write_text(json.dumps([
         {"id": "1", "email": "loc", "name": "Lộc", "password": "$2a$10$h", "role": "leader", "teams": ["trung_dong"],
@@ -116,7 +116,7 @@ class TestFileImport:
         documents = dict(pg.execute("SELECT name, content FROM app_documents").fetchall())
         assert documents == {"cod_statements": {"statements": [{"ky": "2026-09-11"}]},
                        "tracking": {"statuses": {"A1": {"status": "giao"}}}}
-        assert read_market_overrides_from_db(pg) == {"markets": {"Thailand": {"display": "Thái Lan", "status": "sap_chay"}}}
+        assert read_market_overrides_from_db(pg) == {"markets": {"Thailand": {"display": "Thái Lan", "status": "upcoming"}}}
         assert pg.execute("SELECT month FROM market_monthly_reports").fetchall() == [("2026-11",)]
         users = pg.execute("SELECT id, username, role, teams, projects, status FROM users ORDER BY id").fetchall()
         assert users == [("1", "loc", "leader", ["trung_dong"], ["talpha"], "active"),

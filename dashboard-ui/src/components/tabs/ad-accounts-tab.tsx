@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 // Không còn thêm / xoá TKQC bằng tay. Mỗi TK một LOẠI; chỉ loại "vào báo cáo" mới cộng vào số các tab,
 // báo cáo tháng và bot. Đổi loại có tác dụng ngay. Luật: talpha_rules.json → tkqc_loai, lib/talpha/ad-accounts.ts.
 
-type AccountType = { ma: string; ten: string; vao_bao_cao: boolean };
+type AccountType = { code: string; name: string; include_in_report: boolean };
 type AccountRow = {
     account_id: string; name: string | null; account_status: number | null; currency: string | null; timezone_name: string | null;
     token_env_var: string | null; category: string; is_confirmed: boolean; first_seen_at: string; last_seen_at: string; note: string | null;
@@ -99,11 +99,11 @@ export default function AdAccountsTab() {
         );
     }
 
-    const findType = (typeCode: string) => accountTypes.find((l) => l.ma === typeCode);
+    const findType = (typeCode: string) => accountTypes.find((l) => l.code === typeCode);
     const typeTotals = accountTypes.map((l) => ({
         ...l,
-        so_tk: accounts.filter((d) => d.category === l.ma).length,
-        chi_30: accounts.filter((d) => d.category === l.ma).reduce((s, d) => s + Number(d.spend_30d || 0), 0),
+        so_tk: accounts.filter((d) => d.category === l.code).length,
+        chi_30: accounts.filter((d) => d.category === l.code).reduce((s, d) => s + Number(d.spend_30d || 0), 0),
     }));
     const unreviewedCount = accounts.filter((d) => !d.is_confirmed).length;
 
@@ -145,9 +145,9 @@ export default function AdAccountsTab() {
 
             <div className="grid gap-3 sm:grid-cols-3">
                 {typeTotals.map((l) => (
-                    <div key={l.ma} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
-                        <p className="text-xs text-slate-500">{l.vao_bao_cao ? "Vào báo cáo" : "Không tính vào báo cáo"}</p>
-                        <p className="mt-0.5 font-semibold text-foreground">{l.ten}</p>
+                    <div key={l.code} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
+                        <p className="text-xs text-slate-500">{l.include_in_report ? "Vào báo cáo" : "Không tính vào báo cáo"}</p>
+                        <p className="mt-0.5 font-semibold text-foreground">{l.name}</p>
                         <p className="mt-2 text-sm text-slate-300">{l.so_tk} TK · 30 ngày {vnd(l.chi_30)}</p>
                     </div>
                 ))}
@@ -184,7 +184,7 @@ export default function AdAccountsTab() {
                                 const l = findType(d.category);
                                 const stale = Date.now() - Date.parse(d.last_seen_at) > 2 * 86_400_000;
                                 return (
-                                    <tr key={d.account_id} className={cn(!l?.vao_bao_cao && "opacity-70")}>
+                                    <tr key={d.account_id} className={cn(!l?.include_in_report && "opacity-70")}>
                                         <td className="px-3 py-2.5">
                                             <p className="flex items-center gap-2 font-medium text-foreground">
                                                 <Megaphone className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
@@ -211,7 +211,7 @@ export default function AdAccountsTab() {
                                                 onChange={(e) => changeType(d, e.target.value)}
                                                 className="rounded-lg border border-white/[0.1] bg-white/[0.04] px-2 py-1.5 text-xs text-foreground"
                                             >
-                                                {accountTypes.map((x) => <option key={x.ma} value={x.ma}>{x.ten}</option>)}
+                                                {accountTypes.map((x) => <option key={x.code} value={x.code}>{x.name}</option>)}
                                             </select>
                                         </td>
                                     </tr>

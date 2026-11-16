@@ -1,9 +1,9 @@
 // Kiểu dữ liệu của config/talpha_rules.json — tách khỏi rules.ts (16/11/2026).
 // CHỈ KIỂU, không có mã chạy: rules.ts nhập bằng `import type` nên thứ tự nạp module không đổi.
 
-/** "da_tat" (04/11/2026): ngừng kéo số mới, GIỮ tỷ giá / số chia / đơn cũ — xem MARKET_DA_TAT. */
-export type MarketStatus = "dang_ban" | "sap_chay" | "da_tat";
-/** Một nước trong `markets`. Nước "sap_chay" chưa có shop/tỷ giá/số chia → các ô đó null. */
+/** "disabled" (04/11/2026): ngừng kéo số mới, GIỮ tỷ giá / số chia / đơn cũ — xem MARKET_DA_TAT. */
+export type MarketStatus = "active" | "upcoming" | "disabled";
+/** Một nước trong `markets`. Nước "upcoming" chưa có shop/tỷ giá/số chia → các ô đó null. */
 export type MarketInfo = {
     shop_label: string; shop_id?: string; currency: string; currency_symbol?: string;
     rate_vnd: number | null; pos_money_divisor: number | null;

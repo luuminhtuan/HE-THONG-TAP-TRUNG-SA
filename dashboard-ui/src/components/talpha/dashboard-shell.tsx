@@ -364,9 +364,9 @@ export default function TALPHADashboardShell() {
  */
 function MarketLabel({ me }: { me: Me | null }) {
     const { markets } = useMarkets();
-    const activeMarkets = markets.filter((m) => m.status === "dang_ban").map((m) => m.display);
-    const upcomingMarkets = markets.filter((m) => m.status === "sap_chay").map((m) => m.display);
-    const disabledMarkets = markets.filter((m) => m.status === "da_tat").map((m) => m.display);
+    const activeMarkets = markets.filter((m) => m.status === "active").map((m) => m.display);
+    const upcomingMarkets = markets.filter((m) => m.status === "upcoming").map((m) => m.display);
+    const disabledMarkets = markets.filter((m) => m.status === "disabled").map((m) => m.display);
     const team = me && !me.full && me.teams.length ? me.teams.map((t) => t.name).join(" · ") : null;
     return (
         <>

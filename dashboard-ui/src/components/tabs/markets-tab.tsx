@@ -11,7 +11,7 @@ import { MaskedCredential, revealCredential } from "./key-reveal";
 // Key POS của shop nhập ngay trong form (15/11/2026): máy gọi thử shop rồi lưu key MÃ HOÁ vào bảng
 // api_credentials — cùng chỗ với Khoá kết nối, khỏi sang trang đó rồi quay lại.
 
-type MarketStatus = "dang_ban" | "sap_chay" | "da_tat";
+type MarketStatus = "active" | "upcoming" | "disabled";
 type Market = {
     key: string; display: string; shop_label: string; currency: string; currency_symbol: string;
     rate_vnd: number | null; pos_money_divisor: number | null; shop_id: string; status: MarketStatus;
@@ -29,9 +29,9 @@ type Form = Record<"key" | "display" | "shop_label" | "currency" | "currency_sym
 type RestartMode = "tu_dong" | "tay" | "khong_can";
 
 const STATUS_INFO: Record<MarketStatus, { nhan: string; mau: string; giai: string }> = {
-    dang_ban: { nhan: "ĐANG BÁN", mau: "bg-emerald-500/15 text-emerald-500", giai: "Kéo đơn mỗi giờ, tính tiền, hiện ở mọi màn." },
-    sap_chay: { nhan: "SẮP CHẠY", mau: "bg-amber-500/15 text-amber-500", giai: "Chi tiêu tách đúng nước theo mã campaign, chưa kéo đơn, chưa tính tiền." },
-    da_tat: { nhan: "ĐÃ TẮT", mau: "bg-white/[0.06] text-slate-400", giai: "Ngừng kéo đơn mới, ẩn khỏi Sổ đơn, vận đơn, Kho, bot. Giữ lịch sử và Tiền COD về." },
+    active: { nhan: "ĐANG BÁN", mau: "bg-emerald-500/15 text-emerald-500", giai: "Kéo đơn mỗi giờ, tính tiền, hiện ở mọi màn." },
+    upcoming: { nhan: "SẮP CHẠY", mau: "bg-amber-500/15 text-amber-500", giai: "Chi tiêu tách đúng nước theo mã campaign, chưa kéo đơn, chưa tính tiền." },
+    disabled: { nhan: "ĐÃ TẮT", mau: "bg-white/[0.06] text-slate-400", giai: "Ngừng kéo đơn mới, ẩn khỏi Sổ đơn, vận đơn, Kho, bot. Giữ lịch sử và Tiền COD về." },
 };
 const SOURCE_LABEL: Record<Market["nguon"], string> = {
     config: "theo config",
@@ -41,7 +41,7 @@ const SOURCE_LABEL: Record<Market["nguon"], string> = {
 
 const EMPTY_FORM: Form = {
     key: "", display: "", shop_label: "", currency: "", currency_symbol: "", rate_vnd: "", pos_money_divisor: "",
-    shop_id: "", status: "sap_chay", orders_from: "", flag: "", tokens: "", team: "", key_pos: "",
+    shop_id: "", status: "upcoming", orders_from: "", flag: "", tokens: "", team: "", key_pos: "",
 };
 const formFromMarket = (n: Market): Form => ({
     key: n.key, display: n.display, shop_label: n.shop_label, currency: n.currency, currency_symbol: n.currency_symbol,
@@ -113,7 +113,7 @@ export default function MarketsTab() {
     };
 
     const changeStatus = async (n: Market, status: MarketStatus) => {
-        const confirmText = status === "da_tat"
+        const confirmText = status === "disabled"
             ? `Tắt ${n.display}? Ngừng kéo đơn mới, ẩn khỏi Sổ đơn, vận đơn, Kho, Ads Command Center, bot Zalo. Báo cáo những ngày đã chạy và Tiền COD về vẫn giữ. Bật lại được.`
             : `Bật lại ${n.display}? Máy sẽ gọi thử shop POS ${n.shop_id} trước khi lưu.`;
         if (!confirm(confirmText)) return;
@@ -192,7 +192,7 @@ export default function MarketsTab() {
 
             <div className="grid gap-3 lg:grid-cols-2">
                 {(data?.markets || []).map((n) => (
-                    <div key={n.key} className={cn("space-y-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-4", n.status === "da_tat" && "opacity-70")}>
+                    <div key={n.key} className={cn("space-y-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-4", n.status === "disabled" && "opacity-70")}>
                         <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                                 <p className="flex items-center gap-2 font-semibold text-foreground">
@@ -224,7 +224,7 @@ export default function MarketsTab() {
                             <dd className="truncate text-right font-mono text-slate-300">{n.tokens.join(" · ") || "—"}</dd>
                         </dl>
 
-                        {n.shop_id && n.status !== "da_tat" && !n.co_key && (
+                        {n.shop_id && n.status !== "disabled" && !n.co_key && (
                             <p className="flex items-center gap-1.5 text-xs text-amber-500">
                                 <KeyRound className="h-3 w-3 shrink-0" />
                                 Chưa có key POS — bấm Sửa rồi dán key vào ô &ldquo;Key POS&rdquo;.
@@ -238,14 +238,14 @@ export default function MarketsTab() {
                             >
                                 <Pencil className="h-3 w-3" /> Sửa
                             </button>
-                            {n.status === "dang_ban" && (
-                                <button onClick={() => changeStatus(n, "da_tat")}
+                            {n.status === "active" && (
+                                <button onClick={() => changeStatus(n, "disabled")}
                                     className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:bg-white/[0.06] hover:text-foreground">
                                     <Power className="h-3 w-3" /> Tắt
                                 </button>
                             )}
-                            {n.status === "da_tat" && (
-                                <button onClick={() => changeStatus(n, "dang_ban")}
+                            {n.status === "disabled" && (
+                                <button onClick={() => changeStatus(n, "active")}
                                     className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-emerald-500 hover:bg-white/[0.06]">
                                     <Power className="h-3 w-3" /> Bật lại
                                 </button>
@@ -394,11 +394,11 @@ function MarketForm({ form, teams, dangLuu: saving, loi: errors, doi: onFormChan
                 <Field nhan="Tính đơn từ ngày" giai="Đơn tạo trước ngày này (giờ VN) không kéo về. Bỏ trống = không chặn.">
                     <input {...o("orders_from")} type="date" className={INPUT_CLASS} />
                 </Field>
-                <Field nhan="Trạng thái" giai={STATUS_INFO[(f.status as MarketStatus) || "sap_chay"]?.giai}>
+                <Field nhan="Trạng thái" giai={STATUS_INFO[(f.status as MarketStatus) || "upcoming"]?.giai}>
                     <select {...o("status")} className={INPUT_CLASS}>
-                        <option value="sap_chay">Sắp chạy</option>
-                        <option value="dang_ban">Đang bán</option>
-                        <option value="da_tat">Đã tắt</option>
+                        <option value="upcoming">Sắp chạy</option>
+                        <option value="active">Đang bán</option>
+                        <option value="disabled">Đã tắt</option>
                     </select>
                 </Field>
             </div>

@@ -50,15 +50,15 @@ class TestMarkets:
             to_vnd(49, "KW")
 
     def test_active_market_fully_configured(self):
-        # Chuyển một nước sang "dang_ban" mà quên shop, tỷ giá hay số chia → đỏ trước deploy.
+        # Chuyển một nước sang "active" mà quên shop, tỷ giá hay số chia → đỏ trước deploy.
         import json
         cfg = json.load(open(Path(__file__).resolve().parent.parent / "config" / "talpha_rules.json", encoding="utf-8"))
         for name, v in cfg["markets"].items():
             if not isinstance(v, dict):
                 continue
-            assert v.get("status") in ("dang_ban", "sap_chay", "da_tat"), f"{name}: status lạ {v.get('status')!r}"
+            assert v.get("status") in ("active", "upcoming", "disabled"), f"{name}: status lạ {v.get('status')!r}"
             # Nước đã tắt vẫn phải giữ đủ: đơn cũ của nó còn trong báo cáo, cần tỷ giá + số chia.
-            if v["status"] in ("dang_ban", "da_tat"):
+            if v["status"] in ("active", "disabled"):
                 assert str(v.get("shop_id", "")).strip(), f"{name}: đang bán / đã tắt mà không có shop_id"
                 assert isinstance(v.get("rate_vnd"), (int, float)) and v["rate_vnd"] > 0, f"{name}: thiếu tỷ giá"
                 assert isinstance(v.get("pos_money_divisor"), int) and v["pos_money_divisor"] > 0, f"{name}: thiếu số chia"

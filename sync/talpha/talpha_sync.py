@@ -57,8 +57,8 @@ def test_connections():
 
     log.info("  POS shops:")
     for shop in POS_SHOPS:
-        if not shop.get("keo", True):
-            log.info(f"    {shop['label']}: nước {shop.get('trang_thai')} — không gọi POS")
+        if not shop.get("fetch_orders", True):
+            log.info(f"    {shop['label']}: nước {shop.get('status')} — không gọi POS")
         elif shop["key"]:
             pos = PoscakeClient(
                 api_key=shop["key"], shop_label=shop["label"],

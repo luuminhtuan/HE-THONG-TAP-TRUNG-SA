@@ -95,8 +95,8 @@ export function classifyParcel(
 // ─────────────────────────────────────────────────────────────────────────
 // Tỉ lệ giao thành công — thước để ước kiện còn đang đi
 // ─────────────────────────────────────────────────────────────────────────
-export type DeliveryRateConfig = { cua_so_ngay: number; bo_gan_ngay: number; mau_toi_thieu: number };
-export const DEFAULT_DELIVERY_RATE_CONFIG: DeliveryRateConfig = { cua_so_ngay: 90, bo_gan_ngay: 21, mau_toi_thieu: 20 };
+export type DeliveryRateConfig = { window_days: number; exclude_recent_days: number; min_sample: number };
+export const DEFAULT_DELIVERY_RATE_CONFIG: DeliveryRateConfig = { window_days: 90, exclude_recent_days: 21, min_sample: 20 };
 
 export type DeliveryRate = {
     /** Phần tiền COD giao thành công trên các kiện ĐÃ CÓ KẾT QUẢ. null = chưa có kiện nào xong. */
@@ -117,10 +117,10 @@ const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00
  */
 export function computeDeliveryRate(parcels: Parcel[], asOf: string, cfg: DeliveryRateConfig = DEFAULT_DELIVERY_RATE_CONFIG): DeliveryRate {
     const settled = parcels.filter((k) => (k.nhom === "giao" || k.nhom === "hoan") && k.ngay && k.ngay <= asOf);
-    const windowStart = addDays(asOf, -cfg.cua_so_ngay), windowEnd = addDays(asOf, -cfg.bo_gan_ngay);
+    const windowStart = addDays(asOf, -cfg.window_days), windowEnd = addDays(asOf, -cfg.exclude_recent_days);
     let sample = settled.filter((k) => k.ngay >= windowStart && k.ngay <= windowEnd);
     let provisional = false, rangeFrom: string | null = windowStart, rangeTo: string | null = windowEnd;
-    if (sample.length < cfg.mau_toi_thieu) {
+    if (sample.length < cfg.min_sample) {
         sample = settled;
         provisional = true;
         rangeFrom = sample.reduce<string | null>((m, k) => (!m || k.ngay < m ? k.ngay : m), null);
@@ -131,7 +131,7 @@ export function computeDeliveryRate(parcels: Parcel[], asOf: string, cfg: Delive
     return {
         r: tg + th > 0 ? tg / (tg + th) : null,
         giao: g.length, hoan: h.length, tu: rangeFrom, den: rangeTo,
-        tam: provisional || sample.length < cfg.mau_toi_thieu,
+        tam: provisional || sample.length < cfg.min_sample,
     };
 }
 

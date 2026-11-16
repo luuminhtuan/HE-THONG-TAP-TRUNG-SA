@@ -58,7 +58,7 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
             .then((d: { markets?: { code: string; status?: string }[] }) => {
                 // Nước đầu tiên còn bán, theo thứ tự khai trong config — không ưu tiên cứng Đài,
                 // để tắt Đài (04/11/2026) thì tab mở ở nước kế tiếp.
-                const codes = (d.markets || []).filter((m) => (m.status || "dang_ban") === "dang_ban").map((m) => m.code);
+                const codes = (d.markets || []).filter((m) => (m.status || "active") === "active").map((m) => m.code);
                 const requested = (marketUrl || "").toUpperCase();
                 setMarket(codes.includes(requested) ? requested : codes[0] || "TW");
             })

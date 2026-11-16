@@ -96,7 +96,7 @@ export async function scanNow(): Promise<{
 export type ReportingAdAccount = { id: string; name: string; timezone_name: string | null; token_env_var: string | null };
 
 export async function reportingAdAccounts(scanIfEmpty = true): Promise<ReportingAdAccount[]> {
-    const reportKinds = listAccountKinds().filter((l) => l.vao_bao_cao).map((l) => l.ma);
+    const reportKinds = listAccountKinds().filter((l) => l.include_in_report).map((l) => l.code);
     const readAccounts = () => query<ReportingAdAccount>(
         `SELECT account_id AS id, name, timezone_name, token_env_var FROM ad_accounts
          WHERE category = ANY(@kinds) AND last_seen_at > now() - interval '7 days' ORDER BY name`, { kinds: reportKinds });
@@ -134,7 +134,7 @@ export async function getAdAccountDirectory(): Promise<AdAccountRow[]> {
 
 /** Đổi loại / ghi chú một TKQC — có tác dụng ngay ở mọi báo cáo (view fb_ads_data lọc theo loại). */
 export async function setAccountKind(accountId: string, kind: string, note?: string | null): Promise<void> {
-    if (!listAccountKinds().some((l) => l.ma === kind)) throw new Error(`Loại lạ: ${kind}`);
+    if (!listAccountKinds().some((l) => l.code === kind)) throw new Error(`Loại lạ: ${kind}`);
     const n = await query("UPDATE ad_accounts SET category = @category, is_confirmed = true, note = COALESCE(@note, note) WHERE account_id = @id RETURNING 1",
         { id: String(accountId).replace(/^act_/, ""), category: kind, note: note ?? null });
     if (!n.length) throw new Error(`Không có TKQC ${accountId} trong danh bạ`);

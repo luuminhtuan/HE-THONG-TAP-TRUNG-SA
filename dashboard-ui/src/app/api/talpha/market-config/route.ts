@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
     // Ô key mang lại đúng key đang dùng (vừa xem bằng con mắt) = không đổi key: khỏi gọi thử, khỏi ghi.
     const newPosKey = pastedKey && pastedKey !== getCredential(keyName) ? pastedKey : "";
     const existing = isNew ? null : inputFromRules(n.key, rules);
-    if (newPosKey || (n.status === "dang_ban" && (!existing || existing.status !== "dang_ban" || existing.shop_id !== n.shop_id))) {
+    if (newPosKey || (n.status === "active" && (!existing || existing.status !== "active" || existing.shop_id !== n.shop_id))) {
         const key = newPosKey || getCredential(keyName);
         if (!key) {
             return NextResponse.json({

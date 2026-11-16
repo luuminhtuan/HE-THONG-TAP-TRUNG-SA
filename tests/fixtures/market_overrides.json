@@ -3,8 +3,8 @@
   "luat": {
     "markets": {
       "_note": "ghi chú — không phải nước",
-      "Taiwan": { "shop_label": "TW", "shop_id": "1022091930", "currency": "TWD", "rate_vnd": 800, "pos_money_divisor": 1, "display": "Đài Loan", "status": "dang_ban" },
-      "Singapore": { "shop_label": "SG", "shop_id": "715135541", "currency": "SGD", "rate_vnd": 20000, "pos_money_divisor": 100, "display": "Singapore", "status": "dang_ban" }
+      "Taiwan": { "shop_label": "TW", "shop_id": "1022091930", "currency": "TWD", "rate_vnd": 800, "pos_money_divisor": 1, "display": "Đài Loan", "status": "active" },
+      "Singapore": { "shop_label": "SG", "shop_id": "715135541", "currency": "SGD", "rate_vnd": 20000, "pos_money_divisor": 100, "display": "Singapore", "status": "active" }
     },
     "market_aliases": { "_note": "ghi chú", "TW": "Taiwan", "SG": "Singapore" },
     "camp_market_tokens": ["TW", "SG"],
@@ -18,11 +18,11 @@
   "phu": {
     "markets": {
       "_note": "ghi chú trong file phủ — bỏ qua",
-      "Taiwan": { "status": "da_tat" },
+      "Taiwan": { "status": "disabled" },
       "Singapore": { "rate_vnd": 19500, "team": "dong_a" },
       "Thailand": {
         "shop_label": "TH", "shop_id": "123456", "currency": "THB", "rate_vnd": 700, "pos_money_divisor": 1,
-        "display": "Thái Lan", "status": "sap_chay",
+        "display": "Thái Lan", "status": "upcoming",
         "tokens": ["th", "THAI", "Thái", "SG"],
         "team": "dong_nam_a"
       },
@@ -31,9 +31,9 @@
   },
   "mong_doi": {
     "markets": {
-      "Taiwan": { "shop_label": "TW", "shop_id": "1022091930", "currency": "TWD", "rate_vnd": 800, "pos_money_divisor": 1, "display": "Đài Loan", "status": "da_tat" },
-      "Singapore": { "shop_label": "SG", "shop_id": "715135541", "currency": "SGD", "rate_vnd": 19500, "pos_money_divisor": 100, "display": "Singapore", "status": "dang_ban" },
-      "Thailand": { "shop_label": "TH", "shop_id": "123456", "currency": "THB", "rate_vnd": 700, "pos_money_divisor": 1, "display": "Thái Lan", "status": "sap_chay" }
+      "Taiwan": { "shop_label": "TW", "shop_id": "1022091930", "currency": "TWD", "rate_vnd": 800, "pos_money_divisor": 1, "display": "Đài Loan", "status": "disabled" },
+      "Singapore": { "shop_label": "SG", "shop_id": "715135541", "currency": "SGD", "rate_vnd": 19500, "pos_money_divisor": 100, "display": "Singapore", "status": "active" },
+      "Thailand": { "shop_label": "TH", "shop_id": "123456", "currency": "THB", "rate_vnd": 700, "pos_money_divisor": 1, "display": "Thái Lan", "status": "upcoming" }
     },
     "_aliases_note": "SG đã thuộc Singapore → Thái Lan KHÔNG giành được; mã viết thường / có dấu được viết hoa.",
     "market_aliases": { "TW": "Taiwan", "SG": "Singapore", "TH": "Thailand", "THAI": "Thailand", "THÁI": "Thailand" },

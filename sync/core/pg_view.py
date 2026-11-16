@@ -141,16 +141,16 @@ def test_campaign_re() -> str:
 
 
 def ad_account_types() -> tuple:
-    """(loại mặc định, danh sách loại vào báo cáo dạng SQL) — talpha_rules.json → tkqc_loai."""
-    cfg = _rules().get("tkqc_loai") or {}
-    account_types = {k: v for k, v in (cfg.get("loai") or {}).items() if not k.startswith("_") and isinstance(v, dict)}
-    report_types = [k for k, v in account_types.items() if v.get("vao_bao_cao")]
-    default_type = cfg.get("mac_dinh") or "antalo"
+    """(loại mặc định, danh sách loại vào báo cáo dạng SQL) — talpha_rules.json → ad_account_categories."""
+    cfg = _rules().get("ad_account_categories") or {}
+    account_types = {k: v for k, v in (cfg.get("categories") or {}).items() if not k.startswith("_") and isinstance(v, dict)}
+    report_types = [k for k, v in account_types.items() if v.get("include_in_report")]
+    default_type = cfg.get("default") or "antalo"
     for k in report_types + [default_type]:
         if not re.match(r"^[a-z0-9_]+$", k):
-            raise SystemExit(f"❌ tkqc_loai: tên loại lạ {k!r} — chỉ chữ thường, số, gạch dưới.")
+            raise SystemExit(f"❌ ad_account_categories: tên loại lạ {k!r} — chỉ chữ thường, số, gạch dưới.")
     if not report_types:
-        raise SystemExit("❌ tkqc_loai: không loại nào vao_bao_cao — mọi báo cáo sẽ không có chi tiêu quảng cáo.")
+        raise SystemExit("❌ ad_account_categories: không loại nào include_in_report — mọi báo cáo sẽ không có chi tiêu quảng cáo.")
     return default_type, ", ".join(f"'{k}'" for k in report_types)
 
 

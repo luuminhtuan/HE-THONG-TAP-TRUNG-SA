@@ -1,5 +1,5 @@
 """
-Tắt một thị trường (status "da_tat", 04/11/2026) — ngừng kéo số mới, GIỮ lịch sử.
+Tắt một thị trường (status "disabled", 04/11/2026) — ngừng kéo số mới, GIỮ lịch sử.
 
 Chạy: TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/test_thi_truong_da_tat.py -q
 
@@ -20,11 +20,11 @@ from sync.core.pg_writer import sql_rebuild_orders  # noqa: E402
 
 MARKETS = {
     "Taiwan": {"shop_label": "TW", "shop_id": "1022091930", "currency": "TWD",
-               "rate_vnd": 800, "pos_money_divisor": 1, "status": "da_tat"},
+               "rate_vnd": 800, "pos_money_divisor": 1, "status": "disabled"},
     "Singapore": {"shop_label": "SG", "shop_id": "715135541", "currency": "SGD",
-                  "rate_vnd": 20000, "pos_money_divisor": 100, "status": "dang_ban"},
+                  "rate_vnd": 20000, "pos_money_divisor": 100, "status": "active"},
     "Thailand": {"shop_label": "TH", "shop_id": "", "currency": "THB",
-                 "rate_vnd": None, "pos_money_divisor": None, "status": "sap_chay"},
+                 "rate_vnd": None, "pos_money_divisor": None, "status": "upcoming"},
 }
 ENV = {"TALPHA_POSCAKE_SG_KEY": "k-sg"}
 
@@ -32,8 +32,8 @@ ENV = {"TALPHA_POSCAKE_SG_KEY": "k-sg"}
 class TestShopList:
     def test_disabled_shop_listed_but_not_fetched(self):
         ds = {s["label"]: s for s in pos_shops_from_markets(MARKETS, ENV)}
-        assert ds["TW"]["keo"] is False and ds["TW"]["trang_thai"] == "da_tat"
-        assert ds["SG"]["keo"] is True and ds["SG"]["key"] == "k-sg"
+        assert ds["TW"]["fetch_orders"] is False and ds["TW"]["status"] == "disabled"
+        assert ds["SG"]["fetch_orders"] is True and ds["SG"]["key"] == "k-sg"
 
     def test_upcoming_market_without_shop_skipped(self):
         assert "TH" not in {s["label"] for s in pos_shops_from_markets(MARKETS, ENV)}
@@ -42,7 +42,7 @@ class TestShopList:
         # Thêm nước trên trang có thể khai shop trước khi bán (04/11/2026) — chưa được kéo đơn.
         mk = {**MARKETS, "Thailand": {**MARKETS["Thailand"], "shop_id": "123456"}}
         ds = {s["label"]: s for s in pos_shops_from_markets(mk, ENV)}
-        assert ds["TH"]["keo"] is False and ds["TH"]["trang_thai"] == "sap_chay"
+        assert ds["TH"]["fetch_orders"] is False and ds["TH"]["status"] == "upcoming"
 
     def test_rebuild_orders_keeps_disabled_market_orders(self):
         # talpha_sync truyền shop_ids = MỌI shop trong danh sách → câu dựng lại phải giữ shop Đài.
@@ -54,7 +54,7 @@ class TestShopList:
 class TestSheetSideRules:
     def test_disabled_market_keeps_rate_divisor_and_history(self, tmp_path, monkeypatch):
         cfg = json.load(open(ROOT / "config" / "talpha_rules.json", encoding="utf-8"))
-        cfg["markets"]["Taiwan"]["status"] = "da_tat"
+        cfg["markets"]["Taiwan"]["status"] = "disabled"
         p = tmp_path / "talpha_rules.json"
         p.write_text(json.dumps(cfg, ensure_ascii=False), encoding="utf-8")
         monkeypatch.setenv("TALPHA_RULES", str(p))

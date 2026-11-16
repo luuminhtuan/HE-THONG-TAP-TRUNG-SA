@@ -9,9 +9,9 @@ import os
 
 
 # ─── Nước không kéo đơn: đã tắt, sắp chạy (04/11/2026) ───────────────────────
-# CHỈ nước "dang_ban" được kéo đơn mới. "da_tat" = ngừng kéo nhưng GIỮ tỷ giá, số chia và mọi đơn
-# cũ; "sap_chay" = có thể đã khai shop (thêm ở /admin → Thị trường) nhưng chưa bán.
-# Shop không kéo VẪN ở trong danh sách, chỉ mang cờ keo=False: mỗi vòng sync dựng lại bảng đơn
+# CHỈ nước "active" được kéo đơn mới. "disabled" = ngừng kéo nhưng GIỮ tỷ giá, số chia và mọi đơn
+# cũ; "upcoming" = có thể đã khai shop (thêm ở /admin → Thị trường) nhưng chưa bán.
+# Shop không kéo VẪN ở trong danh sách, chỉ mang cờ fetch_orders=False: mỗi vòng sync dựng lại bảng đơn
 # sạch CHỈ từ những shop có trong danh sách (bq_writer._loc_shop) — bỏ shop khỏi danh sách là đơn
 # cũ của nước đó biến khỏi báo cáo ngay vòng sau.
 
@@ -25,7 +25,7 @@ def pos_shops_from_markets(markets: dict, env=None) -> list[dict]:
     lọc shop_ids nổ "shop_id phải là dãy số", hỏng cả vòng sync (08/10/2026, Nhật mở khi chưa có
     shop: Sheet đứng từ 13:20).
 
-    Nước đã tắt / sắp chạy có shop VẪN có mặt, mang `keo=False` — xem ghi chú trên.
+    Nước đã tắt / sắp chạy có shop VẪN có mặt, mang `fetch_orders=False` — xem ghi chú trên.
     """
     env = os.environ if env is None else env
     out = []
@@ -51,7 +51,7 @@ def pos_shops_from_markets(markets: dict, env=None) -> list[dict]:
             # Mốc NGÀY TẠO đơn (giờ VN) bắt đầu tính. Singapore có 54 đơn là bản sao đơn
             # Đài được tạo sẵn trước khi mở — kéo về là đơn Đài bị đếm hai lần.
             "orders_from": m.get("orders_from"),
-            "trang_thai": m.get("status") or "dang_ban",
-            "keo": (m.get("status") or "dang_ban") == "dang_ban",
+            "status": m.get("status") or "active",
+            "fetch_orders": (m.get("status") or "active") == "active",
         })
     return out

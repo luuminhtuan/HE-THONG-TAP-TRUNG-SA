@@ -6,13 +6,13 @@
   "cost_rate_rmb_vnd": 3860,
   "_cost_rate_rmb_vnd_note": "Tỷ giá tệ → VND để quy GIÁ VỐN (products.*.cost_price_rmb) ở nơi không có tỷ giá của kỳ sao kê: view Postgres, tab P&L theo SP, CEO hỏi. Sổ đơn hàng vẫn ưu tiên tỷ giá của chính kỳ sao kê NAZA, chỉ lùi về số này khi kỳ đó không có. 3.860 = tỷ giá sheet TỔNG của NAZA kỳ 11/09/2026 — soát lại mỗi tháng. Trước 15/09/2026 số này gõ cứng trong order-ledger.ts, còn view (BigQuery thời đó) vẫn dùng 27 giá VND của hệ thống cũ (cao gấp mấy lần giá thật).",
   "_primary_market_note": "CHỈ dùng cho campaign KHÔNG ghi nước ở tên (tên cũ kiểu 'Lộc/Philippine/…'): tính về Đài — Sỹ Anh chốt 15/09/2026. Campaign mới phải ghi nước ở ô đầu (TW/SG/AE); thiếu thì báo cáo vẫn tính Đài nhưng liệt kê ra để sửa tên. Không dùng primary_market để suy nước của ĐƠN — nước của đơn là shop POS.",
-  "_status_note": "markets.*.status: 'dang_ban' = đã nối shop POS, có tỷ giá và số chia, số tiền được tính; 'sap_chay' = mới nhận ra trong tên campaign (chi tiêu tách đúng nước) nhưng CHƯA kéo đơn, CHƯA tính tiền. Chuyển sang dang_ban khi khai đủ shop_id + key + rate_vnd + pos_money_divisor (đo trên đơn thật, không đoán). 'da_tat' (04/11/2026) = đã tắt: NGỪNG kéo đơn mới của shop, ẩn khỏi Sổ đơn, vận đơn, Kho, Ads Command Center, bot Zalo; GIỮ tỷ giá, số chia, đơn cũ, danh mục SP — báo cáo những ngày nước đó còn chạy không đổi, Tiền COD về vẫn mở để thu nốt tiền đơn cũ. Đừng xoá khối của nước đã tắt: xoá là đơn cũ mất tỷ giá.",
+  "_status_note": "markets.*.status: 'active' = đã nối shop POS, có tỷ giá và số chia, số tiền được tính; 'upcoming' = mới nhận ra trong tên campaign (chi tiêu tách đúng nước) nhưng CHƯA kéo đơn, CHƯA tính tiền. Chuyển sang active khi khai đủ shop_id + key + rate_vnd + pos_money_divisor (đo trên đơn thật, không đoán). 'disabled' (04/11/2026) = đã tắt: NGỪNG kéo đơn mới của shop, ẩn khỏi Sổ đơn, vận đơn, Kho, Ads Command Center, bot Zalo; GIỮ tỷ giá, số chia, đơn cũ, danh mục SP — báo cáo những ngày nước đó còn chạy không đổi, Tiền COD về vẫn mở để thu nốt tiền đơn cũ. Đừng xoá khối của nước đã tắt: xoá là đơn cũ mất tỷ giá.",
   "_phone_note": "markets.*.phone — dựng link WhatsApp (wa.me) cho khách ở Sổ đơn hàng và Theo dõi vận đơn (Sỹ Anh yêu cầu 29/09/2026). cc = mã nước; national_len = số chữ số của số trong nước SAU khi bỏ số 0 đầu (trunk). Đo trên số thật 29/09/2026: Đài ghi 9 số 9xxxxxxxx (vài số có 0 đầu), Singapore 8 số (vài số đã có 65 đầu), UAE 9 số 5xxxxxxxx (một số có 05 đầu). Số không khớp luật thì KHÔNG dựng link — link sai là nhắn nhầm người. whatsapp: true/false bật tắt nút WhatsApp từng nước — Sỹ Anh chốt 29/09/2026 CHỈ UAE dùng WhatsApp (xác nhận đơn với khách), Đài và Singapore không.",
   "markets": {
     "Taiwan": {
       "shop_label": "TW",
-      "nguoi_cam": "SAnh",
-      "_nguoi_cam_note": "Sỹ Anh cầm Đài từ tháng 10/2026 (Sỹ Anh chốt 03/11/2026) — trước là Thương. Đổi người cầm là số lấn nước Đài + số của người đã ngừng chạy (marketers.*.ngung_chay_tu) về file người mới ngay vòng ghi Sheet kế tiếp.",
+      "owner": "SAnh",
+      "_owner_note": "Sỹ Anh cầm Đài từ tháng 10/2026 (Sỹ Anh chốt 03/11/2026) — trước là Thương. Đổi người cầm là số lấn nước Đài + số của người đã ngừng chạy (marketers.*.inactive_from) về file người mới ngay vòng ghi Sheet kế tiếp.",
       "shop_id": "1022091930",
       "currency": "TWD",
       "currency_symbol": "NT$",
@@ -21,14 +21,14 @@
       "display": "Đài Loan",
       "flag": "🇹🇼",
       "phone": { "cc": "886", "national_len": 9, "trunk": "0", "whatsapp": false },
-      "status": "dang_ban",
+      "status": "active",
       "orders_from": null,
       "_note": "TWD→VND tạm 800 (thật 780–800) — soát lại mỗi tháng.",
       "_shop_id_note": "Shop POS \"TAIWAN SỸ ANH\" — đổi sang 1022091930 ngày 14/09/2026 (Sỹ Anh chỉ định; đơn từ 13/09 có sản phẩm, tiền, marketer). Shop cũ 408074608 dừng ở 281 đơn tới 11/09: đơn của nó còn trong sale_order_raw nhưng không vào báo cáo. Trước nữa là 1328343252 (hệ thống cũ). Mỗi shop một API key riêng — đổi shop là phải đổi TALPHA_POSCAKE_TW_KEY."
     },
     "Singapore": {
       "shop_label": "SG",
-      "nguoi_cam": "Thai",
+      "owner": "Thai",
       "shop_id": "715135541",
       "currency": "SGD",
       "currency_symbol": "S$",
@@ -38,7 +38,7 @@
       "display": "Singapore",
       "flag": "🇸🇬",
       "phone": { "cc": "65", "national_len": 8, "whatsapp": false },
-      "status": "dang_ban",
+      "status": "active",
       "orders_from": "2026-09-14",
       "_note": "Nối 15/09/2026. Tỷ giá 1 SGD = 20.000đ (Sỹ Anh chốt) — soát lại mỗi tháng.",
       "_orders_from_note": "Chỉ tính đơn TẠO từ 14/09/2026 (giờ VN). Shop có sẵn 60 đơn khi nối: 54 đơn là BẢN SAO đơn shop Đài (cùng SĐT, cùng phút tạo, đầu số 09 của Đài, 52 đơn tạo tháng 7 khi Singapore chưa chạy). Đơn Singapore thật đầu tiên tạo 19:41 ngày 14/09. Bỏ mốc này là đơn Đài bị đếm hai lần dưới tên Singapore.",
@@ -47,7 +47,7 @@
     },
     "UAE": {
       "shop_label": "AE",
-      "nguoi_cam": "Loc",
+      "owner": "Loc",
       "shop_id": "101090498",
       "currency": "AED",
       "currency_symbol": "AED",
@@ -76,7 +76,7 @@
       "display": "UAE",
       "flag": "🇦🇪",
       "phone": { "cc": "971", "national_len": 9, "trunk": "0", "whatsapp": true },
-      "status": "dang_ban",
+      "status": "active",
       "orders_from": "2026-09-15",
       "_note": "Shop POS 'D&T314 x ANTALO - UAE FULFILLMENT' (101090498) — Sỹ Anh đổi sang ngày 25/09/2026, đơn đầu tiên 23/09. Shop nối 15/09 (101085629) không có đơn nào. Khác shop UAE thời GCC (1635200759). Tỷ giá 1 AED = 7.000đ (Sỹ Anh chốt 15/09/2026) — soát lại mỗi tháng.",
       "_divisor_note": "ĐÃ ĐO 25/09/2026 trên 14 đơn thật của shop 101090498: cod = 10900 · 11900 · 14900 · 15900 · 16900 → 109–169 AED/đơn (≈0,8–1,2 triệu đồng), cùng tầm giá đơn Đài và Singapore. Chia 1 thì một đơn thành 83 triệu đồng — vô lý. POS để total_price và giá bán item = 0, chỉ cod mang tiền.",
@@ -84,7 +84,7 @@
     },
     "Japan": {
       "shop_label": "JP",
-      "nguoi_cam": "SAnh",
+      "owner": "SAnh",
       "shop_id": "1022115860",
       "currency": "JPY",
       "currency_symbol": "¥",
@@ -94,7 +94,7 @@
       "display": "Nhật Bản",
       "flag": "🇯🇵",
       "phone": { "cc": "81", "national_len": 10, "trunk": "0", "whatsapp": false },
-      "status": "dang_ban",
+      "status": "active",
       "orders_from": "2026-10-08",
       "mess_source": "pancake",
       "_mess_source_note": "Meta KHÔNG báo số tin nhắn cho quảng cáo ở Nhật (luật bảo vệ thông tin liên lạc của Nhật) — camp tin nhắn mà messaging_conversations_started = 0. Số tin nhắn của nước này lấy từ hộp thư Pancake theo page (ops/talpha_reports/pancake_mess.py cho Sheet, /api/talpha/pancake-messages cho bot Zalo), token TALPHA_PANCAKE_API_TOKEN. Sỹ Anh yêu cầu 09/10/2026.",
@@ -209,8 +209,8 @@
       "display": "Thương",
       "full": "Thương",
       "also_sale": true,
-      "ngung_chay_tu": "2026-10-01",
-      "_ngung_chay_note": "Sỹ Anh chốt 03/11/2026: từ tháng 10 Thương KHÔNG chạy quảng cáo nữa (chỉ làm sale + vận đơn). Từ ngày ngung_chay_tu, MỌI số mang tên người này — đơn POS gắn tag 'Thương Thương' (Thương tạo đơn với vai sale: 16 đơn Đài 01–03/11), camp cũ TW/THƯƠNG… (chạy tới 14/10) — tính cho NGƯỜI CẦM nước đó (markets.*.nguoi_cam): Đài/Nhật → Sỹ Anh, Singapore → Thái, UAE → Lộc. Số trước ngày đó giữ tên Thương. Áp ở talpha_rules.credited_marketer (Sheet) và rules.nguoiTinhSo (bot Zalo)."
+      "inactive_from": "2026-10-01",
+      "_inactive_from_note": "Sỹ Anh chốt 03/11/2026: từ tháng 10 Thương KHÔNG chạy quảng cáo nữa (chỉ làm sale + vận đơn). Từ ngày inactive_from, MỌI số mang tên người này — đơn POS gắn tag 'Thương Thương' (Thương tạo đơn với vai sale: 16 đơn Đài 01–03/11), camp cũ TW/THƯƠNG… (chạy tới 14/10) — tính cho NGƯỜI CẦM nước đó (markets.*.owner): Đài/Nhật → Sỹ Anh, Singapore → Thái, UAE → Lộc. Số trước ngày đó giữ tên Thương. Áp ở talpha_rules.credited_marketer (Sheet) và rules.nguoiTinhSo (bot Zalo)."
     },
     "Quynh": {
       "display": "Quỳnh",
@@ -244,7 +244,7 @@
   "_access_note": "PHÂN QUYỀN DASHBOARD (Sỹ Anh chốt 05/10/2026). Ba thị trường tách thành ba TEAM riêng, không liên quan nhau: Trung Đông (UAE — leader Lộc), Đông Nam Á (Singapore — leader Thái), Đông Á (Đài Loan — tạm thời Sỹ Anh). Thương làm vận đơn + sale cho cả ba team. Sỹ Anh là giám đốc: thấy hết, quản lý người dùng. Mỗi tài khoản (config/users.json, sửa ở trang /admin → Quản lý User) mang `role` + `teams`: role quyết định THẤY TAB NÀO (access.roles.*.tabs), teams quyết định THẤY NƯỚC NÀO (access.teams.*.markets, khoá = tên ở mục markets). teams [\"*\"] = mọi team. Mở thêm nước cho một team = thêm khoá vào markets của team đó, leader tự thấy, không sửa tài khoản. Chặn ở MÁY CHỦ (dashboard-ui/src/proxy.ts + từng route API), không chỉ ẩn nút: gõ thẳng địa chỉ API nước khác cũng bị từ chối. Đối soát chi phí QC, trợ lý CEO, xuất Sheet, quản lý người dùng/TKQC: chỉ giám đốc. 07/10/2026 (Sỹ Anh chốt): mục KẾ TOÁN = Tiền COD về (cod-recon) + Thanh toán quảng cáo (ads-recon). Tiền COD về do LEADER nước đó và giám đốc kiểm soát chung — leader xem, tải sao kê NAZA, nhập tiền về ngân hàng; không có vai trò kế toán riêng; sale (Thương) KHÔNG vào. Việc đòi NAZA tiền đơn quá hạn nằm ở Sổ đơn hàng, sale vẫn làm được. Thanh toán quảng cáo vẫn chỉ giám đốc. 08/10/2026 (Sỹ Anh chốt): mở NHẬT BẢN thành team riêng `nhat_ban` (leader tạm thời Sỹ Anh) — không gộp vào Đông Á. 10/10/2026 (Sỹ Anh chốt lại): GỘP Nhật vào Đông Á (Đông Á = Đài Loan + Nhật Bản), giữ khoá nhat_ban cho tài khoản cũ.",
   "access": {
     "teams": {
-      "_members_note": "members = marketer của team (khoá trong `marketers`). Sỹ Anh chốt 10/10/2026: số một người chạy LẤN sang nước của team khác (camp cũ chưa đổi tên) tính cho NGƯỜI CẦM nước đó (markets.<nước>.nguoi_cam) — Đài → Sỹ Anh (từ 03/11/2026; trước là Thương), Singapore → Thái, UAE → Lộc, Nhật → Sỹ Anh. Người không có trong members nào thì giữ nguyên số.",
+      "_members_note": "members = marketer của team (khoá trong `marketers`). Sỹ Anh chốt 10/10/2026: số một người chạy LẤN sang nước của team khác (camp cũ chưa đổi tên) tính cho NGƯỜI CẦM nước đó (markets.<nước>.owner) — Đài → Sỹ Anh (từ 03/11/2026; trước là Thương), Singapore → Thái, UAE → Lộc, Nhật → Sỹ Anh. Người không có trong members nào thì giữ nguyên số.",
       "trung_dong": { "name": "Trung Đông", "markets": ["UAE"], "leader": "Lộc", "members": ["Loc"] },
       "dong_nam_a": { "name": "Đông Nam Á", "markets": ["Singapore"], "leader": "Thái", "members": ["Thai"] },
       "dong_a": { "name": "Đông Á", "markets": ["Taiwan", "Japan"], "leader": "Sỹ Anh (tạm thời)", "members": ["SAnh", "Quynh", "Thuong", "Thang"] },
@@ -464,16 +464,16 @@
     "manual": {},
     "unassigned_label": "(chưa gán sale)"
   },
-  "_ket_qua_kd_note": "Tab Kế toán → Lãi lỗ (04/11/2026, lib/talpha/income-statement.ts). Doanh thu = tiền COD kiện giao thành công; kiện đang đi ước theo tỉ lệ giao thật của nước (tính trên kiện lên đơn trong cua_so_ngay ngày, bỏ bo_gan_ngay ngày gần nhất vì kiện mới giao xong trước, hoàn về sau). Mẫu dưới mau_toi_thieu kiện thì lấy mọi kiện xong và ghi 'tạm'. cho_len_3pl_ngay: số ngày cuối kỳ mà phần doanh số chưa thành kiện 3PL được ước như kiện đang đi (sale lên đơn trễ). hang_hoan: hàng hoàn của nước trong quay_lai_kho_ban_tiep không mất giá vốn (UAE — kho D&T); nước khác mất nếu không gửi lại; còn hạn = trong luu_kho_ngay ngày kể từ lúc về kho (ước = ngày gửi + ve_kho_sau_gui_ngay).",
-  "ket_qua_kd": {
-    "ty_le_giao": { "cua_so_ngay": 90, "bo_gan_ngay": 21, "mau_toi_thieu": 20 },
-    "cho_len_3pl_ngay": 3,
-    "hang_hoan": {
-      "quay_lai_kho_ban_tiep": ["AE"],
-      "luu_kho_ngay": 30,
-      "ve_kho_sau_gui_ngay": 14
+  "_income_statement_rules_note": "Tab Kế toán → Lãi lỗ (04/11/2026, lib/talpha/income-statement.ts). Doanh thu = tiền COD kiện giao thành công; kiện đang đi ước theo tỉ lệ giao thật của nước (tính trên kiện lên đơn trong cua_so_ngay ngày, bỏ bo_gan_ngay ngày gần nhất vì kiện mới giao xong trước, hoàn về sau). Mẫu dưới mau_toi_thieu kiện thì lấy mọi kiện xong và ghi 'tạm'. cho_len_3pl_ngay: số ngày cuối kỳ mà phần doanh số chưa thành kiện 3PL được ước như kiện đang đi (sale lên đơn trễ). hang_hoan: hàng hoàn của nước trong quay_lai_kho_ban_tiep không mất giá vốn (UAE — kho D&T); nước khác mất nếu không gửi lại; còn hạn = trong luu_kho_ngay ngày kể từ lúc về kho (ước = ngày gửi + ve_kho_sau_gui_ngay).",
+  "income_statement_rules": {
+    "delivery_rate": { "window_days": 90, "exclude_recent_days": 21, "min_sample": 20 },
+    "await_3pl_days": 3,
+    "returns": {
+      "restock_markets": ["AE"],
+      "storage_days": 30,
+      "back_to_stock_days": 14
     },
-    "nhom_van_hanh": ["Lương", "Mặt bằng", "Phần mềm & công cụ", "Điện thoại & sim", "Khác"]
+    "opex_groups": ["Lương", "Mặt bằng", "Phần mềm & công cụ", "Điện thoại & sim", "Khác"]
   },
   "_shipping_note": "Bảng giá 3PL Đài Loan — NAZA供应链. Nguồn: '18.10 COD TỪ TQ ĐI 8 NƯỚC.xlsx' sheet 'ĐÀI LOAN'. Phí ghi bằng RMB, sao kê cũng tính bằng RMB rồi mới quy ra VND. Đã soát ngược 463 dòng phí thật của 7 kỳ: khớp bảng giá 100%, lệch 0 RMB.",
   "shipping_fees": {
@@ -1828,17 +1828,17 @@
       "2026-09": "1Ur-U71lxBvnb0ysRbzYhRPcgyLp3P78o2bvIJ9hIs8s"
     }
   },
-  "tkqc_loai": {
-    "_note": "04/11/2026 (Postgres): KHÔNG còn khai danh sách TKQC bằng tay ở talpha.yaml. Mỗi vòng sync hỏi Meta token đọc được TKQC nào (/me/adaccounts), kéo chi tiêu của TẤT CẢ vào bảng fb_ads_all, ghi danh bạ vào bảng tkqc. Mỗi TKQC một LOẠI: chỉ loại có vao_bao_cao = true mới vào báo cáo (view fb_ads_data → mọi tab, báo cáo tháng, bot). Đổi loại ở /admin → TKQC, có tác dụng ngay. TKQC mới thấy lần đầu nhận loại theo gan_san, không có thì theo tiền tệ: VND → mac_dinh, tiền khác → loai_tien_khac (chi tiêu Meta trả theo tiền của TK; engine coi là VND — TK Canada USD từng ra 110 đồng thay vì 109,77 USD, 20/09/2026).",
-    "mac_dinh": "antalo",
-    "loai_tien_khac": "khac",
-    "loai": {
-      "antalo": { "ten": "ANTALO — bán Đài, Singapore, UAE, Nhật", "vao_bao_cao": true },
-      "hat_giong": { "ten": "Hạt giống — bán trong nước", "vao_bao_cao": false },
-      "khac": { "ten": "Khác — không tính vào báo cáo", "vao_bao_cao": false }
+  "ad_account_categories": {
+    "_note": "04/11/2026 (Postgres): KHÔNG còn khai danh sách TKQC bằng tay ở talpha.yaml. Mỗi vòng sync hỏi Meta token đọc được TKQC nào (/me/adaccounts), kéo chi tiêu của TẤT CẢ vào bảng fb_ads_all, ghi danh bạ vào bảng ad_accounts. Mỗi TKQC một LOẠI: chỉ loại có include_in_report = true mới vào báo cáo (view fb_ads_data → mọi tab, báo cáo tháng, bot). Đổi loại ở /admin → TKQC, có tác dụng ngay. TKQC mới thấy lần đầu nhận loại theo gan_san, không có thì theo tiền tệ: VND → mac_dinh, tiền khác → loai_tien_khac (chi tiêu Meta trả theo tiền của TK; engine coi là VND — TK Canada USD từng ra 110 đồng thay vì 109,77 USD, 20/09/2026).",
+    "default": "antalo",
+    "non_vnd": "other",
+    "categories": {
+      "antalo": { "name": "ANTALO — bán Đài, Singapore, UAE, Nhật", "include_in_report": true },
+      "seed": { "name": "Hạt giống — bán trong nước", "include_in_report": false },
+      "other": { "name": "Khác — không tính vào báo cáo", "include_in_report": false }
     },
-    "gan_san": {
-      "2332183394212686": "hat_giong",
+    "preassigned": {
+      "2332183394212686": "seed",
       "_2332183394212686_note": "Thai BM XUAN THAI 02 01 (việt): camp VN/THÁI/… bán hạt giống trong nước — máy cũ cố ý không khai (03/11/2026). Tên camp không ghi nước nên kéo vào báo cáo là tiền dồn hết về Đài."
     }
   },

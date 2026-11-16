@@ -11,19 +11,19 @@ console.log("── Loại TKQC thấy lần đầu ──");
 t("VND → loại mặc định (antalo, vào báo cáo)", () => {
     assert.strictEqual(L.initialAccountKind("111", "VND"), "antalo");
     assert.strictEqual(L.initialAccountKind("act_111", "vnd"), "antalo");
-    assert.ok(L.listAccountKinds().find((l) => l.ma === "antalo").vao_bao_cao);
+    assert.ok(L.listAccountKinds().find((l) => l.code === "antalo").include_in_report);
 });
-t("tiền khác VND → khac, KHÔNG vào báo cáo (engine coi chi tiêu là VND)", () => {
-    assert.strictEqual(L.initialAccountKind("222", "USD"), "khac");
-    assert.ok(!L.listAccountKinds().find((l) => l.ma === "khac").vao_bao_cao);
+t("tiền khác VND → other, KHÔNG vào báo cáo (engine coi chi tiêu là VND)", () => {
+    assert.strictEqual(L.initialAccountKind("222", "USD"), "other");
+    assert.ok(!L.listAccountKinds().find((l) => l.code === "other").include_in_report);
 });
-t("TKQC bán hạt giống trong nước gán sẵn → hat_giong, không vào báo cáo", () => {
-    assert.strictEqual(L.initialAccountKind("2332183394212686", "VND"), "hat_giong");
-    assert.strictEqual(L.initialAccountKind("act_2332183394212686", "VND"), "hat_giong");
-    assert.ok(!L.listAccountKinds().find((l) => l.ma === "hat_giong").vao_bao_cao);
+t("TKQC bán hạt giống trong nước gán sẵn → seed, không vào báo cáo", () => {
+    assert.strictEqual(L.initialAccountKind("2332183394212686", "VND"), "seed");
+    assert.strictEqual(L.initialAccountKind("act_2332183394212686", "VND"), "seed");
+    assert.ok(!L.listAccountKinds().find((l) => l.code === "seed").include_in_report);
 });
 t("danh sách loại bỏ khoá ghi chú _…", () => {
-    assert.deepStrictEqual(L.listAccountKinds().map((l) => l.ma), ["antalo", "hat_giong", "khac"]);
+    assert.deepStrictEqual(L.listAccountKinds().map((l) => l.code), ["antalo", "seed", "other"]);
 });
 
 console.log(`\n${pass} phép thử loại TKQC qua.`);

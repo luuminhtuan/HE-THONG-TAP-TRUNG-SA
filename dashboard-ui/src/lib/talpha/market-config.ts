@@ -86,7 +86,7 @@ export function applyMarketOverrides<T extends RulesWithMarkets>(rules: T, overr
 export type MarketInput = {
     key: string; display: string; shop_label: string; currency: string; currency_symbol: string;
     rate_vnd: number | null; pos_money_divisor: number | null; shop_id: string;
-    status: "dang_ban" | "sap_chay" | "da_tat"; orders_from: string | null;
+    status: "active" | "upcoming" | "disabled"; orders_from: string | null;
     flag: string; tokens: string[]; team: string | null;
 };
 
@@ -97,7 +97,7 @@ const numberOrNull = (v: unknown): number | null => (typeof v === "number" && Nu
 /** Một nước của luật (đã phủ) ở dạng ô nhập trên trang — để mở form sửa. */
 export function inputFromRules(key: string, rules: RulesWithMarkets): MarketInput {
     const v = (isPlainObject(rules.markets?.[key]) ? rules.markets![key] : {}) as Record<string, unknown>;
-    const status = String(v.status || "dang_ban");
+    const status = String(v.status || "active");
     return {
         key,
         display: String(v.display || key),
@@ -107,7 +107,7 @@ export function inputFromRules(key: string, rules: RulesWithMarkets): MarketInpu
         rate_vnd: numberOrNull(v.rate_vnd),
         pos_money_divisor: numberOrNull(v.pos_money_divisor),
         shop_id: String(v.shop_id || ""),
-        status: (["dang_ban", "sap_chay", "da_tat"].includes(status) ? status : "dang_ban") as MarketInput["status"],
+        status: (["active", "upcoming", "disabled"].includes(status) ? status : "active") as MarketInput["status"],
         orders_from: typeof v.orders_from === "string" ? v.orders_from : null,
         flag: String(v.flag || ""),
         tokens: Object.entries(rules.market_aliases || {})
@@ -166,9 +166,9 @@ export function marketInputErrors(n: MarketInput, rules: RulesWithMarkets, isNew
     if (!/^[A-Z]{3}$/.test(n.currency)) error.push("Mã tiền tệ phải là 3 chữ in hoa (vd THB)");
     if (!n.currency_symbol.trim() || n.currency_symbol.length > 5) error.push("Ký hiệu tiền trống hoặc dài quá 5 ký tự");
     if (n.flag.length > 8) error.push("Cờ dài quá");
-    if (!["dang_ban", "sap_chay", "da_tat"].includes(n.status)) error.push("Trạng thái lạ");
+    if (!["active", "upcoming", "disabled"].includes(n.status)) error.push("Trạng thái lạ");
 
-    const requiresComplete = n.status === "dang_ban" || n.status === "da_tat";
+    const requiresComplete = n.status === "active" || n.status === "disabled";
     if (n.rate_vnd !== null && !(Number.isFinite(n.rate_vnd) && n.rate_vnd > 0)) error.push("Tỷ giá phải là số dương");
     if (requiresComplete && n.rate_vnd === null) error.push("Nước đang bán / đã tắt phải có tỷ giá");
     if (n.pos_money_divisor !== null && !(Number.isInteger(n.pos_money_divisor) && n.pos_money_divisor > 0)) error.push("Số chia tiền POS phải là số nguyên dương");

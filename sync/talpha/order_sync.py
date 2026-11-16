@@ -99,10 +99,10 @@ def sync_all_orders(window_start=None) -> tuple[int, int]:
 
     failed_shops = []
     for shop in POS_SHOPS:
-        if not shop.get("keo", True):
+        if not shop.get("fetch_orders", True):
             # Nước đã tắt / sắp chạy: không kéo đơn mới. Shop vẫn nằm trong POS_SHOPS để bước dựng
             # lại bên dưới giữ đơn cũ của nó (xem pos_shops_from_markets trong business_rules).
-            reason = "đã tắt — không kéo đơn mới, giữ đơn cũ" if shop.get("trang_thai") == "da_tat" else "sắp chạy — chưa kéo đơn"
+            reason = "đã tắt — không kéo đơn mới, giữ đơn cũ" if shop.get("status") == "disabled" else "sắp chạy — chưa kéo đơn"
             log.info(f"  {shop['label']}: nước {reason}")
             continue
         if not shop["key"]:

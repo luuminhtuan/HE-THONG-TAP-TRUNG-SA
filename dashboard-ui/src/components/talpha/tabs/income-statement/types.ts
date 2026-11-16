@@ -27,7 +27,7 @@ export type OpexItem = {
 export type Data = {
     from: string; to: string; as_of: string; hom_nay: string; scoped: boolean;
     missing_months: string[];
-    cfg: { ty_le: { cua_so_ngay: number; bo_gan_ngay: number; mau_toi_thieu: number }; cho_len_3pl_ngay: number; nhom_van_hanh: string[] };
+    cfg: { delivery_rate: { window_days: number; exclude_recent_days: number; min_sample: number }; await_3pl_days: number; opex_groups: string[] };
     nuoc: MarketResult[];
     ngoai_nuoc: { ads: number; doanh_so: number; don: number } | null;
     tong: {

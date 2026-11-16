@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
             reportForRange(from, to, null),
             readStoreFresh<OpexStore>(OPEX_STORE, { items: [] }),
         ]);
-        const activeMarkets = MARKETS_PUBLIC.markets.filter((m) => m.status === "dang_ban");
+        const activeMarkets = MARKETS_PUBLIC.markets.filter((m) => m.status === "active");
         const visibleMarkets = activeMarkets.filter((m) => seesAll || canMarket(a, m.code));
         const salesByMarket = Object.fromEntries(activeMarkets.map((m) => [m.code, sheet.markets.find((x) => x.code === m.code)?.doanh_so || 0]));
         const opexAllocation = allocateOpex(opexData.items || [], from, to, salesByMarket);
@@ -143,7 +143,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
             from, to, as_of: asOf, hom_nay: today, scoped: !seesAll,
             missing_months: sheet.missing_months,
-            cfg: { ty_le: DELIVERY_RATE_CFG, cho_len_3pl_ngay: PENDING_3PL_DAYS, nhom_van_hanh: OPEX_CATEGORIES },
+            cfg: { delivery_rate: DELIVERY_RATE_CFG, await_3pl_days: PENDING_3PL_DAYS, opex_groups: OPEX_CATEGORIES },
             nuoc: marketRows.map((d) => ({
                 ...d,
                 loi_nhuan: { du_kien: Number.isFinite(d.loi_nhuan.du_kien) ? d.loi_nhuan.du_kien : null, toi_thieu: Number.isFinite(d.loi_nhuan.toi_thieu) ? d.loi_nhuan.toi_thieu : null },

@@ -30,22 +30,22 @@ import { JP_FEE_SCHEDULE, jpFreightRmb, jpCodFee } from "@/lib/talpha/jp-shippin
 import { classifyParcel, type Parcel } from "@/lib/talpha/income-statement";
 
 type Cfg = {
-    ty_le_giao?: { cua_so_ngay?: number; bo_gan_ngay?: number; mau_toi_thieu?: number };
-    cho_len_3pl_ngay?: number;
-    hang_hoan?: { quay_lai_kho_ban_tiep?: string[]; luu_kho_ngay?: number; ve_kho_sau_gui_ngay?: number };
-    nhom_van_hanh?: string[];
+    delivery_rate?: { window_days?: number; exclude_recent_days?: number; min_sample?: number };
+    await_3pl_days?: number;
+    returns?: { restock_markets?: string[]; storage_days?: number; back_to_stock_days?: number };
+    opex_groups?: string[];
 };
-export const KQKD: Cfg = (RULES as unknown as { ket_qua_kd?: Cfg }).ket_qua_kd || {};
+export const INCOME_RULES: Cfg = (RULES as unknown as { income_statement_rules?: Cfg }).income_statement_rules || {};
 export const DELIVERY_RATE_CFG = {
-    cua_so_ngay: Number(KQKD.ty_le_giao?.cua_so_ngay ?? 90),
-    bo_gan_ngay: Number(KQKD.ty_le_giao?.bo_gan_ngay ?? 21),
-    mau_toi_thieu: Number(KQKD.ty_le_giao?.mau_toi_thieu ?? 20),
+    window_days: Number(INCOME_RULES.delivery_rate?.window_days ?? 90),
+    exclude_recent_days: Number(INCOME_RULES.delivery_rate?.exclude_recent_days ?? 21),
+    min_sample: Number(INCOME_RULES.delivery_rate?.min_sample ?? 20),
 };
-export const PENDING_3PL_DAYS = Number(KQKD.cho_len_3pl_ngay ?? 3);
-export const OPEX_CATEGORIES = KQKD.nhom_van_hanh?.length ? KQKD.nhom_van_hanh : ["Lương", "Mặt bằng", "Phần mềm & công cụ", "Khác"];
-const RESTOCKABLE_MARKETS = new Set((KQKD.hang_hoan?.quay_lai_kho_ban_tiep || ["AE"]).map((x) => x.toUpperCase()));
-const FREE_STORAGE_DAYS = Number(KQKD.hang_hoan?.luu_kho_ngay ?? 30);
-const RETURN_TO_WAREHOUSE_DAYS = Number(KQKD.hang_hoan?.ve_kho_sau_gui_ngay ?? 14);
+export const PENDING_3PL_DAYS = Number(INCOME_RULES.await_3pl_days ?? 3);
+export const OPEX_CATEGORIES = INCOME_RULES.opex_groups?.length ? INCOME_RULES.opex_groups : ["Lương", "Mặt bằng", "Phần mềm & công cụ", "Khác"];
+const RESTOCKABLE_MARKETS = new Set((INCOME_RULES.returns?.restock_markets || ["AE"]).map((x) => x.toUpperCase()));
+const FREE_STORAGE_DAYS = Number(INCOME_RULES.returns?.storage_days ?? 30);
+const RETURN_TO_WAREHOUSE_DAYS = Number(INCOME_RULES.returns?.back_to_stock_days ?? 14);
 
 const FEES = (RULES as unknown as { shipping_fees?: Record<string, any> }).shipping_fees || {};
 const rate = (code: string) => EXCHANGE_RATES[SHOP2MKT[code]] || 0;
@@ -250,7 +250,7 @@ const POS_TO_STANDARD_STATUS: Record<string, string> = {
 
 async function aeParcels(from: string, to: string, asOf: string): Promise<MarketSource> {
     const mk = trackMarket("AE");
-    const windowStart = new Date(Date.parse(`${asOf}T00:00:00Z`) - (DELIVERY_RATE_CFG.cua_so_ngay + 30) * 86_400_000).toISOString().slice(0, 10);
+    const windowStart = new Date(Date.parse(`${asOf}T00:00:00Z`) - (DELIVERY_RATE_CFG.window_days + 30) * 86_400_000).toISOString().slice(0, 10);
     const startDate = from < windowStart ? from : windowStart;
     const [rows, store, orderCosts] = await Promise.all([
         query(

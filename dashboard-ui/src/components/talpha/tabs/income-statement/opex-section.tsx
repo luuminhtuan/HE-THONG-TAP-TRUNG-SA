@@ -12,7 +12,7 @@ type Form = { id?: string; nhom: string; ten: string; so_tien: string; tu_thang:
 export function OpexSection({ data, taiLai: reload }: { data: Data; taiLai: () => void }) {
     const opex = data.van_hanh;
     const thisMonth = data.hom_nay.slice(0, 7);
-    const emptyForm = useMemo<Form>(() => ({ nhom: data.cfg.nhom_van_hanh[0] || "Lương", ten: "", so_tien: "", tu_thang: thisMonth, den_thang: "", thuoc: "CHUNG", ghi_chu: "" }), [data.cfg.nhom_van_hanh, thisMonth]);
+    const emptyForm = useMemo<Form>(() => ({ nhom: data.cfg.opex_groups[0] || "Lương", ten: "", so_tien: "", tu_thang: thisMonth, den_thang: "", thuoc: "CHUNG", ghi_chu: "" }), [data.cfg.opex_groups, thisMonth]);
     const [form, setForm] = useState<Form | null>(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -73,7 +73,7 @@ export function OpexSection({ data, taiLai: reload }: { data: Data; taiLai: () =
                 <div className="mb-4 grid gap-2 rounded-lg border border-orange-300 bg-orange-50/50 p-3 sm:grid-cols-2 lg:grid-cols-4 dark:border-orange-500/30 dark:bg-orange-500/5">
                     <label className="flex flex-col gap-1 text-xs">Nhóm
                         <select className={o} value={form.nhom} onChange={(e) => setForm({ ...form, nhom: e.target.value })}>
-                            {[...new Set([...data.cfg.nhom_van_hanh, form.nhom])].map((x) => <option key={x}>{x}</option>)}
+                            {[...new Set([...data.cfg.opex_groups, form.nhom])].map((x) => <option key={x}>{x}</option>)}
                         </select>
                     </label>
                     <label className="flex flex-col gap-1 text-xs">Tên khoản

@@ -104,7 +104,7 @@ t("campaign lạc quy ước → không đoán MARKETER, nhưng thị trường 
 console.log("── Thị trường ──");
 t("bốn nước đang bán — Nhật mở 08/10/2026, nối shop POS 09/10/2026", () => {
     assert.deepStrictEqual(Object.keys(R.RULES.markets), ["Taiwan", "Singapore", "UAE", "Japan"]);
-    const activeMarkets = Object.entries(R.RULES.markets).filter(([, v]) => v.status === "dang_ban").map(([k]) => k);
+    const activeMarkets = Object.entries(R.RULES.markets).filter(([, v]) => v.status === "active").map(([k]) => k);
     assert.deepStrictEqual(activeMarkets, ["Taiwan", "Singapore", "UAE", "Japan"]);
     assert.strictEqual(R.RULES.markets.Japan.shop_id, "1022115860");
     assert.strictEqual(R.posMoneyDivisor("JP"), 1);
@@ -123,9 +123,9 @@ t("mỗi nước có shop thì có mốc ngày tính đơn hợp lệ", () => {
 });
 t("nước đang bán hoặc đã tắt phải khai đủ shop, tỷ giá, số chia", () => {
     for (const [marketKey, v] of Object.entries(R.RULES.markets)) {
-        assert.ok(["dang_ban", "sap_chay", "da_tat"].includes(v.status || "dang_ban"), `${marketKey}: status lạ ${v.status}`);
+        assert.ok(["active", "upcoming", "disabled"].includes(v.status || "active"), `${marketKey}: status lạ ${v.status}`);
         // Nước đã tắt: đơn cũ vẫn trong báo cáo, cần tỷ giá + số chia như lúc còn bán.
-        if (v.status !== "dang_ban" && v.status !== "da_tat") continue;
+        if (v.status !== "active" && v.status !== "disabled") continue;
         assert.ok(String(v.shop_id || "").trim(), `${marketKey}: thiếu shop_id`);
         assert.ok(v.rate_vnd > 0, `${marketKey}: thiếu tỷ giá`);
         assert.ok(Number.isInteger(v.pos_money_divisor) && v.pos_money_divisor > 0, `${marketKey}: thiếu số chia`);
@@ -355,13 +355,13 @@ t("thông tin nước cho giao diện: mã, ký hiệu tiền, trạng thái, m�
     assert.deepStrictEqual(Object.keys(m).sort(), ["AE", "JP", "SG", "TW"]);
     assert.strictEqual(m.TW.symbol, "NT$");
     assert.strictEqual(m.JP.symbol, "¥");
-    assert.strictEqual(m.JP.status, "dang_ban");
+    assert.strictEqual(m.JP.status, "active");
     assert.strictEqual(m.JP.rate_vnd, 160);
     assert.ok(m.JP.tokens.includes("JP"));
     assert.strictEqual(m.SG.symbol, "S$");
-    assert.strictEqual(m.SG.status, "dang_ban");
-    assert.strictEqual(m.AE.status, "dang_ban");
-    assert.strictEqual(m.TW.status, "dang_ban");
+    assert.strictEqual(m.SG.status, "active");
+    assert.strictEqual(m.AE.status, "active");
+    assert.strictEqual(m.TW.status, "active");
     assert.ok(m.SG.tokens.includes("SG") && m.AE.tokens.includes("UAE"));
     assert.strictEqual(R.MARKETS_PUBLIC.primary, "Taiwan");
 });
