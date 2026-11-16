@@ -34,7 +34,7 @@ x-python: &python
       required: false
   environment:
     DATABASE_URL: postgresql://talpha:talpha@db:5432/talpha
-    TALPHA_DOC_PASSWORD: ${TALPHA_DOC_PASSWORD:-chi-doc-may-thu}
+    TALPHA_READONLY_PASSWORD: ${TALPHA_READONLY_PASSWORD:-${TALPHA_DOC_PASSWORD:-chi-doc-may-thu}}
     # Chìa mã hoá khoá kết nối trong kho (sync/core/credentials.py) — PHẢI trùng với dashboard bên dưới.
     TALPHA_ENCRYPTION_KEY: ${TALPHA_ENCRYPTION_KEY:-may-thu-doi-chia-nay-khi-dua-ra-ngoai}
     TALPHA_RULES: /app/config/talpha_rules.json
@@ -80,7 +80,7 @@ services:
       - "127.0.0.1:${DASHBOARD_PORT:-3200}:3000"
     environment:
       DATABASE_URL: postgresql://talpha:talpha@db:5432/talpha
-      TALPHA_DOC_PASSWORD: ${TALPHA_DOC_PASSWORD:-chi-doc-may-thu}
+      TALPHA_READONLY_PASSWORD: ${TALPHA_READONLY_PASSWORD:-${TALPHA_DOC_PASSWORD:-chi-doc-may-thu}}
       TALPHA_ENCRYPTION_KEY: ${TALPHA_ENCRYPTION_KEY:-may-thu-doi-chia-nay-khi-dua-ra-ngoai}
       # Không đặt AUTH_URL: đăng nhập theo đúng địa chỉ người dùng mở (localhost hay link tunnel).
       AUTH_SECRET: ${AUTH_SECRET:-chi-dung-tren-may-thu-docker}
@@ -92,7 +92,7 @@ services:
       NEXT_PUBLIC_APP_NAME: TALPHA
       NEXT_TELEMETRY_DISABLED: "1"
       # Lưu Thị trường trên /admin → thoát tiến trình, docker bật lại với luật mới.
-      TALPHA_TU_KHOI_DONG: "1"
+      TALPHA_AUTO_RESTART: "1"
     volumes:
       - ./:/app
       - dashboard_node_modules:/app/dashboard-ui/node_modules

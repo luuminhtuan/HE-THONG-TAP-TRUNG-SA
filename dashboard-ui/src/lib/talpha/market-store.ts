@@ -79,8 +79,9 @@ export async function saveMarketOverride(key: string, block: MarketOverride | nu
  * trình trong vài giây. Chạy `npm run dev` ở máy: không tự thoát được — người chạy khởi động lại.
  */
 export function scheduleRestart(): "tu_dong" | "tay" {
-    // pm2 (máy chủ) hoặc docker compose (TALPHA_TU_KHOI_DONG=1, restart: unless-stopped) tự bật lại.
-    if (process.env.pm_id === undefined && process.env.TALPHA_TU_KHOI_DONG !== "1") return "tay";
+    // pm2 (máy chủ) hoặc docker compose (TALPHA_AUTO_RESTART=1, restart: unless-stopped; tên cũ TALPHA_TU_KHOI_DONG vẫn nhận) tự bật lại.
+    const autoRestart = (process.env.TALPHA_AUTO_RESTART || process.env.TALPHA_TU_KHOI_DONG) === "1";
+    if (process.env.pm_id === undefined && !autoRestart) return "tay";
     setTimeout(() => {
         console.log("Thị trường nhập trên trang đã đổi — thoát để pm2 / docker dựng lại với luật mới.");
         process.exit(0);

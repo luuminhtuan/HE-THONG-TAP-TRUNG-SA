@@ -88,9 +88,10 @@ const readOnlyPools = new Map<ReadOnlyRole, Pool>();
 function getReadOnlyPool(role: ReadOnlyRole): Pool {
     const p = readOnlyPools.get(role);
     if (p) return p;
-    const mk = process.env.TALPHA_DOC_PASSWORD;
+    // TALPHA_DOC_PASSWORD: tên cũ (trước 16/11/2026) — vẫn nhận để .env cũ không gãy.
+    const mk = process.env.TALPHA_READONLY_PASSWORD || process.env.TALPHA_DOC_PASSWORD;
     const baseUrl = process.env.DATABASE_URL;
-    if (!mk || !baseUrl) throw new Error("chưa cấu hình vai chỉ đọc (TALPHA_DOC_PASSWORD) — xem docs/POSTGRES.md");
+    if (!mk || !baseUrl) throw new Error("chưa cấu hình vai chỉ đọc (TALPHA_READONLY_PASSWORD) — xem docs/POSTGRES.md");
     const u = new URL(baseUrl);
     u.username = role;
     u.password = mk;

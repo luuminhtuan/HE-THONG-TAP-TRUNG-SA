@@ -11,7 +11,7 @@ CÙNG kết quả — bộ dữ liệu chung tests/fixtures/market_overrides.jso
 Mỗi lần chạy (mỗi vòng sync, mỗi vòng ghi Sheet) là một tiến trình mới nên đọc lại bảng phủ —
 lưu trên trang xong thì vòng kế tiếp dùng ngay.
 
-TALPHA_THI_TRUONG (chỉ cho test) trỏ vào một FILE phủ thay cho bảng — test soát luật của repo,
+TALPHA_MARKET_OVERRIDES_FILE (chỉ cho test) trỏ vào một FILE phủ thay cho bảng — test soát luật của repo,
 không phải thị trường ai đó nhập trên máy đang chạy test.
 """
 import copy
@@ -27,7 +27,7 @@ OVERRIDE_ONLY_FIELDS = ("tokens", "team")
 
 
 def _read_override_file(p: str):
-    """File phủ của test (TALPHA_THI_TRUONG). Không có file = chưa ai nhập."""
+    """File phủ của test (TALPHA_MARKET_OVERRIDES_FILE). Không có file = chưa ai nhập."""
     if not os.path.isfile(p):
         return None
     try:
@@ -47,7 +47,7 @@ def read_market_overrides_from_db(conn) -> dict:
 def load_market_overrides(repo=None):
     """Phần phủ, hoặc None nếu chưa ai nhập. Kho lỗi thì KÊU và bỏ qua — không được làm sập cả
     vòng sync (chạy bằng luật gốc, và dòng cảnh báo nằm trong log của vòng đó)."""
-    path = os.environ.get("TALPHA_THI_TRUONG")
+    path = os.environ.get("TALPHA_MARKET_OVERRIDES_FILE")
     if path:
         return _read_override_file(path)
     if not (os.environ.get("DATABASE_URL") or "").strip():

@@ -34,12 +34,12 @@ t("không sửa luật gốc; không có file phủ thì y nguyên", () => {
 t("file phủ hỏng thì bỏ qua, không làm sập bot", () => {
     const p = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "tt-")), "thi_truong.json");
     fs.writeFileSync(p, "{hỏng");
-    const savedEnv = process.env.TALPHA_THI_TRUONG;
-    process.env.TALPHA_THI_TRUONG = p;
+    const savedEnv = process.env.TALPHA_MARKET_OVERRIDES_FILE;
+    process.env.TALPHA_MARKET_OVERRIDES_FILE = p;
     const origConsoleError = console.error;
     console.error = () => {};
     try { assert.strictEqual(loadMarketOverrides(), null); }
-    finally { console.error = origConsoleError; if (savedEnv === undefined) delete process.env.TALPHA_THI_TRUONG; else process.env.TALPHA_THI_TRUONG = savedEnv; }
+    finally { console.error = origConsoleError; if (savedEnv === undefined) delete process.env.TALPHA_MARKET_OVERRIDES_FILE; else process.env.TALPHA_MARKET_OVERRIDES_FILE = savedEnv; }
 });
 
 console.log(`market_config.test.js: ${ok}/${ok} PASS`);

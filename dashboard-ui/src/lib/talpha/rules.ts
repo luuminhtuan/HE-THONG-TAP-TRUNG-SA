@@ -12,7 +12,7 @@ import type { MarketInfo, MarketStatus, ProductCost, Rules, ShipFee } from "./ru
 
 /** Thị trường nhập ở /admin → Thị trường: bảng market_overrides (15/11/2026 — trước đó file
  *  data/thi_truong.json). Chưa ai nhập = null. Kho lỗi thì KÊU và dùng bản gốc — không làm sập cả
- *  dashboard. TALPHA_THI_TRUONG (chỉ test) trỏ vào một FILE phủ thay cho bảng. */
+ *  dashboard. TALPHA_MARKET_OVERRIDES_FILE (chỉ test) trỏ vào một FILE phủ thay cho bảng. */
 function loadStartupOverrides(): OverridesFile | null {
     const overrideFile = MARKET_OVERRIDES_TEST_FILE();
     if (overrideFile) {

@@ -44,10 +44,10 @@ export const RULES_JSON = () => requiredConfigPath("talpha_rules.json");
 
 /**
  * Nước thêm / sửa / tắt ở /admin → Thị trường nằm ở bảng market_overrides (15/11/2026 — trước đó file
- * data/thi_truong.json). Test đặt TALPHA_THI_TRUONG trỏ vào một FILE phủ để không đọc kho của máy
+ * data/thi_truong.json). Test đặt TALPHA_MARKET_OVERRIDES_FILE trỏ vào một FILE phủ để không đọc kho của máy
  * đang chạy test; không đặt = đọc kho.
  */
-export const MARKET_OVERRIDES_TEST_FILE = (): string | null => process.env.TALPHA_THI_TRUONG || null;
+export const MARKET_OVERRIDES_TEST_FILE = (): string | null => process.env.TALPHA_MARKET_OVERRIDES_FILE || null;
 
 /** `config/projects/talpha.yaml` — danh sách TKQC Meta và shop POS. */
 export const TALPHA_YAML = () => requiredConfigPath("projects", "talpha.yaml");

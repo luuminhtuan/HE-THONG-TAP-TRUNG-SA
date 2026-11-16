@@ -53,13 +53,13 @@ class TestSharedFixture:
 
 class TestReadOverrideFile:
     def test_no_file_yet(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("TALPHA_THI_TRUONG", str(tmp_path / "khong_co.json"))
+        monkeypatch.setenv("TALPHA_MARKET_OVERRIDES_FILE", str(tmp_path / "khong_co.json"))
         assert load_market_overrides() is None
 
     def test_corrupt_file_ignored_without_crash(self, tmp_path, monkeypatch, capsys):
         p = tmp_path / "thi_truong.json"
         p.write_text("{hỏng", encoding="utf-8")
-        monkeypatch.setenv("TALPHA_THI_TRUONG", str(p))
+        monkeypatch.setenv("TALPHA_MARKET_OVERRIDES_FILE", str(p))
         assert load_market_overrides() is None
         assert "hỏng định dạng" in capsys.readouterr().err
 
@@ -70,7 +70,7 @@ class TestViewFingerprint:
     def _fingerprint(self, tmp_path, monkeypatch, overrides):
         p = tmp_path / "thi_truong.json"
         p.write_text(json.dumps(overrides or {}, ensure_ascii=False), encoding="utf-8")
-        monkeypatch.setenv("TALPHA_THI_TRUONG", str(p))
+        monkeypatch.setenv("TALPHA_MARKET_OVERRIDES_FILE", str(p))
         from sync.core.pg_view import render_all
         return render_all()[1]
 
@@ -96,7 +96,7 @@ class TestNewMarketPropagates:
         # Chỉ dựng câu SQL (hàm thuần của bộ dựng view) — không kết nối Postgres.
         p = tmp_path / "thi_truong.json"
         p.write_text(json.dumps(THAILAND, ensure_ascii=False), encoding="utf-8")
-        monkeypatch.setenv("TALPHA_THI_TRUONG", str(p))
+        monkeypatch.setenv("TALPHA_MARKET_OVERRIDES_FILE", str(p))
         from sync.core import pg_view as D
         case, known = D.fx_sql()
         assert "WHEN 'TH' THEN 700.0" in case and "'TH'" in known
@@ -106,7 +106,7 @@ class TestNewMarketPropagates:
     def test_sheet_reads_overridden_rules(self, tmp_path, monkeypatch):
         p = tmp_path / "thi_truong.json"
         p.write_text(json.dumps(THAILAND, ensure_ascii=False), encoding="utf-8")
-        monkeypatch.setenv("TALPHA_THI_TRUONG", str(p))
+        monkeypatch.setenv("TALPHA_MARKET_OVERRIDES_FILE", str(p))
         monkeypatch.setenv("TALPHA_RULES", str(ROOT / "config" / "talpha_rules.json"))
         spec = importlib.util.spec_from_file_location("talpha_rules_phu", ROOT / "ops" / "talpha_reports" / "talpha_rules.py")
         R = importlib.util.module_from_spec(spec)

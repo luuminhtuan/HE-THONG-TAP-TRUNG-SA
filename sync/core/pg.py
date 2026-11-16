@@ -73,9 +73,9 @@ def run_migrations(conn, folder: Path = MIGRATIONS_DIR) -> list:
 
 
 def set_readonly_role_passwords(conn) -> bool:
-    """Cho hai vai chỉ đọc (migration 0008) đăng nhập bằng TALPHA_DOC_PASSWORD — cổng /api/query của
+    """Cho hai vai chỉ đọc (migration 0008) đăng nhập bằng TALPHA_READONLY_PASSWORD (tên cũ TALPHA_DOC_PASSWORD vẫn nhận) — cổng /api/query của
     dashboard đăng nhập bằng chúng. Không đặt biến → giữ NOLOGIN, /api/query từ chối chạy."""
-    password = (os.environ.get("TALPHA_DOC_PASSWORD") or "").strip()
+    password = (os.environ.get("TALPHA_READONLY_PASSWORD") or os.environ.get("TALPHA_DOC_PASSWORD") or "").strip()
     if not password:
         return False
     for role in ("talpha_readonly", "talpha_readonly_market"):
@@ -121,7 +121,7 @@ def main(argv) -> int:
             if imported:
                 print("Đã chép vào kho: " + ", ".join(imported))
             if not set_readonly_role_passwords(conn):
-                print("Chưa đặt TALPHA_DOC_PASSWORD — 4 tab dùng /api/query (Marketing, Sức khoẻ QC, "
+                print("Chưa đặt TALPHA_READONLY_PASSWORD — 4 tab dùng /api/query (Marketing, Sức khoẻ QC, "
                       "Khách hàng, Market Intel) sẽ báo chưa cấu hình.")
             from sync.core.pg_view import rebuild_views
             print("Đã dựng lại bộ view theo luật hiện tại." if rebuild_views(conn) else "View đang khớp luật.")
