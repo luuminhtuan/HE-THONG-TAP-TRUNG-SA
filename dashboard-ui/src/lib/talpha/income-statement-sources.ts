@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════
-// LÃI LỖ — nạp KIỆN THẬT của từng nước thành `Kien` (lib/talpha/lai-lo.ts).
+// LÃI LỖ — nạp KIỆN THẬT của từng nước thành `Kien` (lib/talpha/income-statement.ts).
 //
 // Mỗi nước đọc đúng nguồn mà Sổ đơn hàng / Tiền COD về / Theo dõi vận đơn đang đọc — một
 // kiện chỉ có một trạng thái, một số tiền, ở mọi màn:
-//   • Đài (TW): sổ đơn Đài (lib/talpha/so-don-dai.ts) — bảng NAZA + 17TRACK + mọi kỳ sao kê.
+//   • Đài (TW): sổ đơn Đài (lib/talpha/tw-order-ledger.ts) — bảng NAZA + 17TRACK + mọi kỳ sao kê.
 //     Phí từng kiện là phí THẬT trong sheet PHÍ của sao kê (NAZA thu cả kiện hoàn); kiện chưa
 //     vào kỳ nào thì lấy phí trung bình các kiện đã có. Tiền NAZA trả quy VND theo tỷ giá
 //     TWD→tệ→đồng của chính kỳ đó; kiện chưa trả theo tỷ giá kỳ mới nhất.
@@ -21,13 +21,13 @@ import {
     COST_RATE_RMB_VND, EXCHANGE_RATES, RULES, SHOP2MKT, costPriceVnd,
 } from "@/lib/talpha/rules";
 import { redeliveryOrigin, productCodes } from "@/lib/talpha/order-ledger";
-import { loadTwOrderLedger } from "@/lib/talpha/so-don-dai";
+import { loadTwOrderLedger } from "@/lib/talpha/tw-order-ledger";
 import { loadPartnerMarketShipments } from "@/lib/talpha/tracking-market";
 import { TERMINAL, trackMarket } from "@/lib/talpha/tracking";
 import { awbFromPartner } from "@/lib/talpha/weship";
 import { computeOrderCosts } from "@/lib/talpha/order-costs";
-import { JP_FEE_SCHEDULE, jpFreightRmb, jpCodFee } from "@/lib/talpha/phi-ship-nhat";
-import { classifyParcel, type Parcel } from "@/lib/talpha/lai-lo";
+import { JP_FEE_SCHEDULE, jpFreightRmb, jpCodFee } from "@/lib/talpha/jp-shipping-fee";
+import { classifyParcel, type Parcel } from "@/lib/talpha/income-statement";
 
 type Cfg = {
     ty_le_giao?: { cua_so_ngay?: number; bo_gan_ngay?: number; mau_toi_thieu?: number };

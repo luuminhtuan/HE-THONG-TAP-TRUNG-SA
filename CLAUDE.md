@@ -63,14 +63,14 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   Google (`bigquery_key.json`) thì ghi thêm file Google Sheet cho team — tuỳ chọn. Giá vốn + phí ship
   ước tính ở `lib/talpha/order-costs.ts` (dùng chung P&L và P&L theo SP). Các tab báo cáo
   không tính trước `report_start_date` (15/09/2026).
-* **Lãi lỗ đủ mọi khoản** (Kế toán → Lãi lỗ, 04/11/2026): `lib/talpha/lai-lo.ts` (hàm thuần, có
-  test) + `lai-lo-nguon.ts` (kiện thật từng nước) → `/api/talpha/lai-lo`. Đây là nơi trả lời
+* **Lãi lỗ đủ mọi khoản** (Kế toán → Lãi lỗ, 04/11/2026): `lib/talpha/income-statement.ts` (hàm thuần, có
+  test) + `income-statement-sources.ts` (kiện thật từng nước) → `/api/talpha/income-statement`. Đây là nơi trả lời
   "lãi thật bao nhiêu"; tab P&L của mục Báo cáo chỉ là số tạm tính.
 * **Sync**: `sync/talpha/talpha_sync.py` + `sync/core/`. Docker: lịch `ops/docker/lich.py` (cùng giờ các
   systemd timer của VPS).
 * **TKQC tự động** (04/11/2026): mỗi vòng sync hỏi Meta mọi token (Khoá kết nối: `TALPHA_META_ACCESS_TOKEN`,
   `_2`, `_3` — nhiều BM / app) thấy TKQC nào, ghi bảng `tkqc`, kéo chi tiêu của TẤT CẢ vào `fb_ads_tat_ca`
-  (`sync/core/tkqc.py` ↔ `lib/talpha/tkqc.ts`). `fb_ads_data` / `fb_adset_data` / `fb_campaign_data` là VIEW
+  (`sync/core/tkqc.py` ↔ `lib/talpha/ad-accounts.ts`). `fb_ads_data` / `fb_adset_data` / `fb_campaign_data` là VIEW
   chỉ gồm TKQC loại vao_bao_cao (`talpha_rules.json → tkqc_loai`) — đọc tên cũ là tự đúng. Đổi loại ở
   `/admin` → TKQC, có tác dụng ngay. **Đừng ghi thẳng vào `fb_ads_data`** — nó là view.
   `talpha.yaml → ad_account_ids` chỉ còn là lịch sử (toàn dòng chú thích). `ops/talpha_reports/ad_accounts.json`
@@ -85,14 +85,14 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
 * **Khoá kết nối** (04/11/2026): token Meta, key POS từng shop, token Pancake, key 17TRACK, khoá Gemini (15/11) nhập ở
   `/admin` → Khoá kết nối — máy gọi thử khoá rồi mới lưu. Lưu ở bảng `api_credentials` (15/11/2026),
   MÃ HOÁ bằng pgcrypto với chìa `TALPHA_ENCRYPTION_KEY` (đổi chìa = phải nhập lại mọi khoá), thắng khoá
-  cùng tên trong `.env.local`. Dashboard đọc qua `docKhoa()` (`lib/talpha/khoa.ts`) — **đừng đọc
+  cùng tên trong `.env.local`. Dashboard đọc qua `docKhoa()` (`lib/talpha/credentials.ts`) — **đừng đọc
   `process.env` thẳng cho khoá**; Python gọi `nap_khoa_vao_env()` (`sync/core/credentials.py`) lúc bắt đầu.
   Ngoại lệ có chủ đích (16/11/2026): trang Hỏi AI cho dán khoá Gemini RIÊNG, chỉ lưu localStorage của trình
   duyệt đó, gửi kèm từng câu hỏi (header `x-gemini-key`) và thắng khoá mặc định — máy chủ không lưu, không
   ghi log khoá này (`lib/talpha/gemini-key.ts`).
 * **Thị trường trên trang** (04/11/2026): `/admin` → Thị trường thêm nước, sửa tỷ giá, tắt / bật nước.
   Lưu ở bảng `market_overrides` (15/11/2026), PHỦ lên `talpha_rules.json` ở cả dashboard
-  (`lib/talpha/thi-truong.ts`), sync / Sheet / view (`sync/core/thi_truong.py`) và bot
+  (`lib/talpha/market-config.ts`), sync / Sheet / view (`sync/core/thi_truong.py`) và bot
   (`ops/zalo-alerts/thi_truong.js`) — ba bản chạy chung `tests/fixtures/thi_truong_phu.json`, sửa
   luật phủ thì sửa cả ba. Shop POS sinh từ `markets` (`talpha.yaml → poscake` không còn ai đọc).
   Chỉ nước `dang_ban` được kéo đơn / gọi POS; `da_tat` giữ lịch sử. Lưu xong dashboard và bot tự

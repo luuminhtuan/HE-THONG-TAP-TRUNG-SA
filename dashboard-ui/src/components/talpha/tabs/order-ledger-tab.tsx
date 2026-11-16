@@ -10,15 +10,15 @@ import {
     TWD, VND, RMB, d6, STRIPE, PIN_TINT, rowCls, statusCls, mkCls, paymentChaseMessage, countDeliveryOutcomes,
     type Light, type LedgerRowUI, type UnpaidOrder,
 } from "./ledger-shared";
-import PartnerSheetImporter, { isSheetStale, shortImportLabel, type PartnerSheetImport } from "@/components/talpha/nhap-bang-don";
+import PartnerSheetImporter, { isSheetStale, shortImportLabel, type PartnerSheetImport } from "@/components/talpha/partner-sheet-importer";
 import MarketOrderLedger from "./order-ledger-market";
-import { CardList, FixTasksPanel, LightFilterBar, OrderCard, LedgerToolbar, useNarrowScreen, type FixTask } from "./so-don-ui";
+import { CardList, FixTasksPanel, LightFilterBar, OrderCard, LedgerToolbar, useNarrowScreen, type FixTask } from "./order-ledger-shared-ui";
 
 interface Props { dateRange?: { from: Date; to: Date }; projectId?: string }
 
 /** Cảnh báo mang theo BẢNG chi tiết — nói "thiếu 6 mã" rồi bảo đi mở file JSON
  *  thì người đọc vẫn phải tự tra mã nào là hàng gì, dính bao nhiêu đơn. Hiện trong khung
- *  "việc cần sửa dữ liệu" (so-don-ui.tsx), mặc định gập. */
+ *  "việc cần sửa dữ liệu" (order-ledger-shared-ui.tsx), mặc định gập. */
 type Note = FixTask;
 
 /* Màu chữ theo LOẠI dữ liệu, không tô cho vui: mã định danh một tông, ngày một

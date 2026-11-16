@@ -169,7 +169,7 @@ export type NazaMarketPart = {
     phai_nhan_vnd: number | null;   // 本期应退金额VND — có thể ÂM (kỳ chỉ có phí)
     sheets: NazaStatement["sheets"];
     // ── Thêm 08/10/2026 (màn Sing giống Đài). Kho tải trước đó chưa có → tải lại file. ──
-    /** Dòng sheet TỔNG đúng thứ tự file — dựng luồng tiền (cod-so-nuoc.ts). */
+    /** Dòng sheet TỔNG đúng thứ tự file — dựng luồng tiền (cod-market-ledger.ts). */
     tong_dong?: { zh: string; vi: string; so: number }[];
     /** COD quy ra tệ theo tỷ giá từng đơn (COD金额（RMB）), và tiền về sau phí thu hộ (回款金额). */
     quy_te_rmb?: number | null;

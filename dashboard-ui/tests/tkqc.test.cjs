@@ -1,8 +1,8 @@
-// Loại TKQC (04/11/2026) — bản dashboard (src/lib/talpha/tkqc-luat.ts) phải ra CÙNG loại với bản sync
+// Loại TKQC (04/11/2026) — bản dashboard (src/lib/talpha/ad-account-rules.ts) phải ra CÙNG loại với bản sync
 // (sync/core/tkqc.py → loai_lan_dau, tests/test_tkqc.py). Lệch là trang /admin → TKQC "Quét ngay" gán một
 // loại, vòng sync gán loại khác cho TKQC mới.
 const assert = require("assert");
-const L = require("../.test-build/tkqc-luat.js");
+const L = require("../.test-build/ad-account-rules.js");
 
 let pass = 0;
 const t = (ten, fn) => { fn(); pass++; console.log("  ✓ " + ten); };

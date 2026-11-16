@@ -10,13 +10,13 @@ import { ADMIN_SECTIONS, type AdminSectionId } from "./admin-sections";
 
 import AdAccountsTab from "@/components/tabs/ad-accounts-tab";
 import UserManagementTab from "@/components/tabs/user-management-tab";
-import CredentialsTab from "@/components/tabs/khoa-tab";
-import MarketsTab from "@/components/tabs/thi-truong-tab";
+import CredentialsTab from "@/components/tabs/credentials-tab";
+import MarketsTab from "@/components/tabs/markets-tab";
 
 // Mỗi mục một đường dẫn (15/11/2026): /admin/<slug> — tải lại hay gửi link là mở đúng mục.
 // Danh sách mục ở admin-sections.ts (route phía máy chủ cũng đọc để đặt tên thẻ trình duyệt).
 const ICON: Record<AdminSectionId, typeof Megaphone> = {
-  "ad-accounts": Megaphone, users: UsersRound, "thi-truong": Globe2, khoa: KeyRound,
+  "ad-accounts": Megaphone, users: UsersRound, markets: Globe2, credentials: KeyRound,
 };
 const ADMIN_TABS = ADMIN_SECTIONS.map((m) => ({ ...m, icon: ICON[m.id] }));
 
@@ -97,8 +97,8 @@ export default function AdminShell() {
         <div className="p-3 md:p-6">
           {activeTab === "ad-accounts" && <AdAccountsTab />}
           {activeTab === "users" && <UserManagementTab />}
-          {activeTab === "thi-truong" && <MarketsTab />}
-          {activeTab === "khoa" && <CredentialsTab />}
+          {activeTab === "markets" && <MarketsTab />}
+          {activeTab === "credentials" && <CredentialsTab />}
         </div>
       </main>
     </div>

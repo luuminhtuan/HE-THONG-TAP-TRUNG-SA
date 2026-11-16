@@ -1,11 +1,11 @@
-// Route mỏng: việc đọc file TỔNG TEAM nằm ở lib/talpha/sheet-tong-team.ts (dùng chung với
-// tab Lãi lỗ — /api/talpha/lai-lo). Hai chế độ:
+// Route mỏng: việc đọc file TỔNG TEAM nằm ở lib/talpha/team-summary-sheet.ts (dùng chung với
+// tab Lãi lỗ — /api/talpha/income-statement). Hai chế độ:
 //   ?date=YYYY-MM-DD          một ngày — bot Zalo (giữ nguyên dạng trả về).
 //   ?from=YYYY-MM-DD&to=…     cộng cả khoảng — tab Tổng quan, P&L, Marketing.
 import { NextRequest, NextResponse } from "next/server";
 import { getAccess } from "@/lib/talpha/access";
 import { seesAllMarkets } from "@/lib/talpha/access-rules";
-import { readMonthTabs, parseVnNumber, reportForRange } from "@/lib/talpha/sheet-tong-team";
+import { readMonthTabs, parseVnNumber, reportForRange } from "@/lib/talpha/team-summary-sheet";
 
 export const dynamic = "force-dynamic";
 

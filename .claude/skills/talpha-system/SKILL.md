@@ -90,7 +90,7 @@ Văn bản đầy đủ: `docs/TALPHA_METRIC_RULES.md`.
    `fb_ads_data` / `fb_adset_data` / `fb_campaign_data` là **VIEW** chỉ gồm loại "vào báo cáo"
    (`talpha_rules.json → tkqc_loai`). Đừng ghi thẳng vào view. TKQC không nằm trong token nào đọc
    được = thiếu spend âm thầm. (Production BigQuery vẫn theo danh sách khai tay.)
-7. **Luật thị trường có BA bản đọc** (TS `lib/talpha/thi-truong.ts`, Python `sync/core/thi_truong.py`,
+7. **Luật thị trường có BA bản đọc** (TS `lib/talpha/market-config.ts`, Python `sync/core/thi_truong.py`,
    bot `ops/zalo-alerts/thi_truong.js`) chạy chung fixture `tests/fixtures/thi_truong_phu.json` —
    sửa luật phủ thì sửa cả ba.
 8. **Bẫy Unicode tên**: POS lưu "Chu Thuý" (sắc trên Y) ≠ "Thúy" — match bằng `"THU"`.

@@ -7,7 +7,7 @@ import { MaskedCredential, revealCredential } from "./key-reveal";
 
 // Thị trường (04/11/2026) — giám đốc thêm nước, sửa tỷ giá, tắt / bật nước ngay trên dashboard.
 // Lưu ở bảng market_overrides (deploy không đè), phủ lên talpha_rules.json ở cả dashboard, sync,
-// Sheet, bot — xem lib/talpha/thi-truong.ts. Tắt nước = ngừng kéo số mới, GIỮ lịch sử.
+// Sheet, bot — xem lib/talpha/market-config.ts. Tắt nước = ngừng kéo số mới, GIỮ lịch sử.
 // Key POS của shop nhập ngay trong form (15/11/2026): máy gọi thử shop rồi lưu key MÃ HOÁ vào bảng
 // api_credentials — cùng chỗ với Khoá kết nối, khỏi sang trang đó rồi quay lại.
 
@@ -62,7 +62,7 @@ export default function MarketsTab() {
 
     const load = useCallback(async () => {
         try {
-            const r = await fetch("/api/talpha/thi-truong", { cache: "no-store" });
+            const r = await fetch("/api/talpha/market-config", { cache: "no-store" });
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
             setData(j);
@@ -86,7 +86,7 @@ export default function MarketsTab() {
 
     const submit = async (f: Form, isNew: boolean): Promise<string[] | null> => {
         const { key_pos, ...market } = f;
-        const r = await fetch("/api/talpha/thi-truong", {
+        const r = await fetch("/api/talpha/market-config", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ nuoc: market, la_moi: isNew, key_pos: key_pos.trim() || undefined }),
@@ -128,7 +128,7 @@ export default function MarketsTab() {
             : `Bỏ mọi chỗ đã sửa trên trang của ${n.display}, quay về đúng config?`;
         if (!confirm(confirmText)) return;
         setError("");
-        const r = await fetch(`/api/talpha/thi-truong?key=${encodeURIComponent(n.key)}`, { method: "DELETE" });
+        const r = await fetch(`/api/talpha/market-config?key=${encodeURIComponent(n.key)}`, { method: "DELETE" });
         const j = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
         if (!r.ok) setError(j.error || `HTTP ${r.status}`);
         else onSaved(j);

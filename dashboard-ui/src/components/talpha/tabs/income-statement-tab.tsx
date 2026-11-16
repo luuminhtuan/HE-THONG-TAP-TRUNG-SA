@@ -16,7 +16,7 @@ import {
  *   Doanh số → Doanh thu → − Giá vốn → − Chi phí 3PL → = Lãi gộp → − Chi phí khai thác
  *   (ads + vận hành) → = Lợi nhuận sau cùng
  *
- * Số tính ở /api/talpha/lai-lo (lib/talpha/lai-lo.ts). Doanh thu theo KIỆN thật của 3PL — kiện
+ * Số tính ở /api/talpha/income-statement (lib/talpha/income-statement.ts). Doanh thu theo KIỆN thật của 3PL — kiện
  * đang đi nhân tỉ lệ giao thật của nước đó. Luôn hiện hai mức lãi: dự kiến và tối thiểu (coi mọi
  * kiện đang đi là hoàn). Tab P&L ở mục Báo cáo vẫn là số "tạm tính nhanh" (coi mọi đơn giao hết).
  */
@@ -106,7 +106,7 @@ export default function IncomeStatementTab({ dateRange }: Props) {
     useEffect(() => {
         let cancelled = false;
         setLoading(true); setError(null);
-        fetchJson<Data>(`/api/talpha/lai-lo?from=${from}&to=${to}`)
+        fetchJson<Data>(`/api/talpha/income-statement?from=${from}&to=${to}`)
             .then((d) => { if (!cancelled) setData(d); })
             .catch((e) => { if (!cancelled) { setData(null); setError(String(e?.message || e)); } })
             .finally(() => { if (!cancelled) setLoading(false); });
@@ -460,7 +460,7 @@ function OpexSection({ data, taiLai: reload }: { data: Data; taiLai: () => void 
         if (!form) return;
         setSaving(true); setError(null);
         try {
-            await fetchJson("/api/talpha/lai-lo/van-hanh", {
+            await fetchJson("/api/talpha/income-statement/opex", {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     id: form.id, nhom: form.nhom, ten: form.ten, thuoc: form.thuoc, ghi_chu: form.ghi_chu,
@@ -474,7 +474,7 @@ function OpexSection({ data, taiLai: reload }: { data: Data; taiLai: () => void 
     const remove = async (k: OpexItem) => {
         if (!window.confirm(`Xoá khoản "${k.ten}" (${formatMoney(k.so_tien_thang_vnd)}đ/tháng)? Mọi kỳ đã tính sẽ không còn khoản này.`)) return;
         setSaving(true); setError(null);
-        try { await fetchJson(`/api/talpha/lai-lo/van-hanh?id=${encodeURIComponent(k.id)}`, { method: "DELETE" }); reload(); }
+        try { await fetchJson(`/api/talpha/income-statement/opex?id=${encodeURIComponent(k.id)}`, { method: "DELETE" }); reload(); }
         catch (e: any) { setError(String(e?.message || e)); } finally { setSaving(false); }
     };
 

@@ -4,7 +4,7 @@
  * nước người xem thấy (leader gánh 100%).
  */
 const assert = require("assert");
-const L = require("../.test-build/lai-lo.js");
+const L = require("../.test-build/income-statement.js");
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ✓", name); };

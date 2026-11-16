@@ -80,7 +80,7 @@ mốc tự gửi đúng giờ và số đã đủ mới được nhớ — gửi
 | Ads (sáng/trưa/chiều/tối, `/baocao`) | Tiền ads · doanh số · %ads · đơn · mess · tỷ lệ chốt; xếp hạng người **trong nước**; dòng "chưa gán cho ai"; ▲▼ | `/api/talpha/market-report?month=` → bảng `market_monthly_reports` (`format_all.py` ghi mỗi giờ, cùng bộ ô với TỔNG TEAM) |
 | Ads — khi bảng trên thiếu, hoặc cũ hơn vòng OK gần nhất quá 45' | Cùng số đầu tin, **không có xếp hạng người** (tin ghi rõ) | `/api/talpha/sheet-report?date=` → bảng `bao_cao_tab`, tab nước của TỔNG TEAM |
 | Ads — chi tiết camp | Mọi camp của nước đó, tên đầy đủ, theo marketer, tiêu nhiều trước. Lỗi thì tin vẫn đi, thiếu phần camp | `/api/talpha/realtime` (Meta + POS gọi thẳng). Một lượt dùng chung cho mọi nước trong 3', lọc nước theo tên camp |
-| Ads Nhật — số mess | Thay số mess của Meta (Meta không báo tin nhắn ở Nhật) | `/api/talpha/pancake-nuoc` |
+| Ads Nhật — số mess | Thay số mess của Meta (Meta không báo tin nhắn ở Nhật) | `/api/talpha/pancake-messages` |
 | Tin mỗi giờ (JP) | Ads · tin nhắn · bình luận mới · SĐT · đơn · doanh số **theo page**, "(+N)" so giờ trước | `realtime` + `pancake-nuoc`; tổng giờ trước ở `state.json → gioTruoc` |
 | Vận đơn sáng | Hôm qua (đã lấy, mới tới, bắt đầu hoàn); @Thương; khách phải gọi / nhắn (tên, SĐT, cửa hàng, mã lấy hàng, hạn, **câu nhắn soạn sẵn**); nhắc lại khách chưa lấy; sắp giao; nên huỷ; hỏi đối tác; đơn lệch | `/api/talpha/tracking?market=&from=<60 ngày trước>&to=<hôm nay>` — **cùng route màn Theo dõi vận đơn**, cùng luật cảnh báo `buildAlerts` |
 | Vận đơn tối | Khách phải gọi sáng nay: đã lấy (cứu bao nhiêu tiền) / chưa lấy / bị trả về; khách mới tới đã lấy chưa; số cả ngày | `tracking` + danh sách sáng ở `state.json → vanDonSang` |
@@ -181,7 +181,7 @@ Lệnh lỗi → bot trả một dòng `⚠️ Chưa lấy được số lúc n�
 * `keepAlive` mỗi giờ và lưu lại cookie mới vào `.zalo_session.json`.
 
 **Thị trường đổi** (`/admin` → Thị trường): mỗi 60 giây bot so vân tay `market_overrides`
-(`thi_truong.js`, qua `/api/talpha/thi-truong?overrides=1`). Khác lúc khởi động và **không** đang gửi →
+(`thi_truong.js`, qua `/api/talpha/market-config?overrides=1`). Khác lúc khởi động và **không** đang gửi →
 `process.exit(0)` để pm2 / Docker dựng lại bot với luật mới.
 
 **Chạy tay** (thêm `--dry-run` để chỉ in, không đăng nhập, không gửi):

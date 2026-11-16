@@ -1,5 +1,5 @@
 // node tin_gio.test.js — tin MỖI GIỜ + số mess Pancake (Nhật, Sỹ Anh yêu cầu 09/10/2026).
-// Số dưới đây là số DỰNG theo đúng dạng /api/talpha/pancake-nuoc và /api/talpha/realtime trả về.
+// Số dưới đây là số DỰNG theo đúng dạng /api/talpha/pancake-messages và /api/talpha/realtime trả về.
 const assert = require("assert");
 const { ghepTheoTrang, messThayTuPancake, buildTinGio } = require("./tin_gio");
 const { buildBaoCaoNuoc } = require("./daily_report");

@@ -70,7 +70,7 @@ t("chia mess page cho camp: theo click, không click thì theo tiền, tổng lu
     assert.deepStrictEqual(P.splitMessByCampaign(5, [{ spend_vnd: 1 }]), [5]);
     assert.deepStrictEqual(P.splitMessByCampaign(0, [{ link_clicks: 3 }, { link_clicks: 1 }]), [0, 0]);
 });
-const B = require("../.test-build/ban-nuoc.js");
+const B = require("../.test-build/market-monthly-report.js");
 t("bản số theo nước: tháng trong khoảng, gom mess Nhật theo người trong khoảng ngày", () => {
     assert.deepStrictEqual(B.monthsInRange("2026-09-28", "2026-11-02"), ["2026-09", "2026-10", "2026-11"]);
     assert.deepStrictEqual(B.monthsInRange("2026-12-30", "2027-01-02"), ["2026-12", "2027-01"]);

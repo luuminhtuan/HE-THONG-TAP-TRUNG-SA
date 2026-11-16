@@ -2,24 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { MARKETS_PUBLIC, REPORT_START_DATE } from "@/lib/talpha/rules";
 import { getAccess } from "@/lib/talpha/access";
 import { canMarket, seesAllMarkets } from "@/lib/talpha/access-rules";
-import { reportForRange } from "@/lib/talpha/sheet-tong-team";
+import { reportForRange } from "@/lib/talpha/team-summary-sheet";
 import { homNayVN } from "@/lib/talpha/order-ledger";
 import { readStoreFresh } from "@/lib/talpha/store";
 import {
     estimatePending3pl, emptyAmounts, allocateOpex, sumParcels, totalFees, computeDeliveryRate,
     type Pending3pl, type Khoan, type OpexItem, type ParcelTotals, type DeliveryRate,
-} from "@/lib/talpha/lai-lo";
-import { DELIVERY_RATE_CFG, PENDING_3PL_DAYS, OPEX_CATEGORIES, loadMarketParcels } from "@/lib/talpha/lai-lo-nguon";
+} from "@/lib/talpha/income-statement";
+import { DELIVERY_RATE_CFG, PENDING_3PL_DAYS, OPEX_CATEGORIES, loadMarketParcels } from "@/lib/talpha/income-statement-sources";
 
 export const dynamic = "force-dynamic";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // ═══════════════════════════════════════════════════════════════════
-// LÃI LỖ — tab Kế toán → Lãi lỗ (04/11/2026). Cách tính: lib/talpha/lai-lo.ts.
+// LÃI LỖ — tab Kế toán → Lãi lỗ (04/11/2026). Cách tính: lib/talpha/income-statement.ts.
 //
-//   Doanh số · ads  ← file TỔNG TEAM (lib/talpha/sheet-tong-team.ts) — khớp tab Tổng quan
-//   Kiện · giá vốn · phí 3PL ← lib/talpha/lai-lo-nguon.ts — cùng nguồn Sổ đơn, Tiền COD về
+//   Doanh số · ads  ← file TỔNG TEAM (lib/talpha/team-summary-sheet.ts) — khớp tab Tổng quan
+//   Kiện · giá vốn · phí 3PL ← lib/talpha/income-statement-sources.ts — cùng nguồn Sổ đơn, Tiền COD về
 //   Chi phí vận hành ← data/chi_phi_van_hanh.json (giám đốc nhập ở chính tab này)
 //
 // Ai đăng nhập có tab cũng xem được (Sỹ Anh chốt "tất cả"), nhưng chỉ nước của team mình.

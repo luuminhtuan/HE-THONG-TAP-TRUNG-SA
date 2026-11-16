@@ -2,7 +2,7 @@
 // Đọc kho số KHÔNG cần await (15/11/2026) — chỉ cho hai chỗ phải có số ngay lúc nạp code:
 //   • rules.ts: RULES (luật gốc + thị trường nhập trên trang, bảng market_overrides) là hằng số
 //     mà hàng chục hằng số khác sinh ra từ nó, tính một lần khi module được nạp;
-//   • khoa.ts: docKhoa() được gọi đồng bộ ở khắp nơi — lần đọc đầu nạp bảng api_credentials.
+//   • credentials.ts: docKhoa() được gọi đồng bộ ở khắp nơi — lần đọc đầu nạp bảng api_credentials.
 // Node không có driver Postgres đồng bộ, nên chạy scripts/sync-query.cjs ở tiến trình con và
 // chờ nó xong (≈ 100–300 ms, một lần mỗi tiến trình). Chỗ nào await được thì dùng lib/db.ts.
 // ═══════════════════════════════════════════════════════════════════

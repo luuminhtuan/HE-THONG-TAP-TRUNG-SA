@@ -58,7 +58,7 @@ export const NAV_GROUPS: NavGroup[] = [
     {
         id: "ke-toan", emoji: "💼", label: "Kế toán",
         tabs: [
-            { id: "lai-lo", label: "Lãi lỗ", slug: "income-statement" },
+            { id: "income-statement", label: "Lãi lỗ", slug: "income-statement" },
             { id: "cod-recon", label: "Tiền COD về", slug: "cod-recon" },
             { id: "ads-recon", label: "Thanh toán quảng cáo", slug: "ads-recon" },
         ],

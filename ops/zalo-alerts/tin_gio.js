@@ -2,8 +2,8 @@
 // KHÔNG có chỉ số tin nhắn trên Meta (luật bảo vệ thông tin liên lạc của Nhật), nên Ads Manager
 // không cho biết mess, giá mess, đơn, doanh số. Tin này ghép ba nguồn theo PAGE:
 //   • tiền ads từng camp — Meta trực tiếp (/api/talpha/realtime, bot gọi một lượt mỗi mốc);
-//   • tin nhắn / bình luận mới / có SĐT — Pancake (/api/talpha/pancake-nuoc);
-//   • đơn + doanh số — bảng đơn POS, cùng luật Sheet (/api/talpha/pancake-nuoc).
+//   • tin nhắn / bình luận mới / có SĐT — Pancake (/api/talpha/pancake-messages);
+//   • đơn + doanh số — bảng đơn POS, cùng luật Sheet (/api/talpha/pancake-messages).
 // Camp nối page bằng ô tên page trong tên camp (mỗi camp Nhật một page). Hàm thuần — có test.
 const { B, I } = require("./zalo_text");
 const { chuanTenPage, trangCuaCamp, chuTinhSo, DISPLAY, campaignMarket, isTestCampaign } = require("./rules");
@@ -80,7 +80,7 @@ const NHOM_TOI_DA = 4;
 
 /**
  * Ghép camp (Meta) + page (Pancake) + đơn (POS) theo tên page đã chuẩn hoá.
- * @param pk    kết quả /api/talpha/pancake-nuoc
+ * @param pk    kết quả /api/talpha/pancake-messages
  * @param camps campaigns của /api/talpha/realtime (mọi nước — lọc ở đây theo pk.key)
  * @returns { trang: [...], tong, khongRo }
  */

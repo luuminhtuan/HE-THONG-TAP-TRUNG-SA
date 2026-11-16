@@ -51,14 +51,14 @@ mọi mã ("carrier temporarily does not support registration") nên Nhật ch�
 bên lên đơn báo hàng đi JAPAN POST → đổi sang 10021, 17TRACK nhận (thử mã 256500726156). CHƯA CÓ: phí ship 3PL Nhật (P&L ship 0).
 **Meta không báo số tin nhắn cho quảng cáo ở Nhật** (luật bảo vệ thông tin liên lạc của Nhật) —
 camp Nhật là camp tin nhắn mà insights trả 0 mess. Số tin nhắn thật đếm từ Pancake:
-`/api/talpha/pancake-nuoc?market=JP&date=` (`lib/talpha/pancake.ts`, token tài khoản Pancake
+`/api/talpha/pancake-messages?market=JP&date=` (`lib/talpha/pancake.ts`, token tài khoản Pancake
 `TALPHA_PANCAKE_API_TOKEN`) — tin nhắn / bình luận mới / SĐT theo page + đơn, doanh số theo page.
 Bot Zalo dùng cho tin MỖI GIỜ của nhóm Nhật và số mess trong bản tin ads Nhật. Vòng ghi Sheet đếm
 mess Nhật từ Pancake (ops/talpha_reports/pancake_mess.py, 09/10/2026) → file TỔNG TEAM, tab Nhật Bản và
 bản số theo nước (bảng `market_monthly_reports`) đã có mess thật. Dashboard (13/10/2026): Ads Command Center
 (`/api/talpha/realtime`) thay mess camp Nhật bằng hội thoại mới Pancake của page trong tên camp, chia
 camp/ad theo click Messenger (`lib/talpha/pancake-api.ts`, dấu "P" ở cột mess); tab Marketing lấy ô
-Messages theo Sheet, bảng từng người (xem theo team) cộng mess Nhật từ bản số (`lib/talpha/ban-nuoc.ts`).
+Messages theo Sheet, bảng từng người (xem theo team) cộng mess Nhật từ bản số (`lib/talpha/market-monthly-report.ts`).
 Nước dùng luật này khai `markets.<nước>.mess_source = "pancake"` (`MESS_PANCAKE` trong rules.ts).
 
 | Vai (`role`) | Người | Thấy gì |
@@ -210,7 +210,7 @@ người ta đã gửi nhau hết mở được.**
 | | P&L theo SP | `tabs/product-pnl-tab.tsx` | `/api/talpha/product-pnl` (đơn đã chốt × giá vốn × ads theo mã SP trong tên camp) |
 | 🧾 Đơn hàng | Sổ đơn hàng (+ khung Đòi tiền NAZA) | `tabs/order-ledger-tab.tsx` · `tabs/order-ledger-market.tsx` | `/api/talpha/order-ledger` + `cod-actions` (Đài) · `order-ledger/market` (Singapore, UAE) |
 | | Theo dõi vận đơn | `tabs/tracking-tab.tsx` | `/api/talpha/tracking` |
-| 💼 Kế toán | Lãi lỗ (04/11/2026, mọi vai) | `tabs/lai-lo-tab.tsx` | `/api/talpha/lai-lo` (TỔNG TEAM + kiện 3PL + sao kê + kho `chi_phi_van_hanh`) |
+| 💼 Kế toán | Lãi lỗ (04/11/2026, mọi vai) | `tabs/income-statement-tab.tsx` | `/api/talpha/income-statement` (TỔNG TEAM + kiện 3PL + sao kê + kho `chi_phi_van_hanh`) |
 | | Tiền COD về | `tabs/cod-recon-tab.tsx` | `/api/talpha/order-ledger` + `cod-recon` + `cod-actions` (Đài) · `cod-recon/market` (Singapore, UAE) |
 | | Thanh toán quảng cáo (chỉ giám đốc) | `tabs/ads-recon-tab.tsx` | `/api/talpha/ads-recon` |
 | 📦 Sản phẩm | Sản phẩm & Kho | `tabs/products-tab.tsx` | `/api/talpha/inventory` |
@@ -287,7 +287,7 @@ trong chuỗi) bị từ chối; vai `talpha_doc_nuoc` của họ cũng chỉ đ
 | `order-ledger` | Sổ đơn Đài: mỗi đơn một dòng, khách + tiền + vòng đời (bảng NAZA + sao kê). `?from&to` (27/10/2026): `rows` chỉ còn đơn lên trong khoảng (`locTheoNgayLenDon`); kỳ sao kê, Đòi tiền NAZA, cảnh báo vẫn tính mọi đơn. Không có `from` (Tiền COD về) = mọi đơn | Giao diện |
 | `order-ledger/market?market=SG\|AE` | Sổ đơn Singapore, UAE (29/09/2026): đơn + khách + hàng + trạng thái giao + đèn việc phải làm; `&from&to` (27/10/2026) chỉ giữ đơn lên trong khoảng đang chọn — ô đếm, tỉ lệ giao/hoàn theo đó; cùng nguồn `loadMarketShipments` với Theo dõi vận đơn và Tiền COD về. Hàng: Sing ở cột SKU bảng đối tác, UAE ở `order_items`. Chưa có sao kê nên chưa có cột tiền về | Giao diện (nút Đài Loan / Singapore / UAE) |
 | `cod-recon` | Khớp sao kê 3PL với đơn đã giao | Giao diện |
-| `cod-recon/market?market=SG\|AE` | Tiền COD về nước ngoài Đài, bước 1 (26/09/2026): tiền còn ở đâu — đã giao / chưa giao / hoàn-huỷ. SG đọc bảng đối tác + 17TRACK, UAE (từ 28/09/2026) đọc đơn POS + trạng thái tra ở WeShip — cả hai chung `lib/talpha/tracking-market.ts` với Theo dõi vận đơn. Bước 2 (08/10/2026): POST tải sao kê / DELETE xoá kỳ, kho riêng `data/cod_statements_<sg|ae>.json`, nhận file NAZA hoặc bảng .xlsx/.csv có mã vận đơn + tiền COD, khớp từng đơn (`lib/talpha/cod-statement-market.ts`); sổ cùng bố cục Đài — việc hôm nay, ngân hàng, luồng tiền, máy soát, tỷ giá (`lib/talpha/cod-so-nuoc.ts`, ghi việc qua `cod-recon/market/actions`) — xem `docs/DOI_SOAT_COD.md` | Giao diện (nút Đài Loan / Singapore / UAE, nút “Tải sao kê …”) |
+| `cod-recon/market?market=SG\|AE` | Tiền COD về nước ngoài Đài, bước 1 (26/09/2026): tiền còn ở đâu — đã giao / chưa giao / hoàn-huỷ. SG đọc bảng đối tác + 17TRACK, UAE (từ 28/09/2026) đọc đơn POS + trạng thái tra ở WeShip — cả hai chung `lib/talpha/tracking-market.ts` với Theo dõi vận đơn. Bước 2 (08/10/2026): POST tải sao kê / DELETE xoá kỳ, kho riêng `data/cod_statements_<sg|ae>.json`, nhận file NAZA hoặc bảng .xlsx/.csv có mã vận đơn + tiền COD, khớp từng đơn (`lib/talpha/cod-statement-market.ts`); sổ cùng bố cục Đài — việc hôm nay, ngân hàng, luồng tiền, máy soát, tỷ giá (`lib/talpha/cod-market-ledger.ts`, ghi việc qua `cod-recon/market/actions`) — xem `docs/DOI_SOAT_COD.md` | Giao diện (nút Đài Loan / Singapore / UAE, nút “Tải sao kê …”) |
 | `tracking` · `tracking/import` | 17TRACK + nạp bảng đơn đối tác. `?market=SG`: Singapore sổ riêng (kho `tracking_sg`), đơn đọc từ bảng `partner_orders`. `?market=AE` (28/09/2026): UAE không có bảng đối tác, 17TRACK không có hãng — đơn đọc từ POS (mã AWB ở `sale_order.partner → extend_code`), POST tra thẳng trang WeShip `portal.weshipme.com/tracking` (`lib/talpha/weship.ts`, miễn phí, không quota), sổ `data/tracking_ae.json` | Giao diện (nút Đài Loan / Singapore / UAE, nút “Tra WeShip”) · `talpha-tracking.timer` 6h + 21:30 (nạp bảng Đài + đồng bộ từng nước) · bot Zalo 08:30 + 22:00 (mỗi nước một tin, vào nhóm "ADS + VẬN ĐƠN" của nước đó) |
 | `ads-recon` | Đối soát chi phí TKQC với sao kê thẻ | Giao diện |
 | `cod-actions` | Đánh dấu đã đòi / đã nhận tiền | Giao diện |
@@ -302,7 +302,7 @@ trong chuỗi) bị từ chối; vai `talpha_doc_nuoc` của họ cũng chỉ đ
 | `thi-truong` | Thị trường (04/11/2026): GET mọi nước đã phủ + nguồn (config / sửa trên trang / thêm trên trang) + có key POS chưa; POST thêm / sửa / bật / tắt một nước, kèm `key_pos` thì gọi thử shop rồi lưu luôn key POS (mã hoá, bảng `api_credentials` — 15/11/2026, khỏi sang Khoá kết nối; chỉ đổi key thì không khởi động lại) (soát mã shop, mã campaign trùng nước khác, tỷ giá, số chia; bật bán thì gọi thử shop POS trước) → ghi bảng `market_overrides` rồi tự khởi động lại; `?overrides=1` trả phần phủ + vân tay cho bot; DELETE bỏ phần sửa trên trang của nước có trong config; nước thêm trên trang thì XOÁ HẲN (kèm key POS) nhưng chỉ khi chưa có đơn trong `sale_order` và chưa có chi tiêu Meta của camp mang mã nước đó (15/11/2026, cho nước tạo nhầm) — có số rồi thì chỉ tắt được. Chỉ giám đốc | `/admin` → Thị trường |
 | `khoa` | Khoá kết nối (04/11/2026): GET trạng thái từng khoá (đã che, `?kiem=1` gọi thử), POST gọi thử khoá mới với Meta / POS / Pancake / 17TRACK / Gemini rồi mới lưu vào bảng `api_credentials` (mã hoá), DELETE quay về `.env.local`. Trang chia tab theo loại khoá (`/admin/credentials?tab=meta|pos|pancake|track17|gemini`, 15/11/2026). Chỉ giám đốc | `/admin` → Khoá kết nối |
 | `pnl-costs` | Giá vốn + phí ship ước tính của đơn đã chốt, theo ngày và nước; liệt kê mã chưa có giá | Tab P&L · Tổng quan |
-| `lai-lo` | Lãi lỗ đủ mọi khoản theo nước (`lib/talpha/lai-lo.ts` hàm thuần + test, nạp kiện ở `lai-lo-nguon.ts`). Doanh số + ads đọc TỔNG TEAM qua `lib/talpha/sheet-tong-team.ts` (chung với `sheet-report`); kiện Đài qua `lib/talpha/so-don-dai.ts` (chung với `order-ledger`). Route tự cắt nước theo team; chi phí chung chia theo doanh số MỌI nước | Tab Lãi lỗ |
+| `lai-lo` | Lãi lỗ đủ mọi khoản theo nước (`lib/talpha/income-statement.ts` hàm thuần + test, nạp kiện ở `income-statement-sources.ts`). Doanh số + ads đọc TỔNG TEAM qua `lib/talpha/team-summary-sheet.ts` (chung với `sheet-report`); kiện Đài qua `lib/talpha/tw-order-ledger.ts` (chung với `order-ledger`). Route tự cắt nước theo team; chi phí chung chia theo doanh số MỌI nước | Tab Lãi lỗ |
 | `lai-lo/van-hanh` | POST thêm/sửa · DELETE xoá một khoản chi phí vận hành — chỉ người xem hết (giám đốc) | Tab Lãi lỗ |
 | `product-pnl` | P&L từng sản phẩm: doanh số chia theo số lượng, ads theo mã SP trong tên campaign | Tab P&L theo SP |
 
@@ -343,7 +343,7 @@ talpha-sync (cần khoá Google): mã vận đơn, ngày xuất kho, trạng th�
 | Thành phần | Nơi chạy | Khởi động bằng |
 |:--|:--|:--|
 | Dashboard | VPS `139.180.131.21:3000`, `/opt/talpha` | pm2 `talpha-dashboard` — `ops/pm2/ecosystem.vps.config.js` |
-| HTTPS + app cài được (PWA) | `https://139.180.131.21` (06/10/2026) — nginx 443 → `127.0.0.1:3000` | `ops/deploy/nginx-talpha-https.conf`, `vps-setup.sh` tự chép mỗi lần deploy. Dùng chung chứng chỉ Let's Encrypt **cho IP** (hạn 6 ngày, `certbot-renew.timer` của AI Sale gia hạn). App: `src/app/manifest.ts`, `public/sw.js` (KHÔNG lưu số liệu — chỉ trang mất mạng), nút "Cài app" `components/talpha/cai-app.tsx`. Điện thoại chỉ cài được qua HTTPS |
+| HTTPS + app cài được (PWA) | `https://139.180.131.21` (06/10/2026) — nginx 443 → `127.0.0.1:3000` | `ops/deploy/nginx-talpha-https.conf`, `vps-setup.sh` tự chép mỗi lần deploy. Dùng chung chứng chỉ Let's Encrypt **cho IP** (hạn 6 ngày, `certbot-renew.timer` của AI Sale gia hạn). App: `src/app/manifest.ts`, `public/sw.js` (KHÔNG lưu số liệu — chỉ trang mất mạng), nút "Cài app" `components/talpha/pwa-install-prompt.tsx`. Điện thoại chỉ cài được qua HTTPS |
 | Kéo số vào kho số | VPS, mỗi giờ phút :00 | systemd `talpha-sync.timer` → `sync/talpha/talpha_sync.py` |
 | Dựng báo cáo tháng (+ Google Sheets) | VPS, mỗi giờ phút :20 | systemd `talpha-report.timer` → `/root/talpha_reports/daily_guarded.sh` |
 | Snapshot tồn kho (dự phòng tab Sản phẩm) | VPS, mỗi giờ phút :40 (30/10/2026) | systemd `talpha-snapshot.timer` → `ops/talpha_reports/snapshot_cron.sh inventory`, do `vps-setup.sh` dựng mỗi lần deploy. Log `/root/talpha_reports/snapshot_<ngày>.log` |

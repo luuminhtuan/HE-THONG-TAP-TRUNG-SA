@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getAccess } from "@/lib/talpha/access";
-import { getCredential, verifyCredential, saveCredential } from "@/lib/talpha/khoa";
-import { maskCredential, credentialValueError } from "@/lib/talpha/khoa-file";
+import { getCredential, verifyCredential, saveCredential } from "@/lib/talpha/credentials";
+import { maskCredential, credentialValueError } from "@/lib/talpha/credential-utils";
 import { POS_API_URL } from "@/lib/talpha/rules";
-import { overrideFromInput, marketInputErrors, inputFromRules, marketOfCampaign, applyMarketOverrides, type MarketInput } from "@/lib/talpha/thi-truong";
-import { needsRestart, readOverrides, readBaseRules, scheduleRestart, latestRules, saveMarketOverride, overridesFingerprint } from "@/lib/talpha/thi-truong-luu";
+import { overrideFromInput, marketInputErrors, inputFromRules, marketOfCampaign, applyMarketOverrides, type MarketInput } from "@/lib/talpha/market-config";
+import { needsRestart, readOverrides, readBaseRules, scheduleRestart, latestRules, saveMarketOverride, overridesFingerprint } from "@/lib/talpha/market-store";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 //                               nước thêm trên trang: XOÁ HẲN (cả key POS) — chỉ khi chưa có đơn,
 //                               chưa có chi tiêu (15/11/2026, vd nước tạo nhầm)
 //
-// Lưu vào bảng market_overrides (lib/talpha/thi-truong-luu.ts) rồi dashboard tự khởi động lại.
+// Lưu vào bảng market_overrides (lib/talpha/market-store.ts) rồi dashboard tự khởi động lại.
 // Nước thêm trên trang đã có đơn / chi tiêu thì KHÔNG xoá được, chỉ tắt: xoá là đơn cũ mất tỷ giá,
 // chi tiêu của camp mang mã nước đó nhảy về nước mặc định (Đài).
 

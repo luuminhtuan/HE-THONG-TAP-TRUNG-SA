@@ -38,7 +38,7 @@
       "AE",
       "JP"
     ],
-    "_messPancake_note": "Nước Meta không báo số tin nhắn (Nhật — luật bảo vệ thông tin liên lạc): bản tin ads lấy số mess từ Pancake (/api/talpha/pancake-nuoc). Sỹ Anh yêu cầu 09/10/2026.",
+    "_messPancake_note": "Nước Meta không báo số tin nhắn (Nhật — luật bảo vệ thông tin liên lạc): bản tin ads lấy số mess từ Pancake (/api/talpha/pancake-messages). Sỹ Anh yêu cầu 09/10/2026.",
     "messPancake": [
       "JP"
     ]
@@ -53,7 +53,7 @@
     "phut": 5,
     "catchUpMinutes": 40,
     "boGioCoBanTin": true,
-    "url": "/api/talpha/pancake-nuoc"
+    "url": "/api/talpha/pancake-messages"
   },
   "vanDon": {
     "at": "08:30",

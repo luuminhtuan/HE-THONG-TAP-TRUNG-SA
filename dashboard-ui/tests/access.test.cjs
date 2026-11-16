@@ -81,7 +81,7 @@ t("leader thấy Chi phí quảng cáo + Ads Command Center (route đã tự l�
 });
 // 04/11/2026 Sỹ Anh chốt tab Lãi lỗ (Kế toán) "tất cả" cùng xem — sale vẫn không vào Tiền COD về.
 t("Thương thấy đơn, vận đơn, kho, khách + Lãi lỗ — không báo cáo, không quảng cáo, không Tiền COD về", () => {
-    assert.deepStrictEqual([...thuong.tabs].sort(), ["customers", "lai-lo", "order-ledger", "products", "tracking"]);
+    assert.deepStrictEqual([...thuong.tabs].sort(), ["customers", "income-statement", "order-ledger", "products", "tracking"]);
 });
 // Mục Kế toán (Sỹ Anh chốt 07/10/2026): Tiền COD về do leader nước đó + giám đốc kiểm soát chung.
 t("Kế toán: leader thấy Tiền COD về của nước mình, không thấy Thanh toán quảng cáo", () => {
@@ -127,10 +127,10 @@ t("Lộc mở được của UAE", () => {
 t("route một nước không ghi nước → từ chối người xem một phần", () => {
     assert.ok(!A.checkApi(loc, "/api/talpha/order-ledger/market", q("")).ok);
 });
-t("route chỉ giám đốc: ads-recon, ceo-ask, export, users, ad-accounts, ads-alerts, khoa, thi-truong", () => {
+t("route chỉ giám đốc: ads-recon, ceo-ask, export, users, ad-accounts, ads-alerts, credentials, market-config", () => {
     for (const p of ["/api/talpha/ads-recon", "/api/talpha/ceo-ask", "/api/talpha/export-report",
         "/api/users", "/api/ad-accounts", "/api/talpha/sync-inventory", "/api/talpha/ads-alerts",
-        "/api/talpha/khoa", "/api/talpha/thi-truong"]) {
+        "/api/talpha/credentials", "/api/talpha/market-config"]) {
         assert.ok(!A.checkApi(thuong, p, q("")).ok, p);
         assert.ok(A.checkApi(sanh, p, q("")).ok, p);
     }
@@ -231,14 +231,14 @@ t("biểu thức nước theo tên campaign khớp luật campaignMarket (ô đ�
 
 t("Lãi lỗ (Kế toán, 04/11/2026): mọi vai có tab, gọi được route — route tự cắt nước", () => {
     for (const u of [loc, thai, thuong]) {
-        assert.ok(u.tabs.includes("lai-lo"), u.name);
-        assert.ok(A.checkApi(u, "/api/talpha/lai-lo", q("from=2026-10-01&to=2026-10-31")).ok, u.name);
+        assert.ok(u.tabs.includes("income-statement"), u.name);
+        assert.ok(A.checkApi(u, "/api/talpha/income-statement", q("from=2026-10-01&to=2026-10-31")).ok, u.name);
         // Nhánh ghi chi phí vận hành: cửa mở, route tự chặn người không xem hết.
-        assert.ok(A.checkApi(u, "/api/talpha/lai-lo/van-hanh", q("")).ok, u.name);
+        assert.ok(A.checkApi(u, "/api/talpha/income-statement/opex", q("")).ok, u.name);
         assert.ok(!u.full, u.name);
     }
     const mk = A.accessForUser({ id: "6", name: "MK", role: "marketer", teams: ["dong_nam_a"] });
-    assert.ok(mk.tabs.includes("lai-lo"));
-    assert.ok(A.ALL_TABS.includes("lai-lo"));
+    assert.ok(mk.tabs.includes("income-statement"));
+    assert.ok(A.ALL_TABS.includes("income-statement"));
 });
 console.log(`\n${pass} phép thử phân quyền qua.`);

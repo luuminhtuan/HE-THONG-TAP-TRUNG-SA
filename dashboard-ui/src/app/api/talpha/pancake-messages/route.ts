@@ -1,4 +1,4 @@
-// GET /api/talpha/pancake-nuoc?market=JP&date=YYYY-MM-DD[&trang=Tên page 1|Tên page 2]
+// GET /api/talpha/pancake-messages?market=JP&date=YYYY-MM-DD[&trang=Tên page 1|Tên page 2]
 //
 // Số của MỘT nước một ngày theo PAGE — cho nước mà Meta không báo số tin nhắn (Nhật, Sỹ Anh yêu
 // cầu 09/10/2026: tin Zalo mỗi giờ có mess, giá mess, đơn, doanh số). Bot Zalo ghép thêm tiền

@@ -27,7 +27,7 @@ paths:
 - Đường dẫn file cấu hình hỏi `lib/talpha/config-path.ts`, đừng ghép `process.cwd()`.
 - Tiền POS chia `posMoneyDivisor()` — đừng gõ `/100` (Đài, Nhật lưu nguyên tiền nên chia 1).
 - Chi phí quảng cáo đã là VND — không quy đổi.
-- Khoá kết nối đọc qua `docKhoa()` (`lib/talpha/khoa.ts`) — đừng đọc `process.env` thẳng cho khoá.
+- Khoá kết nối đọc qua `docKhoa()` (`lib/talpha/credentials.ts`) — đừng đọc `process.env` thẳng cho khoá.
 - Kho số đọc qua `lib/db.ts`: `query(sql, { ten })`, tham số `@ten`. SQL do trình duyệt / AI viết chạy
   bằng `queryChiDoc` (vai chỉ đọc).
 - Dữ liệu người dùng nhập (sao kê, việc đối soát, vận đơn, chi phí vận hành) đọc/ghi qua

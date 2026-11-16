@@ -4,8 +4,8 @@
 export const ADMIN_SECTIONS = [
     { id: "ad-accounts", slug: "ad-accounts", label: "TKQC" },
     { id: "users", slug: "users", label: "Quản lý User" },
-    { id: "thi-truong", slug: "markets", label: "Thị trường" },
-    { id: "khoa", slug: "credentials", label: "Khoá kết nối" },
+    { id: "markets", slug: "markets", label: "Thị trường" },
+    { id: "credentials", slug: "credentials", label: "Khoá kết nối" },
 ] as const;
 
 export type AdminSectionId = (typeof ADMIN_SECTIONS)[number]["id"];

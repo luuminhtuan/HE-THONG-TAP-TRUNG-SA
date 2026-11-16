@@ -5,8 +5,8 @@
 //   POST {account_id, loai, ghi_chu?}   đổi loại — có tác dụng ngay ở mọi báo cáo
 //   POST {action: "quet"}       hỏi Meta ngay bằng token đang lưu (khỏi chờ vòng sync đầu giờ)
 import { NextRequest, NextResponse } from "next/server";
-import { getAdAccountDirectory, setAccountKind, scanNow } from "@/lib/talpha/tkqc";
-import { listAccountKinds } from "@/lib/talpha/tkqc-luat";
+import { getAdAccountDirectory, setAccountKind, scanNow } from "@/lib/talpha/ad-accounts";
+import { listAccountKinds } from "@/lib/talpha/ad-account-rules";
 
 export const dynamic = "force-dynamic";
 

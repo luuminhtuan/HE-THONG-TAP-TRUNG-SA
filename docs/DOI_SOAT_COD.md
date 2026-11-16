@@ -311,7 +311,7 @@ Singapore / UAE** + kéo thả file vào màn, như Đài. Route `cod-recon/mark
 * Hai file NAZA cùng ngày = cùng kỳ (tải bản sửa thì thay).
 
 **Màn Sing/UAE cùng bố cục Đài** (Sỹ Anh 08/10/2026: "sao giao diện phần đối soát COD Sing không
-giống Đài"). Sổ dựng ở `lib/talpha/cod-so-nuoc.ts` (có test, số lấy từ hai file thật), cùng luật Đài:
+giống Đài"). Sổ dựng ở `lib/talpha/cod-market-ledger.ts` (có test, số lấy từ hai file thật), cùng luật Đài:
 
 * Σ bốn ô (đã gửi về · còn phải gửi · chưa giao xong · ngân hàng) + "Cách tính". Còn phải gửi ước đi
   đúng luồng NAZA kỳ gần nhất: COD × tỷ giá S$→¥ × (1 − phí thu hộ thật) − phí giao trung bình cho

@@ -3,13 +3,13 @@ import { randomUUID } from "crypto";
 import { MARKETS_PUBLIC } from "@/lib/talpha/rules";
 import { getAccess } from "@/lib/talpha/access";
 import { updateStore } from "@/lib/talpha/store";
-import { opexItemError, type OpexItem } from "@/lib/talpha/lai-lo";
+import { opexItemError, type OpexItem } from "@/lib/talpha/income-statement";
 
 export const dynamic = "force-dynamic";
 
 // Chi phí vận hành (lương, mặt bằng, phần mềm…) của tab Lãi lỗ — kho data/chi_phi_van_hanh.json.
 // CHỈ người xem hết (giám đốc) ghi được: lương từng người là số riêng của công ty. Cửa proxy.ts
-// đã cho mọi người có tab "lai-lo" gọi tới đây (luật /api/talpha/lai-lo phủ cả nhánh con),
+// đã cho mọi người có tab "income-statement" gọi tới đây (luật /api/talpha/income-statement phủ cả nhánh con),
 // nên route tự chặn ghi.
 type OpexStore = { items: OpexItem[] };
 const OPEX_STORE = "chi_phi_van_hanh";

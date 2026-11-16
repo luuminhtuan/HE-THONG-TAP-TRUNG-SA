@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════════════
 // Bản số theo NƯỚC × NGÀY × NGƯỜI — phần ĐỌC KHO (bảng market_monthly_reports, 15/11/2026).
-// Phần thuần (cacThang, gomMess, kiểu BanNuoc) ở ./ban-nuoc.ts.
+// Phần thuần (cacThang, gomMess, kiểu BanNuoc) ở ./market-monthly-report.ts.
 // ═══════════════════════════════════════════════════════════════════
 import { query } from "@/lib/db";
-import { monthsInRange, sumMessByPerson, type MarketMonthlyReport } from "./ban-nuoc";
+import { monthsInRange, sumMessByPerson, type MarketMonthlyReport } from "./market-monthly-report";
 import { MESS_PANCAKE } from "./rules";
 
 /** Bản số của một tháng "YYYY-MM", hoặc null nếu vòng ghi Sheet chưa ghi tháng đó. */

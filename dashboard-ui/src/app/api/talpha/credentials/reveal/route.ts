@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccess } from "@/lib/talpha/access";
-import { listCredentials, getCredential } from "@/lib/talpha/khoa";
+import { listCredentials, getCredential } from "@/lib/talpha/credentials";
 
 export const dynamic = "force-dynamic";
 
 // Xem khoá đang dùng (15/11/2026) — nút con mắt ở /admin → Khoá kết nối và Thị trường. Chỉ giám đốc
-// (API_RULES: /api/talpha/khoa là full). Danh sách khoá (GET /api/talpha/khoa) vẫn chỉ trả bản che;
+// (API_RULES: /api/talpha/credentials là full). Danh sách khoá (GET /api/talpha/credentials) vẫn chỉ trả bản che;
 // khoá thật chỉ ra khi người bấm xem đúng MỘT khoá, và mỗi lần xem đều ghi log (ai, khoá nào).
 //
 //   POST {ten} → { ten, gia_tri }    (gia_tri rỗng = chưa có khoá)

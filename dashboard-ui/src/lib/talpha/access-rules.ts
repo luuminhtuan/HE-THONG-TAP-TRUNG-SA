@@ -13,7 +13,7 @@ import { RULES, PRIMARY_MARKET, CAMP_MARKETS } from "./rules";
 /** Mọi tab của dashboard-shell.tsx. Thêm tab mới thì thêm ở đây và ở access.roles. */
 export const ALL_TABS = [
     "overview", "pnl", "product-pnl",
-    "order-ledger", "lai-lo", "cod-recon", "tracking",
+    "order-ledger", "income-statement", "cod-recon", "tracking",
     "products", "marketing",
     "ad-spend", "ads-command", "ad-health",
     "ads-recon",
@@ -170,8 +170,8 @@ export const API_RULES: Record<string, ApiRule> = {
     "/api/talpha/sheet-report": { tabs: ["overview", "pnl", "marketing"] },
     "/api/talpha/pnl-costs": { tabs: ["overview", "pnl"] },
     // Lãi lỗ (Kế toán, 04/11/2026) — mọi vai có tab; route tự cắt theo nước của team, ghi chi phí
-    // vận hành (nhánh /van-hanh) route tự chặn chỉ giám đốc.
-    "/api/talpha/lai-lo": { tabs: ["lai-lo"] },
+    // vận hành (nhánh /opex) route tự chặn chỉ giám đốc.
+    "/api/talpha/income-statement": { tabs: ["income-statement"] },
     "/api/talpha/targets": { tabs: ["overview", "marketing"] },
     "/api/talpha/product-pnl": { tabs: ["product-pnl"] },
     "/api/talpha/product-costs": { tabs: ["product-pnl"] },
@@ -193,7 +193,7 @@ export const API_RULES: Record<string, ApiRule> = {
     "/api/talpha/ad-spend": { tabs: ["ad-spend"] },
     "/api/talpha/realtime": { tabs: ["ads-command"] },
     // Tin nhắn Pancake + đơn theo page của MỘT nước (Nhật: Meta không báo mess, 09/10/2026).
-    "/api/talpha/pancake-nuoc": { tabs: ["ads-command", "marketing"], market: "param" },
+    "/api/talpha/pancake-messages": { tabs: ["ads-command", "marketing"], market: "param" },
 
     // Chỉ bot gọi (cảnh báo spend cả công ty, chưa tách nước) — không tab nào dùng.
     "/api/talpha/ads-alerts": { full: true },
@@ -203,9 +203,9 @@ export const API_RULES: Record<string, ApiRule> = {
     "/api/talpha/ceo-ask": { full: true },
     "/api/talpha/export-report": { full: true },
     "/api/talpha/sync-inventory": { full: true },
-    "/api/talpha/khoa": { full: true },
-    "/api/talpha/thi-truong": { full: true },
-    "/api/talpha/tkqc": { full: true },
+    "/api/talpha/credentials": { full: true },
+    "/api/talpha/market-config": { full: true },
+    "/api/talpha/ad-accounts": { full: true },
     "/api/users": { full: true },
 };
 

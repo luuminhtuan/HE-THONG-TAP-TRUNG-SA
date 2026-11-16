@@ -16,7 +16,7 @@
 //     tên page trong tên camp (mỗi camp Nhật một page).
 //   • inserted_at / updated_at là giờ UTC không ghi múi (như POS) — đổi +7 ra ngày VN.
 //   • Gọi dồn là 429 Too Many Requests → giãn lượt, gặp 429 thì chờ rồi thử lại.
-// Hàm ở đây là hàm THUẦN (không mạng) để test được; route /api/talpha/pancake-nuoc gọi mạng.
+// Hàm ở đây là hàm THUẦN (không mạng) để test được; route /api/talpha/pancake-messages gọi mạng.
 // ═══════════════════════════════════════════════════════════════════
 import { CAMP_MARKETS, normCampMarketer } from "./rules";
 

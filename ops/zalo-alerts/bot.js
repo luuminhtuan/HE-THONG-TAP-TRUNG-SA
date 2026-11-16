@@ -147,7 +147,7 @@ function layRealtime(dateStr) {
     return p;
 }
 
-// Tin nhắn Pancake + đơn POS theo page của một nước một ngày (/api/talpha/pancake-nuoc). camps:
+// Tin nhắn Pancake + đơn POS theo page của một nước một ngày (/api/talpha/pancake-messages). camps:
 // campaign Meta cùng ngày — gửi kèm tên page của camp nước đó (camp tạo hôm nay chưa kịp sync).
 async function fetchPancakeNuoc(m, ngay, camps) {
     if (!MG.url) throw new Error("thiếu moiGio.url trong config");
@@ -157,7 +157,7 @@ async function fetchPancakeNuoc(m, ngay, camps) {
     const q = new URLSearchParams({ market: m, date: ngay, ...(trang.length ? { trang: trang.join("|") } : {}) });
     const res = await fetch(`${MG.url}?${q}`, { headers: { "cache-control": "no-store" } });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok || j.error) throw new Error(j.error || `pancake-nuoc HTTP ${res.status}`);
+    if (!res.ok || j.error) throw new Error(j.error || `pancake-messages HTTP ${res.status}`);
     return j;
 }
 
@@ -311,7 +311,7 @@ async function dungTinGio(m) {
     let camps = [], loiCamp = "";
     try { camps = (await layRealtime(ngay)).campaigns || []; } catch (e) { loiCamp = e.message; }
     let pk = null;
-    try { pk = await fetchPancakeNuoc(m, ngay, camps); } catch (e) { log(`pancake-nuoc ${m} lỗi:`, e.message); }
+    try { pk = await fetchPancakeNuoc(m, ngay, camps); } catch (e) { log(`pancake-messages ${m} lỗi:`, e.message); }
     if (!pk && loiCamp) throw new Error(`Meta: ${loiCamp} · Pancake/đơn cũng lỗi`);
     return buildTinGio({ n: NUOC[m], ngay, gio: vnHHMM(), pk, camps, loiCamp,
         truoc: ((loadState().gioTruoc || {})[m]) || null });

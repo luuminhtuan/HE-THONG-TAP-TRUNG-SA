@@ -8,7 +8,7 @@ Laravel: bản sao lưu database, hay câu SQL đọc nhầm bảng, chỉ thấ
 
 Mọi tiến trình Python cần khoá (sync, danh mục SP, vòng ghi báo cáo, lịch Docker) gọi
 nap_khoa_vao_env() lúc bắt đầu: khoá trong kho THẮNG khoá cùng tên trong .env.local — đúng thứ tự
-dashboard đọc (lib/talpha/khoa.ts → docKhoa).
+dashboard đọc (lib/talpha/credentials.ts → docKhoa).
 """
 import os
 import sys

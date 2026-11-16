@@ -6,7 +6,7 @@ import TabSkeleton, { ErrorState } from "@/components/ui/tab-skeleton";
 import WaLink from "@/components/talpha/wa-link";
 import { formatNumber, cn } from "../utils";
 import { VND, d6, STRIPE, PIN_TINT, rowCls, statusCls, mkCls, countDeliveryOutcomes, type Light } from "./ledger-shared";
-import { CardList, FixTasksPanel, LightFilterBar, OrderCard, LedgerToolbar, useNarrowScreen, type FixTask } from "./so-don-ui";
+import { CardList, FixTasksPanel, LightFilterBar, OrderCard, LedgerToolbar, useNarrowScreen, type FixTask } from "./order-ledger-shared-ui";
 
 /**
  * Sổ đơn hàng Singapore / UAE (Sỹ Anh yêu cầu 29/09/2026). Đọc /api/talpha/order-ledger/market —

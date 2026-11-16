@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════
 // Thị trường nhập ở /admin → Thị trường (04/11/2026) — phần THUẦN: phủ lên talpha_rules.json
-// và soát khối nhập vào. Phần đụng đĩa ở lib/talpha/thi-truong-luu.ts. Có test: tests/thi-truong.test.cjs.
+// và soát khối nhập vào. Phần đụng đĩa ở lib/talpha/market-store.ts. Có test: tests/thi-truong.test.cjs.
 //
 // talpha_rules.json nằm trong git, mà máy chủ lấy code bằng `reset --hard origin/main` — sửa nó
 // trên trang là lần deploy sau mất. Nên nước thêm / sửa / tắt trên trang nằm ở file PHỦ ngoài git

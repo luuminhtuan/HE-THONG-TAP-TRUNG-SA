@@ -10,7 +10,7 @@ import DateRangePicker from "@/components/ui/date-range-picker";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import Link from "next/link";
 import { AccessProvider, type Me } from "./access-context";
-import PwaInstallPrompt from "./cai-app";
+import PwaInstallPrompt from "./pwa-install-prompt";
 import { useUpdateUrlParams } from "./url-state";
 import RefreshStatusButton from "./refresh-status";
 import { NAV_GROUPS, TAB_INFO, TAB_BY_SLUG, type NavGroup } from "./nav-config";
@@ -30,7 +30,7 @@ import { MarketsProvider, useMarkets } from "./markets-context";
 import TALPHAOrderLedgerTab from "./tabs/order-ledger-tab";
 import TALPHATrackingTab from "./tabs/tracking-tab";
 import TALPHAAdsReconTab from "./tabs/ads-recon-tab";
-import IncomeStatementTab from "./tabs/lai-lo-tab";
+import IncomeStatementTab from "./tabs/income-statement-tab";
 import AskAiTab from "./tabs/ask-ai-tab";
 
 /** Tham số mang theo khi chuyển tab: khoảng ngày đang chọn (from, to), nước đang chọn (market). */
@@ -44,7 +44,7 @@ const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon"]);
  * Sỹ Anh chốt 25/09/2026: trước 15/09 dữ liệu chưa đủ). Tab vận hành (Sổ đơn, Tiền COD về,
  * Vận đơn, Kho, Khách hàng) KHÔNG chặn: đơn tháng trước vẫn còn đang chờ thu tiền.
  */
-const FLOOR_TABS = new Set(["overview", "pnl", "product-pnl", "lai-lo", "marketing", "ad-spend"]);
+const FLOOR_TABS = new Set(["overview", "pnl", "product-pnl", "income-statement", "marketing", "ad-spend"]);
 
 /** Các mục menu còn lại sau khi bỏ tab người này không được xem (phân quyền theo team). */
 function visibleNavGroups(me: Me): NavGroup[] {
@@ -338,7 +338,7 @@ export default function TALPHADashboardShell() {
                     {isTabShown("product-pnl") && <TALPHAProductPnLTab dateRange={tabRange} projectId="TALPHA" />}
                     {isTabShown("tracking") && <TALPHATrackingTab dateRange={dateRange} projectId="TALPHA" />}
                     {isTabShown("order-ledger") && <TALPHAOrderLedgerTab dateRange={dateRange} projectId="TALPHA" />}
-                    {isTabShown("lai-lo") && <IncomeStatementTab dateRange={tabRange} />}
+                    {isTabShown("income-statement") && <IncomeStatementTab dateRange={tabRange} />}
                     {isTabShown("cod-recon") && <TALPHACodReconTab dateRange={dateRange} projectId="TALPHA" />}
                     {isTabShown("products") && <TALPHAProductsTab dateRange={dateRange} projectId="TALPHA" />}
                     {isTabShown("marketing") && <TALPHAMarketingTab dateRange={tabRange} projectId="TALPHA" />}

@@ -9,7 +9,7 @@ import GeminiModelPicker from "./gemini-model-picker";
 
 // Khoá kết nối (04/11/2026) — giám đốc dán khoá mới khi token Meta, Pancake, key POS chết.
 // Máy chủ gọi thử khoá với dịch vụ thật rồi mới lưu; khoá thật không bao giờ về trình duyệt.
-// Lưu ở đâu, có hiệu lực lúc nào: lib/talpha/khoa.ts.
+// Lưu ở đâu, có hiệu lực lúc nào: lib/talpha/credentials.ts.
 
 type KeyCheck = { ok: boolean; chi_tiet: string; canh_bao?: string; het_han?: string | null };
 type Credential = {
@@ -66,7 +66,7 @@ export default function CredentialsTab() {
     const load = useCallback(async (runCheck = false) => {
         if (runCheck) setChecking(true);
         try {
-            const r = await fetch(`/api/talpha/khoa${runCheck ? "?kiem=1" : ""}`, { cache: "no-store" });
+            const r = await fetch(`/api/talpha/credentials${runCheck ? "?kiem=1" : ""}`, { cache: "no-store" });
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
             setCredentials(j.khoa);
@@ -93,7 +93,7 @@ export default function CredentialsTab() {
         setSaving(true);
         setSaveError("");
         try {
-            const r = await fetch("/api/talpha/khoa", {
+            const r = await fetch("/api/talpha/credentials", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ ten: keyName, gia_tri: value }),
@@ -116,7 +116,7 @@ export default function CredentialsTab() {
 
     const removePageKey = async (k: Credential) => {
         if (!confirm(`Bỏ ${k.nhan} nhập trên trang? Dashboard sẽ quay về khoá trong .env.local, nếu có.`)) return;
-        const r = await fetch(`/api/talpha/khoa?ten=${encodeURIComponent(k.ten)}`, { method: "DELETE" });
+        const r = await fetch(`/api/talpha/credentials?ten=${encodeURIComponent(k.ten)}`, { method: "DELETE" });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) {
             setError(j.error || `HTTP ${r.status}`);

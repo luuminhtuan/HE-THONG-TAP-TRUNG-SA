@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccess } from "@/lib/talpha/access";
-import { listCredentials, getCredential, verifyCredential, saveCredential, getCredentialsStatus } from "@/lib/talpha/khoa";
-import { credentialValueError } from "@/lib/talpha/khoa-file";
+import { listCredentials, getCredential, verifyCredential, saveCredential, getCredentialsStatus } from "@/lib/talpha/credentials";
+import { credentialValueError } from "@/lib/talpha/credential-utils";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 //   POST {ten, gia_tri} → gọi thử khoá mới với dịch vụ thật, gọi được mới lưu
 //   DELETE ?ten=     → bỏ khoá nhập trên trang, quay về khoá trong .env.local
 //
-// Xem lib/talpha/khoa.ts: lưu ở bảng api_credentials (mã hoá), vì sao không ghi vào .env.local.
+// Xem lib/talpha/credentials.ts: lưu ở bảng api_credentials (mã hoá), vì sao không ghi vào .env.local.
 
 export async function GET(req: NextRequest) {
     const credentials = getCredentialsStatus();

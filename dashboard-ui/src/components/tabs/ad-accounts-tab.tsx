@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 // TKQC (04/11/2026) — danh bạ TỰ ĐỘNG: mọi TKQC token Meta đọc được, sync kéo chi tiêu của tất cả.
 // Không còn thêm / xoá TKQC bằng tay. Mỗi TK một LOẠI; chỉ loại "vào báo cáo" mới cộng vào số các tab,
-// báo cáo tháng và bot. Đổi loại có tác dụng ngay. Luật: talpha_rules.json → tkqc_loai, lib/talpha/tkqc.ts.
+// báo cáo tháng và bot. Đổi loại có tác dụng ngay. Luật: talpha_rules.json → tkqc_loai, lib/talpha/ad-accounts.ts.
 
 type AccountType = { ma: string; ten: string; vao_bao_cao: boolean };
 type AccountRow = {
@@ -41,7 +41,7 @@ export default function AdAccountsTab() {
 
     const load = useCallback(async () => {
         try {
-            const r = await fetch("/api/talpha/tkqc", { cache: "no-store" });
+            const r = await fetch("/api/talpha/ad-accounts", { cache: "no-store" });
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
             setAccountTypes(j.loai);
@@ -60,7 +60,7 @@ export default function AdAccountsTab() {
         setScanning(true);
         setNotice("");
         try {
-            const r = await fetch("/api/talpha/tkqc", {
+            const r = await fetch("/api/talpha/ad-accounts", {
                 method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "quet" }),
             });
             const j = await r.json();
@@ -78,7 +78,7 @@ export default function AdAccountsTab() {
     const changeType = async (d: AccountRow, typeCode: string) => {
         setSavingId(d.account_id);
         try {
-            const r = await fetch("/api/talpha/tkqc", {
+            const r = await fetch("/api/talpha/ad-accounts", {
                 method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: d.account_id, loai: typeCode }),
             });
             const j = await r.json();

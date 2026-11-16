@@ -3,11 +3,11 @@
  *
  * Không còn danh sách TKQC gõ tay (talpha.yaml → ad_account_ids, ops/talpha_reports/ad_accounts.json).
  * Mỗi vòng sync hỏi Meta token đọc được TKQC nào, ghi vào bảng tkqc và kéo chi tiêu của TẤT CẢ vào
- * fb_ads_tat_ca. Loại của từng TKQC quyết nó có vào báo cáo không (tkqc-luat.ts) — đổi ở /admin → TKQC.
+ * fb_ads_tat_ca. Loại của từng TKQC quyết nó có vào báo cáo không (ad-account-rules.ts) — đổi ở /admin → TKQC.
  */
 import { withTransaction, query } from "@/lib/db";
-import { getCredential } from "@/lib/talpha/khoa";
-import { META_TOKEN_VARS, listAccountKinds, initialAccountKind } from "@/lib/talpha/tkqc-luat";
+import { getCredential } from "@/lib/talpha/credentials";
+import { META_TOKEN_VARS, listAccountKinds, initialAccountKind } from "@/lib/talpha/ad-account-rules";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 

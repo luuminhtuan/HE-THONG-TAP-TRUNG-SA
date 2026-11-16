@@ -22,8 +22,8 @@ import { query } from "@/lib/db";
 import { TALPHA_YAML } from "./config-path";
 import { querySync } from "./db-sync";
 import { DISABLED_MARKETS, MESS_PANCAKE, RULES, SHOP2MKT, SHOP_POS } from "./rules";
-import { maskCredential } from "./khoa-file";
-import { META_TOKEN_VARS } from "./tkqc-luat";
+import { maskCredential } from "./credential-utils";
+import { META_TOKEN_VARS } from "./ad-account-rules";
 import { PANCAKE_API, hanToken } from "./pancake";
 import { getQuota, keyId } from "./track17";
 import { TRACK_MARKETS } from "./tracking";
@@ -129,7 +129,7 @@ export function listCredentials(): CredentialDef[] {
         loai: "meta",
     }];
     // Token phụ (tuỳ chọn): TKQC nằm ở BM / app khác mà token chính không thấy. Mỗi TK đọc bằng token
-    // ĐẦU TIÊN thấy nó (lib/talpha/tkqc.ts, sync/core/tkqc.py).
+    // ĐẦU TIÊN thấy nó (lib/talpha/ad-accounts.ts, sync/core/tkqc.py).
     META_TOKEN_VARS.slice(1).forEach((credentialName, i) => out.push({
         ten: credentialName,
         nhan: `Token Meta ${i + 2} — BM / app khác (tuỳ chọn)`,
@@ -235,17 +235,17 @@ async function graph(duong: string, tok: string, q: Record<string, string> = {})
     return j;
 }
 
-/** Token sống, đọc được bao nhiêu TKQC. Sync kéo MỌI TKQC token thấy (04/11/2026, lib/talpha/tkqc.ts), nên
+/** Token sống, đọc được bao nhiêu TKQC. Sync kéo MỌI TKQC token thấy (04/11/2026, lib/talpha/ad-accounts.ts), nên
  *  token đọc được ít nhất một TK là lưu được; TKQC vào báo cáo đang chạy mà token mới không thấy thì cảnh báo
  *  — lưu token đó là mất chi tiêu của các TK ấy. */
 async function verifyMeta(tok: string, envVar: string): Promise<VerifyResult> {
     const me = await graph("me", tok, { fields: "id,name" });
     const adAccounts = await graph("me/adaccounts", tok, { fields: "account_id", limit: "500" });
     const readableIds = new Set((adAccounts.data || []).map((a: { account_id: string }) => String(a.account_id)));
-    // Import muộn: tkqc.ts đọc khoá qua file này — import thẳng là vòng lặp module.
+    // Import muộn: ad-accounts.ts đọc khoá qua file này — import thẳng là vòng lặp module.
     let reportingAccounts: { id: string; ten: string; bien_token: string | null }[] = [];
     try {
-        reportingAccounts = await (await import("@/lib/talpha/tkqc")).reportingAdAccounts(false);
+        reportingAccounts = await (await import("@/lib/talpha/ad-accounts")).reportingAdAccounts(false);
     } catch { /* chưa có kho số / danh bạ — chỉ báo số TK đọc được */ }
     // Chỉ so các TK mà CHÍNH biến này đang đọc — token phụ không thấy TK của token chính là đương nhiên.
     const missing = reportingAccounts.filter((t) => (t.bien_token || META_TOKEN_VARS[0]) === envVar && !readableIds.has(t.id));

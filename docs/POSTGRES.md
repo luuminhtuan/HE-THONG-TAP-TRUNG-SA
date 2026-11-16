@@ -143,10 +143,10 @@ khoá thật: `docker compose down -v && docker compose up -d`.
 | Bảng | Thay cho | Đọc / ghi ở |
 |:--|:--|:--|
 | `app_documents` | `data/<kho>.json` — sao kê COD, việc đối soát, thanh toán QC, vận đơn, chi phí vận hành | `lib/talpha/store.ts` |
-| `market_overrides` | `data/thi_truong.json` | `lib/talpha/thi-truong-luu.ts`, `rules.ts`, `sync/core/thi_truong.py`, bot qua `/api/talpha/thi-truong?overrides=1` |
-| `market_monthly_reports` | `data/bao_cao_nuoc/<tháng>.json` | `format_all.py` ghi; `lib/talpha/ban-nuoc.ts`, bot qua `/api/talpha/market-report` |
+| `market_overrides` | `data/thi_truong.json` | `lib/talpha/market-store.ts`, `rules.ts`, `sync/core/thi_truong.py`, bot qua `/api/talpha/market-config?overrides=1` |
+| `market_monthly_reports` | `data/bao_cao_nuoc/<tháng>.json` | `format_all.py` ghi; `lib/talpha/market-monthly-report.ts`, bot qua `/api/talpha/market-report` |
 | `users` | `config/users.json` / `USERS_JSON` | `lib/users.ts` |
-| `api_credentials` | `dashboard-ui/.env.khoa.local` — MÃ HOÁ (pgcrypto) bằng `TALPHA_ENCRYPTION_KEY` | `lib/talpha/khoa.ts`, `sync/core/credentials.py` |
+| `api_credentials` | `dashboard-ui/.env.khoa.local` — MÃ HOÁ (pgcrypto) bằng `TALPHA_ENCRYPTION_KEY` | `lib/talpha/credentials.ts`, `sync/core/credentials.py` |
 | `file_imports` | — sổ file cũ nào đã chép vào kho | `sync/core/file_import.py` |
 | `job_runs` · `refresh_requests` | — (migration 0007) sổ lượt việc nền + yêu cầu "Cập nhật ngay" | `ops/docker/lich.py` qua `sync/core/job_log.py`; dashboard đọc ở `/api/talpha/refresh` |
 

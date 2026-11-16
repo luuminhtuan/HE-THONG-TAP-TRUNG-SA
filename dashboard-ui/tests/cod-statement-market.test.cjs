@@ -203,7 +203,7 @@ t("tên kho riêng từng nước", () => {
 });
 
 console.log("── Sổ một nước, giống màn Đài (số thật Sing 24/09 + 05/10/2026) ──");
-const N = require("../.test-build/cod-so-nuoc.js");
+const N = require("../.test-build/cod-market-ledger.js");
 // Kỳ 05/10 thật: 631 S$ × 5,2151 = 3.290,73¥ → về 3.192,01¥ (thu hộ 3%) − ship 1.317,6 − hàng hoàn 9 = 1.865,41¥
 // × 3.860 − tiền hàng 1.751.680 = 5.448.788đ.
 const ky05 = {

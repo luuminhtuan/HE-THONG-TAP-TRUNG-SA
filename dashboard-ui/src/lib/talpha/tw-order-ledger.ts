@@ -2,7 +2,7 @@
 // SỔ ĐƠN ĐÀI — nạp bốn nguồn rồi ghép thành từng dòng (buildLedger).
 //
 // Tách khỏi app/api/talpha/order-ledger/route.ts ngày 04/11/2026 để tab Lãi lỗ
-// (/api/talpha/lai-lo) đọc ĐÚNG cùng một sổ với Sổ đơn hàng và Tiền COD về: cùng
+// (/api/talpha/income-statement) đọc ĐÚNG cùng một sổ với Sổ đơn hàng và Tiền COD về: cùng
 // cách ghép kiện ↔ tiền NAZA trả ↔ phí từng kiện ↔ tỷ giá từng kỳ. Chỉ ĐỌC.
 // ═══════════════════════════════════════════════════════════════════
 import { readStoreFresh } from "@/lib/talpha/store";

@@ -2,7 +2,7 @@
 // Khoá kết nối nhập ở /admin (04/11/2026; lưu ở bảng api_credentials từ 15/11/2026): soát khoá
 // vừa dán và cách che khoá khi hiện trên trang.
 const assert = require("assert");
-const K = require("../.test-build/khoa-file.js");
+const K = require("../.test-build/credential-utils.js");
 
 let ok = 0;
 const t = (ten, fn) => { try { fn(); ok++; console.log("  ✓", ten); } catch (e) { console.error("  ✗", ten); throw e; } };

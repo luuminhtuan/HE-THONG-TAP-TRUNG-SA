@@ -8,7 +8,7 @@ Tin ads của nước đó và tin vận đơn của nước đó chung một nh
 (giờ đã có bản tin ads). Quảng cáo ở Nhật KHÔNG có chỉ số tin nhắn trên Meta (luật bảo vệ thông tin
 liên lạc của Nhật), nên tin ghép: tiền ads Meta trực tiếp + **tin nhắn / bình luận mới / SĐT đếm từ
 Pancake** + đơn, doanh số POS — theo từng page (camp nối page bằng tên page trong tên camp), có
-"(+N)" thêm trong giờ qua. Nguồn `/api/talpha/pancake-nuoc` (token tài khoản Pancake ở
+"(+N)" thêm trong giờ qua. Nguồn `/api/talpha/pancake-messages` (token tài khoản Pancake ở
 `TALPHA_PANCAKE_API_TOKEN`, hết hạn 02/01/2027 — tin tự nhắc trước 14 ngày). Bản tin ads thường của
 nhóm Nhật cũng lấy số mess từ Pancake (`nhomNuoc.messPancake`). Gõ `/gio` trong nhóm, hoặc
 `node bot.js --dry-run --gio --nuoc JP` để in thử. Cấu hình: `config.json → moiGio`.

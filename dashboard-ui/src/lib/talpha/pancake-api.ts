@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════
 // Gọi API Pancake (pages.fm) — phần CÓ MẠNG, dùng chung cho:
-//   • /api/talpha/pancake-nuoc — số một nước một ngày theo page (bot Zalo, tin mỗi giờ Nhật);
+//   • /api/talpha/pancake-messages — số một nước một ngày theo page (bot Zalo, tin mỗi giờ Nhật);
 //   • /api/talpha/realtime     — Ads Command Center: mess từng camp của nước Meta không báo tin
 //     nhắn (Nhật), Sỹ Anh yêu cầu 13/10/2026 "cập nhật dashboard cho thị trường Nhật".
 // Hàm thuần (đếm, chia, khớp tên) ở lib/talpha/pancake.ts — có test.
@@ -9,7 +9,7 @@
 // hỏi cùng page cùng mốc trong 3 phút thì dùng chung một lần gọi (NHO_HT).
 // ═══════════════════════════════════════════════════════════════════
 import { campaignMarket, MESS_PANCAKE } from "./rules";
-import { getCredential } from "./khoa";
+import { getCredential } from "./credentials";
 import {
     PANCAKE_API, normalizePageName, splitMessByCampaign, countForRange, hanToken, batchDoneForDay, pageOfCampaign,
     type Conversation,

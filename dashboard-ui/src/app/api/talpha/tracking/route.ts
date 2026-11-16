@@ -21,7 +21,7 @@ import { loadMarketShipments, syncWeshipMarket } from "@/lib/talpha/tracking-mar
 import { orderConfirmationMessage, waLink } from "@/lib/talpha/whatsapp";
 import { getAccess } from "@/lib/talpha/access";
 import { canMarket } from "@/lib/talpha/access-rules";
-import { envWithCredentials } from "@/lib/talpha/khoa";
+import { envWithCredentials } from "@/lib/talpha/credentials";
 
 export const dynamic = "force-dynamic";
 

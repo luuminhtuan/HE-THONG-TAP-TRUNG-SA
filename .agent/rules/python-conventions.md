@@ -22,7 +22,7 @@ paths:
   qua `ops/talpha_reports/talpha_rules.py` / `sync/core/business_rules.py`. KHÔNG gõ vào code.
 - Phần nước thêm / sửa trên `/admin` (bảng `market_overrides`) phủ lên file gốc qua
   `sync/core/thi_truong.py`. Luật phủ chạy chung fixture `tests/fixtures/thi_truong_phu.json` với
-  bản TS (`lib/talpha/thi-truong.ts`) và bot (`ops/zalo-alerts/thi_truong.js`) — sửa thì sửa cả ba.
+  bản TS (`lib/talpha/market-config.ts`) và bot (`ops/zalo-alerts/thi_truong.js`) — sửa thì sửa cả ba.
 - Khoá kết nối (token Meta, key POS…) nằm MÃ HOÁ trong bảng `api_credentials`: gọi
   `nap_khoa_vao_env()` (`sync/core/credentials.py`) lúc bắt đầu, đừng tự đọc file `.env`.
 

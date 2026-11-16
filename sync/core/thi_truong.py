@@ -5,7 +5,7 @@ talpha_rules.json nằm trong git, mà máy chủ lấy code bằng `reset --har
 trang là lần deploy sau mất. Nên nước thêm / sửa / tắt trên trang nằm ở bảng PHỦ `market_overrides`
 (15/11/2026 — trước đó file data/thi_truong.json), và mọi nơi đọc luật phủ bảng đó lên bản gốc. Bản
 này cho Python (sync, view Postgres, vòng ghi báo cáo); bản dashboard ở
-dashboard-ui/src/lib/talpha/thi-truong.ts, bản bot ở ops/zalo-alerts/thi_truong.js. Ba bản phải ra
+dashboard-ui/src/lib/talpha/market-config.ts, bản bot ở ops/zalo-alerts/thi_truong.js. Ba bản phải ra
 CÙNG kết quả — bộ dữ liệu chung tests/fixtures/thi_truong_phu.json.
 
 Mỗi lần chạy (mỗi vòng sync, mỗi vòng ghi Sheet) là một tiến trình mới nên đọc lại bảng phủ —

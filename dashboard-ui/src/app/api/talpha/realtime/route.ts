@@ -10,8 +10,8 @@ export const maxDuration = 90;
 // Danh sách TKQC Meta + shop POS: config/projects/talpha.yaml ở gốc repo.
 // Đường dẫn do config-path.ts giữ — MỘT chỗ duy nhất biết cấu hình nằm ở đâu.
 import { TALPHA_YAML } from "@/lib/talpha/config-path";
-import { getCredential } from "@/lib/talpha/khoa";
-import { reportingAdAccounts } from "@/lib/talpha/tkqc";
+import { getCredential } from "@/lib/talpha/credentials";
+import { reportingAdAccounts } from "@/lib/talpha/ad-accounts";
 const YAML_PATH = TALPHA_YAML();
 
 // ═══ RULE CHUNG: import từ src/lib/talpha/rules.ts (data = config/talpha_rules.json).
@@ -396,7 +396,7 @@ export async function GET(request: Request) {
 
     try {
         const cfg = loadConfig();
-        // TKQC: danh bạ tự động (lib/talpha/tkqc.ts, 04/11/2026) — TK thuộc loại vào báo cáo mà token còn
+        // TKQC: danh bạ tự động (lib/talpha/ad-accounts.ts, 04/11/2026) — TK thuộc loại vào báo cáo mà token còn
         // thấy, tên lấy từ Meta. Trước đó đọc talpha.yaml (ad_account_ids + ad_account_names gõ tay).
         // Nhiều token Meta: mỗi TK gọi bằng token đã đọc được nó (tkqc.bien_token), thiếu thì token chính.
         const adAccounts = await reportingAdAccounts();

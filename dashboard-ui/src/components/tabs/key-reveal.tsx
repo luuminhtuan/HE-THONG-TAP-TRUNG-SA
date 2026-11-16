@@ -4,11 +4,11 @@ import { useState } from "react";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 // Nút con mắt xem khoá đang dùng (15/11/2026) — dùng ở Khoá kết nối và Thị trường. Khoá thật chỉ lấy
-// khi người bấm (POST /api/talpha/khoa/reveal, ghi log), giữ trong bộ nhớ trang, tải lại trang là mất.
+// khi người bấm (POST /api/talpha/credentials/reveal, ghi log), giữ trong bộ nhớ trang, tải lại trang là mất.
 
 /** Khoá đang dùng của một tên biến (TALPHA_POSCAKE_TH_KEY…). Rỗng = chưa có khoá. */
 export async function revealCredential(keyName: string): Promise<string> {
-    const r = await fetch("/api/talpha/khoa/reveal", {
+    const r = await fetch("/api/talpha/credentials/reveal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ten: keyName }),

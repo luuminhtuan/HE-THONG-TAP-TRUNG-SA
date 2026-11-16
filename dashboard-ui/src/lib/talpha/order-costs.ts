@@ -21,7 +21,7 @@
 //     thu hộ COD (% tiền của chính đơn đó, có mức sàn).
 //   • UAE (AE): bảng giá D&T Fulfillment shipping_fees.AE — phí fulfillment theo bậc số đơn
 //     trung bình/ngày + vận chuyển đơn thành công (đồng giá dưới 1 kg) + thu hộ COD % tiền đơn.
-//   • Nhật (JP, 13/10/2026): bảng giá NAZA shipping_fees.JP (lib/talpha/phi-ship-nhat.ts) — cước
+//   • Nhật (JP, 13/10/2026): bảng giá NAZA shipping_fees.JP (lib/talpha/jp-shipping-fee.ts) — cước
 //     theo bậc 0,5 kg (cân lấy từ kiện NAZA Đài như Singapore) + thu hộ theo bậc tiền COD (yên).
 //   • Nước khác: không đoán — null để giao diện ghi "thiếu".
 // ═══════════════════════════════════════════════════════════════════
@@ -31,7 +31,7 @@ import {
     costPriceVnd, posMoneyDivisor,
 } from "@/lib/talpha/rules";
 import { productCodes } from "@/lib/talpha/order-ledger";
-import { JP_FEE_SCHEDULE, jpFreightRmb, jpShippingFeeVnd } from "@/lib/talpha/phi-ship-nhat";
+import { JP_FEE_SCHEDULE, jpFreightRmb, jpShippingFeeVnd } from "@/lib/talpha/jp-shipping-fee";
 import { readStoreFresh } from "@/lib/talpha/store";
 
 type FeeLine = { ship_fee?: number; op_fee?: number; chargeable_kg?: number | null };

@@ -5,7 +5,7 @@ Trước: danh sách TKQC gõ tay ở config/projects/talpha.yaml. Token đổi,
 sửa file rồi deploy — 28/10 và 03/11/2026 đều mất nửa ngày chi tiêu vì danh sách lệch với token.
 Nay mỗi vòng sync hỏi Meta token đọc được TKQC nào (/me/adaccounts) rồi kéo chi tiêu của TẤT CẢ; danh bạ
 ghi ở bảng tkqc. Loại của từng TKQC (vào báo cáo hay không) quyết ở talpha_rules.json → tkqc_loai và
-/admin → TKQC — bản dashboard của file này: dashboard-ui/src/lib/talpha/tkqc.ts (cùng luật, có test).
+/admin → TKQC — bản dashboard của file này: dashboard-ui/src/lib/talpha/ad-accounts.ts (cùng luật, có test).
 """
 import logging
 import os
@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 GRAPH = "https://graph.facebook.com/v21.0"
 TRUONG = "account_id,name,account_status,currency,timezone_name"
 # Nhiều token Meta (04/11/2026): TKQC nằm ở nhiều BM / app. Thứ tự này là thứ tự ưu tiên — TKQC đọc bằng
-# token ĐẦU TIÊN thấy nó. Cùng danh sách với dashboard-ui/src/lib/talpha/tkqc-luat.ts → BIEN_TOKEN_META.
+# token ĐẦU TIÊN thấy nó. Cùng danh sách với dashboard-ui/src/lib/talpha/ad-account-rules.ts → BIEN_TOKEN_META.
 BIEN_TOKEN = ("TALPHA_META_ACCESS_TOKEN", "TALPHA_META_ACCESS_TOKEN_2", "TALPHA_META_ACCESS_TOKEN_3")
 
 

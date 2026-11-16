@@ -4,7 +4,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { queryReadOnly } from "@/lib/db";
 import { buildSystemPrompt } from "@/lib/talpha/ceo-ask-prompt";
 import { checkSql, cleanSql } from "@/lib/talpha/ceo-ask-sql";
-import { getCredential } from "@/lib/talpha/khoa";
+import { getCredential } from "@/lib/talpha/credentials";
 import { modelFallbackOrder } from "@/lib/talpha/gemini-models";
 import { GEMINI_KEY_HEADER, isValidGeminiKey, type GeminiKeySource } from "@/lib/talpha/gemini-key";
 

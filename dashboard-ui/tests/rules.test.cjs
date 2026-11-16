@@ -378,7 +378,7 @@ t("ba nước đều miễn luật campaign test", () => {
 });
 
 console.log("── Phí ship Nhật theo bảng giá NAZA (13/10/2026) + giá vốn 077–086 ──");
-const J = require("../.test-build/phi-ship-nhat.js");
+const J = require("../.test-build/jp-shipping-fee.js");
 t("phí thu hộ Nhật theo bậc tiền COD (yên), vượt bậc cuối thì không đoán", () => {
     assert.strictEqual(J.jpCodFee(8999), 480);
     assert.strictEqual(J.jpCodFee(9999), 480);

@@ -1,7 +1,7 @@
 "use client";
 
 // Chọn model Gemini cho ô "Hỏi dashboard" (15/11/2026) — nằm trong tab Gemini của Khoá kết nối.
-// Danh sách lấy thẳng từ Google theo khoá đang dùng (/api/talpha/khoa/gemini-models), nên không bao giờ
+// Danh sách lấy thẳng từ Google theo khoá đang dùng (/api/talpha/credentials/gemini-models), nên không bao giờ
 // hiện model đã bị khai tử. "Tự chọn" = model "flash" mới nhất khoá đó gọi được.
 import { useEffect, useState } from "react";
 import { Bot, Check, Loader2 } from "lucide-react";
@@ -25,7 +25,7 @@ export default function GeminiModelPicker({ phienKhoa: keyVersion }: { phienKhoa
     useEffect(() => {
         let cancelled = false;
         setError("");
-        fetch("/api/talpha/khoa/gemini-models", { cache: "no-store" })
+        fetch("/api/talpha/credentials/gemini-models", { cache: "no-store" })
             .then(async (r) => {
                 const j = await r.json();
                 if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -41,7 +41,7 @@ export default function GeminiModelPicker({ phienKhoa: keyVersion }: { phienKhoa
         setNotice("");
         setError("");
         try {
-            const r = await fetch("/api/talpha/khoa/gemini-models", {
+            const r = await fetch("/api/talpha/credentials/gemini-models", {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ model: pendingModel || null }),
             });

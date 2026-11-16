@@ -15,8 +15,8 @@ import TabSkeleton, { ErrorState } from "@/components/ui/tab-skeleton";
 import { useUrlParam } from "../url-state";
 import { formatNumber, cn } from "../utils";
 import { TWD, VND, type UnpaidOrder } from "./ledger-shared";
-import PartnerSheetImporter, { isSheetStale, shortImportLabel, type PartnerSheetImport } from "@/components/talpha/nhap-bang-don";
-import { useNarrowScreen } from "./so-don-ui";
+import PartnerSheetImporter, { isSheetStale, shortImportLabel, type PartnerSheetImport } from "@/components/talpha/partner-sheet-importer";
+import { useNarrowScreen } from "./order-ledger-shared-ui";
 
 interface Props { dateRange?: { from: Date; to: Date }; projectId?: string }
 
@@ -220,7 +220,7 @@ type MarketOrder = {
 };
 type ColumnMap = Partial<Record<"tracking" | "order_id" | "amount" | "fee" | "paid_date" | "status", string>>;
 type DeductionLine = { nhan: string; so: number; ghi?: string };
-/** Luồng tiền một kỳ, đi đúng thứ tự sheet TỔNG của NAZA (lib/talpha/cod-so-nuoc.ts). */
+/** Luồng tiền một kỳ, đi đúng thứ tự sheet TỔNG của NAZA (lib/talpha/cod-market-ledger.ts). */
 type MarketMoneyFlow = {
     so_don: number; cod_local: number; ty_gia_rmb: number | null; rmb: number | null; tru_rmb: DeductionLine[];
     rmb_rong: number | null; ty_gia_vnd: number | null; vnd: number | null; tru_vnd: DeductionLine[];
@@ -289,7 +289,7 @@ function marketDiscrepancyMessage(k: MarketPeriod, lang: "vi" | "zh", sym: strin
  *   ④  tỷ giá           — KhoiTyGia dùng chung với Đài (cần từ 2 kỳ có tỷ giá)
  *   rồi hai khối gập: đơn đã giao chưa thấy tiền · đơn chưa giao xong.
  *
- * Số dựng ở lib/talpha/cod-so-nuoc.ts; việc người làm ghi qua /api/talpha/cod-recon/market/actions
+ * Số dựng ở lib/talpha/cod-market-ledger.ts; việc người làm ghi qua /api/talpha/cod-recon/market/actions
  * (kho riêng từng nước, cùng luật ghi với Đài). Sao kê dạng bảng (đối tác ngoài NAZA) không có
  * sheet TỔNG — màn tự lùi về "ước theo tỷ giá khai".
  */

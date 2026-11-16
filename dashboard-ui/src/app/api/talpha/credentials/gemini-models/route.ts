@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccess } from "@/lib/talpha/access";
-import { getCredential } from "@/lib/talpha/khoa";
+import { getCredential } from "@/lib/talpha/credentials";
 import { getSelectedModel, listGeminiModels, saveSelectedModel, rankRecommendedModels } from "@/lib/talpha/gemini-models";
 
 export const dynamic = "force-dynamic";
 
 // Chọn model Gemini cho ô "Hỏi dashboard" (15/11/2026) — Quản trị → Khoá kết nối → tab Gemini.
-// Chỉ giám đốc (API_RULES: /api/talpha/khoa là full). Xem lib/talpha/gemini-models.ts.
+// Chỉ giám đốc (API_RULES: /api/talpha/credentials là full). Xem lib/talpha/gemini-models.ts.
 //
 //   GET            → model khoá đang dùng gọi được (lấy thẳng từ Google), model đang chọn, model tự chọn
 //   POST {model}   → lưu model chọn; model: null = để máy tự chọn model "flash" mới nhất

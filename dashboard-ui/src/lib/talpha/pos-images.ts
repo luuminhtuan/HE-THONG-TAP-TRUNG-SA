@@ -10,7 +10,7 @@
  * /admin → Thị trường, KHÔNG thêm map trong file này.
  */
 
-import { getCredential } from "@/lib/talpha/khoa";
+import { getCredential } from "@/lib/talpha/credentials";
 import { ACTIVE_MARKETS, SHOP2MKT, SHOP_POS } from "@/lib/talpha/rules";
 
 interface Shop { name: string; api_url: string; api_key: string; shop_id: string }

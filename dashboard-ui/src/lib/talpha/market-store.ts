@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════
 // Thị trường nhập ở /admin → Thị trường (04/11/2026) — phần ĐỤNG KHO: đọc mới nhất, ghi phần phủ.
-// Phần thuần (phủ, soát, tính khối ghi) ở lib/talpha/thi-truong.ts.
+// Phần thuần (phủ, soát, tính khối ghi) ở lib/talpha/market-config.ts.
 //
 // Phần phủ nằm ở bảng market_overrides (15/11/2026 — trước đó file data/thi_truong.json), mỗi nước
 // một dòng. RULES trong rules.ts đọc MỘT lần lúc khởi động, và hàng chục hằng số khắp dashboard sinh
@@ -11,7 +11,7 @@ import fs from "fs";
 import { query } from "@/lib/db";
 import { RULES_JSON } from "./config-path";
 import { STARTUP_OVERRIDES } from "./rules";
-import { applyMarketOverrides, type OverridesFile, type MarketOverride } from "./thi-truong";
+import { applyMarketOverrides, type OverridesFile, type MarketOverride } from "./market-config";
 
 export function readBaseRules(): Record<string, unknown> {
     return JSON.parse(fs.readFileSync(RULES_JSON(), "utf-8"));

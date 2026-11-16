@@ -4,7 +4,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
-const T = require("../.test-build/thi-truong.js");
+const T = require("../.test-build/market-config.js");
 const R = require("../.test-build/rules.js");
 
 let ok = 0;

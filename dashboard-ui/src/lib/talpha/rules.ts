@@ -7,7 +7,7 @@
 import fs from "fs";
 import { RULES_JSON, MARKET_OVERRIDES_TEST_FILE } from "./config-path";
 import { querySync } from "./db-sync";
-import { applyMarketOverrides, type OverridesFile } from "./thi-truong";
+import { applyMarketOverrides, type OverridesFile } from "./market-config";
 
 /** "da_tat" (04/11/2026): ngừng kéo số mới, GIỮ tỷ giá / số chia / đơn cũ — xem MARKET_DA_TAT. */
 type MarketStatus = "dang_ban" | "sap_chay" | "da_tat";
@@ -67,7 +67,7 @@ function loadStartupOverrides(): OverridesFile | null {
     }
 }
 
-/** Phần phủ đã nạp lúc khởi động — thi-truong-luu.ts so với kho để biết luật đang chạy đã cũ chưa. */
+/** Phần phủ đã nạp lúc khởi động — market-store.ts so với kho để biết luật đang chạy đã cũ chưa. */
 export const STARTUP_OVERRIDES: OverridesFile | null = loadStartupOverrides();
 
 /** Luật gốc (talpha_rules.json) ĐÃ phủ thị trường nhập trên trang — mọi thứ bên dưới sinh từ đây.
@@ -83,7 +83,7 @@ export const EXCHANGE_RATES: Record<string, number> = Object.fromEntries(
     MARKET_ENTRIES.map(([m, v]) => [m, isPositive(v.rate_vnd) ? v.rate_vnd : 0]));
 /** Khoá nước ("Japan") mà Meta KHÔNG báo số tin nhắn — luật bảo vệ thông tin liên lạc của Nhật
  *  (09/10/2026). Số mess của camp nước đó lấy ở Pancake (lib/talpha/pancake-api.ts) hoặc bản số
- *  vòng ghi Sheet (lib/talpha/ban-nuoc.ts), không lấy Meta (luôn 0). */
+ *  vòng ghi Sheet (lib/talpha/market-monthly-report.ts), không lấy Meta (luôn 0). */
 export const MESS_PANCAKE: string[] = MARKET_ENTRIES.filter(([, v]) => v.mess_source === "pancake").map(([k]) => k);
 export const SHOP2MKT: Record<string, string> = Object.fromEntries(
     MARKET_ENTRIES.map(([m, v]) => [v.shop_label, m]));
