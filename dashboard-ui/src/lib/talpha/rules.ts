@@ -8,43 +8,7 @@ import fs from "fs";
 import { RULES_JSON, MARKET_OVERRIDES_TEST_FILE } from "./config-path";
 import { querySync } from "./db-sync";
 import { applyMarketOverrides, type OverridesFile } from "./market-config";
-
-/** "da_tat" (04/11/2026): ngừng kéo số mới, GIỮ tỷ giá / số chia / đơn cũ — xem MARKET_DA_TAT. */
-type MarketStatus = "dang_ban" | "sap_chay" | "da_tat";
-/** Một nước trong `markets`. Nước "sap_chay" chưa có shop/tỷ giá/số chia → các ô đó null. */
-type MarketInfo = {
-    shop_label: string; shop_id?: string; currency: string; currency_symbol?: string;
-    rate_vnd: number | null; pos_money_divisor: number | null;
-    display?: string; status?: MarketStatus; flag?: string;
-    orders_from?: string | null; pos_money_divisor_confirmed?: boolean;
-    phone?: { cc: string; national_len: number; trunk?: string; whatsapp?: boolean };
-    /** "pancake" = Meta không báo số tin nhắn ở nước này (Nhật), đếm ở hộp thư Pancake. */
-    mess_source?: string;
-};
-type ScanRule = { key: string; substrings?: string[]; word_tokens?: string[]; regex?: string };
-type ShipFee = { partner?: string; packing: number; delivery: number; cod_pct: number; cod_flat: number };
-type Rules = {
-    version: string;
-    marketers: Record<string, { display: string; full: string; inactive?: boolean }>;
-    camp_marketer_tokens: Record<string, string>;
-    pos_marketer_rules: { contains: string; key: string }[];
-    camp_scan_rules: ScanRule[];
-    markets: Record<string, MarketInfo>;
-    market_aliases: Record<string, string>;
-    camp_market_tokens: string[];
-    status: { gtc_category: string; gtc_status_names: string[] };
-    test_campaign: { pattern: string; exempt_markets: string[] };
-    shipping_fees: Record<string, ShipFee | string>;
-    pos_timezone: string;
-    page_id_pattern: string;
-    products?: Record<string, ProductCost | string>;
-    targets?: {
-        monthly_revenue_vnd?: Record<string, number | string>;
-    };
-    report_start_date?: string;
-    report_sheets?: { grand_by_month?: Record<string, string> };
-};
-type ProductCost = { name: string; cost_price_rmb?: number; cost_price_vnd: number };
+import type { MarketInfo, MarketStatus, ProductCost, Rules, ShipFee } from "./rules-types";
 
 /** Thị trường nhập ở /admin → Thị trường: bảng market_overrides (15/11/2026 — trước đó file
  *  data/thi_truong.json). Chưa ai nhập = null. Kho lỗi thì KÊU và dùng bản gốc — không làm sập cả
@@ -413,28 +377,9 @@ export function parseAudience(cn?: string | null): string | null {
     return null;
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// MÃ SẢN PHẨM trong tên campaign
-//
-// Ô thứ tư theo chuẩn, dạng "042-BLACK" hay "040 - VONGVANG1" — ba số đầu là mã
-// SKU, phần sau là biến thể. Bóc được mã này thì nối được CHI PHÍ QUẢNG CÁO với
-// GIÁ VỐN của chính sản phẩm đó, tức là tính được lãi lỗ tới từng mã hàng chứ
-// không chỉ tổng.
-//
-// Nhận bằng HÌNH DẠNG (ba số rồi tới ký tự không phải số) chứ không bằng vị trí,
-// nên đọc được cả tên cũ đặt khác thứ tự. Ngày kiểu "2808" bốn số liền không bị
-// bắt nhầm vì sau ba số đầu vẫn là số.
-// ═══════════════════════════════════════════════════════════════════
-const SKU_RE = /^(\d{3})(?![0-9])/;
-
-/** Ô sản phẩm → mã SKU ba số. Không thấy thì null, KHÔNG đoán. */
-export function parseProductCode(cn?: string | null): string | null {
-    for (const seg of String(cn || "").split("/")) {
-        const m = seg.trim().match(SKU_RE);
-        if (m) return m[1];
-    }
-    return null;
-}
+// ── MÃ SẢN PHẨM trong tên campaign: parseProductCode / isProductTesting là hàm thuần, nằm ở
+//    rules-product-code.ts (không phụ thuộc RULES). ──
+export { parseProductCode, isProductTesting } from "./rules-product-code";
 
 /** Mã SKU đã khai giá vốn trong talpha_rules.json → products. */
 export const PRODUCT_CODES: ReadonlySet<string> = new Set(
@@ -445,19 +390,6 @@ export function productName(code?: string | null): string | null {
     if (!code) return null;
     const p = (RULES as unknown as { products?: Record<string, { name?: string }> }).products || {};
     return p[code]?.name || null;
-}
-
-/**
- * Ô mã sản phẩm ghi "TEST" — đang thử sản phẩm, CHƯA CÓ mã.
- *
- * Khác hẳn với "quên ghi mã". Sản phẩm test chưa nhập hàng nên chưa có SKU; win
- * rồi thì thay đúng ô đó bằng mã thật, số ô không đổi. Còn "quên ghi mã" là lỗi
- * đặt tên cần sửa. Gộp hai thứ vào một rổ là không biết chỗ nào đáng đi nhắc.
- */
-export function isProductTesting(cn?: string | null): boolean {
-    return String(cn || "")
-        .split("/")
-        .some((seg) => seg.trim().toUpperCase() === "TEST");
 }
 
 /** Mã có trong tên campaign nhưng CHƯA khai giá vốn — lãi gộp của nó sẽ ảo cao. */

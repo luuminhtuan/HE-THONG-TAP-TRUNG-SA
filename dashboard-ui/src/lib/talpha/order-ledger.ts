@@ -14,6 +14,13 @@
  * Hàm thuần — không đọc file, không gọi mạng.
  */
 import { RULES, normPosMarketer, DISPLAY } from "./rules";
+import { trackKey, orderKey, redeliveryOrigin, nazaRedeliveryOrigin, productCodes } from "./order-ledger-keys";
+import type { OrderSource, PaidLine, FeeLine, Light, Tick, LedgerRow, LedgerSummary } from "./order-ledger-types";
+
+// Khoá ghép và kiểu dữ liệu nằm ở order-ledger-keys.ts / order-ledger-types.ts (tách 16/11/2026) —
+// mặt tiền này giữ nguyên mọi tên cũ.
+export { sortNewestFirst, trackKey, orderKey, redeliveryOrigin, nazaRedeliveryOrigin, productCodes } from "./order-ledger-keys";
+export type { OrderSource, PaidLine, FeeLine, Light, Tick, LedgerRow, LedgerSummary } from "./order-ledger-types";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Cấu hình
@@ -119,60 +126,6 @@ export const FALLBACK_TWD_VND = Number(TW.rate_vnd ?? 800);
 /** Tỷ giá RMB→VND dự phòng, chỉ dùng khi bản sao kê không nói tỷ giá kỳ đó — talpha_rules.json → cost_rate_rmb_vnd. */
 export const FALLBACK_RMB_VND = Number((RULES as unknown as { cost_rate_rmb_vnd?: number }).cost_rate_rmb_vnd ?? 3860);
 
-// ─────────────────────────────────────────────────────────────────────────
-// Chuẩn hoá khoá — phải giống hệt cod-recon.ts, lệch một chữ là hai bên
-// khoá khác nhau và không đơn nào ghép được.
-// ─────────────────────────────────────────────────────────────────────────
-/**
- * Mới nhất lên đầu (15/11/2026 — mọi danh sách có thời gian xếp giảm dần): theo ngày lên đơn, không có
- * thì ngày gửi hãng, cùng ngày thì mã đơn lớn trước (T1467 trên T1465). Đơn không có ngày xuống cuối.
- * Trả MẢNG MỚI, không sửa mảng truyền vào.
- */
-export function sortNewestFirst<T extends { order_date?: string | null; ship_date?: string | null; order_no?: string | null }>(ds: T[]): T[] {
-    const date = (x: T) => String(x.order_date || x.ship_date || "");
-    return [...ds].sort((a, b) => date(b).localeCompare(date(a))
-        || String(b.order_no || "").localeCompare(String(a.order_no || ""), "vi", { numeric: true }));
-}
-
-export function trackKey(v?: string | null): string {
-    const s = String(v ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-    return /^\d+$/.test(s) ? s.replace(/^0+/, "") || s : s;
-}
-
-const STRIP = [/^TAIWAN[-\s]*/i, /[-\s]*Z$/i, /-\d+$/];
-export function orderKey(v?: string | null): string {
-    let s = String(v ?? "").trim().toUpperCase().replace(/\s*\([^)]*\)\s*/g, " ").trim();
-    for (const re of STRIP) s = s.replace(re, "");
-    return s.trim();
-}
-
-/**
- * Mã vận đơn GỐC của một ĐƠN GIAO LẠI (hàng hoàn gửi cho khách khác, 转寄).
- * Hai bên ghi hai kiểu, và mã gốc là thứ DUY NHẤT cả hai cùng ghi:
- *
- *   Sheet:  mã đơn "T1467 (7564042426-z)"  → mã gốc nằm trong ngoặc
- *   NAZA:   mã đơn "7564042426-Z"           → kèm mã vận đơn MỚI do NAZA cấp
- *
- * Mã vận đơn Sheet ghi cho loại đơn này thì không tin được: cả ba đơn giao lại
- * của kỳ 9.11 đều ghi sai, T1467 còn chép nhầm mã của T1465.
- */
-export function redeliveryOrigin(orderNo?: string | null): string {
-    const m = String(orderNo ?? "").match(/\(\s*([0-9A-Z]+)\s*-\s*Z\s*\)/i);
-    return m ? trackKey(m[1]) : "";
-}
-
-/** Phía NAZA của cùng loại đơn: "7564042426-Z" → "7564042426". */
-export function nazaRedeliveryOrigin(orderNo?: string | null): string {
-    const m = String(orderNo ?? "").trim().replace(/^TAIWAN[-\s]*/i, "").match(/^([0-9A-Z]+)\s*-\s*Z$/i);
-    return m ? trackKey(m[1]) : "";
-}
-
-/** Mã sản phẩm trong chuỗi SKU. Một đơn có thể GHÉP nhiều mã:
- *  "042 - BLACK + 043 - COFFEE" là hai sản phẩm, phải cộng cả hai giá vốn. */
-export function productCodes(sku?: string | null): string[] {
-    return [...new Set(String(sku ?? "").match(/\b\d{3}\b/g) || [])];
-}
-
 /** Tên marketer về đúng MỘT cách gọi cho cả hệ thống.
  *
  *  File đối tác ghi "Lâm", mọi báo cáo khác gọi "Lộc" — cùng một người. Để
@@ -191,108 +144,6 @@ const daysBetween = (from?: string | null, to?: string | null): number | null =>
     const a = Date.parse(from), b = to ? Date.parse(to) : Date.now();
     if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
     return Math.floor((b - a) / 86_400_000);
-};
-
-// ─────────────────────────────────────────────────────────────────────────
-// Kiểu dữ liệu vào
-// ─────────────────────────────────────────────────────────────────────────
-export type OrderSource = {
-    order_no: string;
-    tracking: string;
-    track17_code?: string | null;
-    return_order_no?: string | null;
-    order_date?: string | null;
-    ship_date?: string | null;
-    ship_method?: string;
-    sku?: string;
-    quantity?: string | number;
-    contact_name?: string;
-    phone?: string;
-    cod_twd: number;
-    status?: string | null;        // mã trạng thái chuẩn (Delivered, InTransit…)
-    status_raw?: string;           // chữ đối tác ghi
-    recon_manual?: string;         // cột "Đối soát" người gõ tay
-    marketer?: string;
-};
-
-export type PaidLine = {
-    tracking: string;
-    order_no: string;
-    amount_twd: number;
-    paid_date?: string;
-    period?: string;               // tên bản sao kê
-    rate_twd_rmb?: number | null;
-    rate_rmb_vnd?: number | null;
-};
-
-export type FeeLine = {
-    tracking: string;
-    order_no: string;
-    ship_fee_rmb: number;
-    op_fee_rmb: number;
-    expected_ship_fee?: number | null;
-    period?: string;
-    rate_rmb_vnd?: number | null;
-};
-
-// ─────────────────────────────────────────────────────────────────────────
-// Kiểu dữ liệu ra
-// ─────────────────────────────────────────────────────────────────────────
-export type Light = "xanh" | "vang" | "do" | "xam";
-
-export type Tick = {
-    doi_soat: boolean;
-    tru_van_chuyen: boolean;
-    tru_tien_hang: boolean;
-};
-
-export type LedgerRow = {
-    // định danh
-    order_no: string;
-    tracking: string;
-    track17_code: string;
-    return_order_no: string;
-    // thời gian
-    order_date: string;
-    ship_date: string;
-    age_days: number | null;
-    /** Số kỳ sao kê đã chốt SAU ngày đơn này giao. >= 2 mà chưa có tiền là quá hạn. */
-    ky_da_qua: number;
-    // hàng & khách
-    ship_method: string;
-    sku: string;
-    product_codes: string[];
-    quantity: number;
-    contact_name: string;
-    phone: string;
-    marketer: string;
-    // trạng thái
-    status: string;
-    status_raw: string;
-    recon_manual: string;
-    // tiền vào
-    cod_twd: number;
-    paid_twd: number | null;
-    paid_date: string;
-    paid_period: string;
-    matched_by: "tracking" | "order_id_giao_lai" | null;
-    diff_twd: number | null;
-    // tiền ra
-    ship_fee_rmb: number | null;
-    op_fee_rmb: number | null;
-    fee_wrong: boolean;
-    cogs_vnd: number | null;
-    cogs_missing: string[];        // mã sản phẩm chưa khai giá vốn
-    // kết quả
-    gross_vnd: number | null;      // tiền 3PL trả, quy ra VND
-    fee_vnd: number | null;
-    net_vnd: number | null;
-    /** true khi CHƯA trừ được giá vốn — con số "còn lại" mới là tạm. */
-    net_before_cogs: boolean;
-    // ô tích & đèn
-    tick: Tick;
-    light: Light;
-    light_note: string;
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -544,20 +395,6 @@ export function buildLedger(
 // ─────────────────────────────────────────────────────────────────────────
 // Tổng hợp
 // ─────────────────────────────────────────────────────────────────────────
-export type LedgerSummary = {
-    total: number;
-    by_light: Record<Light, number>;
-    cod_total_twd: number;
-    paid_total_twd: number;
-    pending_twd: number;        // đã giao, tiền chưa về
-    overdue_twd: number;
-    fee_total_rmb: number;
-    cogs_known: number;         // số đơn tính được giá vốn
-    cogs_missing_orders: number;
-    net_total_vnd: number;      // chỉ cộng đơn tính đủ (đã trừ giá vốn)
-    net_partial_vnd: number;    // đơn mới trừ được phí, chưa trừ giá vốn
-    extra_lines: number;
-};
 
 export function summarise(rows: LedgerRow[], extra: PaidLine[] = []): LedgerSummary {
     const by_light: Record<Light, number> = { xanh: 0, vang: 0, do: 0, xam: 0 };
