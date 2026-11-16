@@ -8,6 +8,17 @@
  */
 export async function register() {
     if (process.env.NEXT_RUNTIME === "nodejs") {
+        // Nạp SẴN luật phủ thị trường + bảng khoá kết nối (bất đồng bộ) TRƯỚC khi server nhận request:
+        // rules.ts / credentials.ts đọc chúng đồng bộ lúc được nạp. Next chờ register() xong mới mở cửa.
+        // Thay cho execFileSync(node scripts/sync-query.cjs) chặn event loop (16/11/2026).
+        try {
+            const { primeStartupData } = await import("@/lib/talpha/startup-data");
+            const { query } = await import("@/lib/db");
+            await primeStartupData(query);
+        } catch (e) {
+            console.error("[TALPHA] Không nạp được số khởi động (luật thị trường, khoá kết nối):", e);
+        }
+
         // Sinh sẵn chìa nội bộ (data/.internal_token) ngay lúc khởi động — bot Zalo và việc
         // nền đọc file này để gọi API. Đợi tới lượt gọi đầu mới sinh thì bot chưa có chìa
         // nên chẳng bao giờ có "lượt gọi đầu". Xem lib/talpha/internal-token.ts.

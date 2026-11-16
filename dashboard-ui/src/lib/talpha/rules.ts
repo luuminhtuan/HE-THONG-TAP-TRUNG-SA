@@ -6,7 +6,7 @@
 // ═══════════════════════════════════════════════════════════════════
 import fs from "fs";
 import { RULES_JSON, MARKET_OVERRIDES_TEST_FILE } from "./config-path";
-import { querySync } from "./db-sync";
+import { getStartupData } from "./startup-data";
 import { applyMarketOverrides, type OverridesFile } from "./market-config";
 import type { MarketInfo, MarketStatus, ProductCost, Rules, ShipFee } from "./rules-types";
 
@@ -21,14 +21,17 @@ function loadStartupOverrides(): OverridesFile | null {
         catch (e) { console.error(`rules: ${overrideFile} hỏng định dạng — bỏ qua thị trường nhập trên trang:`, e); return null; }
     }
     if (!process.env.DATABASE_URL) return null;
-    try {
-        const rows = querySync<{ market_key: string; settings: Record<string, unknown> }>(
-            "SELECT market_key, settings FROM market_overrides ORDER BY market_key");
-        return rows.length ? { markets: Object.fromEntries(rows.map((r) => [r.market_key, r.settings])) } : null;
-    } catch (e) {
-        console.error("rules: KHÔNG đọc được market_overrides — chạy bằng luật gốc, bỏ qua thị trường nhập trên trang:", e);
+    // Bảng market_overrides được nạp SẴN (bất đồng bộ) ở instrumentation.ts → primeStartupData(), trước
+    // khi server nhận request. Chưa nạp mà đã tới đây là có module đọc luật bị nạp quá sớm — KÊU to, vì
+    // chạy tiếp bằng luật gốc là số của nước sửa trên /admin → Thị trường sai mà không ai biết.
+    const startup = getStartupData();
+    if (!startup) {
+        if (process.env.NEXT_PHASE !== "phase-production-build") {
+            console.error("rules: nạp TRƯỚC primeStartupData() — chạy bằng luật gốc, THIẾU thị trường nhập trên trang");
+        }
         return null;
     }
+    return startup.marketOverrides as OverridesFile | null;
 }
 
 /** Phần phủ đã nạp lúc khởi động — market-store.ts so với kho để biết luật đang chạy đã cũ chưa. */

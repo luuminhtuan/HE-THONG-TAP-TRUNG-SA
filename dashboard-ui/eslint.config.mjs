@@ -20,7 +20,7 @@ const config = [
     ...nextCoreWebVitals,
     ...nextTypescript,
     // Mỗi khối luật phải giới hạn `files` ĐÚNG như khối khai plugin của nó: khối không có `files` áp cả
-    // cho file .cjs (scripts/sync-query.cjs) — nơi plugin react-hooks / @typescript-eslint không được nạp —
+    // cho file .cjs (vd script node thuần) — nơi plugin react-hooks / @typescript-eslint không được nạp —
     // và ESLint dừng hẳn với "could not find plugin" (lint hỏng tới 16/11/2026 vì vậy).
     {
         files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],

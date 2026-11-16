@@ -10,10 +10,12 @@
 //
 // Bot đọc luật một lần lúc khởi động; dấu vân tay phần phủ đổi thì bot.js tự thoát để pm2 / docker
 // dựng lại (xem theoDoiThiTruong ở đó). TALPHA_THI_TRUONG (chỉ test) trỏ vào một FILE phủ.
+//
+// Phần phủ hỏi dashboard BẤT ĐỒNG BỘ: điểm chạy (bot.js, pair.js) gọi primeMarketOverrides() TRƯỚC khi
+// require module đọc luật (rules.js đọc đồng bộ lúc được require). Trước 16/11/2026 chỗ này gọi
+// execFileSync(fetch_sync.js) — chặn cả tiến trình tới 30 giây khi dashboard chậm.
 // ═══════════════════════════════════════════════════════════════════
 const fs = require("fs");
-const path = require("path");
-const { execFileSync } = require("child_process");
 
 const OVERRIDE_ONLY_FIELDS = new Set(["tokens", "team"]);
 const isPlainObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
@@ -23,6 +25,8 @@ const overridesUrl = () => `${require("./config").dashboardBaseUrl}/api/talpha/m
 
 /** Dấu vân tay của phần phủ đã nạp lúc khởi động — null nếu không hỏi được dashboard. */
 let loadedFingerprint = null;
+/** Phần phủ đã hỏi được (null = chưa ai nhập / không hỏi được); undefined = chưa gọi primeMarketOverrides(). */
+let primedOverrides;
 
 function readOverrides(p) {
     if (!fs.existsSync(p)) return null;
@@ -36,20 +40,29 @@ function readOverrides(p) {
 
 /** Phần phủ, hoặc null nếu chưa ai nhập. Không hỏi được dashboard thì KÊU và chạy bằng luật gốc —
  *  không làm sập bot; theoDoiThiTruong (bot.js) thấy vân tay khác là tự khởi động lại để nạp đủ. */
-function loadMarketOverrides() {
-    if (process.env.TALPHA_THI_TRUONG) return readOverrides(process.env.TALPHA_THI_TRUONG);
+async function primeMarketOverrides() {
+    if (process.env.TALPHA_THI_TRUONG) return;
     try {
-        const out = execFileSync(process.execPath, [path.join(__dirname, "fetch_sync.js"), overridesUrl()],
-            { timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] });
-        const j = JSON.parse(out.toString("utf8"));
+        const r = await fetch(overridesUrl(), { signal: AbortSignal.timeout(30_000) });
+        const body = await r.text();
+        if (!r.ok) throw new Error(`HTTP ${r.status}: ${body.slice(0, 200)}`);
+        const j = JSON.parse(body);
         loadedFingerprint = typeof j.fingerprint === "string" ? j.fingerprint : null;
         const overrides = j.overrides || null;
-        return overrides && isPlainObject(overrides.markets) && Object.keys(overrides.markets).length ? overrides : null;
+        primedOverrides = overrides && isPlainObject(overrides.markets) && Object.keys(overrides.markets).length ? overrides : null;
     } catch (e) {
-        const reason = (e && e.stderr && e.stderr.toString().trim()) || (e && e.message) || e;
-        console.error(`thi_truong: không lấy được thị trường nhập trên trang từ dashboard (${reason}) — chạy bằng luật gốc`);
+        primedOverrides = null;
+        console.error(`market_config: không lấy được thị trường nhập trên trang từ dashboard (${(e && e.message) || e}) — chạy bằng luật gốc`);
+    }
+}
+
+function loadMarketOverrides() {
+    if (process.env.TALPHA_THI_TRUONG) return readOverrides(process.env.TALPHA_THI_TRUONG);
+    if (primedOverrides === undefined) {
+        console.error("market_config: luật được nạp TRƯỚC primeMarketOverrides() — chạy bằng luật gốc, THIẾU thị trường nhập trên trang");
         return null;
     }
+    return primedOverrides;
 }
 
 /** Dấu vân tay phần phủ hiện tại trên dashboard, hoặc null nếu không hỏi được. */
@@ -102,4 +115,7 @@ function applyMarketOverrides(rules, overrides) {
     return out;
 }
 
-module.exports = { applyMarketOverrides, loadMarketOverrides, fetchOverridesFingerprint, vanTayDaNap: () => loadedFingerprint };
+module.exports = {
+    applyMarketOverrides, primeMarketOverrides, loadMarketOverrides, fetchOverridesFingerprint,
+    getLoadedFingerprint: () => loadedFingerprint,
+};

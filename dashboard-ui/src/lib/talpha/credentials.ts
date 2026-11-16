@@ -20,7 +20,7 @@ import fs from "fs";
 import yaml from "js-yaml";
 import { query } from "@/lib/db";
 import { TALPHA_YAML } from "./config-path";
-import { querySync } from "./db-sync";
+import { CREDENTIALS_SQL, ENCRYPTION_KEY_VAR, getEncryptionKey, getStartupData, type StoredCredentialRow } from "./startup-data";
 import { DISABLED_MARKETS, MESS_PANCAKE, RULES, SHOP2MKT, SHOP_POS } from "./rules";
 import { maskCredential } from "./credential-utils";
 import { META_TOKEN_VARS } from "./ad-account-rules";
@@ -28,57 +28,57 @@ import { PANCAKE_API, tokenExpiry } from "./pancake";
 import { getQuota, keyId } from "./track17";
 import { TRACK_MARKETS } from "./tracking";
 
-const ENCRYPTION_KEY_VAR = "TALPHA_ENCRYPTION_KEY";
-const getEncryptionKey = () => (process.env[ENCRYPTION_KEY_VAR] || "").trim();
-const READ_SQL = `SELECT name, public.pgp_sym_decrypt(encrypted_value, $1) AS value, note, updated_at, updated_by
-                 FROM api_credentials`;
 const REFRESH_INTERVAL_MS = 5 * 60_000;
+const RETRY_AFTER_ERROR_MS = 30_000;
 
-type CredentialRecord = { value: string; note: string | null; updated_at: string; updated_by: string | null };
-type CredentialRow = CredentialRecord & { name: string };
+type CredentialRecord = Omit<StoredCredentialRow, "name">;
 
-let cache: { map: Map<string, CredentialRecord>; luc: number } | null = null;
+let cache: { map: Map<string, CredentialRecord>; loadedAt: number } | null = null;
 let errorAt = 0;
 let refreshing = false;
 let warnedMissingKey = false;
 
-const toMap = (rows: CredentialRow[]) => new Map(rows.map(({ name, ...r }) => [name, r]));
+const toMap = (rows: StoredCredentialRow[]) => new Map(rows.map(({ name, ...r }) => [name, r]));
 
 /** Nạp lại bảng khoá (không chặn). */
 async function refreshCache(): Promise<void> {
     const encryptionKey = getEncryptionKey();
     if (!encryptionKey || !process.env.DATABASE_URL) return;
-    const rows = await query<CredentialRow>(READ_SQL.replace("$1", "@chia"), { chia: encryptionKey });
-    cache = { map: toMap(rows), luc: Date.now() };
+    const rows = await query<StoredCredentialRow>(CREDENTIALS_SQL, { encryptionKey });
+    cache = { map: toMap(rows), loadedAt: Date.now() };
 }
 
-/** Khoá trong kho. Lượt đầu đọc đồng bộ (docKhoa không await được); sau đó làm mới nền mỗi 5 phút. */
+function refreshInBackground(): void {
+    if (refreshing || Date.now() - errorAt < RETRY_AFTER_ERROR_MS) return;
+    refreshing = true;
+    refreshCache()
+        .catch((e) => { errorAt = Date.now(); console.error("credentials: làm mới bảng api_credentials lỗi:", e); })
+        .finally(() => { refreshing = false; });
+}
+
+/** Khoá trong kho: nạp SẴN lúc khởi động (startup-data.ts, bất đồng bộ — không còn chặn event loop như
+ *  execFileSync trước 16/11/2026), sau đó làm mới nền mỗi 5 phút. */
 function storedCredentials(): Map<string, CredentialRecord> {
     if (cache) {
-        if (Date.now() - cache.luc > REFRESH_INTERVAL_MS && !refreshing) {
-            refreshing = true;
-            refreshCache().catch((e) => console.error("khoa: làm mới bảng api_credentials lỗi:", e))
-                .finally(() => { refreshing = false; });
-        }
+        if (Date.now() - cache.loadedAt > REFRESH_INTERVAL_MS) refreshInBackground();
         return cache.map;
     }
-    const encryptionKey = getEncryptionKey();
-    if (!process.env.DATABASE_URL || !encryptionKey) {
-        if (!warnedMissingKey && process.env.DATABASE_URL) {
-            console.error(`khoa: chưa đặt ${ENCRYPTION_KEY_VAR} — không giải mã được khoá trong kho, dùng khoá trong .env.local`);
+    if (!process.env.DATABASE_URL) return new Map();
+    if (!getEncryptionKey()) {
+        if (!warnedMissingKey) {
+            console.error(`credentials: chưa đặt ${ENCRYPTION_KEY_VAR} — không giải mã được khoá trong kho, dùng khoá trong .env.local`);
             warnedMissingKey = true;
         }
         return new Map();
     }
-    if (Date.now() - errorAt < 30_000) return new Map();   // kho vừa lỗi — đừng chặn mỗi lượt gọi
-    try {
-        cache = { map: toMap(querySync<CredentialRow>(READ_SQL, [encryptionKey])), luc: Date.now() };
+    const startup = getStartupData();
+    if (startup?.credentials) {
+        cache = { map: toMap(startup.credentials), loadedAt: startup.loadedAt };
         return cache.map;
-    } catch (e) {
-        errorAt = Date.now();
-        console.error("khoa: KHÔNG đọc được bảng api_credentials — dùng khoá trong .env.local:", e);
-        return new Map();
     }
+    // Lúc khởi động không đọc được (kho lỗi) — thử lại nền; lượt này dùng khoá trong .env.local.
+    refreshInBackground();
+    return new Map();
 }
 
 /** Khoá đang dùng: nhập trên trang (kho) trước, rồi biến môi trường (.env.local). */

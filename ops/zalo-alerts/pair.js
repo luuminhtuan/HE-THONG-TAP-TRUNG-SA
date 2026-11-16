@@ -17,14 +17,17 @@ const fs = require("fs");
 const path = require("path");
 const { LoginQRCallbackEventType: E } = require("zca-js");
 const { SESSION_FILE, createZalo, writePrivateFile, saveSession, login, listGroups, saveMarketGroup } = require("./zalo");
-const { MARKETS, pickGroupsByName } = require("./rules");
 const CFG = require("./config");
+const { primeMarketOverrides } = require("./market_config");
+// rules.js đọc luật đồng bộ lúc được require — nạp SAU primeMarketOverrides() (cuối file), để nước thêm
+// trên /admin → Thị trường cũng có nhóm của nó.
+let MARKETS, pickGroupsByName;
 
 const QR_FILE = path.join(__dirname, "qr.png");
 const GROUPS_FILE = path.join(__dirname, "groups.txt");
 const MAX_QR_ATTEMPTS = 5;
 const log = (...a) => console.log(new Date().toISOString(), ...a);
-const MARKET_CODES = ((CFG.nhomNuoc || {}).markets || Object.keys(MARKETS)).map((x) => String(x).toUpperCase());
+let MARKET_CODES = [];
 
 function argAfter(flag) {
     const i = process.argv.indexOf(flag);
@@ -114,4 +117,10 @@ async function main() {
     log("Chọn nhóm từng nước: node pair.js --tu-nhan");
 }
 
-main().then(() => process.exit(0)).catch((e) => { log("LỖI:", e.message); process.exit(1); });
+primeMarketOverrides()
+    .then(() => {
+        ({ MARKETS, pickGroupsByName } = require("./rules"));
+        MARKET_CODES = ((CFG.nhomNuoc || {}).markets || Object.keys(MARKETS)).map((x) => String(x).toUpperCase());
+        return main();
+    })
+    .then(() => process.exit(0)).catch((e) => { log("LỖI:", e.message); process.exit(1); });
