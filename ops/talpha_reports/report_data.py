@@ -16,7 +16,7 @@ from psycopg.rows import namedtuple_row
 import pancake_mess   # tin nhắn Nhật từ Pancake — Meta không báo mess ở Nhật (09/10/2026)
 # ── RULE CHUNG: đọc từ talpha_rules.json qua loader (golden-test 29/07 = 100% khớp bản cũ).
 # Sửa rule (marketer/tỷ giá/thị trường/test) → sửa talpha_rules.json, KHÔNG sửa tại đây.
-from talpha_rules import (MARKETS, SHOP2MKT, GTC_CAT, POS_TZ, NO_TEST_MARKETS, RULES as _RULES,
+from talpha_rules import (MARKETS, market_token_index, SHOP2MKT, GTC_CAT, POS_TZ, NO_TEST_MARKETS, RULES as _RULES,
                           norm_nv, norm_pos_nv, is_test, PRIMARY_MARKET, DISPLAY,
                           norm_pos_external, norm_nv_external, UNASSIGN, bucket_nv, campaign_market,
                           parse_camp_product, build_page_index, find_campaign_by_page,
@@ -56,7 +56,7 @@ def parse_camp(cn):
     if not p: return None,None,None
     # Tìm ô đầu tiên là tên thị trường (bất kể tiền tố như "Tặng/", "LADI/"...);
     # marketer là ô ngay SAU thị trường.
-    mi=next((i for i,s in enumerate(p) if s.upper() in MARKETS), None)
+    mi=market_token_index(p)
     if mi is not None:
         # CHUẨN: NƯỚC/MARKETER/TỆPKHÁCH/MÃSANPHAM/TENTRANG/NGAY — marketer là ô ngay SAU nước.
         mkt=MARKETS[p[mi].upper()]
@@ -92,7 +92,7 @@ def _add_ads(query, date_from: str, date_to: str, camp_tab: dict, cell: dict, ce
         mkt,nv,prod=parse_camp(r.campaign_name)
         if not mkt or not nv:
             _p=[x.strip() for x in (r.campaign_name or '').split('/')]
-            _mi=next((i for i,s in enumerate(_p) if s.upper() in MARKETS), None)
+            _mi=market_token_index(_p)
             _slot=_p[_mi+1] if (_mi is not None and _mi+1<len(_p)) else ''
             if not norm_nv_external(_slot):   # người ngoài team là CỐ Ý loại, không cảnh báo
                 DROPPED[r.campaign_name or '(tên rỗng)']+=r.spend or 0
@@ -158,15 +158,38 @@ def _ad_owner_lookup(query, date_from: str, date_to: str) -> tuple[dict, set, di
     return ad2nv, test_ads, ad2camp
 
 
+def _campaign_ids(query, date_from: str, date_to: str) -> dict:
+    """campaign_id → tên campaign (60 ngày trước đầu tháng → cuối khoảng) — tra ID camp ghi ở UTM."""
+    return {r.cid: r.campaign_name for r in query(
+        f"SELECT DISTINCT campaign_id cid, campaign_name FROM fb_ads_data "
+        f"WHERE date BETWEEN DATE '{date_from}' - 60 AND DATE '{date_to}' AND campaign_id IS NOT NULL") if r.cid}
+
+
+def campaign_from_utm(utm_campaign, utm_content, utm_term, campaign_ids: dict, ad2camp: dict):
+    """Đơn từ LANDING (Webcake — Việt Nam, 12/11/2026): POS không có page/ad_id, chỉ có UTM. Sỹ Anh chốt
+    "đơn Việt Nam gán theo tên camp": utm_campaign là TÊN camp ("VN/THÁI/…") hoặc ID camp; utm_content /
+    utm_term là ID quảng cáo / nhóm QC. ID tra qua fb_ads_data (TK token không thấy thì không ra tên →
+    trả None, đơn vẫn "(không gán)", không đoán)."""
+    c=(utm_campaign or "").strip()
+    if "/" in c and campaign_market(c)[1]=="o_dau": return c
+    for x in (c, utm_content, utm_term):
+        x=(x or "").strip()
+        if x and (campaign_ids.get(x) or ad2camp.get(x)): return campaign_ids.get(x) or ad2camp.get(x)
+    return None
+
+
 def _add_orders(orders: list, page_index: dict, pos_names: dict, camp_tab: dict, ad2nv: dict,
                 test_ads: set, ad2camp: dict, purely_test_pages: set, cell: dict,
-                cell_test: dict) -> collections.Counter:
+                cell_test: dict, campaign_ids: dict) -> collections.Counter:
     """Đơn POS vào ô — marketer theo tag POS → camp nối theo nguồn đơn → chủ quảng cáo. Trả MATCH_COUNTS."""
     MATCH_COUNTS=collections.Counter()
     for r in orders:
         mkt=SHOP2MKT.get((r.shop_label or "").upper())
         if not mkt: continue
         cqc=ad2camp.get(r.ad_id or "") or ad2camp.get(r.adset_id or "")
+        utm_camp=None
+        if not cqc:
+            cqc=utm_camp=campaign_from_utm(r.p_utm_campaign, r.p_utm_content, r.p_utm_term, campaign_ids, ad2camp)
         # Đơn shop nước nào chỉ theo camp nước đó — cả khi nối theo page lẫn khi dự phòng theo quảng cáo.
         # 17/09/2026: đơn Đài #381 (0 TWD, không tag) mang quảng cáo + page của camp Singapore của Lộc →
         # Lộc ngày 15/09 ra 3 đơn, POS 2.
@@ -180,7 +203,9 @@ def _add_orders(orders: list, page_index: dict, pos_names: dict, camp_tab: dict,
         nv = norm_pos_nv(r.nm)
         if not nv:
             ex = norm_pos_external(r.nm)
-            nv = EXT_PREFIX + ex if ex else (nv_camp or (ad_same_market and (ad2nv.get(r.ad_id or "") or ad2nv.get(r.adset_id or ""))) or UNASSIGNED)
+            nv = EXT_PREFIX + ex if ex else (nv_camp or (ad_same_market and (ad2nv.get(r.ad_id or "") or ad2nv.get(r.adset_id or "")
+                                                                       or (utm_camp and parse_camp(utm_camp)[1]))) or UNASSIGNED)
+            if utm_camp and nv and not nv.startswith(EXT_PREFIX) and nv!=UNASSIGNED: MATCH_COUNTS["utm"]+=1
         prod = order_tab_name(r.page_name, pos_names) or camp_tab.get(camp or cqc or "") or "(khác)"   # tab = page
         # Đã nghỉ → "(không gán)" (bucket_nv), kể cả khi tag POS ghi đúng tên họ.
         nv=bucket_nv(nv)
@@ -236,7 +261,7 @@ def collect_cells(pg, date_from: str, date_to: str) -> ReportCells:
     purely_test_pages=test_pages-main_pages  # page CHỈ chạy camp test → đơn không ad_id trên page đó = test
     ORDERS=Q(f"""SELECT id, date_in_tz(inserted_at,'{POS_TZ}') d,
     safe_json(marketer) ->> 'name' nm, shop_label, page_id, page_name, seller_name,
-    ad_id, adset_id, status_name,
+    ad_id, adset_id, status_name, p_utm_campaign, p_utm_content, p_utm_term,
     COALESCE(cod,0) cod, CASE WHEN status_category='{GTC_CAT}' THEN COALESCE(cod,0) ELSE 0 END cod_gtc
   FROM sale_order
   WHERE date_in_tz(inserted_at,'{POS_TZ}') BETWEEN '{date_from}' AND '{date_to}' AND status_category NOT IN ('HUY','DON_THO')
@@ -248,7 +273,7 @@ def collect_cells(pg, date_from: str, date_to: str) -> ReportCells:
   WHERE date_in_tz(inserted_at,'{POS_TZ}') BETWEEN '{date_from}' AND '{date_to}' AND status_category NOT IN ('HUY','DON_THO')
     AND {sql_is_empty_order()} GROUP BY 1 ORDER BY 1""")
     MATCH_COUNTS = _add_orders(ORDERS, PAGE_INDEX, POS_NAMES, CAMP_TAB, ad2nv, test_ads, ad2camp,
-                               purely_test_pages, cell, cell_test)
+                               purely_test_pages, cell, cell_test, _campaign_ids(Q, date_from, date_to))
     cell,_CROSS_MARKET=_reassign_cross_market(cell); cell_test,_=_reassign_cross_market(cell_test)
     for (_a,_b,_m),(_s,_o) in sorted(_CROSS_MARKET.items()):
         print(f"LAN NUOC: {DISPLAY.get(_a,_a)} chay {_m} → tinh cho {DISPLAY.get(_b,_b)}: {_s:,.0f} d ads · {_o} don")

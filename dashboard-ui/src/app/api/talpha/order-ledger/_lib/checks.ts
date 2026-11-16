@@ -129,6 +129,7 @@ export function buildChecks(
             else if (!f) {
                 ok = false;
                 detail = `File tiền hàng không có đợt thanh toán nào trong 4 ngày quanh ngày sao kê ${dmyIso(latest.ngay_sao_ke)}.`;
+                if (purchaseSheet.nghi_ngo.length) detail += " Có đợt nghi gõ nhầm ngày trong file — xem mục “Ngày đợt trong file tiền hàng”.";
             } else if (purchase.cach_tra === "naza_tru") {
                 const diff = purchase.lech_naza_vnd ?? 0;
                 ok = Math.abs(diff) < 1;
@@ -150,6 +151,19 @@ export function buildChecks(
                     "file tiền hàng Đài không có khoản này nên không đem so.";
             }
             checks.push({ nhom: "B", ten: "Tiền hàng khớp file tiền hàng", ok, chi_tiet: detail });
+        }
+        // Ngày đợt gõ nhầm trong file tiền hàng (13/11/2026: "30/11" thay vì 30/10 làm kỳ
+        // 30/10 mất đợt). Đợt nghi ngờ đã bị bỏ khỏi phép ghép — nói ra để người sửa file.
+        if (!purchaseSheet.loi || purchaseSheet.nghi_ngo.length) {
+            const suspects = purchaseSheet.nghi_ngo;
+            checks.push({
+                nhom: "B", ten: "Ngày đợt trong file tiền hàng",
+                ok: suspects.length === 0,
+                chi_tiet: suspects.length === 0
+                    ? `${purchaseSheet.dot.length} đợt, ngày đi đúng thứ tự.`
+                    : suspects.map((x) => x.ly_do).join(" · ") +
+                      " Đợt này tạm KHÔNG ghép vào kỳ sao kê nào — sửa ngày trong Sheet, 5 phút sau dashboard tự đọc lại.",
+            });
         }
         // Kỳ NAZA gộp Singapore vào sao kê Đài — tin để biết, không phải lỗi (dấu "i").
         const sgMerged = latestStatement?.naza?.sg_gop;

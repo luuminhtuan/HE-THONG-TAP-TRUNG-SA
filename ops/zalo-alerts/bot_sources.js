@@ -15,7 +15,16 @@ async function fetchStale() {
         const okAge = j.last_ok_age_minutes == null ? null : Number(j.last_ok_age_minutes);
         if (!Number.isFinite(okAge)) return null;
         // loi = tên TKQC/shop đọc lỗi trong vòng sync gần nhất → tin "SỐ CHƯA ĐỦ" nói đích danh.
-        return { okAge, limit: Number(DR.staleWarnMinutes || 120), lastOkTs: Date.now() - okAge * 60000, loi: j.fetch_errors || null };
+        // healthCheck = bộ soát từng TKQC/shop: tuổi lượt gần nhất + mục mất sạch / tụt dòng. stalledShops = nước
+        // ads còn tiêu mà shop POS không có đơn mới nhiều ngày (12/11/2026).
+        const acc = j.accounts || null;
+        return { okAge, limit: Number(DR.staleWarnMinutes || 120), lastOkTs: Date.now() - okAge * 60000, loi: j.fetch_errors || null,
+            healthCheck: {
+                ageMinutes: acc && acc.age_minutes != null ? Number(acc.age_minutes) : null,
+                limit: Number(j.health_check_stale_minutes || 180),
+                failing: ((acc && acc.failing) || []).filter((x) => x.status === "empty" || x.status === "drop"),
+            },
+            stalledShops: j.stalled_shops || [] };
     } catch (e) { log("Đọc tuổi sync lỗi:", e.message); return null; }
 }
 

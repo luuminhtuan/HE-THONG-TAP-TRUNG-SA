@@ -53,7 +53,8 @@ export type TrackMarket = {
     currency: string; carrier: number | null; stale_days: number;
     status_map: Record<string, string>;
     source: "partner" | "pos";
-    provider: "17track" | "weship";
+    /** "pos" (Việt Nam, 11/11/2026): trạng thái J&T nằm sẵn trong đơn POS — lib/talpha/pos-jt.ts. */
+    provider: "17track" | "weship" | "pos";
     /** Mã nước trong vw_orders_std.market (source "pos"). */
     pos_market: string | null;
     weship: { url: string; tz_offset: string; concurrency: number; timeout_ms: number } | null;

@@ -19,7 +19,6 @@
 2. Sửa ĐỦ các chỗ (thiếu 1 = undercount âm thầm):
    - `~/talpha_reports/runtime/config/ad_accounts.json` (bản sync THẬT đọc)
    - `ops/talpha_reports/ad_accounts.json` (bản git)
-   - `sync/core/meta_client.py` `TALPHA_AD_ACCOUNTS`
    - `config/projects/talpha.yaml` `meta_ads.ad_account_ids` (+ bản `dashboard-ui/config/projects/talpha.yaml` nếu có)
    - `ACCOUNT_NAMES` trong `dashboard-ui/src/app/api/talpha/realtime/route.ts` VÀ `dashboard-ui/src/app/talpha/ads-command-center/page.tsx`
 3. Re-sync: chạy `sync_fb_ads` qua repo venv rồi `format_all.py` (giữ lock — xem §4).

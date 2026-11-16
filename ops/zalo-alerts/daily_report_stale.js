@@ -2,7 +2,7 @@
 // đọc lỗi, Sheet chưa có số hôm nay. Hàm thuần.
 const { B, I } = require("./zalo_text");
 const { isDayIncomplete } = require("./schedule");   // "ngày đó xong chưa" — có test riêng
-const { ddmm } = require("./daily_report_common");
+const { ddmm, fmt } = require("./daily_report_common");
 
 // Sheet KHÔNG BAO GIỜ mất dòng: sync chết thì dòng vẫn nằm đó, chỉ ĐỨNG SỐ. Nên "đọc
 // được dòng ngày X" hoàn toàn không chứng minh số của ngày X đã đủ (04/09/2026: tin 8h
@@ -41,6 +41,34 @@ function skippedAccountsNote(stale) {
         + "Báo cáo vẫn tính các TK còn lại (TK này giữ số đọc được lần cuối) — TK chết hẳn thì gỡ khỏi danh sách sync.")}`;
 }
 
+// Ba cảnh báo HỆ THỐNG (12/11/2026) — in trong tin của nhóm nước `code` (TW, SG…):
+//   1. Bộ soát từng TKQC/shop không chạy: 30/09→12/11/2026 nó hỏng 6 tuần, route cứ trả "0 mục lỗi".
+//      Chỉ kêu khi sync VẪN chạy — sync đứng thì dòng "SỐ CHƯA ĐỦ" đã nói rồi.
+//   2. Mục mất sạch dòng / tụt dòng (bộ soát bắt được nhưng trước giờ không ai đọc): shop thì chỉ
+//      báo vào nhóm nước của shop đó, TKQC thì báo mọi nhóm.
+//   3. Shop đứng im: ads nước đó còn tiêu mà shop POS không có đơn mới nhiều ngày.
+function systemHealthNotes(stale, code) {
+    if (!stale) return "";
+    const lines = [];
+    const hc = stale.healthCheck;
+    const syncRunning = stale.okAge != null && !(stale.okAge > stale.limit);
+    if (hc && hc.ageMinutes != null && hc.ageMinutes > hc.limit && syncRunning) {
+        lines.push(`⚠️ ${I(`Bộ soát từng TKQC/shop không chạy ${Math.floor(hc.ageMinutes / 60)} giờ — TKQC hay shop rơi khỏi sync lúc này sẽ không ai báo. Cần mở log talpha-report.`)}`);
+    }
+    const failing = ((hc && hc.failing) || []).filter((x) => x.kind !== "orders" || !code || String(x.name).toUpperCase() === code);
+    if (failing.length) {
+        const names = failing.slice(0, 5).map((x) => `${x.kind === "orders" ? "shop" : "TKQC"} ${x.name} (${x.status === "empty" ? "mất sạch" : `tụt ${x.prev_rows} → ${x.rows} dòng`})`).join(", ")
+            + (failing.length > 5 ? ` và ${failing.length - 5} mục khác` : "");
+        lines.push(`⚠️ ${I(`Sync thiếu dữ liệu: ${names}. Số trong tin có thể thiếu phần của mục này.`)}`);
+    }
+    const stalled = (stale.stalledShops || []).find((x) => code && String(x.shop).toUpperCase() === code);
+    if (stalled) {
+        const idle = stalled.days == null ? "chưa có đơn nào" : `${stalled.days} ngày không có đơn mới (đơn cuối ${ddmm(stalled.last_order_date)})`;
+        lines.push(`⚠️ ${I(`Shop POS ${code}: ${idle} trong khi ads vẫn tiêu ${fmt(stalled.ads_vnd)}đ. Kiểm tra khoá API shop / mã shop — hoặc thật sự không ra đơn.`)}`);
+    }
+    return lines.join("\n");
+}
+
 // Sheet tạo sẵn dòng cho MỌI ngày trong tháng, nên vòng ghi chưa chạy được lần nào từ 00:00
 // thì dòng hôm nay toàn số 0. In "Ads 0đ · 0 đơn" là nói sai: 30/09/2026 tin 13:00 in đúng như
 // vậy trong khi Meta đã tiêu 1,3tr. Chỉ kết luận "chưa có số" khi BIẾT vòng ghi OK gần nhất
@@ -73,4 +101,4 @@ function resolveStaleWarning(opts, dateStr) {
     return opts.canhBao != null ? opts.canhBao : buildStaleWarning(opts.stale, dateStr, opts.intraday);
 }
 
-module.exports = { formatVnTime, errorReason, skippedAccountsNote, sheetMissingToday, buildStaleWarning, resolveStaleWarning };
+module.exports = { formatVnTime, errorReason, skippedAccountsNote, systemHealthNotes, sheetMissingToday, buildStaleWarning, resolveStaleWarning };

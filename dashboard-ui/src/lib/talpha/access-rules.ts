@@ -8,7 +8,7 @@
 // người dùng — để test được (tests/access.test.cjs) và để proxy.ts lẫn từng route
 // dùng chung MỘT cách hiểu. Hai nơi tự hiểu luật là sớm muộn một nơi hở.
 // ═══════════════════════════════════════════════════════════════════
-import { RULES, PRIMARY_MARKET, CAMP_MARKETS } from "./rules";
+import { RULES, PRIMARY_MARKET, CAMP_MARKETS, CAMP_MARKETS_FIRST_SEGMENT } from "./rules";
 
 /** Mọi tab của dashboard-shell.tsx. Thêm tab mới thì thêm ở đây và ở access.roles. */
 export const ALL_TABS = [
@@ -17,7 +17,7 @@ export const ALL_TABS = [
     "products", "marketing",
     "ad-spend", "ads-command", "ad-health",
     "ads-recon",
-    "customers", "market-intel",
+    "customers", "market-intel", "customer-segments", "competitor-research",
     "ask-ai",
 ] as const;
 
@@ -177,6 +177,10 @@ export const API_RULES: Record<string, ApiRule> = {
     "/api/talpha/product-costs": { tabs: ["product-pnl"] },
     "/api/talpha/inventory": { tabs: ["products", "overview"] },
     "/api/talpha/marketer-perf": { tabs: ["marketing"] },
+    // Số tham chiếu tệp khách (config/customer_segments.json) — route tự cắt thị trường theo team.
+    "/api/talpha/customer-segments": { tabs: ["customer-segments"] },
+    // Kết quả soi nhóm bán khác (config/competitor_research.json) — route tự cắt bản soi theo thị trường của team.
+    "/api/talpha/competitor-research": { tabs: ["competitor-research"] },
     "/api/query": { tabs: ["marketing", "ad-health", "customers", "market-intel"] },
 
     // Sổ đơn / Tiền COD về / vận đơn — mỗi lượt gọi là MỘT nước. cod-actions mở cho Sổ đơn
@@ -185,6 +189,8 @@ export const API_RULES: Record<string, ApiRule> = {
     "/api/talpha/order-ledger/market": { tabs: ["order-ledger"], market: "param" },
     "/api/talpha/cod-recon": { tabs: ["cod-recon"], market: "TW" },
     "/api/talpha/cod-recon/market": { tabs: ["cod-recon"], market: "param" },
+    // Việt Nam (13/11/2026): kỳ đối soát J&T VIP kéo bằng token người dùng dán — route chỉ nhận market=VN.
+    "/api/talpha/cod-recon/jt-vn": { tabs: ["cod-recon"], market: "param" },
     "/api/talpha/cod-actions": { tabs: ["order-ledger", "cod-recon"], market: "TW" },
     "/api/talpha/tracking": { tabs: ["tracking"], market: "tracking" },
     "/api/talpha/tracking/import": { tabs: ["tracking"], market: "TW" },
@@ -272,9 +278,11 @@ export function sqlCampaignMarketKey(col = "campaign_name"): string {
     if (!pairs.length) return mac;
     return `COALESCE((
         SELECT CASE UPPER(TRIM(seg)) ${pairs.map(([t, m]) => `WHEN ${sqlStr(t.toUpperCase())} THEN ${sqlStr(m)}`).join(" ")} END
-        FROM unnest(string_to_array(COALESCE(${col}, ''), '/')) WITH ORDINALITY AS o_(seg, vi_tri)
-        WHERE UPPER(TRIM(seg)) IN (${pairs.map(([t]) => sqlStr(t.toUpperCase())).join(", ")})
-        ORDER BY vi_tri LIMIT 1
+        FROM unnest(string_to_array(COALESCE(${col}, ''), '/')) WITH ORDINALITY AS o_(seg, seg_pos)
+        WHERE UPPER(TRIM(seg)) IN (${pairs.map(([t]) => sqlStr(t.toUpperCase())).join(", ")})${CAMP_MARKETS_FIRST_SEGMENT.length
+            // WITH ORDINALITY đếm từ 1: ô đầu là seg_pos = 1.
+            ? `\n          AND (seg_pos = 1 OR UPPER(TRIM(seg)) NOT IN (${CAMP_MARKETS_FIRST_SEGMENT.map(sqlStr).join(", ")}))` : ""}
+        ORDER BY seg_pos LIMIT 1
     ), ${mac})`;
 }
 

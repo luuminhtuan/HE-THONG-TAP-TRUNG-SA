@@ -137,6 +137,26 @@ export function Kpi({ label, value, sub, tone, className }: {
     );
 }
 
+/**
+ * Ô "lệch ngân hàng" của một kỳ. Lệch nhỏ trong ngưỡng: kỳ vẫn "khớp" — ghi số xám kèm "bỏ qua" để
+ * không đọc thành mâu thuẫn với ô "không kỳ nào lệch" (13/11/2026). Dùng chung màn Đài và nước khác.
+ */
+export function BankDiffCell({ diff, matched, tolerance }: { diff: number | null; matched: boolean; tolerance: number | null }) {
+    const small = diff != null && Math.round(diff) !== 0 && matched;
+    const money = (n: number) => `${Math.round(n).toLocaleString("vi-VN")}đ`;
+    return (
+        <span className={cn("font-semibold tabular-nums",
+            diff == null || small ? "text-muted-foreground"
+                : matched ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}
+            title={small && tolerance != null ? `Lệch dưới ${money(tolerance)} — làm tròn tỷ giá / phí chuyển, bỏ qua` : undefined}>
+            {diff == null ? "·"
+                : Math.round(diff) === 0 ? "0đ"
+                    : `${diff > 0 ? "+" : "−"}${money(Math.abs(diff))}`}
+            {small && <span className="block text-[11px] font-normal">bỏ qua</span>}
+        </span>
+    );
+}
+
 export function StatusBadge({ p }: { p: { trang_thai: PeriodState | "am"; trang_thai_chu: string } }) {
     const style: Record<PeriodState | "am", string> = {
         am: "bg-slate-100 text-slate-700 ring-slate-500/20 dark:bg-slate-500/10 dark:text-slate-300 dark:ring-slate-400/25",

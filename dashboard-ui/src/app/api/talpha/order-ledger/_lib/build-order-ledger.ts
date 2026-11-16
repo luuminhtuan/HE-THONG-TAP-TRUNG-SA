@@ -121,7 +121,7 @@ export async function buildOrderLedger(asOf: string, from: string | null) {
         fx,
         periods: byPeriod,
         chua_ve_tien: deliveredUnpaid,
-        tien_ve: buildMoneyBack(byPeriod, rows, purchaseSheet),
+        tien_ve: buildMoneyBack(byPeriod, rows, purchaseSheet, asOf),
         tong_quan: buildOverview(byPeriod),
         statements: stm.statements.map((s) => ({ id: s.id, filename: s.filename })),
         warnings: notes,

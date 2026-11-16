@@ -37,7 +37,7 @@ export type Shipment = {
     registered: boolean;
     /** Trạng thái đến từ đâu — để UI nói rõ số này mới tới mức nào. "weship" = tra thẳng
      *  trang của hãng giao UAE (không qua 17TRACK). */
-    source?: "doi_tac" | "17track" | "weship" | null;
+    source?: "doi_tac" | "17track" | "weship" | "pos" | null;
     raw_status?: string | null;
     /** Ngày xuất kho theo file đối tác — đồng hồ đáng tin hơn status_since. */
     ship_date?: string | null;

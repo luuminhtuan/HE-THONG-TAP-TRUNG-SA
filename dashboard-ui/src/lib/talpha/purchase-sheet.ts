@@ -188,6 +188,45 @@ export function matchPaymentsToPeriods(
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Soát ngày đợt gõ nhầm
+// ─────────────────────────────────────────────────────────────────────────
+// Đợt thanh toán đi mỗi tuần một lần, từ trên xuống dưới trong file. 13/11/2026 ô
+// dòng 370 ghi "THANH TOÁN NGÀY 30/11" thay vì 30/10: kỳ sao kê 30/10 không ghép
+// được đợt nào, và cuối tháng 11 đợt 5.721.300đ này sẽ bị ghép nhầm vào một kỳ
+// khác. Đợt nào ngày đi NGƯỢC thứ tự với đợt kề nó, hoặc nằm quá xa trong tương
+// lai, thì gắn cờ và KHÔNG đem ghép vào kỳ nào — không đoán ngày đúng thay người.
+export type SuspectPayment = { dot: PurchasePayment; ly_do: string };
+
+const dmyIso = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+
+export function auditPaymentDates(
+    payments: PurchasePayment[],
+    today = new Date().toISOString().slice(0, 10), futureDays = 7,
+): SuspectPayment[] {
+    const limit = new Date(Date.parse(today) + futureDays * 86_400_000).toISOString().slice(0, 10);
+    const reasons = new Map<number, string>();
+    // Hai đợt liền nhau đi ngược thứ tự: chỉ MỘT trong hai gõ nhầm. Đợt nhầm là đợt
+    // xa đợt mốc hơn (mốc = đợt ngay trước cặp; cặp ở đầu file thì lấy đợt ngay sau).
+    // 23/10 · 30/11 · 06/11 → mốc 23/10: 30/11 cách 38 ngày, 06/11 cách 14 → nhầm 30/11.
+    for (let i = 0; i + 1 < payments.length; i++) {
+        const a = payments[i], b = payments[i + 1];
+        if (a.ngay <= b.ngay) continue;
+        const anchor = payments[i - 1] ?? payments[i + 2];
+        const wrong = !anchor ? i : daysApart(a.ngay, anchor.ngay) >= daysApart(b.ngay, anchor.ngay) ? i : i + 1;
+        const before = payments[wrong - 1], after = payments[wrong + 1];
+        reasons.set(wrong, `nằm giữa đợt ${before ? dmyIso(before.ngay) : "—"} và ${after ? dmyIso(after.ngay) : "—"} ` +
+            "nhưng ngày đi ngược thứ tự — có thể gõ nhầm tháng");
+    }
+    payments.forEach((x, i) => {
+        if (!reasons.has(i) && x.ngay > limit) reasons.set(i, `ở tương lai (hôm nay ${dmyIso(today)}) — có thể gõ nhầm ngày`);
+    });
+    return [...reasons.keys()].sort((a, b) => a - b).map((i) => ({
+        dot: payments[i],
+        ly_do: `Đợt dòng ${payments[i].dong} ghi ngày ${dmyIso(payments[i].ngay)} (${String(payments[i].tong_vnd).replace(/\B(?=(\d{3})+(?!\d))/g, ".")}đ) ${reasons.get(i)}.`,
+    }));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Đọc Google Sheet — có bộ nhớ đệm, KHÔNG BAO GIỜ ném lỗi ra ngoài
 // ─────────────────────────────────────────────────────────────────────────
 // Màn đối soát không được sập vì file tiền hàng tạm không mở được. Lỗi thì trả
@@ -195,19 +234,22 @@ export function matchPaymentsToPeriods(
 const CACHE_MS = 5 * 60_000;
 let cache: { luc: number; ket: PurchaseSheetResult } | null = null;
 
-export type PurchaseSheetResult = { dot: PurchasePayment[]; loi: string | null; doc_luc: string };
+/** `dot` đã BỎ các đợt nghi gõ nhầm ngày — chúng nằm ở `nghi_ngo`, không ghép vào kỳ nào. */
+export type PurchaseSheetResult = { dot: PurchasePayment[]; nghi_ngo: SuspectPayment[]; loi: string | null; doc_luc: string };
 
 export async function readPurchaseSheet(): Promise<PurchaseSheetResult> {
     if (cache && Date.now() - cache.luc < CACHE_MS) return cache.ket;
     const luc = new Date().toISOString();
     let result: PurchaseSheetResult;
     if (!CFG.sheet_id) {
-        result = { dot: [], loi: "Chưa khai file tiền hàng ở config/talpha_rules.json → cod_settlement.purchase_sheet.", doc_luc: luc };
+        result = { dot: [], nghi_ngo: [], loi: "Chưa khai file tiền hàng ở config/talpha_rules.json → cod_settlement.purchase_sheet.", doc_luc: luc };
     } else {
         try {
             const r = await fetchSheetCsv(CFG.sheet_id, CFG.sheet_gid || "0");
             const grid = csvToGrid(r.csv);
-            const payments = parsePurchasePayments(grid);
+            const all = parsePurchasePayments(grid);
+            const suspects = auditPaymentDates(all);
+            const payments = all.filter((x) => !suspects.some((n) => n.dot === x));
             // Cả file chỉ còn ô lỗi công thức (#REF!, #N/A…) thì nói thẳng ra. 14/09/2026 bản
             // sao dùng IMPORTRANGE theo TÊN tab, tab gốc đổi tên là cả file thành một ô #REF!
             // — câu "không thấy đợt nào" khi đó chỉ khiến người ta đi soát nhầm chỗ.
@@ -215,13 +257,14 @@ export async function readPurchaseSheet(): Promise<PurchaseSheetResult> {
             const allFormulaErrors = o.length > 0 && o.every((c) => /^#(REF!|N\/A|ERROR!|VALUE!|NAME\?)$/i.test(c));
             result = {
                 dot: payments,
+                nghi_ngo: suspects,
                 loi: payments.length ? null
                     : allFormulaErrors ? `File tiền hàng đang ra lỗi công thức ${o[0]} — thường là IMPORTRANGE trỏ tới tab đã đổi tên. Sửa công thức, hoặc khai thẳng file gốc vào cod_settlement.purchase_sheet.`
                         : "Đọc được file tiền hàng nhưng không thấy đợt thanh toán nào.",
                 doc_luc: luc,
             };
         } catch (e) {
-            result = { dot: [], loi: `Không đọc được file tiền hàng: ${(e as Error).message}`, doc_luc: luc };
+            result = { dot: [], nghi_ngo: [], loi: `Không đọc được file tiền hàng: ${(e as Error).message}`, doc_luc: luc };
         }
     }
     cache = { luc: Date.now(), ket: result };

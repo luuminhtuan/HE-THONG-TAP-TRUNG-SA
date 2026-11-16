@@ -26,7 +26,7 @@ import type { NazaCodLine, NazaFeeLine, NazaMarket, NazaSgPart, NazaStatement, N
 
 // Cấu hình + bảng giá, đọc ô / sheet, kiểu dữ liệu nằm ở naza-statement-config.ts /
 // naza-statement-cells.ts / naza-statement-types.ts (tách 16/11/2026) — mặt tiền này giữ nguyên mọi tên cũ.
-export { FEE_TABLE_DECLARED, OP_FEE_PER_PARCEL, PENDING_ALERT_DAYS, matchChannel, expectedShipFee } from "./naza-statement-config";
+export { FEE_TABLE_DECLARED, OP_FEE_PER_PARCEL, matchChannel, expectedShipFee } from "./naza-statement-config";
 export { normTracking, normOrderId, toNumber, toIsoDate, feeColumns, detectColumnShift, xlsxToTables } from "./naza-statement-cells";
 export type { NazaCodLine, NazaMarket, NazaFeeLine, NazaSgPart, NazaSummary, NazaStatement } from "./naza-statement-types";
 

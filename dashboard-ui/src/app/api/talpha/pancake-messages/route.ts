@@ -13,7 +13,7 @@
 //     tiền quy bằng posMoneyDivisor + tỷ giá của nước.
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { MARKETS_PUBLIC, EXCHANGE_RATES, posMoneyDivisor, campaignMarket, DISPLAY, normCampMarketer, CAMP_MARKETS } from "@/lib/talpha/rules";
+import { MARKETS_PUBLIC, EXCHANGE_RATES, posMoneyDivisor, campaignMarket, DISPLAY, normCampMarketer, marketTokenIndex } from "@/lib/talpha/rules";
 import { normalizePageName, pageOfCampaign, countForDay, isMarketPage } from "@/lib/talpha/pancake";
 import { listPages, conversationsSince, sleep, GIAN_MS, tokenPancake } from "@/lib/talpha/pancake-api";
 
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
         if (!t) return;
         const k = normalizePageName(t);
         const p = cn.split("/").map((x) => x.trim());
-        const mi = p.findIndex((s) => s.toUpperCase() in CAMP_MARKETS);
+        const mi = marketTokenIndex(p);
         const key = mi >= 0 && mi + 1 < p.length ? normCampMarketer(p[mi + 1]) : null;
         const existing = pageOwners.get(k);
         if (!existing) pageOwners.set(k, { ten: t, nv: key ? DISPLAY[key] || key : null, camps: new Set([cn]), ngayCuoi: d });

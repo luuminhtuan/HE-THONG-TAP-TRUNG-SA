@@ -7,6 +7,7 @@ import { cn } from "../utils";
 import type { CodReconTabProps } from "./cod-recon/types";
 import { TwCodRecon } from "./cod-recon/tw-cod-recon";
 import { MarketCodRecon } from "./cod-recon/market-cod-recon";
+import { VnCodRecon } from "./cod-recon/vn-cod-recon";
 
 /* ═══════════════════════════════════════════════════════════════════
    TIỀN COD VỀ (mục Kế toán) — MỘT QUY TRÌNH, KHÔNG PHẢI MỘT ĐỐNG KẾT QUẢ KIỂM TRA
@@ -40,7 +41,8 @@ import { MarketCodRecon } from "./cod-recon/market-cod-recon";
    ═══════════════════════════════════════════════════════════════════ */
 
 /* Các mảnh của tab nằm ở ./cod-recon/: tw-cod-recon (màn Đài) · market-cod-recon (nước khác) ·
-   money-summary (Σ tiền về) · tasks-section (①) · money-flow (luồng tiền ③) · checks-panel (máy soát) ·
+   vn-cod-recon (Việt Nam — J&T) · money-summary (Σ tiền về) · money-age (tiền chờ bao lâu, COD đi đâu) ·
+   tasks-section (①) · money-flow (luồng tiền ③) · checks-panel (máy soát) ·
    fx-section (④ tỷ giá) · ui (khối, nút, ô số dùng chung) · format (định dạng, soạn tin) · types. */
 
 /**
@@ -80,7 +82,10 @@ export default function TALPHACodReconTab(props: CodReconTabProps) {
             ))}
         </div>
     ) : null;
+    // Việt Nam (13/11/2026): J&T tự chốt kỳ, không có sao kê để tải — màn riêng (vn-cod-recon.tsx).
     return market === "TW"
         ? <TwCodRecon {...props} nutNuoc={marketSwitcher} />
+        : market === "VN"
+        ? <VnCodRecon key={market} nutNuoc={marketSwitcher} />
         : <MarketCodRecon key={market} code={market} nutNuoc={marketSwitcher} dateRange={props.dateRange} />;
 }

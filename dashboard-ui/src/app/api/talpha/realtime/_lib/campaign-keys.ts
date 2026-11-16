@@ -1,6 +1,6 @@
 // ═══ RULE CHUNG: import từ src/lib/talpha/rules.ts (data = config/talpha_rules.json).
 // Golden-test 29/07 = 100% khớp bản inline cũ. Sửa rule → sửa JSON, KHÔNG thêm map ở đây.
-import { MARKET_CANON, CAMP_MARKETS, PAGE_ID_RE, normCampMarketer } from "@/lib/talpha/rules";
+import { MARKET_CANON, CAMP_MARKETS, PAGE_ID_RE, marketTokenIndex, normCampMarketer } from "@/lib/talpha/rules";
 
 export function normalizeMarket(label?: string | null): string {
     const s = String(label || "").trim();
@@ -12,7 +12,7 @@ export function parseCampaign(campaignName?: string | null): { mkt: string | nul
     const parts = String(campaignName || "").split("/").map((x) => x.trim());
     let mkt: string | null = null;
     let marketerKey: string | null = null;
-    const mi = parts.findIndex((s) => CAMP_MARKETS[s.toUpperCase()]);
+    const mi = marketTokenIndex(parts);
     if (mi >= 0) {
         mkt = CAMP_MARKETS[parts[mi].toUpperCase()];
         marketerKey = mi + 1 < parts.length ? normCampMarketer(parts[mi + 1]) : null;

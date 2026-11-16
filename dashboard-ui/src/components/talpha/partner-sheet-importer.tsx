@@ -21,6 +21,8 @@ export type PartnerSheetImport = {
 };
 
 const HOUR_MS = 3_600_000;
+/** Tuổi của lần nạp, tính bằng giờ — gom một chỗ để component không gọi đồng hồ ngay trong lúc vẽ. */
+const ageHours = (at: string) => (Date.now() - Date.parse(at)) / HOUR_MS;
 
 function formatVnTime(iso: string) {
     const d = new Date(iso);
@@ -38,14 +40,14 @@ function ageText(hours: number) {
 /** Bảng đã cũ (chưa nạp lần nào, hoặc quá `gioCanhBao` giờ) — lúc đó PHẢI hiện khung đỏ to. */
 export function isSheetStale(n?: PartnerSheetImport | null, warnAfterHours = 24): boolean {
     if (!n) return false;
-    return !n.luc || (Date.now() - Date.parse(n.luc)) / HOUR_MS > warnAfterHours;
+    return !n.luc || ageHours(n.luc) > warnAfterHours;
 }
 
 /** Một dòng gọn cho thanh công cụ Sổ đơn khi bảng còn mới (07/10/2026): "Bảng đối tác nạp 06:00
  *  ngày 07/10 (2 giờ trước) · 778 đơn". */
 export function shortImportLabel(n?: PartnerSheetImport | null): string | null {
     if (!n?.luc) return null;
-    const hours = (Date.now() - Date.parse(n.luc)) / HOUR_MS;
+    const hours = ageHours(n.luc);
     return `Bảng đối tác nạp ${formatVnTime(n.luc)} (${ageText(hours)})`
         + (typeof n.so_don === "number" && n.so_don > 0 ? ` · ${n.so_don.toLocaleString("vi-VN")} đơn` : "");
 }
@@ -53,9 +55,7 @@ export function shortImportLabel(n?: PartnerSheetImport | null): string | null {
 /** `anMaTrung`: không nhắc mã vận đơn trùng ở đây — Sổ đơn đã có khung "việc cần sửa" nói rồi. */
 export default function PartnerSheetImporter({ n, gioCanhBao: warnAfterHours = 24, anMaTrung: hideDuplicateCodes }: { n?: PartnerSheetImport | null; gioCanhBao?: number; anMaTrung?: boolean }) {
     if (!n) return null;
-    // Cố ý đọc giờ lúc vẽ: nhãn "nạp cách đây bao lâu" phải tính lại mỗi lần tab vẽ lại.
-    // eslint-disable-next-line react-hooks/purity
-    const hours = n.luc ? (Date.now() - Date.parse(n.luc)) / HOUR_MS : Infinity;
+    const hours = n.luc ? ageHours(n.luc) : Infinity;
     const stale = !n.luc || hours > warnAfterHours;
 
     return (

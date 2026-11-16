@@ -22,8 +22,8 @@ function toVnDate(iso) {
     return Number.isNaN(t) ? null : new Date(t + 7 * 3600000).toISOString().slice(0, 10);
 }
 const truncate = (s, n) => { const x = String(s || "").replace(/\s+/g, " ").trim(); return x.length > n ? x.slice(0, n - 1) + "…" : x; };
-/** Tên nguồn trạng thái của nước này — "WeShip" (UAE) hay "17TRACK". */
-const sourceName = (d) => (d && d.provider === "weship" ? "WeShip" : "17TRACK");
+/** Tên nguồn trạng thái của nước này — "WeShip" (UAE), "POS (J&T)" (Việt Nam) hay "17TRACK". */
+const sourceName = (d) => (d && d.provider === "weship" ? "WeShip" : d && d.provider === "pos" ? "POS (J&T)" : "17TRACK");
 
 /** 17TRACK chạy được nhưng KHÔNG mã nào của nước này được theo dõi vì hãng bị từ chối đăng ký
  *  (Nhật 13/10/2026: Sagawa — "The carrier temporarily does not support registration"). Ghi
@@ -41,6 +41,9 @@ function sourceStatusLines(d, nowTs, { quotaWarn = 200, staleHours = 26 } = {}) 
     const warnings = [];
     const ls = d.last_sync;
     const name = sourceName(d);
+    // Việt Nam (11/11/2026): trạng thái J&T nằm sẵn trong đơn POS, talpha-sync nạp mỗi giờ —
+    // không có lượt tra riêng, không quota. Sync đứng thì tin "sync-health" của bot đã kêu.
+    if (d.provider === "pos") return "";
     if (d.has_api_key && !ls) {
         warnings.push(d.provider === "weship"
             ? `⚠️ ${B("WeShip chưa tra lần nào")} — chưa biết đơn nào giao hỏng`
@@ -83,6 +86,8 @@ function failReason(s) {
     if (/Returning/.test(sub) || (s.source !== "17track" && /hoàn/i.test(raw))) return "dang_hoan";
     if (/Returned/.test(sub)) return "da_hoan";
     if (s.source !== "17track" && /hẹn/i.test(raw)) return "khách hẹn giao lại";
+    // J&T Việt Nam (qua POS, 11/11/2026): "Không liên lạc được Khách hàng/khóa máy".
+    if (s.source === "pos" && /liên lạc|khóa máy|khoá máy|thuê bao|không nghe/i.test(raw)) return "không nghe máy";
     if (/Rejected/.test(sub) || /từ chối/i.test(raw)) return "khách từ chối";
     // Hai lý do riêng của WeShip (UAE).
     if (/NoResponse/.test(sub)) return "không nghe máy";

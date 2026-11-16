@@ -188,7 +188,7 @@ export function MarketMoneyFlowPanel({ l, ky: statementPeriod, m, tien: formatAm
                 <RateArrow chu={`× ${l.ty_gia_vnd != null ? l.ty_gia_vnd.toLocaleString("vi-VN") : "—"}`} />
                 <MoneyStage te="vnd" ten="Việt Nam" mo="về tài khoản">
                     <MoneyLine nhan="Quy ra tiền Việt" so={l.vnd != null ? VND(l.vnd) : "—"} />
-                    {l.tru_vnd.map((x) => <MoneyLine key={x.nhan} nhan={`− ${x.nhan}`} so={VND(-x.so)} tru ghi="theo sao kê NAZA" />)}
+                    {l.tru_vnd.map((x) => <MoneyLine key={x.nhan} nhan={`− ${x.nhan}`} so={VND(-x.so)} tru ghi={x.ghi ?? "theo sao kê NAZA"} />)}
                     {l.chenh_vnd !== 0 && <MoneyLine nhan="± Điều chỉnh" so={VND(l.chenh_vnd)} tru={l.chenh_vnd < 0} ghi="NAZA ghi thêm, sheet TỔNG không tách dòng" />}
                     <MoneyLine nhan="= Phải nhận" tong lon
                         so={l.phai_nhan_vnd == null ? "—" : isNegative ? `âm ${VND(-l.phai_nhan_vnd)}` : VND(l.phai_nhan_vnd)}

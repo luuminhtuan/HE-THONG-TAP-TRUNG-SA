@@ -26,6 +26,7 @@ import { statementOverdue, STATEMENT_CYCLE_DAYS } from "./order-ledger";
 import { normTracking } from "./naza-statement";
 import type { CodOrder } from "./cod-market";
 import type { MarketMatchResult, MarketPeriod, MarketStatement } from "./cod-statement-market";
+import { marketCodComposition, marketMoneyAge, type CodComposition, type MoneyAge } from "./cod-money-age";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const vnd = (n: number) => Math.round(n).toLocaleString("vi-VN");
@@ -37,7 +38,8 @@ const gon = (s: string) => s.replace(/\s+/g, "");
 // ③ Luồng tiền một kỳ
 // ─────────────────────────────────────────────────────────────────────────
 
-export type DeductionLine = { nhan: string; so: number; ghi?: string };
+/** `ky_truoc` = khoản âm của kỳ trước NAZA trừ vào kỳ này — không phải tiền hàng. */
+export type DeductionLine = { nhan: string; so: number; ghi?: string; loai?: "ky_truoc" };
 export type MarketCashFlow = {
     so_don: number;
     cod_local: number;
@@ -56,15 +58,24 @@ export type MarketCashFlow = {
     phai_nhan_vnd: number | null;
 };
 
-/** Nhãn tiếng Việt của dòng sheet TỔNG, bỏ đuôi "(RMB)"/"(VND)" — không có thì nhãn Trung. */
+/** Nhãn tiếng Việt của dòng sheet TỔNG, bỏ đuôi "(RMB)"/"(VND)"/"(JPY)" — không có thì nhãn Trung. */
 const lineLabel = (x: { zh: string; vi: string }) =>
-    x.vi.replace(/\(\s*(RMB|VND)\s*\)/gi, "").replace(/\s+/g, " ").trim() || x.zh;
+    x.vi.replace(/\(\s*(RMB|VND|JPY)\s*\)/gi, "").replace(/\s+/g, " ").trim() || x.zh;
+
+/**
+ * Dòng tiền ròng sau khi trừ: mẫu Sing ghi '本期应退金额RMB', mẫu Nhật ghi '应退金额（RMB）' (không có
+ * 本期). Dòng ròng bằng yên '应退日币' không chứa '应退金额' nên không lọt vào đây.
+ */
+const isNetLine = (zh: string) => gon(zh).includes("应退金额");
+
+/** Phí trong sheet TỔNG — mẫu Sing gộp hết vào dòng 速递运费, mẫu Nhật tách 操作费 ra dòng riêng. */
+export const isFeeLine = (zh: string) => /速递运费|快递运费|操作费|打包费|头程运费/.test(gon(zh)) && !/JPY|日币/i.test(zh);
 
 export function periodCashFlow(s: MarketStatement): MarketCashFlow | null {
     const n = s.naza;
     if (!n || !n.tong_dong || !n.tong_dong.length) return null;
     const d = n.tong_dong;
-    const isNetLine = (zh: string) => gon(zh).includes("本期应退金额");
+    const rateRmb = n.ty_gia_rmb ?? null;
     const rmbDeductions: DeductionLine[] = [];
     const codFeeRmb = n.quy_te_rmb != null && n.ve_rmb != null ? n.quy_te_rmb - n.ve_rmb : 0;
     if (codFeeRmb > 0.005) {
@@ -73,6 +84,14 @@ export function periodCashFlow(s: MarketStatement): MarketCashFlow | null {
             ghi: n.quy_te_rmb ? `${(codFeeRmb / n.quy_te_rmb * 100).toFixed(1).replace(".", ",")}% tiền COD` : undefined,
         });
     }
+    // Mẫu Nhật: NAZA trừ phí bằng YÊN (thu hộ, hàng bị từ chối, chuyển tiếp…) TRƯỚC khi đổi ra tệ.
+    // Đổi từng dòng ra tệ theo tỷ giá kỳ để luồng tiền đi một mạch: COD × tỷ giá − phí = còn lại.
+    if (rateRmb != null) {
+        for (const x of d) {
+            if (!/JPY/i.test(x.zh) || x.so >= 0 || gon(x.zh).includes("回款")) continue;
+            rmbDeductions.push({ nhan: lineLabel(x), so: round2(-x.so * rateRmb), ghi: `${(-x.so).toLocaleString("vi-VN")} yên × ${rateRmb}` });
+        }
+    }
     for (const x of d) {
         if (!/RMB/i.test(x.zh) || x.so >= 0 || isNetLine(x.zh)) continue;
         rmbDeductions.push({ nhan: lineLabel(x), so: round2(-x.so) });
@@ -80,15 +99,23 @@ export function periodCashFlow(s: MarketStatement): MarketCashFlow | null {
     const netRmb = d.find((x) => isNetLine(x.zh) && /RMB/i.test(x.zh))?.so ?? null;
     const tyVnd = n.ty_gia_vnd ?? null;
     const convertedVnd = netRmb != null && tyVnd != null ? netRmb * tyVnd : null;
-    const vndDeductions = d.filter((x) => gon(x.zh).includes("采购费") && x.so !== 0)
+    const vndDeductions: DeductionLine[] = d.filter((x) => gon(x.zh).includes("采购费") && x.so !== 0)
         .map((x) => ({ nhan: lineLabel(x), so: x.so }));
+    // Mẫu Nhật 06/11/2026: kỳ 23/10 âm 14.027.698đ → NAZA ghi dòng '10月23号的回款金额(VND)' (số
+    // DƯƠNG) rồi trừ vào kỳ này. Không tách dòng này ra là phép tính tiền Việt lệch đúng bằng nó.
+    for (const x of d) {
+        if (!/VND/i.test(x.zh) || !gon(x.zh).includes("回款金额") || isNetLine(x.zh) || x.so === 0) continue;
+        vndDeductions.push({ nhan: lineLabel(x), so: Math.abs(x.so), ghi: "kỳ trước âm — NAZA trừ vào kỳ này", loai: "ky_truoc" });
+    }
     const phai = n.phai_nhan_vnd ?? null;
     const difference = phai != null && convertedVnd != null ? phai - (convertedVnd - vndDeductions.reduce((t, x) => t + x.so, 0)) : 0;
+    const codLocal = round2(s.rows.reduce((t, r) => t + (Number(r.amount) || 0), 0));
     return {
         so_don: s.rows.length,
-        cod_local: round2(s.rows.reduce((t, r) => t + (Number(r.amount) || 0), 0)),
-        ty_gia_rmb: n.ty_gia_rmb ?? null,
-        rmb: n.quy_te_rmb ?? null,
+        cod_local: codLocal,
+        ty_gia_rmb: rateRmb,
+        // Mẫu Nhật không ghi tỷ giá trên từng đơn nên quy_te_rmb trống → quy bằng tỷ giá kỳ.
+        rmb: n.quy_te_rmb ?? (rateRmb != null ? round2(codLocal * rateRmb) : null),
         tru_rmb: rmbDeductions,
         rmb_rong: netRmb,
         ty_gia_vnd: tyVnd,
@@ -174,6 +201,10 @@ export type CodMarketLedger = {
         /** "naza" = đi đúng luồng NAZA kỳ gần nhất; "ty_gia_khai" = tiền COD × markets.*.rate_vnd. */
         cach_uoc: "naza" | "ty_gia_khai";
         con_lai_da_giao: Estimate; con_lai_chua_giao: Estimate;
+        /** Tiền đang chờ bao lâu — cùng dạng màn Đài (13/11/2026, lib/talpha/cod-money-age.ts). */
+        tuoi: MoneyAge;
+        /** COD các kỳ NAZA đi đâu; có kỳ không đọc được luồng (WeShip, mẫu bảng) thì null. */
+        co_cau: CodComposition | null;
     };
     tong_quan: { ky_cho_nhap: number; tien_cho_nhap_vnd: number; ky_lech: number; tien_lech_vnd: number; ky_khop: number; bank_tolerance_vnd: number };
     fx: { best_vnd_per_twd: number | null; best_period: string | null; total_thiet_vnd: number; rows: FxRow[] };
@@ -250,6 +281,11 @@ export function buildCodMarketLedger(o: {
     };
     const remaining = k.don.filter((d) => !d.da_tra);
 
+    // ── Tiền chờ bao lâu + COD đi đâu (13/11/2026) — cùng thước màn Đài ──
+    const periodDates = periods.map((x) => x.ngay).filter((d): d is string => !!d);
+    const { age, overdue } = marketMoneyAge(remaining, periodDates, o.asOf, estimate);
+    const composition = marketCodComposition(periods);
+
     // ── Tổng quan ngân hàng ──────────────────────────────────────────
     const awaitingBank = periods.filter((x) => x.trang_thai === "cho_nhap");
     const bankMismatch = periods.filter((x) => x.trang_thai === "lech");
@@ -264,6 +300,16 @@ export function buildCodMarketLedger(o: {
 
     // ── ① việc hôm nay ───────────────────────────────────────────────
     const tasks: Task[] = [];
+    // Đơn đã giao qua ≥2 kỳ sao kê mà chưa thấy tiền — như màn Đài (13/11/2026). Tự hết khi tiền về.
+    if (overdue.length) {
+        tasks.push({
+            id: "qua-han", muc: "gap", tieu_de: "Đơn đã giao quá hạn, chưa được trả", so: overdue.length, don_vi: "đơn",
+            chi_tiet: `${fmtMoney(round2(overdue.reduce((t, d) => t + (Number(d.cod_local) || 0), 0)))} — đã qua từ 2 kỳ sao kê mà chưa thấy tiền. `
+                + overdue.slice(0, 3).map((d) => d.order_id).join(" · ") + (overdue.length > 3 ? " …" : "")
+                + " — danh sách đủ ở khối “Đơn đã giao — chưa thấy tiền trên sao kê” bên dưới.",
+            done_key: "", nut: [], ghi_chu: "",
+        });
+    }
     const openDiscrepancies = periods.flatMap((x) => x.lech_tien).filter((l) => !doneOf(doneKey("lech", l.tracking || l.order_no)));
     if (openDiscrepancies.length) {
         tasks.push({
@@ -341,13 +387,16 @@ export function buildCodMarketLedger(o: {
             checks.push({
                 nhom: "A", ten: "Phép tính trong file", ok: g1 == null || g2 == null ? null : ok1 && ok2,
                 chi_tiet: g1 == null || g2 == null ? "Thiếu số ở sheet TỔNG, không kiểm được phép quyết toán."
-                    : ok1 && ok2 ? `Quy ra tệ ${so2(grossRmb)}¥ − trừ ${so2(deductedRmb)}¥ = ${so2(l.rmb_rong!)}¥; × ${vnd(l.ty_gia_vnd!)} − tiền hàng = phải nhận ${vnd(l.phai_nhan_vnd!)}đ — tự khớp.`
+                    : ok1 && ok2 ? `Quy ra tệ ${so2(grossRmb)}¥ − trừ ${so2(deductedRmb)}¥ = ${so2(l.rmb_rong!)}¥; × ${vnd(l.ty_gia_vnd!)} − tiền hàng` +
+                        (l.tru_vnd.some((x) => x.loai === "ky_truoc") ? " − khoản âm kỳ trước" : "") + ` = phải nhận ${vnd(l.phai_nhan_vnd!)}đ — tự khớp.`
                     : !ok1 ? `Phần tệ không khớp: ${so2(grossRmb)}¥ − ${so2(deductedRmb)}¥ ra ${so2(grossRmb - deductedRmb)}¥, file ghi ${so2(l.rmb_rong!)}¥.`
                         : `Phần tiền Việt không khớp: tính ra ${vnd(l.vnd! - l.tru_vnd.reduce((t, x) => t + x.so, 0))}đ, file ghi ${vnd(l.phai_nhan_vnd!)}đ.`,
             });
             const summaryReceived = sm.naza?.tong_dong?.find((x) => gon(x.zh).includes("本期回款金额"))?.so;
             const detailFees = (sm.naza?.phi_dong || []).reduce((t, d) => t + d.ship + d.first_leg + d.op, 0);
-            const summaryFees = Math.abs(sm.naza?.tong_dong?.find((x) => gon(x.zh).includes("速递运费"))?.so ?? 0);
+            // Cộng MỌI dòng phí của sheet TỔNG: mẫu Nhật tách 操作费 ra dòng riêng — chỉ lấy dòng
+            // 速递运费 là báo lệch giả đúng bằng phí thao tác (kỳ 06/11/2026: 912¥ vs 855¥, lệch 57¥).
+            const summaryFees = (sm.naza?.tong_dong || []).filter((x) => isFeeLine(x.zh)).reduce((t, x) => t + Math.abs(x.so), 0);
             const receivedGap = summaryReceived != null && sm.naza?.ve_rmb != null ? sm.naza.ve_rmb - summaryReceived : null;
             const receivedOk = receivedGap == null || Math.abs(receivedGap) < 0.5, feesOk = Math.abs(detailFees - summaryFees) < 0.5;
             checks.push({
@@ -440,6 +489,7 @@ export function buildCodMarketLedger(o: {
             cach_uoc: hasNazaFlow ? "naza" : "ty_gia_khai",
             con_lai_da_giao: estimate(remaining.filter((d) => d.nhom === "da_giao")),
             con_lai_chua_giao: estimate(remaining.filter((d) => d.nhom === "chua_giao")),
+            tuoi: age, co_cau: composition,
         },
         tong_quan: overview, fx,
     };

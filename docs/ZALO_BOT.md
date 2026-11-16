@@ -57,11 +57,11 @@ vận đơn của nước đó chung một nhóm; nhóm nào chỉ thấy số n
 | Giờ | Tin | Nước | Số của | Trễ tối đa |
 |---|---|---|---|---|
 | 08:30 | Ads sáng | mọi nước có nhóm | cả ngày hôm qua | 210' (tới 12:00) |
-| 08:30, sau ads | Vận đơn sáng | TW, SG, AE, JP | hôm qua + khách phải gọi / nhắn | 180' (tới 11:30) |
+| 08:30, sau ads | Vận đơn sáng | TW, SG, AE, JP, VN | hôm qua + khách phải gọi / nhắn | 180' (tới 11:30) |
 | 13:00 | Ads trưa | mọi nước | hôm nay, ▲▼ so **13:00 hôm qua** | 60' |
 | 18:00 | Ads chiều | mọi nước | hôm nay, ▲▼ so **18:00 hôm qua** | 60' |
 | 22:00 | Ads tối | mọi nước | hôm nay, ▲▼ so **cả ngày hôm qua** | 60' |
-| 22:00, sau ads | Vận đơn tối | TW, SG, AE, JP | chấm danh sách khách của tin sáng | 60' |
+| 22:00, sau ads | Vận đơn tối | TW, SG, AE, JP, VN | chấm danh sách khách của tin sáng | 60' |
 | HH:05, 07:05 → 23:05, trừ 13h · 18h · 22h | Tin mỗi giờ | JP | hôm nay, "(+N)" thêm trong giờ qua | 40' |
 
 Luật của mỗi mốc (`schedule.js → slotAction`, `bot_slots.js → runSlot`):
@@ -92,6 +92,7 @@ mốc tự gửi đúng giờ và số đã đủ mới được nhớ — gửi
 | Vận đơn tối | Khách phải gọi sáng nay: đã lấy (cứu bao nhiêu tiền) / chưa lấy / bị trả về; khách mới tới đã lấy chưa; số cả ngày | `tracking` + danh sách sáng ở `state.json → vanDonSang` |
 | `/canhbao` | Camp của nước tiêu ≥ 300.000đ mà 0 tin nhắn (tối đa 12 camp) | `/api/talpha/realtime` |
 | Dòng "⚠️ SỐ CHƯA ĐỦ" | Sync đứng bao lâu, TKQC / shop nào đọc lỗi | `/api/talpha/sync-health` → bảng `sync_health` (`daily_guarded.sh` ghi mỗi vòng :20) |
+| Dòng ⚠️ cảnh báo hệ thống (12/11/2026, tin ads của nhóm nước) | Bộ soát từng TKQC/shop không chạy quá `health_check_stale_minutes` (chỉ khi sync vẫn chạy); TKQC / shop mất sạch hoặc tụt dòng (shop chỉ báo vào nhóm nước đó); **shop đứng im** — ads nước đó tiêu ≥ `stalled_shop_min_ads_vnd` trong `stalled_shop_days` ngày mà shop POS không có đơn mới | `/api/talpha/sync-health` → `accounts` (bảng `sync_health_accounts`), `stalled_shops` (`lib/talpha/stalled-shops.ts`); ngưỡng ở `talpha_rules.json → thresholds`; chữ ở `daily_report_stale.js → systemHealthNotes` |
 
 Vận đơn theo nước:
 
@@ -99,6 +100,9 @@ Vận đơn theo nước:
   nhắn mà chưa lấy (sổ nhắc `state.json → vanDonNhac`, chỉ ghi sau khi gửi thật). Câu nhắn tiếng Trung.
 * **Singapore, Nhật** (giao tận nhà): gọi đơn giao hỏng / hẹn giao lại, báo trước đơn sắp giao. Câu nhắn
   tiếng Anh + bản dịch. Nhật: 17TRACK hãng Japan Post.
+* **Việt Nam** (giao tận nhà, J&T, mở 11/11/2026): trạng thái J&T đọc thẳng từ đơn POS (`provider: "pos"`,
+  `lib/talpha/pos-jt.ts`) — không qua 17TRACK, không quota, nên đầu tin không có dòng cảnh báo nguồn. Câu nhắn khách
+  **tiếng Việt** (xưng em – anh/chị), một dòng, không bản dịch; báo trước chỉ khi J&T đang đi giao.
 * **UAE**: trạng thái tra ở **trang WeShip**, không qua 17TRACK; câu nhắn theo lý do (từ chối, không nghe
   máy, hẹn lại). Từ chối ≥ 3 lần → rút khỏi danh sách gọi, gom một dòng "nên huỷ".
 * In đủ chi tiết tối đa 15 khách phải gọi, 20 khách mới tới; còn lại trỏ về dashboard.
@@ -203,7 +207,14 @@ yêu cầu (để dồn lại là lúc bot bật lên nó gửi / đổi nhóm b
   đứng chờ, 10' thử lại.
 * Bộ nhận lệnh bị Zalo đóng (thường do ai mở Zalo Web/PC bằng nick phụ) → đăng nhập lại sau 10', 20', 40'…
   tối đa 2 giờ. Kết nối lại được thì nhịp chờ về 10'.
-* `keepAlive` mỗi giờ và lưu lại cookie mới vào `.zalo_session.json`.
+* `keepAlive` mỗi giờ và lưu lại cookie mới vào `.zalo_session.json`. `keepAlive` hỏng → đăng nhập lại NGAY (không
+  đợi lần gửi tới) để trang biết sớm.
+* **Mất đăng nhập hiện trên dashboard** (12/11/2026 — 03/11 Zalo đá phiên web của nick phụ, cookie chết, bot câm 9
+  ngày không ai biết): đăng nhập hỏng / Zalo đóng kết nối thì bot ghi `zalo_bot_status.logged_in = false` +
+  `last_error` ("Mất đăng nhập Zalo từ …", kèm "cần ghép lại nick" khi cookie chết, "bot đang tự thử lại" khi chỉ
+  rớt mạng — `bot_session.js → getLoginProblem`, `bot_control.js`). Giám đốc thấy băng đỏ đầu dashboard
+  (`components/talpha/zalo-bot-banner.tsx`) với nút sang tab Zalo để ghép lại nick; quá 90 giây không có nhịp tim
+  thì băng vàng "Bot Zalo không chạy". Đăng nhập lại được thì bot tự xoá dòng lỗi đó.
 
 **Thị trường đổi** (`/admin` → Thị trường): mỗi 60 giây bot so vân tay `market_overrides`
 (`market_config.js`, qua `/api/talpha/market-config?overrides=1`). Khác lúc khởi động và **không** đang gửi →
@@ -238,8 +249,8 @@ hoặc báo cáo chưa có số; gõ `/baocao` mà không thấy dòng `Lệnh "
 
 ## 9. Lưu ý khi sửa
 
-* **Danh sách nước của bot đang gõ cứng trong `config.json`**: `nhomNuoc.markets`, `vanDon.markets`,
-  `moiGio.markets`, `nhomNuoc.messPancake` (TW, SG, AE, JP). Thêm nước mới ở `/admin` → Thị trường thì bot
+* **Danh sách nước của bot đang gõ cứng trong `config.json`**: `nhomNuoc.markets`, `vanDon.markets` (TW, SG, AE, JP,
+  VN — Việt Nam thêm 11/11/2026), `moiGio.markets`, `nhomNuoc.messPancake` (JP). Thêm nước mới ở `/admin` → Thị trường thì bot
   **chưa** gửi gì cho nước đó — phải thêm mã vào các danh sách này (nước `disabled` thì tự lọc).
 * `ops/zalo-alerts/.gitignore` có `.zalo_session.json`, `state.json`, `zalo_group_nuoc_*.json` (thêm 16/11/2026),
   `qr.png`, `groups.txt` — file sinh ra trên máy chạy bot, không vào git.

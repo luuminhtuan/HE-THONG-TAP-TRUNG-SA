@@ -8,6 +8,9 @@ import { scopeLabel, useAccess } from "../access-context";
 import TabSkeleton from "@/components/ui/tab-skeleton";
 import CeoSmartInsights from "./ceo-smart-insights";
 import {
+    expectedByDeliveryRate, type MarketDayCogs, type MarketDaySales, type MarketDeliveryRate,
+} from "@/lib/talpha/pnl-expected";
+import {
     ReportHero, KpiRow, KpiTile, ResultCard, WaterfallList, BarStrip,
     ReportTable, FootNotes, LightEmoji, LightLegend,
     lightForAdsPct, DASH,
@@ -43,6 +46,7 @@ interface Report {
     unassigned: Metrics | null;
     markets: MarketRow[];
     days: DayRow[];
+    market_days?: MarketDaySales[];
     months: (Metrics & { month: string })[];
 }
 
@@ -60,6 +64,11 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
     const [error, setError] = useState<string | null>(null);
     // Giá vốn + phí ship ước tính — CÙNG route với tab P&L để hai tab ra một con số lãi.
     const [costs, setCosts] = useState<{ cogs_vnd: number; ship_vnd: number; orders: number; orders_cogs_full: number; orders_no_ship: number } | null>(null);
+    // Nguyên phản hồi pnl-costs — để tính doanh thu dự kiến theo tỉ lệ giao (chung với tab P&L).
+    const [costDetail, setCostDetail] = useState<{
+        days?: { date: string; cogs_vnd: number }[]; market_days?: MarketDayCogs[];
+        delivery_rates?: Record<string, MarketDeliveryRate>; restock_markets?: string[];
+    } | null>(null);
     // KPI doanh số/tháng (VND) từ talpha_rules.json — tháng nào không khai thì không có khoá.
     const [targets, setTargets] = useState<Record<string, number>>({});
     const { loaded: marketsLoaded } = useMarkets();
@@ -88,13 +97,14 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
         };
         Promise.allSettled([
             fetchJson(`/api/talpha/sheet-report?from=${from}&to=${to}`),
-            fetchJson(`/api/talpha/pnl-costs?from=${from}&to=${to}`),
+            fetchJson(`/api/talpha/pnl-costs?from=${from}&to=${to}&delivery_rate=1`),
         ]).then(([s, c]) => {
             if (cancelled) return;
             if (s.status === "fulfilled") setData(s.value as Report);
             else { setData(null); setError(String(s.reason?.message || s.reason)); }
             // Chi phí hỏng thì vẫn hiện số Sheet — ô lãi ghi rõ là thiếu, không coi là 0.
             setCosts(c.status === "fulfilled" ? c.value.total : null);
+            setCostDetail(c.status === "fulfilled" ? c.value : null);
         }).finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
     }, [dateRange]);
@@ -122,10 +132,18 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
 
     // Phí ship + giá vốn: /api/talpha/pnl-costs, cùng số với tab P&L (Sỹ Anh chốt 25/09/2026:
     // "Tổng quan khớp P&L"). Đài = trung bình sao kê NAZA, Singapore = bảng giá 3PL.
+    // 11/11/2026: trừ đơn hoàn theo tỉ lệ giao thành công từng nước — lib/talpha/pnl-expected.ts.
     const ship = costs?.ship_vnd ?? 0;
-    const cogs = costs?.cogs_vnd ?? 0;
-    const profit = t.doanh_so - t.ads - ship - cogs;
-    const margin = pct(profit, t.doanh_so);
+    const expected = expectedByDeliveryRate({
+        markets: data.markets, days: data.days, market_days: data.market_days,
+        cost_days: costDetail?.days, cost_market_days: costDetail?.market_days,
+        delivery_rates: costDetail?.delivery_rates, restock_markets: costDetail?.restock_markets,
+    });
+    const revenue = expected.revenue;
+    const cogs = costDetail ? expected.cogs : 0;
+    const hasRates = !!costDetail?.delivery_rates && expected.avgRate != null;
+    const profit = revenue - t.ads - ship - cogs;
+    const margin = pct(profit, revenue);
     const roas = t.ads > 0 ? t.doanh_so / t.ads : 0;
     const pAds = adsPct(t);
     const pAdsDelivered = adsPctOfDelivered(t);
@@ -229,15 +247,16 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
                 />
             </KpiRow>
 
-            {/* ═══ 3. Lãi tạm tính ═══ */}
+            {/* ═══ 3. Lãi dự kiến (trừ hoàn theo tỉ lệ giao) ═══ */}
             <ResultCard
                 emoji="📊"
-                title="Lãi gộp (tạm tính)"
-                note="Doanh số − tiền ads − phí ship ước tính − giá vốn, cùng số với tab P&L. Giả định mọi đơn đã chốt đều giao thành công — đơn hoàn sau này sẽ kéo số này xuống. Chưa trừ chi phí vận hành."
+                title="Lãi gộp (dự kiến)"
+                note="Doanh số × tỉ lệ giao thành công từng nước − tiền ads − phí ship ước tính − giá vốn, cùng số với tab P&L. Đơn hoàn vẫn mất phí ship và giá vốn (trừ UAE: hàng hoàn về kho D&T bán tiếp). Chưa trừ chi phí vận hành."
                 value={signed(profit)}
-                caption={margin === null ? "chưa có doanh số" : `biên ${margin.toFixed(1)}% trên doanh số`}
+                caption={margin === null ? "chưa có doanh số" : `biên ${margin.toFixed(1)}% trên doanh thu dự kiến`}
                 tone={profit >= 0 ? "good" : "bad"}
                 segments={[
+                    { color: "bg-slate-400", value: Math.max(0, t.doanh_so - revenue), label: "Hoàn dự kiến" },
                     { color: "bg-rose-400", value: t.ads, label: "Tiền ads" },
                     { color: "bg-amber-400", value: ship, label: "Phí ship" },
                     { color: "bg-sky-400", value: cogs, label: "Giá vốn" },
@@ -256,21 +275,24 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
                 <WaterfallList
                     rows={[
                         { label: "Doanh số (đơn đã chốt)", value: formatMoney(t.doanh_so), kind: "base" },
+                        hasRates
+                            ? { label: "Đơn hoàn dự kiến", hint: `giao thành công ${((expected.periodRate ?? 1) * 100).toFixed(1)}%${expected.marketsMissingRate.length ? ` · ${expected.marketsMissingRate.map(c => marketName(c)).join(", ")} lấy bình quân` : ""}`, value: formatMoney(t.doanh_so - revenue), kind: "minus" }
+                            : { label: "Đơn hoàn dự kiến", hint: "chưa đo được tỉ lệ giao — đang coi giao hết", value: DASH, kind: "minus", missing: true },
                         { label: "Tiền ads", value: formatMoney(t.ads), kind: "minus" },
                         costs && costs.orders_no_ship < costs.orders
                             ? { label: "Phí ship", hint: costs.orders_no_ship ? `ước tính · ${costs.orders_no_ship} đơn chưa có bảng giá` : "ước tính — xem tab P&L", value: formatMoney(ship), kind: "minus" }
                             : { label: "Phí ship", hint: costs ? "chưa có bảng giá 3PL" : "không đọc được", value: DASH, kind: "minus", missing: true },
                         costs
-                            ? { label: "Giá vốn", hint: costs.orders_cogs_full < costs.orders ? `thiếu giá ${costs.orders - costs.orders_cogs_full} đơn` : "bảng Giá tới Taiwan", value: formatMoney(cogs), kind: "minus" }
+                            ? { label: "Giá vốn", hint: costs.orders_cogs_full < costs.orders ? `thiếu giá ${costs.orders - costs.orders_cogs_full} đơn` : "đơn hoàn vẫn mất, trừ UAE", value: formatMoney(cogs), kind: "minus" }
                             : { label: "Giá vốn", hint: "không đọc được", value: DASH, kind: "minus", missing: true },
                         { label: "Chi phí vận hành", hint: "chưa tính", value: DASH, kind: "minus", missing: true },
-                        { label: "Lãi gộp (tạm tính)", value: signed(profit), kind: "total" },
+                        { label: "Lãi gộp (dự kiến)", value: signed(profit), kind: "total" },
                     ]}
                 />
             </ResultCard>
 
             {/* ═══ 4. Cảnh báo & trợ lý — giữ nguyên module cũ ═══ */}
-            <CeoSmartInsights roas={roas} margin={margin ?? 0} net={profit} revenue={t.doanh_so} />
+            <CeoSmartInsights roas={roas} margin={margin ?? 0} net={profit} revenue={revenue} />
             {/* Hỏi AI đã thành trang riêng /talpha/ask-ai (menu 🤖 Hỏi AI, 15/11/2026). */}
 
             {/* ═══ 5. Xu hướng theo ngày ═══ */}
@@ -341,8 +363,8 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
             <FootNotes
                 warning={
                     <>
-                        <strong>Lãi ở đây là tạm tính.</strong> Nó tính trên doanh số đơn đã chốt, đã trừ phí ship ước tính và
-                        giá vốn (cùng số với tab P&L), chưa trừ đơn hoàn và chi phí vận hành. Tiền đã thật sự giao xong xem ở ô DS giao TC.
+                        <strong>Lãi ở đây là dự kiến.</strong> Doanh số đơn đã chốt nhân tỉ lệ giao thành công từng nước (đơn hoàn ước theo
+                        tỉ lệ thật), đã trừ phí ship ước tính và giá vốn (cùng số với tab P&L), chưa trừ chi phí vận hành. Tiền đã thật sự giao xong xem ở ô DS giao TC.
                     </>
                 }
                 notes={[

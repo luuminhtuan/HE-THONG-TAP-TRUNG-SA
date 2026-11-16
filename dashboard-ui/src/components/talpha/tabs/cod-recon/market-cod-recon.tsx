@@ -9,7 +9,7 @@ import { VND } from "../ledger-shared";
 import { useNarrowScreen } from "../order-ledger-shared-ui";
 import type { Currency, MarketData, MarketPeriod } from "./types";
 import { COLUMN_LABELS, dmy, marketDiscrepancyMessage, periodName, RMB2 } from "./format";
-import { ActionButton, FormBank, HeaderBar, Kpi, Section, StatusBadge } from "./ui";
+import { ActionButton, BankDiffCell, FormBank, HeaderBar, Kpi, Section, StatusBadge } from "./ui";
 import { TasksSection } from "./tasks-section";
 import { ChecksPanel, CheckGroup } from "./checks-panel";
 import { MarketMoneyFlowPanel } from "./money-flow";
@@ -205,14 +205,9 @@ export function MarketCodRecon({ code, nutNuoc: marketSwitcher, dateRange }: { c
             </button>
         );
 
+    // Lệch nhỏ trong ngưỡng: kỳ vẫn khớp → số xám + "bỏ qua", như màn Đài (13/11/2026).
     const diffCell = (k: MarketPeriod) => (
-        <span className={cn("font-semibold tabular-nums",
-            k.lech_bank_vnd == null ? "text-muted-foreground"
-                : k.trang_thai === "khop" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
-            {k.lech_bank_vnd == null ? "·"
-                : Math.round(k.lech_bank_vnd) === 0 ? "0đ"
-                    : `${k.lech_bank_vnd > 0 ? "+" : "−"}${VND(Math.abs(k.lech_bank_vnd))}`}
-        </span>
+        <BankDiffCell diff={k.lech_bank_vnd} matched={k.trang_thai === "khop"} tolerance={ledger.tong_quan.bank_tolerance_vnd} />
     );
     const goodsCell = (k: MarketPeriod) => k.tien_hang_vnd ? (
         <>
@@ -418,6 +413,8 @@ export function MarketCodRecon({ code, nutNuoc: marketSwitcher, dateRange }: { c
                     {period.luong ? (() => {
                         const l = period.luong;
                         const fees = l.tru_rmb.reduce((a, x) => a + x.so, 0);
+                        // Khoản âm kỳ trước NAZA trừ vào kỳ này (mẫu Nhật) không phải tiền hàng.
+                        const goods = l.tru_vnd.filter((x) => x.loai !== "ky_truoc");
                         const isNegative = (l.phai_nhan_vnd ?? 0) < 0;
                         return (
                             <>
@@ -426,8 +423,8 @@ export function MarketCodRecon({ code, nutNuoc: marketSwitcher, dateRange }: { c
                                         sub={l.so_don ? `${period.khop + period.lech} đơn khớp sổ đơn` : `chưa thu COD · phí ${period.don_phi ?? 0} đơn`} />
                                     <Kpi label="Tiền COD" value={formatAmount(l.cod_local)} sub={`${partnerName} thu trong kỳ`} tone="twd" />
                                     <Kpi label={`Phí ${partnerName} trừ`} value={RMB2(fees)} sub={l.tru_rmb.map((x) => x.nhan.toLowerCase()).join(" · ") || "không có"} tone="rmb" />
-                                    <Kpi label="Tiền hàng" value={l.tru_vnd.length ? VND(l.tru_vnd.reduce((a, x) => a + x.so, 0)) : "—"}
-                                        sub={l.tru_vnd.length ? "NAZA trừ vào COD" : "kỳ này không trừ"} tone="hang" />
+                                    <Kpi label="Tiền hàng" value={goods.length ? VND(goods.reduce((a, x) => a + x.so, 0)) : "—"}
+                                        sub={goods.length ? "NAZA trừ vào COD" : "kỳ này không trừ"} tone="hang" />
                                     {isNegative
                                         ? <Kpi label="Phải nhận" value={`âm ${VND(-(l.phai_nhan_vnd ?? 0))}`} tone="red" className="col-span-2 xl:col-span-1"
                                             sub={period.tru_vao_dai ? `đã trừ vào kỳ Đài ${dmy(period.tru_vao_dai).slice(0, 5)}` : "NAZA trừ vào kỳ sau"} />

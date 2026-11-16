@@ -1,7 +1,7 @@
 """
 Ba thị trường — Đài Loan · Singapore · UAE (Sỹ Anh chốt 15/09/2026).
 
-Chạy: python3 -m pytest tests/test_talpha_ba_thi_truong.py -q
+Chạy: python3 -m pytest tests/test_talpha_multi_market.py -q
 
 Canh luật gán nước cho chi tiêu quảng cáo: ô đầu tên campaign là nước; tên cũ không ghi
 nước vẫn tính Đài nhưng phải nhận ra được để cảnh báo.
@@ -91,13 +91,14 @@ class TestMarketStatus:
 
     def test_all_markets_active(self):
         # Nhật nối shop 09/10/2026.
-        assert ACTIVE_MARKETS == ["Taiwan", "Singapore", "UAE", "Japan"]
+        # Việt Nam nối shop 11/11/2026 (hạt giống, VND).
+        assert ACTIVE_MARKETS == ["Taiwan", "Singapore", "UAE", "Japan", "Vietnam"]
 
     def test_currency_symbols(self):
-        assert CURRENCY_SYMBOL == {"Taiwan": "NT$", "Singapore": "S$", "UAE": "AED", "Japan": "¥"}
+        assert CURRENCY_SYMBOL == {"Taiwan": "NT$", "Singapore": "S$", "UAE": "AED", "Japan": "¥", "Vietnam": "đ"}
 
     def test_all_markets_exempt_from_test_rule(self):
-        assert NO_TEST_MARKETS == {"Taiwan", "Singapore", "UAE", "Japan"}
+        assert NO_TEST_MARKETS == {"Taiwan", "Singapore", "UAE", "Japan", "Vietnam"}
         assert is_test("SG/LOC/PHI/TEST/Page/1509", "Singapore") is False
 
 
@@ -108,3 +109,18 @@ class TestCogs:
 
     def test_unknown_sku_returns_none_not_zero(self):
         assert cost_price_vnd("khong-co-ma-nay") is None
+
+
+class TestVietnam:
+    """Mở Việt Nam 11/11/2026: "VN" vừa là mã nước vừa là TỆP KHÁCH người Việt ở Đài —
+    chỉ ô ĐẦU mới là nước."""
+
+    def test_vn_first_segment_is_vietnam(self):
+        assert campaign_market("VN/THÁI/VN/VẠN THỌ / Hạt Giống Nông Nghiệp F1/10-11") == ("Vietnam", "o_dau")
+        assert campaign_market("VN/THÁI/HOA VẠN THỌ/Kho Hạt Giống Việt/04-11") == ("Vietnam", "o_dau")
+
+    def test_vn_in_other_segment_stays_audience(self):
+        # Camp Đài nhắm người Việt ở Đài: vẫn là Đài.
+        assert campaign_market("TW/THUONG/VN/TEST/Trang Sức Vàng Thái/14-09")[0] == "Taiwan"
+        # Tên kiểu cũ không ghi nước: VN ở ô 2 KHÔNG được biến thành Việt Nam.
+        assert campaign_market("THUONG/VN/042/Trang/1-9") == ("Taiwan", "mac_dinh")

@@ -12,6 +12,9 @@
 //     kê, chưa có kiện nào thì theo bảng giá shipping_fees.
 //   • UAE (AE): đơn POS (không có bảng đối tác) + trạng thái WeShip; POS đã ghi giao/hoàn thì
 //     tin POS khi WeShip chưa kết thúc. Phí theo bảng giá D&T (chưa có sao kê nào).
+//   • Việt Nam (VN, 11/11/2026): đơn POS shop "VIỆT NAM" — POS nối thẳng J&T nên trạng thái POS là
+//     trạng thái thật của hãng. Phí J&T cố định một đơn (shipping_fees.VN), giá vốn cố định một đơn
+//     (markets.Vietnam.cogs_per_order_vnd) qua lib/talpha/order-costs.ts.
 // Giá vốn: mã 3 số trong SKU × bảng products (Đài theo tỷ giá tệ của kỳ trả tiền); UAE tra theo
 // tên hàng (markets.UAE.product_costs_vnd) qua lib/talpha/order-costs.ts.
 // ═══════════════════════════════════════════════════════════════════
@@ -311,10 +314,66 @@ async function aeParcels(from: string, to: string, asOf: string): Promise<Market
     };
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// VIỆT NAM — đơn POS, trạng thái J&T trong POS, phí + giá vốn cố định một đơn
+// ─────────────────────────────────────────────────────────────────────────
+/**
+ * Việt Nam (11/11/2026): đơn POS shop "VIỆT NAM" giao J&T — POS nối thẳng J&T nên trạng thái POS
+ * (delivered / returned / shipped) là trạng thái thật của hãng. Phí J&T cố định một đơn đã gửi
+ * (shipping_fees.VN, giao hay hoàn đều mất); giá vốn cố định một đơn (markets.Vietnam.cogs_per_order_vnd).
+ */
+async function vnParcels(from: string, to: string, asOf: string): Promise<MarketSource> {
+    const windowStart = new Date(Date.parse(`${asOf}T00:00:00Z`) - (DELIVERY_RATE_CFG.window_days + 30) * 86_400_000).toISOString().slice(0, 10);
+    const startDate = from < windowStart ? from : windowStart;
+    const [rows, orderCosts] = await Promise.all([
+        query(
+            `SELECT v.order_id, to_char(v.order_date, 'YYYY-MM-DD') AS order_date, v.status_name, v.status_category,
+                    safe_divide(o.cod, NULLIF(v.pos_money_divisor, 0)) AS cod, o.time_send_partner
+             FROM vw_orders_std v
+             LEFT JOIN sale_order o ON v.shop_id = o.shop_id AND v.order_id = o.id
+             WHERE v.market = 'VN' AND v.status_category NOT IN ('DON_THO')
+               AND v.order_date BETWEEN @tu::date AND @den::date`,
+            { tu: startDate, den: to },
+        ),
+        computeOrderCosts(from, to, (shop) => shop === "VN"),
+    ]);
+    const gv = new Map(orderCosts.don.map((d) => [d.key.replace(/^VN-/, ""), d]));
+    const rVn = rate("VN") || 1;
+    // Phí J&T cố định một đơn (shipping_fees.VN, Sỹ Anh chốt 16.000đ 13/11/2026 theo cước thật J&T) — giao hay hoàn đều mất.
+    const f = FEES.VN || {};
+    const feeVn = typeof f.packing === "number" ? (f.packing + (f.delivery || 0) + (f.cod_flat || 0)) * rVn : null;
+    const parcels: Parcel[] = (rows as any[]).map((r) => {
+        const st = POS_TO_STANDARD_STATUS[String(r.status_category || "").toUpperCase()] || null;
+        const shipped = !!r.time_send_partner || st === "InTransit";
+        const d = gv.get(String(r.order_id));
+        return {
+            nuoc: "VN", ma: String(r.order_id), ngay: String(r.order_date || ""), ngay_gui: null,
+            nhom: classifyParcel(st, null, r.status_name || null, shipped),
+            trang_thai: r.status_name || r.status_category || "",
+            cod_vnd: (Number(r.cod) || 0) * rVn, cod_that_vnd: null,
+            gia_von_vnd: d ? (d.du ? d.cogs : null) : null,
+            phi_di_vnd: feeVn ?? 0, phi_giao_vnd: 0, phi_hoan_vnd: 0, phi_that: false,
+            hang_ve_kho: RESTOCKABLE_MARKETS.has("VN"),
+        };
+    });
+    const cogsPerOrder = Number((RULES.markets as Record<string, { cogs_per_order_vnd?: number }>).Vietnam?.cogs_per_order_vnd) || 0;
+    return {
+        kien: parcels,
+        nguon: "Đơn POS Việt Nam (trạng thái J&T trong POS)",
+        co_so: [
+            "Trạng thái giao/hoàn: POS shop VIỆT NAM nối thẳng J&T, cập nhật mỗi lượt sync.",
+            feeVn === null ? "CHƯA khai phí J&T (shipping_fees.VN) — POS ghi phí = 0."
+                : `Phí J&T ${fmt(feeVn)}đ/đơn đã gửi, giao hay hoàn đều tính (shipping_fees.VN).`,
+            `Giá vốn ${fmt(cogsPerOrder)}đ/đơn (markets.Vietnam.cogs_per_order_vnd) — Sỹ Anh chốt 12/11/2026.`,
+        ],
+    };
+}
+
 /** Mọi kiện của một nước (cả kiện cũ ngoài kỳ — để đo tỉ lệ giao). */
 export function loadMarketParcels(code: string, from: string, to: string, asOf: string): Promise<MarketSource> {
     if (code === "TW") return twParcels(asOf);
     if (code === "SG" || code === "JP") return partnerParcels(code, asOf);
     if (code === "AE") return aeParcels(from, to, asOf);
+    if (code === "VN") return vnParcels(from, to, asOf);
     return Promise.reject(new Error(`chưa có nguồn kiện cho ${code}`));
 }

@@ -7,6 +7,7 @@ import { TWD, VND } from "../ledger-shared";
 import type { MarketData, MarketLedger, Overview, ReceivedSummary } from "./types";
 import { dmy } from "./format";
 import { MoneyTile } from "./ui";
+import { CodCompositionBar, MoneyAgeBars } from "./money-age";
 
 /**
  * Tiền về — con số Sỹ Anh xin 13/09/2026: NAZA đã gửi bao nhiêu, và còn phải gửi
@@ -40,13 +41,23 @@ export function MoneySummary({ t, tq: overview }: { t: ReceivedSummary; tq: Over
                     : overview.ky_cho_nhap > 0
                         ? <MoneyTile mau="xanhduong" nhan="Chưa đối chiếu ngân hàng" so={VND(overview.tien_cho_nhap_vnd)}
                             phu={`${overview.ky_cho_nhap} kỳ chưa nhập tiền về`} />
-                        : <MoneyTile mau="xanh" nhan="Đối chiếu ngân hàng" so={`${overview.ky_khop} kỳ khớp`} phu="không kỳ nào lệch" />)}
+                        : <MoneyTile mau="xanh" nhan="Đối chiếu ngân hàng" so={`${overview.ky_khop} kỳ khớp`}
+                            phu={`không kỳ nào lệch quá ${VND(overview.bank_tolerance_vnd)}`} />)}
             </div>
-            {Math.abs(fileGap) >= 1 && (
-                <p className="text-[12.5px] font-semibold text-rose-600 dark:text-rose-400">
-                    Theo file tiền hàng, NAZA lẽ ra gửi {VND(t.phai_nhan_theo_file_vnd)} — {fileGap > 0 ? "trừ dư" : "trừ thiếu"} {VND(Math.abs(fileGap))}.
-                </p>
-            )}
+            {/* Lệch file tiền hàng: dưới ngưỡng ngân hàng là làm tròn → chữ xám; vượt ngưỡng mới đỏ.
+                fileGap > 0 = NAZA gửi ít hơn file (trừ dư tiền hàng); < 0 = gửi nhiều hơn (13/11/2026). */}
+            {Math.abs(fileGap) >= 1 && (() => {
+                const small = overview != null && Math.abs(fileGap) < overview.bank_tolerance_vnd;
+                return (
+                    <p className={cn("text-[12.5px]", small ? "text-muted-foreground" : "font-semibold text-rose-600 dark:text-rose-400")}>
+                        Theo file tiền hàng, NAZA lẽ ra gửi {VND(t.phai_nhan_theo_file_vnd)} —{" "}
+                        {fileGap > 0 ? `gửi thiếu ${VND(fileGap)} (trừ tiền hàng nhiều hơn file)` : `gửi dư ${VND(-fileGap)} (trừ tiền hàng ít hơn file)`}
+                        {small ? " · dưới ngưỡng, do làm tròn, bỏ qua." : "."}
+                    </p>
+                );
+            })()}
+            {t.tuoi && <MoneyAgeBars age={t.tuoi} />}
+            {t.co_cau && <CodCompositionBar c={{ ...t.co_cau, ve_tay_vnd: t.co_cau.ve_tay_vnd ?? t.da_gui_ve_vnd }} periods={t.so_ky} />}
             {t.tien_hang.loi && <p className="text-[12.5px] font-semibold text-rose-600 dark:text-rose-400">{t.tien_hang.loi}</p>}
             <button onClick={() => setShowMethod(!showMethod)} aria-expanded={showMethod}
                 className="inline-flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground">
@@ -98,8 +109,12 @@ export function MarketMoneySummary({ so: ledger, t, m, tien: formatAmount, ben: 
                     : overview.ky_cho_nhap > 0
                         ? <MoneyTile mau="xanhduong" nhan="Chưa đối chiếu ngân hàng" so={VND(overview.tien_cho_nhap_vnd)} phu={`${overview.ky_cho_nhap} kỳ chưa nhập tiền về`} />
                         : <MoneyTile mau="xanh" nhan="Đối chiếu ngân hàng" so={overview.ky_khop ? `${overview.ky_khop} kỳ khớp` : "—"}
-                            phu={overview.ky_khop ? "không kỳ nào lệch" : "chưa có kỳ nào có tiền về"} />}
+                            phu={overview.ky_khop ? `không kỳ nào lệch quá ${VND(overview.bank_tolerance_vnd)}` : "chưa có kỳ nào có tiền về"} />}
             </div>
+            {received.tuoi && <MoneyAgeBars age={received.tuoi} format={formatAmount} since="lên đơn"
+                partner={partnerName === "NAZA" ? "NAZA" : "bên giao hàng"} />}
+            {received.co_cau && <CodCompositionBar c={received.co_cau} periods={received.co_cau.so_ky ?? received.so_ky}
+                partner={partnerName === "NAZA" ? "NAZA" : "bên giao hàng"} />}
             <button onClick={() => setShowMethod(!showMethod)} aria-expanded={showMethod}
                 className="inline-flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground hover:text-foreground">
                 <Info className="h-3.5 w-3.5" />Cách tính các số này

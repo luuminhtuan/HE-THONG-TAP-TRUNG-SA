@@ -38,7 +38,7 @@ if errors:
     print("\n🚨 FAOS: File length limit exceeded!\n")
     for e in errors:
         print(e)
-    print("\nXem .agent/rules/python-conventions.md hoặc frontend-conventions.md để biết cách tách file.\n")
+    print("\nTách file thành module nhỏ theo chức năng (vd. talpha_sync.py → order_sync.py, ads_sync.py…).\n")
     sys.exit(1)
 
 sys.exit(0)

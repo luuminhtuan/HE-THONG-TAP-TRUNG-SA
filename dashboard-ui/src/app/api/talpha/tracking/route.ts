@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
             // Tên nguồn trạng thái cho màn hình và bot Zalo ("17TRACK" / "WeShip").
             provider: mk.provider,
             // WeShip không cần khoá — "có khoá" = tra được.
-            has_api_key: mk.provider === "weship" ? true : hasApiKey(envWithCredentials()),
+            has_api_key: mk.provider === "weship" || mk.provider === "pos" ? true : hasApiKey(envWithCredentials()),
             last_sync: store.last_sync ?? null,
             last_import: lastImport,
             config: {
@@ -104,7 +104,7 @@ export async function GET(req: NextRequest) {
                 registered: shipments.filter((s) => s.registered).length,
                 // Chỉ đếm mã SẼ được đăng ký (đơn chưa kết thúc, còn mới) — đếm cả đơn đã
                 // giao xong thì con số này không bao giờ về 0 và chẳng nói lên gì.
-                pending_register: mk.provider === "weship"
+                pending_register: mk.provider === "pos" ? 0 : mk.provider === "weship"
                     // WeShip không đăng ký — "chưa theo dõi" = có mã AWB mà chưa tra lần nào.
                     ? allShipments.filter((s) => s.track17_code && !s.registered).length
                     : planRegister(allShipments, new Date(), { staleDays: mk.stale_days }).eligible,
@@ -124,5 +124,9 @@ export async function POST(req: NextRequest) {
     if (!ok) return NextResponse.json({ error: "from/to phải dạng YYYY-MM-DD" }, { status: 400 });
     const mk = trackMarket(req.nextUrl.searchParams.get("market"));
     if (mk.provider === "weship") return syncWeship(mk, from, to);
+    // Việt Nam: trạng thái J&T về cùng đơn POS mỗi lượt talpha-sync — không có gì để tra thêm.
+    if (mk.provider === "pos") {
+        return NextResponse.json({ ok: true, provider: "pos", registered: 0, message: "Trạng thái J&T lấy thẳng từ POS — cập nhật mỗi giờ theo lượt đồng bộ." });
+    }
     return sync17Track(mk, from, to);
 }

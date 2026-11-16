@@ -78,6 +78,12 @@ export const NAV_GROUPS: NavGroup[] = [
         tabs: [
             { id: "customers", label: "Khách hàng", slug: "customers" },
             { id: "market-intel", label: "Market Intel", slug: "market-intel" },
+            // Tệp khách (14/11/2026): số THAM CHIẾU về người Việt / Phi / Indo ở từng nước —
+            // thống kê nhà nước + quy mô đối tượng Facebook, lưu ở config/customer_segments.json.
+            { id: "customer-segments", label: "Tệp khách", slug: "customer-segments" },
+            // Soi đối thủ (15/11/2026): kết quả soi nhóm bán khác — kho POS, kênh TikTok, Ad Library —
+            // kèm thư viện sản phẩm có ảnh + link spy, lưu ở config/competitor_research.json.
+            { id: "competitor-research", label: "Soi đối thủ", slug: "competitor-research" },
         ],
     },
     // Hỏi AI (15/11/2026) — trước là một ô nhỏ ở cuối Tổng quan. Chỉ giám đốc (CHI_GIAM_DOC).

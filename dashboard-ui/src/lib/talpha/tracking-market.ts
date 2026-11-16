@@ -23,6 +23,7 @@ import {
     awbFromPartner, fetchWeship, mapPool, posWeshipShipment, weshipTrack,
     type PosOrderRow, type WeshipEvent, type WeshipSaved,
 } from "./weship";
+import { posJtShipment } from "./pos-jt";
 
 /** Tối thiểu một sổ vận đơn phải có để ghép trạng thái. */
 export type MarketStoreBase = {
@@ -118,8 +119,10 @@ export async function loadPosMarketShipments<S extends MarketStoreBase>(
     );
     const statuses = store.statuses as Record<string, WeshipSaved>;
     const shipments = rows.map((r) => {
-        const awb = awbFromPartner(r.partner);
         const key = normPosMarketer(r.marketer);
+        // Việt Nam: trạng thái J&T đi kèm đơn POS — không có sổ tra riêng.
+        if (mk.provider === "pos") return posJtShipment(r, mk.status_rules, key ? (DISPLAY[key] || key) : (r.marketer || null));
+        const awb = awbFromPartner(r.partner);
         return posWeshipShipment(r, awb ? statuses[awb] : undefined, key ? (DISPLAY[key] || key) : (r.marketer || null));
     });
     // Không có "bảng đối tác" để báo tuổi — tuổi số là lần tra WeShip, nằm ở last_sync.

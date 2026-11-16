@@ -7,13 +7,11 @@
         "build": "next build",
         "start": "next start",
         "lint": "eslint .",
-        "test": "export TALPHA_MARKET_OVERRIDES_FILE=./.test-build/_no_market_overrides.json; tsc src/lib/talpha/rules.ts src/lib/talpha/cod-recon.ts src/lib/talpha/tracking.ts src/lib/talpha/cod-market.ts src/lib/talpha/track17.ts src/lib/talpha/partner-file.ts src/lib/talpha/naza-statement.ts src/lib/talpha/order-ledger.ts src/lib/talpha/cod-actions.ts src/lib/talpha/purchase-sheet.ts src/lib/talpha/weship.ts src/lib/talpha/whatsapp.ts src/lib/talpha/market-ledger.ts src/lib/talpha/access-rules.ts src/lib/talpha/cod-statement-market.ts src/lib/talpha/cod-market-ledger.ts src/lib/talpha/pancake.ts src/lib/talpha/market-monthly-report.ts src/lib/talpha/jp-shipping-fee.ts src/lib/talpha/credential-utils.ts src/lib/talpha/market-config.ts src/lib/talpha/income-statement.ts src/lib/talpha/ad-account-rules.ts src/lib/talpha/startup-data.ts src/lib/talpha/zalo-bot-rules.ts --outDir .test-build --module commonjs --target es2020 --moduleResolution node --skipLibCheck --esModuleInterop && node tests/rules.test.cjs && node tests/cod-recon.test.cjs && node tests/tracking.test.cjs && node tests/cod-market.test.cjs && node tests/cod-statement-market.test.cjs && node tests/partner-file.test.cjs && node tests/naza-statement.test.cjs && node tests/order-ledger.test.cjs && node tests/cod-actions.test.cjs && node tests/purchase-sheet.test.cjs && node tests/ads-recon.test.cjs && node tests/weship.test.cjs && node tests/whatsapp.test.cjs && node tests/access.test.cjs && node tests/pancake.test.cjs && node tests/credentials.test.cjs && node tests/market-config.test.cjs && node tests/income-statement.test.cjs && node tests/ad-accounts.test.cjs && node tests/startup-data.test.cjs && node tests/zalo-bot.test.cjs",
+        "test": "export TALPHA_MARKET_OVERRIDES_FILE=./.test-build/_no_market_overrides.json; tsc src/lib/talpha/rules.ts src/lib/talpha/cod-recon.ts src/lib/talpha/tracking.ts src/lib/talpha/cod-market.ts src/lib/talpha/track17.ts src/lib/talpha/partner-file.ts src/lib/talpha/naza-statement.ts src/lib/talpha/order-ledger.ts src/lib/talpha/cod-actions.ts src/lib/talpha/purchase-sheet.ts src/lib/talpha/weship.ts src/lib/talpha/whatsapp.ts src/lib/talpha/market-ledger.ts src/lib/talpha/access-rules.ts src/lib/talpha/cod-statement-market.ts src/lib/talpha/cod-market-ledger.ts src/lib/talpha/pancake.ts src/lib/talpha/market-monthly-report.ts src/lib/talpha/jp-shipping-fee.ts src/lib/talpha/credential-utils.ts src/lib/talpha/market-config.ts src/lib/talpha/income-statement.ts src/lib/talpha/ad-account-rules.ts src/lib/talpha/startup-data.ts src/lib/talpha/zalo-bot-rules.ts src/lib/talpha/pos-jt.ts src/lib/talpha/stalled-shops.ts src/lib/talpha/jt-vn.ts src/lib/talpha/customer-segments.ts src/lib/talpha/competitor-research.ts src/lib/talpha/pnl-expected.ts --outDir .test-build --module commonjs --target es2020 --moduleResolution node --skipLibCheck --esModuleInterop && node tests/rules.test.cjs && node tests/cod-recon.test.cjs && node tests/tracking.test.cjs && node tests/cod-market.test.cjs && node tests/cod-statement-market.test.cjs && node tests/partner-file.test.cjs && node tests/naza-statement.test.cjs && node tests/order-ledger.test.cjs && node tests/cod-actions.test.cjs && node tests/purchase-sheet.test.cjs && node tests/ads-recon.test.cjs && node tests/weship.test.cjs && node tests/whatsapp.test.cjs && node tests/access.test.cjs && node tests/pancake.test.cjs && node tests/credentials.test.cjs && node tests/market-config.test.cjs && node tests/income-statement.test.cjs && node tests/ad-accounts.test.cjs && node tests/startup-data.test.cjs && node tests/zalo-bot.test.cjs && node tests/pos-jt.test.cjs && node tests/stalled-shops.test.cjs && node tests/jt-vn.test.cjs && node tests/customer-segments.test.cjs && node tests/competitor-research.test.cjs",
         "restart-local": "npm run build && pm2 restart talpha-dashboard --update-env"
     },
     "dependencies": {
-        "@anthropic-ai/sdk": "^0.55.1",
         "@google/genai": "^1.52.0",
-        "@tanstack/react-table": "^8.21.3",
         "@types/js-yaml": "^4.0.9",
         "axios": "^1.13.5",
         "bcryptjs": "^3.0.3",
@@ -35,8 +33,6 @@
         "tailwind-merge": "^2.2.1"
     },
     "devDependencies": {
-        "@eslint/eslintrc": "^3.3.7",
-        "@types/bcryptjs": "^2.4.6",
         "@types/node": "^20",
         "@types/pg": "^8.23.1",
         "@types/react": "^19.2.14",

@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { parseFetchErrors } from "@/lib/talpha/refresh-status";
+import { RULES, SHOP2MKT, ACTIVE_MARKETS, campaignMarket } from "@/lib/talpha/rules";
+import { findStalledShops } from "@/lib/talpha/stalled-shops";
 
 export const dynamic = "force-dynamic";
+
+// Ngưỡng cảnh báo hệ thống — config/talpha_rules.json → thresholds (12/11/2026).
+const THRESHOLDS = (RULES as unknown as { thresholds?: Record<string, unknown> }).thresholds || {};
+const threshold = (k: string, fallback: number) => (Number(THRESHOLDS[k]) > 0 ? Number(THRESHOLDS[k]) : fallback);
 
 // B5 — trạng thái theo TỪNG TKQC/shop của vòng chạy mới nhất. Bảng do
 // ops/talpha_reports/report_account_health.py ghi. Chỉ trả về mục CÓ VẤN ĐỀ
@@ -12,14 +18,19 @@ async function accountHealth() {
     try {
         // NULLS LAST: Postgres xếp NULL lên ĐẦU khi DESC (BigQuery xếp cuối) — giữ thứ tự cũ.
         const rows = await query(`
-                SELECT run_ts, kind, entity_name, rows_total, prev_rows_total, status
+                SELECT run_ts, kind, entity_name, rows_total, prev_rows_total, status,
+                       trunc(EXTRACT(EPOCH FROM (now() - run_ts)) / 60)::bigint AS age_min
                 FROM sync_health_accounts
                 WHERE run_ts = (SELECT MAX(run_ts) FROM sync_health_accounts)
                 ORDER BY rows_total DESC NULLS LAST`);
         if (!rows?.length) return null;
         const bad = rows.filter((r: any) => r.status === "empty" || r.status === "drop");
+        const age = rows[0].age_min == null ? NaN : Number(rows[0].age_min);
         return {
             run_ts: rows[0].run_ts,
+            // Tuổi lượt soát gần nhất. Bộ soát hỏng thì bảng đứng ở lượt cuối và route cứ trả
+            // "0 mục lỗi" mãi — 30/09→12/11/2026 hỏng 6 tuần không ai biết. Bot kêu khi quá ngưỡng.
+            age_minutes: Number.isFinite(age) ? age : null,
             checked: rows.length,
             failing: bad.map((r: any) => ({
                 kind: r.kind,
@@ -35,14 +46,46 @@ async function accountHealth() {
     }
 }
 
-// Tên TKQC / shop đọc lỗi trong vòng chạy: docLoiFetch (lib/talpha/refresh-status.ts — dùng chung với
+// Shop đứng im: ads của nước còn tiêu mà shop POS nước đó không có đơn mới nhiều ngày — xem
+// lib/talpha/stalled-shops.ts. Hỏng thì trả [] (cảnh báo phụ, không được làm hỏng route gốc).
+async function stalledShops() {
+    const days = threshold("stalled_shop_days", 3);
+    try {
+        // inserted_at là chuỗi ISO giờ UTC của POS — 10 ký tự đầu là ngày (lệch tối đa 7 giờ, đủ cho ngưỡng tính bằng ngày).
+        const [orders, ads] = await Promise.all([
+            query<{ shop_label: string; last_order_date: string | null }>(`
+                SELECT shop_label, MAX(SUBSTR(inserted_at, 1, 10)) AS last_order_date
+                FROM sale_order GROUP BY 1`),
+            query<{ campaign_name: string; spend: number }>(`
+                SELECT campaign_name, SUM(spend) AS spend
+                FROM fb_ads_data
+                WHERE date >= (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date - @days::int
+                  AND date < (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
+                GROUP BY 1`, { days }),
+        ]);
+        const shopOfMarket = Object.fromEntries(Object.entries(SHOP2MKT).map(([shop, mkt]) => [mkt, shop]));
+        const adsByShop: Record<string, number> = {};
+        for (const r of ads) {
+            const shop = shopOfMarket[campaignMarket(r.campaign_name).market || ""];
+            if (shop) adsByShop[shop] = (adsByShop[shop] || 0) + Number(r.spend || 0);
+        }
+        const lastOrderDate = Object.fromEntries(orders.map((r) => [r.shop_label, r.last_order_date]));
+        const shops = Object.entries(SHOP2MKT).filter(([shop, mkt]) => shop && ACTIVE_MARKETS.has(mkt)).map(([shop]) => shop);
+        const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Ho_Chi_Minh" });
+        return findStalledShops(shops, lastOrderDate, adsByShop, today, { days, minAds: threshold("stalled_shop_min_ads_vnd", 500000) });
+    } catch {
+        return [];
+    }
+}
+
+// Tên TKQC / shop đọc lỗi trong vòng chạy: parseFetchErrors (lib/talpha/refresh-status.ts — dùng chung với
 // đèn trạng thái cập nhật trên dashboard).
 
 // Trạng thái chuỗi sync Sheet (Mac, launchd mỗi giờ). Bot WhatsApp poll route này
 // để cảnh báo khi sync FAIL hoặc IM LẶNG quá lâu (chống sự cố "chết câm" 22-29/6).
 export async function GET() {
     try {
-        const accounts = await accountHealth();
+        const [accounts, stalled_shops] = await Promise.all([accountHealth(), stalledShops()]);
         // age_min = số PHÚT TRÒN đã qua (cắt phần lẻ, như TIMESTAMP_DIFF … MINUTE bản cũ).
         const rows = await query(`
                 SELECT ts, host, ok, sync_rc, format_rc, detail,
@@ -74,6 +117,8 @@ export async function GET() {
             status: last.ok ? "ok" : "fail",
             accounts: accountsOut,
             fetch_errors,
+            stalled_shops,
+            health_check_stale_minutes: threshold("health_check_stale_minutes", 180),
             last_run_ts: last.ts,
             age_minutes: Number(last.age_min),
             last_ok_age_minutes: lastOk ? Number(lastOk.age_min) : null,

@@ -28,7 +28,7 @@ function testMessage(market, info, at) {
 
 /**
  * session — bot_session.js (connect, getMarketGroups, loadGroups, enqueue, sendOne, isLoggedIn, resetSession, logout,
- *           wakeUp, markPageManaged, pruneGroups, markIntroduced)
+ *           wakeUp, markPageManaged, pruneGroups, markIntroduced, getLoginProblem)
  * zalo    — zalo.js (pairByQr, listGroups, saveMarketGroup, removeMarketGroup, sessionAccountName)
  *
  * Nhóm do TRANG quản lý: ghép nick / chọn nhóm ở đây thì bot thôi tự nhận nhóm theo tên và thôi tự gửi tin giới
@@ -37,9 +37,25 @@ function testMessage(market, info, at) {
  * http    — {get(path), post(path, body)} → JSON
  */
 function createControl({ session, zalo, http, log, markets, marketInfo = {}, now = () => new Date() }) {
+    // Mất đăng nhập (cookie chết, Zalo đóng kết nối — bot_session.js): logged_in = false + last_error để trang hiện
+    // băng đỏ. Đăng nhập lại được thì xoá đúng dòng lỗi mình đã ghi (lỗi khác của last_error giữ nguyên).
+    let reportedLoginProblem = false;
+    function loginStatus() {
+        const problem = session.getLoginProblem ? session.getLoginProblem() : null;
+        if (problem) {
+            reportedLoginProblem = true;
+            const vn = new Date(Date.parse(problem.since) + 7 * 3600000).toISOString();      // giờ VN, "HH:MM dd/mm"
+            const since = `${vn.slice(11, 16)} ${vn.slice(8, 10)}/${vn.slice(5, 7)}`;
+            return { logged_in: false, last_error: `Mất đăng nhập Zalo từ ${since}: ${problem.error}`
+                + (problem.needsQr ? " — cần ghép lại nick (quét QR)" : " — bot đang tự thử lại") };
+        }
+        const status = { logged_in: session.isLoggedIn() || !!zalo.sessionAccountName() };
+        if (reportedLoginProblem) { reportedLoginProblem = false; status.last_error = null; }
+        return status;
+    }
     async function pushStatus(patch = {}) {
         await http.post(CONTROL_PATH, { status: {
-            logged_in: session.isLoggedIn() || !!zalo.sessionAccountName(),
+            ...loginStatus(),
             account_name: zalo.sessionAccountName(),
             markets,
             market_groups: toGroupMap(session.getMarketGroups()),

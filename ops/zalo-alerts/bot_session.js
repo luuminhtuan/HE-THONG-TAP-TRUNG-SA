@@ -27,10 +27,29 @@ const isLoggedIn = () => !!api;
 // Đọc lại mỗi lần: loadGroups() thay cả object.
 const getMarketGroups = () => marketGroups;
 
+// ─── Mất đăng nhập — trang biết để hiện băng đỏ (12/11/2026) ───
+// 03/11 Zalo đá phiên web của nick phụ (mã 1006 — thường là có người mở Zalo PC/Web bằng nick đó), cookie
+// chết hẳn, bot thử lại mỗi 10' suốt 9 ngày mà không ai biết: bot mất đăng nhập thì không nhắn được vào Zalo.
+// File phiên vẫn còn nên "đã ghép nick" không nói được gì — phải nhớ lần đăng nhập gần nhất hỏng hay không.
+// bot_control.js đẩy cái này lên zalo_bot_status (logged_in = false + last_error); dashboard hiện băng đỏ.
+let loginProblem = null;        // null = đăng nhập được / chưa thử; { error, since, needsQr }
+const NETWORK_ERROR = /fetch failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|EAI_AGAIN/i;
+function markLoginLost(message, needsQr) {
+    loginProblem = { error: message, since: loginProblem ? loginProblem.since : new Date().toISOString(), needsQr };
+}
+const getLoginProblem = () => loginProblem;
+
 async function connect() {
     if (!zalo) zalo = require("./zalo");
     if (!api) {
-        api = await zalo.login();
+        try { api = await zalo.login(); }
+        catch (e) {
+            // "fetch failed" = rớt mạng, tự khỏi; "Đăng nhập thất bại" = cookie chết, PHẢI ghép lại (quét QR).
+            const message = String((e && e.message) || e);
+            if (serviceMode) markLoginLost(message, !NETWORK_ERROR.test(message));
+            throw e;
+        }
+        loginProblem = null;
         log("Đã đăng nhập Zalo.");
         if (serviceMode) startListener(api);
     }
@@ -118,6 +137,7 @@ function startListener(a) {
             const delay = retryDelay;
             retryDelay = Math.min(retryDelay * 2, RETRY_MAX_MS);
             log(`Bộ nhận lệnh bị đóng (mã ${code}${reason ? ", " + reason : ""}) — thường do mở Zalo Web/PC bằng nick phụ. Đăng nhập lại sau ${Math.round(delay / 60000)}'.`);
+            markLoginLost(`Zalo đóng kết nối (mã ${code}) — đang chờ đăng nhập lại`, false);
             setTimeout(() => { if (!api) connect().catch((e) => log("Đăng nhập lại lỗi:", e.message)); }, delay);
         },
     });
@@ -137,6 +157,7 @@ function resetSession() {
 /** Bỏ ghép: tắt phiên + xoá file phiên trên máy này. Nhóm đã chọn giữ nguyên (ghép lại là gửi tiếp). */
 function logout() {
     resetSession();
+    loginProblem = null;                 // bỏ ghép là chủ ý, không phải "mất đăng nhập"
     if (!zalo) zalo = require("./zalo");
     zalo.removeSession();
 }
@@ -154,7 +175,12 @@ function wakeUp() { if (wake) wake(); }
 async function keepSessionAlive() {
     if (!api) return;
     try { await api.keepAlive(); zalo.saveSession(api); }
-    catch (e) { log("keepAlive lỗi — lần gửi tới sẽ đăng nhập lại:", e.message); api = null; }
+    catch (e) {
+        log("keepAlive lỗi — đăng nhập lại ngay:", e.message);
+        api = null;
+        // Thử ngay chứ không đợi lần gửi tới: phiên chết thì trang phải biết sớm (12/11/2026).
+        connect().catch((e2) => log("Đăng nhập lại lỗi:", e2.message));
+    }
 }
 
 // Nhóm do trang /admin → Khoá kết nối → Zalo quản lý (16/11/2026): ghép nick / chọn nhóm trên trang là ghi cờ này —
@@ -228,7 +254,7 @@ async function autoAssignGroups() {
 }
 
 module.exports = {
-    enableServiceMode, loadZalo, isLoggedIn, getMarketGroups,
+    enableServiceMode, loadZalo, isLoggedIn, getMarketGroups, getLoginProblem,
     connect, sendOne, enqueue, sendBatch, groupOf, startListener, keepSessionAlive, introduceNewGroups, loadGroups, autoAssignGroups,
     resetSession, logout, waitOrWake, wakeUp, pageManaged, markPageManaged, pruneGroups, pruneStaleGroups, markIntroduced,
 };

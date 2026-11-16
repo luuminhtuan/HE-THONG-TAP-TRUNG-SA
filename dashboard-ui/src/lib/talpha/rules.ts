@@ -8,7 +8,7 @@ import fs from "fs";
 import { RULES_JSON, MARKET_OVERRIDES_TEST_FILE } from "./config-path";
 import { getStartupData } from "./startup-data";
 import { applyMarketOverrides, type OverridesFile } from "./market-config";
-import type { MarketInfo, MarketStatus, ProductCost, Rules, ShipFee } from "./rules-types";
+import type { MarketInfo, MarketStatus, ProductCost, Rules } from "./rules-types";
 
 /** Thị trường nhập ở /admin → Thị trường: bảng market_overrides (15/11/2026 — trước đó file
  *  data/thi_truong.json). Chưa ai nhập = null. Kho lỗi thì KÊU và dùng bản gốc — không làm sập cả
@@ -100,6 +100,18 @@ export function posMoneyDivisor(marketOrShopLabel?: string | null): number {
 }
 export const CAMP_MARKETS: Record<string, string> = Object.fromEntries(
     RULES.camp_market_tokens.map((t) => [t, RULES.market_aliases[t]]));
+/** Mã nước CHỈ nhận ở ô ĐẦU tên camp (11/11/2026, mở Việt Nam): "VN" còn là tệp khách người Việt
+ *  ở Đài — camp kiểu cũ "THUONG/VN/…" không được tính về Việt Nam. ≡ is_market_token bên talpha_rules.py. */
+export const CAMP_MARKETS_FIRST_SEGMENT: string[] = ((RULES as unknown as { camp_market_tokens_first_segment?: string[] })
+    .camp_market_tokens_first_segment || []).map((t) => String(t).toUpperCase());
+const FIRST_SEGMENT_ONLY = new Set(CAMP_MARKETS_FIRST_SEGMENT);
+/** Ô thứ i của tên camp có phải mã nước không. */
+export function isMarketToken(s: string | null | undefined, i: number): boolean {
+    const u = String(s || "").trim().toUpperCase();
+    return u in CAMP_MARKETS && (i === 0 || !FIRST_SEGMENT_ONLY.has(u));
+}
+/** Vị trí ô nước trong tên camp đã tách theo "/" (-1 = không có). */
+export const marketTokenIndex = (p: string[]) => p.findIndex((s, i) => isMarketToken(s, i));
 export const MARKET_CANON: Record<string, string> = Object.fromEntries(
     Object.entries(RULES.market_aliases).filter(([k]) => !k.startsWith("_")));
 export const DISPLAY: Record<string, string> = Object.fromEntries(
@@ -117,7 +129,7 @@ export type MarketSource = "o_dau" | "o_khac" | "mac_dinh";
 export function campaignMarket(cn?: string | null): { market: string | null; source: MarketSource } {
     const p = String(cn || "").split("/").map((x) => x.trim());
     for (let i = 0; i < p.length; i++) {
-        const m = CAMP_MARKETS[p[i].toUpperCase()];
+        const m = isMarketToken(p[i], i) ? CAMP_MARKETS[p[i].toUpperCase()] : null;
         if (m) return { market: m, source: i === 0 ? "o_dau" : "o_khac" };
     }
     return { market: PRIMARY_MARKET, source: "mac_dinh" };
@@ -286,19 +298,6 @@ export function isTestCampaign(cn?: string | null, mkt?: string | null): boolean
 export const POS_TIMEZONE = RULES.pos_timezone;
 export const PAGE_ID_RE = new RegExp(RULES.page_id_pattern);
 
-// ── Phí ship 3PL (tệ địa phương, key = shop_label) ──
-export const SHIPPING_FEES: Record<string, ShipFee> = Object.fromEntries(
-    Object.entries(RULES.shipping_fees || {}).filter(([k]) => !k.startsWith("_"))) as Record<string, ShipFee>;
-
-/** Phí ship ước tính (VND) từ số đơn GTC + doanh thu tệ địa phương. Thị trường chưa khai phí → 0. */
-export function shippingVnd(shopLabel: string, orders: number, revenueLocal: number): number {
-    const f = SHIPPING_FEES[(shopLabel || "").toUpperCase()];
-    if (!f || orders <= 0) return 0;
-    const local = orders * (f.packing + f.delivery + (f.cod_flat || 0)) + (revenueLocal || 0) * (f.cod_pct || 0);
-    const mkt = SHOP2MKT[(shopLabel || "").toUpperCase()];
-    return local * (EXCHANGE_RATES[mkt] || 0);
-}
-
 // ── Giá vốn theo SKU (E2) — VND/unit, key = product_catalog.sku ──
 // POS không trả giá vốn (last_imported_price/avg_price = 0 mọi item) → JSON là nguồn duy nhất.
 // Giá vốn khai bằng TỆ từ 08/09/2026 (hàng mua ở Trung Quốc, trả bằng tệ). VND = tệ × cost_rate_rmb_vnd.
@@ -319,7 +318,7 @@ export function costPriceVnd(sku?: string | null): number | null {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// GÁN MARKETER — RULE CEO 3 BẬC (≡ talpha_rules.py attribute_order)
+// GÁN MARKETER — RULE CEO 3 BẬC
 //   1. Tag marketer trong POS → 2. ad_id → chủ campaign → 3. "(không gán)"
 // ═══════════════════════════════════════════════════════════════════
 export const UNASSIGNED = "(không gán)";
@@ -369,7 +368,7 @@ export function parseAudience(cn?: string | null): string | null {
     // Với tên kiểu "TW/LOC/PHI/..." mà quét từ trái sang thì ô đầu khớp ngay TW,
     // và MỌI campaign đều bị gán tệp "người Đài" — kể cả những cái ghi rõ PHI hay
     // INDO. Không lỗi, không cảnh báo, chỉ có toàn bộ bảng tệp khách sai.
-    const marketIdx = p.findIndex((s) => s.toUpperCase() in CAMP_MARKETS);
+    const marketIdx = marketTokenIndex(p);
     const marketerIdx = p.findIndex((s) => normCampMarketer(s) !== null);
 
     for (let i = 0; i < p.length; i++) {
@@ -403,7 +402,7 @@ export function isUnknownProduct(code?: string | null): boolean {
 /** campaign_name → [thị trường, key marketer]; quy ước '… / <Thị trường> / <Marketer> / …'. */
 export function parseCampaign(cn?: string | null): [string | null, string | null] {
     const p = String(cn || "").split("/").map((x) => x.trim());
-    const mi = p.findIndex((s) => s.toUpperCase() in CAMP_MARKETS);
+    const mi = marketTokenIndex(p);
     // Không thấy mã nước nào thì tính về PRIMARY_MARKET (tên cũ, Sỹ Anh chốt 15/09/2026).
     // Có Singapore, UAE rồi thì campaign mới BẮT BUỘC ghi nước ở ô đầu — campaignMarket()
     // trả nguồn 'mac_dinh' để nơi hiển thị liệt kê những tên cần sửa.

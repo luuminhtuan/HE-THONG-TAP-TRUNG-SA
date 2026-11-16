@@ -179,6 +179,27 @@ function harness({ requests = [], groups = [{ id: "111", name: "ADS + VẬN ĐƠ
         assert.strictEqual(h.finishes()[0].id, 8);
     });
 
+    await t("mất đăng nhập (cookie chết, file phiên còn): báo logged_in false + lỗi; vào lại thì xoá đúng lỗi đó", async () => {
+        const posts = [];
+        let problem = { error: "Đăng nhập thất bại", since: "2026-11-16T02:00:00Z", needsQr: true };
+        const control = createControl({
+            session: { isLoggedIn: () => false, getMarketGroups: () => ({}), getLoginProblem: () => problem },
+            zalo: { sessionAccountName: () => "Hoàng Rin" },
+            http: { get: async () => ({ request: null }), post: async (path, body) => { posts.push(body.status); } },
+            log: () => {}, markets: ["TW"],
+        });
+        await control.pushStatus();
+        assert.strictEqual(posts[0].logged_in, false);
+        assert.strictEqual(posts[0].account_name, "Hoàng Rin");
+        assert.ok(/Mất đăng nhập Zalo từ 09:00 16\/11: Đăng nhập thất bại — cần ghép lại nick/.test(posts[0].last_error), posts[0].last_error);
+        problem = null;
+        await control.pushStatus();
+        assert.strictEqual(posts[1].logged_in, true);
+        assert.strictEqual(posts[1].last_error, null, "đăng nhập lại được → xoá dòng lỗi đã ghi");
+        await control.pushStatus();
+        assert.ok(!("last_error" in posts[2]), "nhịp sau không đụng last_error (lỗi việc khác giữ nguyên)");
+    });
+
     await t("tin thử không có ký tự markdown thô", () => {
         const text = testMessage("SG", { ten: "Singapore", flag: "🇸🇬" }, new Date("2026-11-16T09:30:00Z"));
         assert.ok(!text.includes("**"));

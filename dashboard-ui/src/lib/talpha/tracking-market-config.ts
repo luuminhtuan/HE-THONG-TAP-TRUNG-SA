@@ -62,7 +62,7 @@ export const TRACK_MARKETS: TrackMarket[] = [TW_MARKET, ...Object.entries(RAW_MA
     carrier: m.carrier ?? null, stale_days: Number(m.stale_days ?? TRACK_CFG.stale_days),
     status_map: m.status_map || {},
     source: m.source === "pos" ? "pos" : "partner",
-    provider: m.provider === "weship" ? "weship" : "17track",
+    provider: m.provider === "weship" ? "weship" : m.provider === "pos" ? "pos" : "17track",
     pos_market: m.pos_market || null,
     weship: m.provider === "weship" ? {
         url: m.weship?.url || "https://portal.weshipme.com/tracking",

@@ -5,7 +5,7 @@ const {
     fmt, p1, ddmm, compactMoney, closeRateText, FORMER_MARKETERS, UNASSIGNED_TAB, marketerOf,
     fetchRealtime, fetchSheetReport, dayBefore, trendArrow,
 } = require("./daily_report_common");
-const { skippedAccountsNote, sheetMissingToday, buildStaleWarning } = require("./daily_report_stale");
+const { skippedAccountsNote, systemHealthNotes, sheetMissingToday, buildStaleWarning } = require("./daily_report_stale");
 const { appendCampaignDetails } = require("./daily_report_campaigns");
 
 // ═══════════════════════════════════════════════════════════════════════════════════════
@@ -139,6 +139,8 @@ function buildMarketMessage({ n, dateStr, so: numbers, rows, truoc: previous, ca
     if (opts.canhBao) lines.push(opts.canhBao.replace(/\n+$/, ""), "");
     const bq = skippedAccountsNote(opts.stale);
     if (bq) lines.push(bq, "");
+    const health = systemHealthNotes(opts.stale, n.ma);
+    if (health) lines.push(health, "");
     lines.push(B(opts.tieuDe || `📊 ADS ${n.flag} ${n.ten.toUpperCase()} · ${opts.label || ddmm(dateStr)}`));
     if (opts.nguon) lines.push(I(opts.nguon));
     lines.push("");

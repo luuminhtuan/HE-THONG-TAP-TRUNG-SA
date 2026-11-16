@@ -190,7 +190,7 @@ tới chúng.
 
 ---
 
-## 4. Màn hình — 7 nhóm, 13 tab
+## 4. Màn hình — 8 nhóm, 18 tab
 
 Vào `/` → `proxy.ts` kiểm đăng nhập → `/talpha` → `components/talpha/dashboard-shell.tsx` (menu
 chỉ hiện tab tài khoản được xem — `/api/talpha/me`).
@@ -220,6 +220,8 @@ người ta đã gửi nhau hết mở được.**
 | | Ads Command Center | `app/talpha/ads-command-center/page.tsx` (+ `_components/`) | `/api/talpha/realtime` |
 | | Sức khoẻ quảng cáo | `tabs/ad-health-tab.tsx` | `/api/query` |
 | 👥 Khách hàng | Khách hàng · Market Intel | `tabs/customer-tab.tsx` · `market-intel-tab.tsx` | `/api/query` |
+| | Tệp khách (14/11/2026) — `/talpha/customer-segments` | `tabs/customer-segments-tab.tsx` | `/api/talpha/customer-segments` (đọc `config/customer_segments.json` — số tham chiếu, không phải số bán hàng) |
+| | Soi đối thủ (15/11/2026) — `/talpha/competitor-research` | `tabs/competitor-research-tab.tsx` | `/api/talpha/competitor-research` (đọc `config/competitor_research.json` + ảnh `public/competitor-research/` — kết quả soi nhóm bán khác) |
 | 🤖 Hỏi AI (15/11/2026, chỉ giám đốc) | Hỏi AI — `/talpha/ask-ai` | `tabs/ask-ai-tab.tsx` | `/api/talpha/ceo-ask` (Gemini viết SQL chỉ đọc; model chọn ở Khoá kết nối → tab Gemini). Nút "Khoá AI" (16/11/2026): khoá Gemini riêng chỉ lưu localStorage của trình duyệt đó, có thì thắng khoá mặc định — `lib/talpha/gemini-key.ts` |
 
 Tab lớn tách component con vào thư mục cùng tên cạnh file tab (`tabs/cod-recon/`, `tabs/order-ledger/`,
@@ -240,9 +242,33 @@ luật riêng (doanh thu chỉ đơn đã giao, tên marketer là tên tài kho�
 lệch Sheet cả trăm triệu. Muốn đổi cách tính thì sửa `format_all.py` — Sheet, bot Zalo và
 tab đổi theo cùng lúc.
 
-Ba tab **bỏ qua bộ chọn ngày** (`IGNORES_DATE_RANGE`): Ads Command Center và Sức khoẻ
+Năm tab **bỏ qua bộ chọn ngày** (`IGNORES_DATE_RANGE`): Ads Command Center và Sức khoẻ
 quảng cáo có cửa sổ thời gian cố định trong view; Thanh toán quảng cáo lấy kỳ từ chính
-file sao kê.
+file sao kê; Tệp khách và Soi đối thủ là số tham chiếu theo từng bản đo / bản soi.
+
+**Tệp khách (Sỹ Anh yêu cầu lưu 14/11/2026)** — nghiên cứu thị trường để tham chiếu khi chọn
+tệp chạy quảng cáo: người Việt / Phi / Indo ở Đài Loan, Nhật Bản, Singapore. Mỗi tệp có số
+người theo thống kê nhà nước (Bộ Lao động Đài Loan, Cục Xuất nhập cảnh Nhật; Singapore chỉ có
+ước tính đại sứ quán) và quy mô đối tượng Facebook đo trong Ads Manager (khoảng thấp–cao, tách
+nam nữ, 4 nhóm tuổi), kèm bảng theo thành phố / tỉnh / loại visa, xu hướng nhiều năm, nhận định
+thứ tự ưu tiên và nguồn. Số nằm ở `config/customer_segments.json`: **mỗi lần đo lại thêm một bản vào ĐẦU
+mảng `snapshots`, không sửa bản cũ** (tab có ô chọn bản đo khi có từ hai bản). Khoá thị trường là
+mã nước của dashboard (TW · JP · SG), khoá tệp là VN · PH · ID. Hàm thuần + kiểu ở
+`lib/talpha/customer-segments.ts` (test `tests/customer-segments.test.cjs` soát cả khuôn file). Leader và
+marketer thấy tab, route cắt thị trường theo team như mọi route gộp nhiều nước.
+
+**Soi đối thủ (Sỹ Anh yêu cầu 15/11/2026)** — kết quả soi nhóm bán khác để chọn hàng và học cách chạy
+quảng cáo. Bản đầu: **Team 5 KIOT Taiwan** (soi 12/11/2026) — kho Pancake POS của nhóm đó (shop
+1021976535, chỉ thấy tồn kho, không thấy đơn và giá), 24 kênh TikTok bán các sản phẩm top, Meta Ad
+Library Đài Loan. Tab có: đọc nhanh, tổng quan kho, top xuất 7 ngày, tín hiệu (đặt thêm hàng, đang
+test, hoàn cao, ôm tồn), **thư viện 35 sản phẩm có ảnh + link spy** (kênh TikTok, video top, tìm
+TikTok, Ad Library), công thức quảng cáo, Facebook, kế hoạch áp dụng. Số ở `config/competitor_research.json`:
+**mỗi lần soi thêm một bản vào ĐẦU mảng `snapshots`, không sửa bản cũ**; mỗi bản gắn một thị trường
+(`market`, mã nước dashboard) để route cắt theo team. Ảnh ở `dashboard-ui/public/competitor-research/<nguồn>/`
+(ảnh tĩnh, không qua đăng nhập — chỉ để ảnh quảng cáo công khai). Hàm thuần + kiểu ở
+`lib/talpha/competitor-research.ts` (test `tests/competitor-research.test.cjs` soát khuôn file và ảnh có thật).
+Lịch tự soi lại hằng tuần chạy trên máy Mac của Sỹ Anh (Claude, thứ Năm 9:00), báo cáo tuần lưu ở
+`~/Desktop/AI Phân tích Ads SP/KIOT TAIWAN/theo-doi/` — chưa tự đẩy vào file này.
 
 **Mục Kế toán (Sỹ Anh chốt 07/10/2026, thêm Lãi lỗ 04/11/2026)** = Lãi lỗ + Tiền COD về (tên cũ "Đối soát COD") + Thanh toán
 quảng cáo (tên cũ "Đối soát chi phí QC"). Hai màn cùng trả lời *tiền thật có khớp không*, cùng
@@ -308,6 +334,8 @@ trong chuỗi) bị từ chối; vai `talpha_readonly_market` của họ cũng c
 | `pnl-costs` | Giá vốn + phí ship ước tính của đơn đã chốt, theo ngày và nước; liệt kê mã chưa có giá | Tab P&L · Tổng quan |
 | `income-statement` (trước 16/11/2026: `lai-lo`) | Lãi lỗ đủ mọi khoản theo nước (`lib/talpha/income-statement.ts` hàm thuần + test, nạp kiện ở `income-statement-sources.ts`). Doanh số + ads đọc TỔNG TEAM qua `lib/talpha/team-summary-sheet.ts` (chung với `sheet-report`); kiện Đài qua `lib/talpha/tw-order-ledger.ts` (chung với `order-ledger`). Route tự cắt nước theo team; chi phí chung chia theo doanh số MỌI nước | Tab Lãi lỗ |
 | `income-statement/opex` (trước: `lai-lo/van-hanh`) | POST thêm/sửa · DELETE xoá một khoản chi phí vận hành — chỉ người xem hết (giám đốc) | Tab Lãi lỗ |
+| `customer-segments` | Số tham chiếu tệp khách (người Việt / Phi / Indo theo thị trường) từ `config/customer_segments.json`; cắt thị trường theo team, `seen_all` báo người xem có thấy đủ nước không | Tab Tệp khách |
+| `competitor-research` | Kết quả soi nhóm bán khác từ `config/competitor_research.json`; chỉ trả bản soi của thị trường người xem được phép | Tab Soi đối thủ |
 | `product-pnl` | P&L từng sản phẩm: doanh số chia theo số lượng, ads theo mã SP trong tên campaign | Tab P&L theo SP |
 
 Hạ tầng: `auth/[...nextauth]`, `auth/validate`, `users`, `ad-accounts` (trước 16/11/2026 là `tkqc`). Tin nhắn Pancake

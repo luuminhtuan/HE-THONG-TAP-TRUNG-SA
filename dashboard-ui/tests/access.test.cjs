@@ -26,7 +26,12 @@ t("ba team: Đông Á = Đài + Nhật (gộp 10/10/2026); khoá nhat_ban giữ 
     assert.deepStrictEqual(A.TEAMS.dong_nam_a.markets, ["Singapore"]);
     assert.deepStrictEqual(A.TEAMS.dong_a.markets, ["Taiwan", "Japan"]);
     assert.deepStrictEqual(A.TEAMS.nhat_ban.markets, ["Japan"]);
-    assert.deepStrictEqual([...A.ALL_MARKET_KEYS].sort(), ["Japan", "Singapore", "Taiwan", "UAE"]);
+    assert.deepStrictEqual(A.TEAMS.viet_nam.markets, ["Vietnam"]);
+    assert.deepStrictEqual([...A.ALL_MARKET_KEYS].sort(), ["Japan", "Singapore", "Taiwan", "UAE", "Vietnam"]);
+});
+t("SQL gán nước theo tên camp: VN chỉ nhận ở ô đầu (≡ campaignMarket)", () => {
+    const sql = A.sqlCampaignMarketKey("c");
+    assert.ok(sql.includes("seg_pos = 1 OR UPPER(TRIM(seg)) NOT IN ('VN'"), sql);
 });
 t("mọi tab khai trong access.roles đều là tab có thật của shell", () => {
     for (const [k, r] of Object.entries(A.ROLES)) {
@@ -46,7 +51,7 @@ t("Thái chỉ thấy Singapore", () => {
     assert.ok(!A.canMarket(thai, "AE") && !A.canMarket(thai, "TW"));
 });
 t("Thương (sale, mọi team) thấy mọi nước (cả Nhật từ 08/10/2026) nhưng không phải giám đốc", () => {
-    assert.deepStrictEqual([...thuong.codes].sort(), ["AE", "JP", "SG", "TW"]);
+    assert.deepStrictEqual([...thuong.codes].sort(), ["AE", "JP", "SG", "TW", "VN"]);
     assert.strictEqual(thuong.full, false);
     assert.ok(A.seesAllMarkets(thuong));
 });
@@ -226,7 +231,7 @@ t("câu thật của 4 tab chạy được với leader", () => {
 t("biểu thức nước theo tên campaign khớp luật campaignMarket (ô đầu tiên là nước thắng, không có → Đài)", () => {
     const e = A.sqlCampaignMarketKey("campaign_name");
     assert.ok(e.includes("WHEN 'SGP' THEN 'Singapore'") && e.includes("WHEN 'AE' THEN 'UAE'") && e.includes("WHEN 'TW' THEN 'Taiwan'"));
-    assert.ok(/ORDER BY vi_tri LIMIT 1\s*\), 'Taiwan'\)$/.test(e.trim()), e);
+    assert.ok(/ORDER BY seg_pos LIMIT 1\s*\), 'Taiwan'\)$/.test(e.trim()), e);
 });
 
 t("Lãi lỗ (Kế toán, 04/11/2026): mọi vai có tab, gọi được route — route tự cắt nước", () => {

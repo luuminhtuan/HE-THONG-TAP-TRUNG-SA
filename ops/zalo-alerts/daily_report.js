@@ -31,7 +31,7 @@ const {
     fmt, pct, p1, ddmm, closeRateText, FORMER_MARKETERS, UNASSIGNED_TAB, marketerOf,
     fetchRealtime, fetchSheetReport, tabMarketer, dayBefore,
 } = require("./daily_report_common");
-const { buildStaleWarning, resolveStaleWarning } = require("./daily_report_stale");
+const { buildStaleWarning, resolveStaleWarning, systemHealthNotes } = require("./daily_report_stale");
 const { buildAdsMessage, buildTeamReport, buildCombinedMessage, recommend } = require("./daily_report_team");
 const { buildMarketReport, buildMarketAlert } = require("./daily_report_market");
 const { buildCorrectionMessage, diffLines } = require("./daily_report_correction");
@@ -138,5 +138,5 @@ async function buildMarketerReports(cfg, dateStr, opts = {}) {
 module.exports = {
     buildMarketerReports, buildTeamReport, buildCombinedMessage, buildAdsMessage, recommend,
     buildCorrectionMessage, diffLines, headlineNumbers,
-    buildMarketReport, buildMarketAlert,
+    buildMarketReport, buildMarketAlert, systemHealthNotes,
 };

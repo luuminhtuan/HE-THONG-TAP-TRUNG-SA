@@ -101,6 +101,22 @@ ALLM     = list(_MK.keys())
 # vẫn tính Đài, nhưng báo cáo liệt kê ra để sửa — xem campaign_market().
 PRIMARY_MARKET = RULES.get("primary_market") or (ALLM[0] if ALLM else None)
 MARKETS  = {tok: RULES["market_aliases"][tok] for tok in RULES["camp_market_tokens"]}
+# Mã nước CHỈ nhận ở ô ĐẦU tên camp (11/11/2026, mở Việt Nam): "VN" còn là tệp khách người Việt
+# ở Đài, camp kiểu cũ "THUONG/VN/…" không được tính về Việt Nam. ≡ isMarketToken bên rules.ts / rules.js.
+FIRST_SEGMENT_ONLY = {t.upper() for t in RULES.get("camp_market_tokens_first_segment", [])}
+
+
+def is_market_token(s, i):
+    """Ô thứ i của tên camp có phải mã nước không (mã chỉ-ô-đầu chỉ nhận ở i == 0)."""
+    u = (s or "").strip().upper()
+    return u in MARKETS and (i == 0 or u not in FIRST_SEGMENT_ONLY)
+
+
+def market_token_index(parts):
+    """Vị trí ô nước trong tên camp đã tách theo "/" (None = không có ô nào là nước)."""
+    return next((i for i, s in enumerate(parts) if is_market_token(s, i)), None)
+
+
 SHOP2MKT = {v["shop_label"]: m for m, v in _MK.items()}
 
 def campaign_market(cn):
@@ -109,7 +125,7 @@ def campaign_market(cn):
     PRIMARY_MARKET). Cùng luật với parseCampaign/campaignMarketSource bên rules.ts."""
     p = [x.strip() for x in (cn or "").split("/")]
     for i, s in enumerate(p):
-        m = MARKETS.get(s.upper())
+        m = MARKETS.get(s.upper()) if is_market_token(s, i) else None
         if m:
             return m, ("o_dau" if i == 0 else "o_khac")
     return PRIMARY_MARKET, "mac_dinh"
@@ -120,7 +136,6 @@ NUMID   = re.compile(RULES["page_id_pattern"])
 
 _CAMP_TOKENS = {k: v for k, v in RULES["camp_marketer_tokens"].items() if not k.startswith("_")}
 _POS_RULES   = RULES["pos_marketer_rules"]
-_SCAN_RULES  = RULES["camp_scan_rules"]
 DISPLAY      = {k: v["display"] for k, v in RULES["marketers"].items()}
 
 def norm_nv(s):
@@ -143,9 +158,6 @@ def norm_pos_nv(name):
 # ═══ NGƯỜI NGOÀI TEAM — chạy chung 14 TKQC + chung shop POS ═══
 # Tách bạch chứ không gộp vào "(không gán)": chi phí của họ là tiền THẬT đi ra từ TKQC
 # của TALPHA. Luôn tra bảng TEAM trước, trượt mới tra bảng này.
-EXTERNAL          = RULES.get("external_marketers", {})
-EXTERNAL_DISPLAY  = {k: v["display"] for k, v in EXTERNAL.items()}
-EXTERNAL_FULL     = {k: v["full"] for k, v in EXTERNAL.items()}
 _EXT_CAMP_TOKENS  = {k: v for k, v in RULES.get("camp_external_tokens", {}).items()
                      if not k.startswith("_")}
 _EXT_POS_RULES    = RULES.get("pos_external_rules", [])
@@ -168,37 +180,6 @@ def norm_pos_external(name):
             return r["key"]
     return None
 
-def parse_campaign_any(cn):
-    """(thị trường, key, la_ngoai_team) — như parse_campaign nhưng nhận cả người ngoài team."""
-    p = [x.strip() for x in (cn or "").split("/")]
-    mi = next((i for i, s in enumerate(p) if s.upper() in MARKETS), None)
-    if mi is None:
-        return None, None, False
-    mkt = MARKETS[p[mi].upper()]
-    seg = p[mi + 1] if mi + 1 < len(p) else None
-    team = norm_nv(seg)
-    if team:
-        return mkt, team, False
-    ext = norm_nv_external(seg)
-    return mkt, ext, bool(ext)
-
-def _has_word_token(u, tok):
-    return re.search(r"(^|[^A-Z])" + re.escape(tok) + r"([^A-Z]|$)", u) is not None
-
-def scan_campaign_marketer(name):
-    """Quét CẢ TÊN campaign → key marketer (dùng cho cảnh báo/bot, không cần parse segment)."""
-    u = str(name or "").upper()
-    for r in _SCAN_RULES:
-        for s in r.get("substrings", []):
-            if s in u:
-                return r["key"]
-        for t in r.get("word_tokens", []):
-            if _has_word_token(u, t):
-                return r["key"]
-        rx = r.get("regex")
-        if rx and re.search(rx, u):
-            return r["key"]
-    return None
 
 _TESTRE = re.compile(RULES["test_campaign"]["pattern"])
 _NO_TEST = set(RULES["test_campaign"]["exempt_markets"])
@@ -208,19 +189,6 @@ def is_test(cn, mkt=None):
     if mkt in _NO_TEST:
         return False
     return bool(_TESTRE.search(cn or ""))
-
-# ── Phí ship 3PL (tệ địa phương, key = shop_label) ──
-SHIP_FEES = RULES.get("shipping_fees", {})
-
-def shipping_vnd(shop_label, orders, revenue_local):
-    """Phí ship ước tính (VND) cho 1 thị trường, từ số đơn GTC + doanh thu tệ địa phương.
-    KHÔNG dùng sale_order.shipping_fee (cột này mirror cod, rác). Thị trường chưa khai phí → 0."""
-    f = SHIP_FEES.get((shop_label or "").upper())
-    if not f or not orders or orders <= 0:
-        return 0.0
-    local = orders * (f["packing"] + f["delivery"] + f.get("cod_flat", 0)) + (revenue_local or 0) * f.get("cod_pct", 0)
-    mkt = SHOP2MKT.get((shop_label or "").upper())
-    return local * RATE.get(mkt, 0)
 
 # ── Giá vốn theo SKU (E2) — VND/unit, key = product_catalog.sku ──
 # POS không trả giá vốn (variation_info.last_imported_price/avg_price = 0 mọi item)
@@ -239,7 +207,7 @@ def cost_price_vnd(sku):
     e = PRODUCT_COSTS.get(str(sku or "").strip())
     return e["cost_price_vnd"] if e else None
 
-# ═══ GÁN MARKETER — RULE CEO 3 BẬC: parse_campaign · build_adid_owner · attribute_order ở order_rules.py
+# ═══ GÁN MARKETER — RULE CEO 3 BẬC: tag POS → chủ campaign của quảng cáo → "(không gán)" (report_data.py)
 # Đơn không gán được KHÔNG bị bỏ lặng lẽ — luôn rơi vào "(không gán)" để còn thấy trên báo cáo.
 UNASSIGNED = "(không gán)"
 
@@ -257,7 +225,7 @@ def bucket_nv(nv):
 
 # ═══ TÊN DỜI SANG MODULE RIÊNG (16/11/2026 — file vượt 300 dòng) ═══════════════════════════════
 #   campaign_pages.py — sản phẩm / page của camp, nối đơn → camp theo nguồn đơn, tên tab theo page;
-#   order_rules.py    — gán đơn → marketer 3 bậc, đơn trống.
+#   order_rules.py    — đơn trống (không tính vào số đơn).
 # Hai module đó đọc luật ĐÃ NẠP ở trên (MARKETS, norm_nv…) nên không nhập lại ở đầu file được (vòng
 # import). `from talpha_rules import parse_camp_product` vẫn chạy: Python hỏi __getattr__ dưới đây
 # (PEP 562), nó nạp module chứa tên đó lúc cần. Nạp luật lại (test phủ thị trường) vẫn ra luật mới
@@ -265,8 +233,7 @@ def bucket_nv(nv):
 _MOVED = {
     **dict.fromkeys(("parse_camp_product", "normalize_page_name", "build_page_index", "find_campaign_by_page",
                      "camp_page_cells", "build_page_tab_names", "order_tab_name"), "campaign_pages"),
-    **dict.fromkeys(("parse_campaign", "build_adid_owner", "attribute_order",
-                     "is_empty_order", "sql_is_empty_order"), "order_rules"),
+    **dict.fromkeys(("is_empty_order", "sql_is_empty_order"), "order_rules"),
 }
 
 

@@ -23,6 +23,8 @@
 //     trung bình/ngày + vận chuyển đơn thành công (đồng giá dưới 1 kg) + thu hộ COD % tiền đơn.
 //   • Nhật (JP, 13/10/2026): bảng giá NAZA shipping_fees.JP (lib/talpha/jp-shipping-fee.ts) — cước
 //     theo bậc 0,5 kg (cân lấy từ kiện NAZA Đài như Singapore) + thu hộ theo bậc tiền COD (yên).
+//   • Việt Nam (VN, 12/11/2026): phí J&T cố định một đơn (shipping_fees.VN: packing + delivery),
+//     giá vốn cố định một đơn (markets.Vietnam.cogs_per_order_vnd) — Sỹ Anh chốt 1.000đ + 16.000đ (13/11/2026).
 //   • Nước khác: không đoán — null để giao diện ghi "thiếu".
 // ═══════════════════════════════════════════════════════════════════
 import { query } from "@/lib/db";
@@ -102,6 +104,22 @@ for (const m of Object.values(RULES.markets as Record<string, {
     }
     COST_BY_NAME[String(m.shop_label).toUpperCase()] = byName;
     COST_BY_BARCODE[String(m.shop_label).toUpperCase()] = barcodePrice;
+}
+
+// Giá vốn CỐ ĐỊNH MỘT ĐƠN (markets.*.cogs_per_order_vnd) — shop bán nhiều loại hàng rẻ đồng giá
+// (hạt giống VN: 1.000đ/đơn, Sỹ Anh chốt 12/11/2026). Khai thì thắng mọi cách tra theo tên/mã.
+const COST_PER_ORDER: Record<string, number> = {};
+for (const m of Object.values(RULES.markets as Record<string, { shop_label?: string; cogs_per_order_vnd?: number }>)) {
+    if (m && typeof m === "object" && m.shop_label && Number(m.cogs_per_order_vnd) > 0) {
+        COST_PER_ORDER[String(m.shop_label).toUpperCase()] = Number(m.cogs_per_order_vnd);
+    }
+}
+// Phí ship CỐ ĐỊNH MỘT ĐƠN (shipping_fees.<shop> có packing/delivery là số) — J&T Việt Nam.
+type FlatFee = { partner?: string; packing?: number; delivery?: number; cod_flat?: number; cod_pct?: number };
+function flatShipLocal(shop: string, local: number): number | null {
+    const f = FEES[shop] as FlatFee | undefined;
+    if (!f || typeof f.packing !== "number" || typeof f.delivery !== "number") return null;
+    return f.packing + f.delivery + (f.cod_flat || 0) + (f.cod_pct || 0) * local;
 }
 
 /** Đọc kho sao kê NAZA (Đài): phí trung bình một kiện + cân tính phí trung bình. */
@@ -214,6 +232,10 @@ export async function computeOrderCosts(from: string, to: string, shopFilter?: (
         if (r.product_name == null && r.variation_name == null) { o.du = false; continue; }  // đơn không có dòng hàng
         const name = `${r.product_name || ""} ${r.variation_name || ""}`.trim();
         const qty = Number(r.qty || 0);
+        if (COST_PER_ORDER[r.shop] !== undefined) {   // giá theo đơn — chia đều cho từng cái ở vòng sau
+            o.dong.push({ sp: `${r.shop}:${nameKey(name) || "(KHÔNG TÊN)"}`, ten: name, qty, gia_vnd: null });
+            continue;
+        }
         const recordMissing = (code: string) => {
             const t = missing.get(code) || { ma: code, ten: name, qty: 0, don: new Set<string>() };
             t.qty += qty; t.don.add(key); missing.set(code, t);
@@ -245,6 +267,14 @@ export async function computeOrderCosts(from: string, to: string, shopFilter?: (
         }
     }
 
+    for (const o of orderMap.values()) {
+        const cost = COST_PER_ORDER[o.shop];
+        if (cost === undefined) continue;
+        o.cogs = cost; o.du = true;
+        const units = o.dong.reduce((s, x) => s + (x.qty || 0), 0);
+        for (const x of o.dong) x.gia_vnd = units > 0 ? cost / units : 0;
+    }
+
     const naza = await loadNazaFeeStats();
     // UAE: bậc phí fulfillment theo số đơn TRUNG BÌNH/NGÀY của khoảng đang xem.
     const dayCount = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1);
@@ -262,6 +292,10 @@ export async function computeOrderCosts(from: string, to: string, shopFilter?: (
                 : (fulfillAe + AE_FEES.delivered_ship_fee + (AE_FEES.cod_fee_pct || 0) * (o.vnd / aeRate)) * aeRate;
         } else if (o.shop === "JP") {
             o.ship = jpRate ? jpShippingFeeVnd(o.vnd / jpRate, naza.can ? naza.can.bac_500g_tb : null, jpRate, COST_RATE_RMB_VND) : null;
+        } else {
+            const rate = EXCHANGE_RATES[SHOP2MKT[o.shop]] || 0;
+            const local = rate ? flatShipLocal(o.shop, o.vnd / rate) : null;
+            o.ship = local === null ? null : local * rate;
         }
     }
 
@@ -298,6 +332,12 @@ export async function computeOrderCosts(from: string, to: string, shopFilter?: (
             + `${fmt(naza.can.kien)} kiện NAZA Đài → ${(jpFreightRmb(bac) || 0).toFixed(1)} tệ) + phí thu hộ theo bậc tiền COD `
             + `(${(JP_FEE_SCHEDULE.cod_fee_jpy_tiers || []).map((x) => `≤${fmt(x.max_cod_jpy)}¥: ${x.fee}¥`).join(" · ")}), `
             + `quy ${fmt(COST_RATE_RMB_VND)}đ/tệ, ${fmt(jpRate)}đ/yên. Chưa gồm phụ thu vùng xa 1.600¥, phí từ chối / hoàn 800¥.`;
+    }
+    for (const shop of Object.keys(COST_PER_ORDER).concat(Object.keys(FEES))) {
+        const f = FEES[shop] as FlatFee | undefined;
+        if (ship_basis[shop] || !f || typeof f.packing !== "number" || ["TW", "SG", "AE", "JP"].includes(shop)) continue;
+        const avg = tbShip(shop);
+        if (avg !== null) ship_basis[shop] = `${fmt(avg)}đ/đơn = phí ${f.partner || "vận chuyển"} cố định một đơn (talpha_rules.json → shipping_fees.${shop}).`;
     }
     if (shopFilter) for (const k of Object.keys(ship_basis)) if (!shopFilter(k)) delete ship_basis[k];
 

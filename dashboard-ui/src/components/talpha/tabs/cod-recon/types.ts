@@ -1,5 +1,9 @@
 /** Kiểu dữ liệu dùng chung của tab Tiền COD về — màn Đài (sao kê NAZA) và màn các nước khác. */
 import type { UnpaidOrder } from "../ledger-shared";
+import type { AgeBucket, CodComposition, MoneyAge } from "@/lib/talpha/cod-money-age";
+
+/** Tiền đang chờ bao lâu + COD đi đâu (13/11/2026) — cùng dạng cho Đài và các nước khác. */
+export type { AgeBucket, CodComposition, MoneyAge };
 
 export interface CodReconTabProps { dateRange?: { from: Date; to: Date }; projectId?: string }
 
@@ -44,7 +48,11 @@ export type ReceivedSummary = {
     ty_gia: { twd_rmb: number | null; rmb_vnd: number | null; ngay_sao_ke: string | null };
     con_lai_da_giao: Estimate; con_lai_chua_giao: Estimate;
     khong_tinh: { hoan: number; huy: number; tieu_huy: number; cod_twd: number };
-    tien_hang: { loi: string | null; so_dot: number; doc_luc: string };
+    tien_hang: { loi: string | null; so_dot: number; doc_luc: string; nghi_ngo?: string[] };
+    /** Tiền đang chờ bao lâu (13/11/2026). Máy chủ cũ chưa có thì không hiện. */
+    tuoi?: MoneyAge;
+    /** COD các kỳ đã có sao kê đi đâu: phí NAZA, tiền hàng, về tay. Thiếu tỷ giá kỳ nào thì null. */
+    co_cau?: CodComposition | null;
 };
 export type Period = {
     id: string; filename: string; period_date: string;
@@ -78,7 +86,8 @@ export type MarketOrder = {
     da_tra?: { ky: string; so_tien: number };
 };
 export type ColumnMap = Partial<Record<"tracking" | "order_id" | "amount" | "fee" | "paid_date" | "status", string>>;
-export type DeductionLine = { nhan: string; so: number; ghi?: string };
+/** `ky_truoc` = khoản âm của kỳ trước NAZA trừ vào kỳ này (mẫu Nhật) — không phải tiền hàng. */
+export type DeductionLine = { nhan: string; so: number; ghi?: string; loai?: "ky_truoc" };
 /** Luồng tiền một kỳ, đi đúng thứ tự sheet TỔNG của NAZA (lib/talpha/cod-market-ledger.ts). */
 export type MarketMoneyFlow = {
     so_don: number; cod_local: number; ty_gia_rmb: number | null; rmb: number | null; tru_rmb: DeductionLine[];
@@ -106,6 +115,7 @@ export type MarketLedger = {
         ty_gia: { rmb: number | null; vnd: number | null; thu_ho_pct: number | null; ngay: string | null };
         cach_uoc: "naza" | "ty_gia_khai";
         con_lai_da_giao: MarketEstimate; con_lai_chua_giao: MarketEstimate;
+        tuoi?: MoneyAge; co_cau?: CodComposition | null;
     };
     tong_quan: Overview;
     fx: Fx;

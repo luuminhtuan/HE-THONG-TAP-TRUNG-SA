@@ -10,7 +10,7 @@ import PartnerSheetImporter, { isSheetStale, shortImportLabel, type PartnerSheet
 import { useNarrowScreen } from "../order-ledger-shared-ui";
 import type { Check, CodReconTabProps, Fx, Overview, Pending, Period, ReceivedSummary, StatementMeta, Task } from "./types";
 import { discrepancyMessage, dmy, RMB2, shortFile, TW_CURRENCY } from "./format";
-import { ActionButton, FormBank, HeaderBar, Kpi, Section, StatusBadge } from "./ui";
+import { ActionButton, BankDiffCell, FormBank, HeaderBar, Kpi, Section, StatusBadge } from "./ui";
 import { TasksSection } from "./tasks-section";
 import { ChecksPanel, CheckGroup } from "./checks-panel";
 import { MoneyFlowPanel } from "./money-flow";
@@ -125,7 +125,20 @@ export function TwCodRecon({ dateRange, nutNuoc: marketSwitcher }: CodReconTabPr
     const period = periods.find((p) => p.id === pid) || periods[0];
     // Đòi NAZA tiền đơn quá hạn là việc THEO ĐƠN → khung "Đòi tiền NAZA" ở Sổ đơn hàng (07/10/2026,
     // tách mục Kế toán). Ở đây chỉ còn việc theo KỲ: soát sao kê, hỏi khoản lệch, nhập tiền về.
-    const accountingTasks = tasks.filter((v) => v.id !== "doi-naza");
+    // 13/11/2026: vẫn đòi ở Sổ đơn hàng, nhưng màn này phải NÓI có đơn quá hạn — trước đó
+    // "Không có việc gì cần làm" trong khi NAZA đang giữ tiền đơn qua ≥2 kỳ.
+    const overdue = pending.filter((x) => x.qua_han);
+    const accountingTasks: Task[] = [
+        ...(overdue.length ? [{
+            id: "qua-han-tom", muc: "gap" as const, tieu_de: "Đơn đã giao quá hạn, NAZA chưa trả",
+            so: overdue.length, don_vi: "đơn",
+            chi_tiet: `${TWD(overdue.reduce((a, x) => a + x.cod_twd, 0))} — đã qua từ 2 kỳ sao kê mà chưa thấy tiền`
+                + `${overdue.some((x) => x.da_doi) ? ` (${overdue.filter((x) => x.da_doi).length} đơn đã đòi)` : ""}.`
+                + " Đòi ở khung “Đòi tiền NAZA” của Sổ đơn hàng — có sẵn tin nhắn, tên khách, số điện thoại.",
+            done_key: "", nut: [], ghi_chu: "",
+        }] : []),
+        ...tasks.filter((v) => v.id !== "doi-naza"),
+    ];
 
     /** Xuất đúng thứ cần gửi lại 3PL — bốn loại lệch trong một file. */
     const exportForPartner = () => {
@@ -180,13 +193,7 @@ export function TwCodRecon({ dateRange, nutNuoc: marketSwitcher }: CodReconTabPr
     );
 
     const diffCell = (p: Period) => (
-        <span className={cn("font-semibold tabular-nums",
-            p.lech_bank_vnd == null ? "text-muted-foreground"
-                : p.trang_thai === "khop" ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400")}>
-            {p.lech_bank_vnd == null ? "·"
-                : Math.round(p.lech_bank_vnd) === 0 ? "0đ"
-                    : `${p.lech_bank_vnd > 0 ? "+" : "−"}${VND(Math.abs(p.lech_bank_vnd))}`}
-        </span>
+        <BankDiffCell diff={p.lech_bank_vnd} matched={p.trang_thai === "khop"} tolerance={overview?.bank_tolerance_vnd ?? null} />
     );
     const importLabel = sheetStale ? null : shortImportLabel(partnerImport);
 
@@ -214,7 +221,13 @@ export function TwCodRecon({ dateRange, nutNuoc: marketSwitcher }: CodReconTabPr
             <HeaderBar
                 nutNuoc={marketSwitcher}
                 nguon={<>
-                    {stms.length} bản sao kê{latest ? ` · mới nhất “${shortFile(latest.filename)}” (chốt đơn tới ${dmy(latest.period_date)})` : ""}
+                    {stms.length} bản sao kê
+                    {/* Kỳ âm không có số phải trả → không vào ô "n kỳ sao kê" / "n kỳ khớp"; nói ra kẻo tưởng mất một kỳ. */}
+                    {(() => {
+                        const negative = periods.filter((p) => p.settlement?.payable_vnd == null).length;
+                        return negative ? ` (${negative} kỳ không có tiền trả — âm/chuyển sang kỳ sau)` : "";
+                    })()}
+                    {latest ? ` · mới nhất “${shortFile(latest.filename)}” (chốt đơn tới ${dmy(latest.period_date)})` : ""}
                     {importLabel ? ` · ${importLabel}` : ""}
                 </>}
                 phai={<>
@@ -242,7 +255,7 @@ export function TwCodRecon({ dateRange, nutNuoc: marketSwitcher }: CodReconTabPr
             <TasksSection viec={accountingTasks} busy={busy} copied={copied} onChep={copyText}
                 tinLech={period ? { vi: discrepancyMessage(period, "vi"), zh: discrepancyMessage(period, "zh") } : null}
                 onNhapBank={openBankEntry} onGhi={recordTask}
-                rongChu="Mọi kỳ đã soát xong, tiền đã về khớp. Đơn quá hạn phải đòi xem ở Sổ đơn hàng." />
+                rongChu="Mọi kỳ đã soát xong, tiền đã về khớp, không đơn nào quá hạn." />
 
             {/* ═══ ② BẢNG CÁC KỲ — xương sống của tab ═══ */}
             {periods.length > 0 && (

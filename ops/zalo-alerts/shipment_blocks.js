@@ -24,8 +24,8 @@ function callBlock(a, i, currency, homeDelivery, marketId = "") {
     const customer = [s.customer, s.phone, homeDelivery ? s.city : ""].filter(Boolean).join(" · ");
     if (customer) lines.push(`👤 ${customer}`);
     if (!homeDelivery && s.store_name) lines.push(`🏪 ${s.store_name}${pickupCode(s) ? ` · mã lấy hàng ${pickupCode(s)}` : ""}`);
-    // UAE không có bảng đối tác — ghi chú là của đơn POS (thường là địa chỉ, hẹn ngày giao).
-    if (s.note) lines.push(`📝 ${marketId === "AE" ? "Ghi chú đơn" : "Đối tác ghi"}: "${truncate(s.note, 80)}"`);
+    // UAE, Việt Nam không có bảng đối tác — ghi chú là của đơn POS (thường là địa chỉ, hẹn ngày giao).
+    if (s.note) lines.push(`📝 ${marketId === "AE" || marketId === "VN" ? "Ghi chú đơn" : "Đối tác ghi"}: "${truncate(s.note, 80)}"`);
     if (homeDelivery) {
         lines.push(...bilingualLines((lang) => homeDeliveryMessage(s, marketId, { nhacLai: !!a.nhac, lan: Number(s.fail_count) || null }, lang)));
     } else {
@@ -50,6 +50,7 @@ function upcomingBlock(x, currency, marketCode) {
 
 /** Bản dịch câu báo trước — một dòng cho mỗi loại có mặt trong mục. */
 function upcomingTranslations(xs, marketCode) {
+    if (marketCode === "VN") return [];   // câu gửi khách Việt Nam đã là tiếng Việt
     const stageNames = { HomNay: "giao hôm nay", NgayMai: "hẹn giao ngày mai", SapGiao: "sắp giao" };
     return ["HomNay", "NgayMai", "SapGiao"].filter((m) => xs.some((x) => x.moc === m)).map((m) => {
         const template = { customer: "{tên}", track17_code: "{mã}", status: (xs.find((x) => x.moc === m).shipment || {}).status };

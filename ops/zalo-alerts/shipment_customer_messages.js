@@ -1,7 +1,7 @@
 // Câu SOẠN SẴN gửi khách trong tin VẬN ĐƠN (tách từ shipment_alerts.js 16/11/2026): Đài nhận ở
 // cửa hàng tiện lợi; Singapore (J&T), Nhật (Japan Post), UAE (WeShip) giao tận nhà; câu báo trước
 // khi giao. Tiếng Anh gửi khách + bản dịch tiếng Việt cho anh em. Hàm thuần.
-const { addDays, toVnDate } = require("./shipment_common");
+const { addDays, toVnDate, failReason } = require("./shipment_common");
 
 // ─── Tin nhắn soạn sẵn gửi khách ─────────────────────────────────────────────
 // Cùng câu chữ với nút "Chép tin" trên dashboard (tracking-tab.tsx → soanTin): khách Đài
@@ -88,7 +88,7 @@ function twMessageLines(s, waitInfo) {
 }
 
 // Hãng giao tận nhà của nước đọc bảng đối tác + 17TRACK — tên hãng nói với khách.
-const HOME_CARRIERS = { SG: "J&T", JP: "Japan Post" };
+const HOME_CARRIERS = { SG: "J&T", JP: "Japan Post", VN: "J&T" };
 
 // ─── Singapore giao tận nhà (J&T) — Sỹ Anh chốt 01/10/2026 ───────────────────
 // Tiếng Anh gửi khách + bản dịch tiếng Việt cho anh em, như Đài.
@@ -174,6 +174,7 @@ function deliveryStage(s, today, marketCode) {
 
 /** TH1 — câu báo trước. Sing nói "J&T", Nhật nói "Japan Post", UAE nói "the courier" và "order (parcel …)". */
 function upcomingDeliveryMessage(s, stage, marketCode, lang = "en") {
+    if (marketCode === "VN") return lang === "vi" ? null : vnUpcomingMessage(s, stage);
     const isVi = lang === "vi";
     const name = s.customer || (isVi ? "bạn" : "there");
     const trackingCode = s.track17_code || s.tracking;
@@ -237,13 +238,49 @@ function aeCustomerMessage(s, { nhacLai: isReminder = false, lan: times = null }
         ? `Chào ${name}, đơn của bạn (mã ${trackingCode}) đã được hẹn giao lại. Bạn kiểm tra điện thoại xem có cuộc gọi nhỡ hoặc tin nhắn của tài xế không, rồi liên hệ lại để chốt giờ giao, hoặc nhắn shop giờ nhận hàng tiện cho bạn nhé. Nhớ mở máy giúp shop. Cảm ơn bạn!`
         : `Hi ${name}, the delivery of your order (parcel ${trackingCode}) has been rescheduled. Please check your phone for missed calls or messages from the delivery driver and contact them to confirm a delivery time, or reply to us with a good time. Please keep your phone on. Thank you!`;
 }
+// ─── Việt Nam giao tận nhà qua J&T (mở 11/11/2026) ──────────────────────────
+// Khách là người Việt (hạt giống, phần đông trung niên ở huyện) → câu TIẾNG VIỆT, xưng
+// "em" – "anh/chị". Không có bản dịch: lang "en" (câu gửi khách) trả tiếng Việt, "vi" trả null.
+function vnCustomerMessage(s, { nhacLai: isReminder = false, lan: times = null } = {}, lang = "en") {
+    if (lang === "vi") return null;
+    const name = s.customer ? `anh/chị ${s.customer}` : "anh/chị";
+    const trackingCode = s.track17_code || s.tracking;
+    const reason = failReason(s);
+    if (reason === "khách từ chối") {
+        return isReminder
+            ? `Dạ em chào ${name}, em chưa thấy anh/chị phản hồi về đơn hàng (mã ${trackingCode}) bị từ chối nhận hôm trước. Anh/chị còn muốn nhận hàng không ạ? Anh/chị nhắn em trong hôm nay giúp em nhé, không thì đơn sẽ bị hoàn về. Em cảm ơn ạ!`
+            : `Dạ em chào ${name}, bên J&T báo đơn hàng (mã ${trackingCode}) bị từ chối nhận. Đơn hàng có vấn đề gì không ạ? Nếu anh/chị vẫn muốn nhận, nhắn em ngày giờ tiện để em báo J&T giao lại nhé. Em cảm ơn ạ!`;
+    }
+    if (isReminder) {
+        const waitText = times >= 2 ? `J&T đã giao đơn hàng (mã ${trackingCode}) ${times} lần mà vẫn chưa gặp được anh/chị` : `J&T vẫn chưa giao được đơn hàng (mã ${trackingCode}) cho anh/chị`;
+        return `Dạ em chào ${name}, em nhắc anh/chị lần nữa: ${waitText}. Anh/chị gọi lại cho shipper J&T hoặc nhắn em ngày giờ nhận hàng ngay trong hôm nay giúp em nhé — để lâu hàng sẽ bị hoàn về ạ. Em cảm ơn ạ!`;
+    }
+    if (reason === "khách hẹn giao lại") {
+        return `Dạ em chào ${name}, bên J&T báo anh/chị hẹn lại ngày nhận đơn hàng (mã ${trackingCode}). Anh/chị nhắn em ngày giờ tiện nhận để em báo shipper, và để ý điện thoại hôm đó giúp em nhé. Em cảm ơn ạ!`;
+    }
+    return `Dạ em chào ${name}, shipper J&T đã đi giao đơn hàng (mã ${trackingCode}) nhưng chưa liên lạc được với anh/chị. Anh/chị xem điện thoại có cuộc gọi nhỡ của shipper không rồi gọi lại giúp em để hẹn giờ giao nhé, hoặc nhắn em ngày giờ tiện nhận hàng. Em cảm ơn ạ!`;
+}
+/** TH1 Việt Nam — chỉ khi J&T đang đi giao (OutForDelivery). Tiếng Việt, không dịch. */
+function vnUpcomingMessage(s, stage) {
+    const name = s.customer ? `anh/chị ${s.customer}` : "anh/chị";
+    const trackingCode = s.track17_code || s.tracking;
+    const when = stage === "HomNay" ? `hôm nay shipper J&T sẽ giao đơn hàng (mã ${trackingCode}) tới anh/chị` : `đơn hàng (mã ${trackingCode}) đang được shipper J&T đi giao`;
+    return `Dạ em chào ${name}, ${when}. Anh/chị để ý điện thoại để nhận hàng giúp em nhé. Em cảm ơn ạ!`;
+}
 const homeDeliveryMessage = (s, marketId, waitInfo, lang) => (marketId === "AE" ? aeCustomerMessage(s, waitInfo, lang)
-    : marketId === "JP" ? jpCustomerMessage(s, waitInfo, lang) : sgCustomerMessage(s, waitInfo, lang));
-/** Hai dòng: câu tiếng Anh gửi khách + bản dịch tiếng Việt cho anh em. */
-const bilingualLines = (f) => { const en = f("en"); return en ? [`💬 ${en}`, `🇻🇳 Dịch: ${f("vi")}`] : []; };
+    : marketId === "JP" ? jpCustomerMessage(s, waitInfo, lang) : marketId === "VN" ? vnCustomerMessage(s, waitInfo, lang)
+        : sgCustomerMessage(s, waitInfo, lang));
+/** Hai dòng: câu tiếng Anh gửi khách + bản dịch tiếng Việt cho anh em. Việt Nam: câu gửi khách
+ *  đã là tiếng Việt → một dòng. */
+const bilingualLines = (f) => {
+    const en = f("en");
+    if (!en) return [];
+    const vi = f("vi");
+    return vi ? [`💬 ${en}`, `🇻🇳 Dịch: ${vi}`] : [`💬 ${en}`];
+};
 
 module.exports = {
     pickupCode, daysWaiting, storeDisplayName, twCustomerMessage, twMessageLines,
-    HOME_CARRIERS, sgCustomerMessage, jpCustomerMessage, aeCustomerMessage, homeDeliveryMessage, bilingualLines,
+    HOME_CARRIERS, sgCustomerMessage, jpCustomerMessage, aeCustomerMessage, vnCustomerMessage, homeDeliveryMessage, bilingualLines,
     deliveryStage, upcomingDeliveryMessage,
 };

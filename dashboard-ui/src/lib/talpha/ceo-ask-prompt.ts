@@ -72,7 +72,7 @@ function campTokenCase(expr: string): string {
 
 /**
  * CTE attribution 3 bậc dịch nguyên rule CEO sang SQL (≡ attributeOrder()
- * trong ./rules và attribute_order() bên Python). Model chỉ việc dán vào WITH.
+ * trong ./rules). Model chỉ việc dán vào WITH.
  */
 export function attributionCte(): string {
     const marketAlt = RULES.camp_market_tokens.join("|");

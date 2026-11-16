@@ -14,6 +14,7 @@ import PwaInstallPrompt from "./pwa-install-prompt";
 import { useUpdateUrlParams } from "./url-state";
 import RefreshStatusButton from "./refresh-status";
 import { NAV_GROUPS, TAB_INFO, TAB_BY_SLUG, type NavGroup } from "./nav-config";
+import ZaloBotBanner from "./zalo-bot-banner";
 
 import TALPHACeoOverviewTab from "./tabs/ceo-overview-tab";
 import TALPHAAdsCommandTab from "./tabs/ads-command-tab";
@@ -23,6 +24,8 @@ import TALPHAPnLTab from "./tabs/pnl-tab";
 import TALPHAProductPnLTab from "./tabs/product-pnl-tab";
 import TALPHACustomerTab from "./tabs/customer-tab";
 import TALPHAMarketIntelTab from "./tabs/market-intel-tab";
+import CustomerSegmentsTab from "./tabs/customer-segments-tab";
+import CompetitorResearchTab from "./tabs/competitor-research-tab";
 import TALPHAAdHealthTab from "./tabs/ad-health-tab";
 import TALPHAAdSpendTab from "./tabs/ad-spend-tab";
 import TALPHACodReconTab from "./tabs/cod-recon-tab";
@@ -36,8 +39,12 @@ import AskAiTab from "./tabs/ask-ai-tab";
 /** Tham số mang theo khi chuyển tab: khoảng ngày đang chọn (from, to), nước đang chọn (market). */
 const CARRIED_PARAMS = ["from", "to", "market"];
 
-/** Hai tab này đọc cửa sổ thời gian cố định trong view — hiện bộ chọn ngày chỉ gây hiểu nhầm là lọc được. */
-const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon"]);
+/**
+ * Tab không theo bộ chọn ngày — hiện bộ chọn chỉ gây hiểu nhầm là lọc được: Ads Command Center
+ * và Sức khoẻ quảng cáo đọc cửa sổ thời gian cố định trong view, Thanh toán quảng cáo lấy kỳ từ
+ * file sao kê, Tệp khách và Soi đối thủ là số tham chiếu theo từng bản đo / bản soi.
+ */
+const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon", "customer-segments", "competitor-research"]);
 
 /**
  * Tab báo cáo số — không tính ngày trước mốc gốc `report_start_date` (talpha_rules.json,
@@ -299,6 +306,7 @@ export default function TALPHADashboardShell() {
                 </header>
 
                 <div className="space-y-4 p-3 md:space-y-6 md:p-6">
+                    {me?.full && <ZaloBotBanner />}
                     {/* Hàng pill chọn tab con — chỉ hiện khi mục có nhiều hơn một tab.
                         Điện thoại: một hàng cuộn ngang, không gãy chữ "P&L theo SP" thành ba dòng. */}
                     {group.tabs.length > 1 && (
@@ -348,6 +356,8 @@ export default function TALPHADashboardShell() {
                     {isTabShown("ads-recon") && <TALPHAAdsReconTab />}
                     {isTabShown("customers") && <TALPHACustomerTab dateRange={dateRange} projectId="TALPHA" />}
                     {isTabShown("market-intel") && <TALPHAMarketIntelTab dateRange={dateRange} projectId="TALPHA" />}
+                    {isTabShown("customer-segments") && <CustomerSegmentsTab />}
+                    {isTabShown("competitor-research") && <CompetitorResearchTab />}
                     {isTabShown("ask-ai") && <AskAiTab dateRange={dateRange} />}
                     </>}
                 </div>

@@ -43,6 +43,9 @@ const MARKETS = Object.fromEntries(Object.entries(withoutNotes(RULES.markets))
 
 const CAMP_TOKENS = withoutNotes(RULES.camp_marketer_tokens);
 const CAMP_MARKETS = Object.fromEntries((RULES.camp_market_tokens || []).map((t) => [t, RULES.market_aliases[t]]));
+// Mã nước CHỈ nhận ở ô ĐẦU (11/11/2026, Việt Nam): "VN" còn là tệp khách người Việt ở Đài. ≡ isMarketToken bên rules.ts
+const FIRST_SEGMENT_ONLY = new Set((RULES.camp_market_tokens_first_segment || []).map((t) => String(t).toUpperCase()));
+const isMarketToken = (s, i) => { const u = String(s || "").trim().toUpperCase(); return u in CAMP_MARKETS && (i === 0 || !FIRST_SEGMENT_ONLY.has(u)); };
 const PRIMARY_MARKET = RULES.primary_market || null;
 
 /** Một ô tên campaign → key marketer theo mã (LOC, THUONG, SANH…); null nếu không phải ô marketer. */
@@ -63,7 +66,7 @@ function normCampMarketer(s) {
  */
 function campaignOwner(cn) {
     const p = String(cn || "").split("/").map((x) => x.trim());
-    const mi = p.findIndex((s) => s.toUpperCase() in CAMP_MARKETS);
+    const mi = p.findIndex((s, i) => isMarketToken(s, i));
     if (mi >= 0) return mi + 1 < p.length ? normCampMarketer(p[mi + 1]) : null;
     const o = p.slice(0, 2).find((s) => normCampMarketer(s));
     return o ? normCampMarketer(o) : null;
@@ -76,7 +79,7 @@ function campaignOwner(cn) {
 function campaignMarket(cn) {
     const p = String(cn || "").split("/").map((x) => x.trim());
     for (let i = 0; i < p.length; i++) {
-        const m = CAMP_MARKETS[p[i].toUpperCase()];
+        const m = isMarketToken(p[i], i) ? CAMP_MARKETS[p[i].toUpperCase()] : null;
         if (m) return { market: m, source: i === 0 ? "o_dau" : "o_khac" };
     }
     return { market: PRIMARY_MARKET, source: "mac_dinh" };
@@ -126,7 +129,7 @@ function normalizePageName(s) {
 /** Ô TÊN PAGE trong tên campaign (NƯỚC/MARKETER/TỆP/SẢNPHẨM/TRANG/NGÀY) — ≡ trangCuaCamp bên TS. */
 function pageOfCampaign(cn) {
     const p = String(cn || "").split("/").map((x) => x.trim());
-    const mi = p.findIndex((s) => s.toUpperCase() in CAMP_MARKETS);
+    const mi = p.findIndex((s, i) => isMarketToken(s, i));
     const k = mi >= 0 ? mi + 1 : p.slice(0, 2).findIndex((s) => normCampMarketer(s));
     if (k < 0) return null;
     return p[k + 3] || null;

@@ -6,3 +6,11 @@
 
 # Rule nghiệp vụ (KHÔNG phải secret) — nguồn sự thật P1
 !talpha_rules.json
+
+# Số tham chiếu tệp khách — nghiên cứu thị trường công khai (thống kê nhà nước + quy mô đối
+# tượng Facebook), KHÔNG phải secret. Tab Khách hàng → Tệp khách đọc file này (lib/talpha/customer-segments.ts).
+!customer_segments.json
+
+# Kết quả soi nhóm bán khác / đối thủ (kho POS nhóm kia chỉ có tồn kho, kênh TikTok công khai,
+# Ad Library) — số tham chiếu, KHÔNG phải secret. Tab Khách hàng → Soi đối thủ đọc file này (lib/talpha/competitor-research.ts).
+!competitor_research.json

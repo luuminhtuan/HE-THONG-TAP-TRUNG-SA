@@ -34,23 +34,3 @@ export function MarketsProvider({ children }: { children: React.ReactNode }) {
 export function useMarkets(): MarketsState {
     return useContext(MarketsContext);
 }
-
-/**
- * SQL (Postgres) gán nước cho một dòng chi tiêu từ tên campaign — cùng luật với
- * campaignMarket() ở rules.ts: ô ĐẦU TIÊN là mã nước thắng; không ghi nước → nước chính.
- * Trả MÃ nước ("TW"…); bản phía máy chủ trả KHOÁ nước là sqlCampaignMarketKey() ở
- * lib/talpha/access-rules.ts — sửa cách tách ô thì sửa cả hai. Chỉ nháy đơn, không $ / gạch
- * ngược: câu đi qua /api/query, scopeQuery từ chối các thứ đó.
- */
-export function sqlMarketFromCampaign(markets: MarketPublic[], primary: string | null, col = "campaign_name"): string {
-    const q = (s: string) => `'${s.replace(/'/g, "''")}'`;
-    const pairs = markets.flatMap((m) => m.tokens.map((t) => [t.toUpperCase(), m.code] as const));
-    const primaryCode = markets.find((m) => m.key === primary)?.code || "Other";
-    if (!pairs.length) return q(primaryCode);
-    return `COALESCE((
-        SELECT CASE UPPER(TRIM(seg)) ${pairs.map(([t, c]) => `WHEN ${q(t)} THEN ${q(c)}`).join(" ")} END
-        FROM unnest(string_to_array(COALESCE(${col}, ''), '/')) WITH ORDINALITY AS o_(seg, vi_tri)
-        WHERE UPPER(TRIM(seg)) IN (${pairs.map(([t]) => q(t)).join(", ")})
-        ORDER BY vi_tri LIMIT 1
-    ), ${q(primaryCode)})`;
-}

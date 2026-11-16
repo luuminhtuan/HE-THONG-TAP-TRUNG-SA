@@ -151,7 +151,7 @@ const loadMarket = (mk: TrackMarket) => loadMarketShipments<Store>(mk, emptyStor
 export function undeclaredStatuses(shipments: Shipment[]): { value: string; count: number }[] {
     const counts = new Map<string, number>();
     for (const s of shipments) {
-        if ((s.source !== "doi_tac" && s.source !== "weship") || s.status || !s.raw_status) continue;
+        if ((s.source !== "doi_tac" && s.source !== "weship" && s.source !== "pos") || s.status || !s.raw_status) continue;
         counts.set(s.raw_status, (counts.get(s.raw_status) || 0) + 1);
     }
     return [...counts].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count);

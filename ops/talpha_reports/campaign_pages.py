@@ -2,14 +2,14 @@
 Sản phẩm + page của campaign, nối đơn POS → campaign theo NGUỒN ĐƠN, tên tab theo page.
 
 Tách khỏi talpha_rules.py (16/11/2026, file đó vượt 300 dòng) — thân hàm chuyển nguyên văn. Các hàm
-đọc luật ĐÃ NẠP của talpha_rules (MARKETS, norm_nv, NUMID, campaign_market) nên nhập từ đó; ngược
+đọc luật ĐÃ NẠP của talpha_rules (market_token_index, norm_nv, NUMID, campaign_market) nên nhập từ đó; ngược
 lại talpha_rules trả các tên dưới đây qua __getattr__ (nạp lười) — `from talpha_rules import
 parse_camp_product` vẫn chạy như cũ. Máy chủ chạy bản chép phẳng: deploy_runtime.sh chép kèm file này.
 """
 import re
 import unicodedata
 
-from talpha_rules import MARKETS, NUMID, campaign_market, norm_nv
+from talpha_rules import NUMID, campaign_market, market_token_index, norm_nv
 
 
 # ═══ SẢN PHẨM + PAGE CỦA CAMPAIGN, VÀ GÁN ĐƠN → SẢN PHẨM THEO PAGE ═══════════════════
@@ -26,7 +26,7 @@ from talpha_rules import MARKETS, NUMID, campaign_market, norm_nv
 def parse_camp_product(cn):
     """Tên campaign → (sản phẩm, tên trang, page_id). Không nhận ra marketer → (None, None, None)."""
     p = [x.strip() for x in (cn or "").split("/")]
-    mi = next((i for i, s in enumerate(p) if s.upper() in MARKETS), None)
+    mi = market_token_index(p)
     if mi is not None:
         k = mi + 1
     else:
@@ -62,7 +62,7 @@ def build_page_index(ad_rows):
     page, other_cells = {}, {}
     for cn, date, spend in ad_rows:
         p = [x.strip() for x in (cn or "").split("/")]
-        mi = next((i for i, x in enumerate(p) if x.upper() in MARKETS), None)
+        mi = market_token_index(p)
         k = mi + 1 if mi is not None else next((i for i, x in enumerate(p[:2]) if norm_nv(x)), None)
         if k is None:
             continue
@@ -141,7 +141,7 @@ def camp_page_cells(cn):
     — tên page bị viết vào ô sản phẩm, kiểu TW/THAI/PHI/Jewelry GJ International - TW - 05/09,
     hoặc kiểu GCC số page đứng trước tên — thì lấy ô sản phẩm. Không nhận ra marketer → (None, [])."""
     p = [x.strip() for x in (cn or "").split("/")]
-    mi = next((i for i, s in enumerate(p) if s.upper() in MARKETS), None)
+    mi = market_token_index(p)
     k = mi + 1 if mi is not None else next((i for i, s in enumerate(p[:2]) if norm_nv(s)), None)
     if k is None:
         return None, []

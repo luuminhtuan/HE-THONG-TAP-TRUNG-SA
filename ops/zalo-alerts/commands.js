@@ -8,7 +8,7 @@
 //   /baocao team          chỉ số TỔNG TEAM, không kèm campaign
 //   /canhbao              camp đốt tiền 0 tin nhắn + chi tiêu bất thường, ngay lúc gõ
 //   /vandon               vận đơn cần xử lý của nước của nhóm (nhóm "ADS + VẬN ĐƠN <nước>", 08/10/2026)
-//   /vandon sg · tw · uae · jp   (dòng lệnh) chọn nước
+//   /vandon sg · tw · uae · jp · vn   (dòng lệnh) chọn nước
 //   /gio                  tin mỗi giờ (ads + tin nhắn Pancake + đơn theo page) ngay lúc gõ — nước có moiGio
 //   /bot                  cách dùng
 // Có dấu hay không dấu, hoa hay thường đều được. Không bắt đầu bằng "/" → không phải lệnh,

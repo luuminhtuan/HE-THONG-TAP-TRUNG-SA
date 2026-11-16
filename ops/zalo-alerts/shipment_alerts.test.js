@@ -475,5 +475,22 @@ const morning = (d, o = {}) => buildShipmentMorning(d, { today: TODAY, nowTs: NO
         assert.ok(m.includes("🔁 2 KHÁCH NHẮC LẠI → 1 đã lấy (1.499 NT$) · 1 còn chờ, sáng mai nhắc tiếp"), m);
     });
 
+    await t("Việt Nam (J&T qua POS, 11/11/2026): câu gửi khách tiếng Việt, một dòng, không bản dịch", () => {
+        const { vnCustomerMessage, bilingualLines, upcomingDeliveryMessage } = require("./shipment_customer_messages");
+        const { sourceStatusLines, failReason } = require("./shipment_common");
+        const s = { tracking: "860123456789", customer: "Lan", source: "pos", status: "DeliveryFailure",
+            raw_status: "Giao hàng không thành công — Không liên lạc được Khách hàng/khóa máy" };
+        assert.strictEqual(failReason(s), "không nghe máy");
+        const lines = bilingualLines((lang) => vnCustomerMessage(s, {}, lang));
+        assert.strictEqual(lines.length, 1);
+        assert.ok(lines[0].startsWith("💬 Dạ em chào anh/chị Lan") && lines[0].includes("shipper J&T"), lines[0]);
+        const refused = vnCustomerMessage({ ...s, raw_status: "Giao hàng không thành công — Từ chối-Không đặt hàng" }, {});
+        assert.ok(refused.includes("bị từ chối nhận"), refused);
+        assert.strictEqual(upcomingDeliveryMessage(s, "HomNay", "VN", "vi"), null);
+        assert.ok(upcomingDeliveryMessage(s, "HomNay", "VN", "en").includes("hôm nay shipper J&T sẽ giao"));
+        // Nguồn POS không có lượt tra riêng / quota → không dòng cảnh báo nguồn nào.
+        assert.strictEqual(sourceStatusLines({ provider: "pos", has_api_key: false, last_sync: null }, NOW), "");
+    });
+
     console.log(`shipment_alerts.test.js: ${ok} phép thử — tất cả đạt.`);
 })().catch((e) => { console.error(e.message); process.exit(1); });

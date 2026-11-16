@@ -1,0 +1,1892 @@
+{
+  "_note": "Soi đối thủ / nhóm bán khác: mỗi lần soi là một bản trong `snapshots`, MỚI NHẤT ĐỨNG ĐẦU. Thêm bản mới vào đầu mảng, không sửa bản cũ. Ảnh nằm ở dashboard-ui/public/competitor-research/<nguồn>/. Tab Khách hàng → Soi đối thủ đọc file này qua /api/talpha/competitor-research (lib/talpha/competitor-research.ts).",
+  "snapshots": [
+    {
+      "date": "2026-11-12",
+      "source": "TEAM 5 - KIOT TAIWAN",
+      "market": "TW",
+      "researched_by": "Claude soi cho Sỹ Anh",
+      "method": "Kho Pancake POS của Team 5 (shop 1021976535): 257 sản phẩm, 859 mã hàng — tài khoản soi chỉ thấy tồn kho, không thấy đơn và giá. 24 kênh TikTok của các sản phẩm top (đếm lượt xem từng video). Meta Ad Library thị trường Đài Loan, quảng cáo đang chạy. Đơn vị là số SẢN PHẨM, không phải số đơn.",
+      "report_url": "https://claude.ai/artifact/VWTsXA2orJSTrqTykUSumb",
+      "follow_up": "Lịch tự soi lại 9:00 thứ Năm hằng tuần trên máy Mac của Sỹ Anh (cần mở app Claude + Chrome). Báo cáo tuần lưu ở ~/Desktop/AI Phân tích Ads SP/KIOT TAIWAN/theo-doi/.",
+      "summary": [
+        "Kênh chính là TikTok, không phải Facebook: 290/312 kênh gắn vào kho là TikTok nhắn tin; 7 page Facebook của team không có quảng cáo nào đang chạy.",
+        "Khách là lao động nhập cư ở Đài: người Indonesia, Philippines, Việt Nam, Thái — mỗi tệp một kênh riêng, nói đúng ngôn ngữ của khách.",
+        "Hàng đang chạy mạnh nhất: quần SIMWOOD, đồng hồ Aolon, kem duỗi Augeas, serum gừng Cyeecare, MKZ Haircare, quần NK, băng vệ sinh thảo mộc, body mist Fanmen.",
+        "Kênh nào cũng một công thức: Freeship toàn Đài + COD + nhắn tin để đặt; mỗi video nói đúng một lợi ích; mỗi kênh 40–128 video.",
+        "Tỉ lệ hàng đang hoàn khoảng 10%. Nhóm duỗi tóc Makarizo, mặt nạ mắt, Dermo Republiq hoàn 20–26%, nên tránh."
+      ],
+      "overview": {
+        "products": 257,
+        "skus": 859,
+        "stocked_in": 72357,
+        "shipped": 66587,
+        "shipped_7d": 3800,
+        "returning": 6606,
+        "gifts": 8948,
+        "tiktok_channel_count": 290,
+        "facebook_channel_count": 22,
+        "started_on": "2026-03-28"
+      },
+      "audiences": [
+        {
+          "name": "Indonesia",
+          "title": "Tệp lớn nhất về chăm sóc tóc, da",
+          "examples": [
+            "Makarizo, Cyeecare, IBS Soap, FemCare",
+            "Đồ quen thuộc: Bekam, Madu, Brotowali, Teh Jahe",
+            "Quần áo: Celana, Zovee Kaos"
+          ],
+          "sample_phrase": "Gratis Ongkir Taiwan · Bisa COD"
+        },
+        {
+          "name": "Philippines",
+          "title": "Đồng hồ, nước hoa, thời trang",
+          "examples": [
+            "Aolon Smartwatch Taiwan PH (2 kênh)",
+            "YILIX: nước hoa nam cho lao động Phi",
+            "Pinoy Fashion, Shape Body PH, SMELLE PH"
+          ],
+          "sample_phrase": "Free Shipping Across Taiwan · Cash on Delivery"
+        },
+        {
+          "name": "Việt Nam",
+          "title": "Tạp hoá, trà, mỹ phẩm, đồ nam",
+          "examples": [
+            "Body mist Fanmen cho nam",
+            "Tạp Hoá Việt-Đài, Trà cỏ máu, Da liễu",
+            "Kami ở Đài, Tổng kho gia dụng Việt-Đài"
+          ],
+          "sample_phrase": "Anh em chọn mùi nào?"
+        },
+        {
+          "name": "Thái và khác",
+          "title": "Thời trang, giày, quần jeans",
+          "examples": [
+            "Thai Fashion TW, Taiwan Jeans TH",
+            "Urban Pipe Taiwan",
+            "Giày Corolla, Retro sneakers"
+          ],
+          "sample_phrase": "Kênh tiếng Anh dùng chung"
+        }
+      ],
+      "signals": {
+        "restocking": [
+          {
+            "name": "IBS SOAP",
+            "qty": 207
+          },
+          {
+            "name": "INSPI",
+            "qty": 201
+          },
+          {
+            "name": "AOLON CURVE",
+            "qty": 150
+          },
+          {
+            "name": "AOLON GTR 3",
+            "qty": 150
+          },
+          {
+            "name": "ÁO ĐŨI",
+            "qty": 116
+          },
+          {
+            "name": "YILIX",
+            "qty": 100
+          },
+          {
+            "name": "KEM TRIỆT LÔNG SOCUS",
+            "qty": 100
+          },
+          {
+            "name": "NK PANTS",
+            "qty": 89
+          },
+          {
+            "name": "ALLUMERA",
+            "qty": 80
+          },
+          {
+            "name": "FANMEN",
+            "qty": 70
+          }
+        ],
+        "testing": [
+          {
+            "name": "SUEDE",
+            "qty": 55,
+            "since": "2026-11-06"
+          },
+          {
+            "name": "RETRO",
+            "qty": 46,
+            "since": "2026-11-06"
+          },
+          {
+            "name": "SIDEQUEST",
+            "qty": 39,
+            "since": "2026-11-09"
+          },
+          {
+            "name": "MULTI POCKET",
+            "qty": 31,
+            "since": "2026-11-09"
+          },
+          {
+            "name": "CRL RETRO",
+            "qty": 29,
+            "since": "2026-11-09"
+          },
+          {
+            "name": "SHOPAHOLIC",
+            "qty": 12,
+            "since": "2026-11-05"
+          }
+        ],
+        "high_returns": [
+          {
+            "name": "MAKARIZO HAIR",
+            "rate": 0.261
+          },
+          {
+            "name": "MẶT NẠ MẮT",
+            "rate": 0.248
+          },
+          {
+            "name": "DERMO REPUBLIQ",
+            "rate": 0.245
+          },
+          {
+            "name": "LUMICUB SHAMPOO",
+            "rate": 0.206
+          },
+          {
+            "name": "MÁY HÚT MỤN",
+            "rate": 0.192
+          },
+          {
+            "name": "BAG TOTE",
+            "rate": 0.181
+          },
+          {
+            "name": "C+ COLLAGEN CANTIK",
+            "rate": 0.177
+          }
+        ],
+        "overstock": [
+          {
+            "name": "YYANST SENDI",
+            "stock": 417,
+            "stocked_in": 500
+          },
+          {
+            "name": "C+ COLLAGEN CANTIK",
+            "stock": 302,
+            "stocked_in": 1300
+          },
+          {
+            "name": "EVO KEM ĐÁNH RĂNG",
+            "stock": 280,
+            "stocked_in": 950
+          },
+          {
+            "name": "MAKARIZO HAIR",
+            "stock": 255,
+            "stocked_in": 1950
+          },
+          {
+            "name": "XTM EVO",
+            "stock": 236,
+            "stocked_in": 1500
+          },
+          {
+            "name": "BAG TOTE",
+            "stock": 189,
+            "stocked_in": 570
+          }
+        ],
+        "gift_note": "13% hàng xuất ra là quà tặng kèm: Mặt nạ tặng 2.641, Khăn tặng 1.083, Miếng dán lột mụn 1.045, Dây đeo tặng kèm đồng hồ 985, Mũ tặng 588, Tất tặng 424, Free Spray 494."
+      },
+      "ad_formulas": [
+        {
+          "label": "Offer",
+          "title": "Freeship toàn Đài + COD + nhắn tin để đặt",
+          "body": "Ghi ở tiểu sử kênh và in thành dải chữ FREESHIP TAIWAN / GRATIS ONGKIR TAIWAN ở đầu gần như mọi video. Đồ điện tử thêm bảo hành: Aolon kênh Indo đổi trả, hoàn tiền trong 14 ngày."
+        },
+        {
+          "label": "Kịch bản",
+          "title": "Mỗi video nói đúng một lợi ích",
+          "body": "Tiêu đề là lợi ích kèm một emoji. Aolon tách thành từng video: màn hình to, 110+ chế độ thể thao, kết nối Android/iOS, nghe gọi không cần cầm điện thoại. Mỗi kênh 40–128 video: test liên tục nhiều mẫu, để ads tìm mẫu thắng."
+        },
+        {
+          "label": "Kênh",
+          "title": "Tách kênh theo ngôn ngữ của khách",
+          "body": "Aolon có 2 kênh cho người Phi (tiếng Anh) và 2 kênh cho người Indo. Fanmen nói tiếng Việt, YILIX dùng Tagalog, Makarizo và Cyeecare nói tiếng Indonesia. Chữ trên video cũng viết bằng ngôn ngữ đó."
+        },
+        {
+          "label": "Kiểu dựng video",
+          "title": "Năm kiểu quay thấy nhiều nhất",
+          "body": "Tay cầm demo (đeo lên cổ tay, thả vào cốc nước, mở hộp) · Before/after (tóc xoăn thành thẳng) · Mặc thử ngoài phố, bảng màu đủ size · Video trả lời bình luận của khách · Người mẫu đúng tệp (nữ đội khăn hijab cho tệp Indo)."
+        },
+        {
+          "label": "Hook",
+          "title": "Đánh vào đời sống người đi lao động",
+          "body": "Nói đúng chuyện của người làm nhà máy, xa nhà, hẹn hò.",
+          "sample_phrases": [
+            {
+              "text": "Amoy Gwapo Kahit Pagpawisan ka mabango ka padin!",
+              "meaning": "YILIX: đổ mồ hôi vẫn thơm, vẫn đẹp trai"
+            },
+            {
+              "text": "Ganito amoy ng mga lalaki na masarap yakapin",
+              "meaning": "YILIX: đàn ông đáng ôm là có mùi như thế này (lời phụ nữ)"
+            },
+            {
+              "text": "Rambut lurus tanpa harus ke salon",
+              "meaning": "Makarizo: tóc thẳng mà không cần ra tiệm"
+            }
+          ]
+        },
+        {
+          "label": "Quà tặng",
+          "title": "Tặng kèm để tăng giá trị đơn",
+          "body": "Đồng hồ tặng dây đeo, mỹ phẩm tặng mặt nạ hoặc miếng dán lột mụn, quần áo tặng mũ hoặc tất. 13% sản phẩm ra kho là quà."
+        }
+      ],
+      "tiktok_channels": [
+        {
+          "user": "shirtmidmxtaiwanofficial",
+          "product": "ÁO THUN MIDMIX",
+          "audience": "tiếng Anh",
+          "videos": 78,
+          "total_views": 11500000,
+          "followers": 3335,
+          "top_video": {
+            "id": "7639290573400198421",
+            "views": 1400000,
+            "title": "This is the type of shirt that quietly upgrades your appearance…",
+            "meaning": "Áo trơn mà mặc lên trông sang hơn"
+          }
+        },
+        {
+          "user": "simwoodcloset",
+          "product": "SIMWOOD",
+          "audience": "Anh, Tagalog",
+          "videos": 58,
+          "total_views": 8867000,
+          "followers": 2705,
+          "top_video": {
+            "id": "7661856506379373844",
+            "views": 1400000,
+            "title": "One fit for him, her, and every style.",
+            "meaning": "Unisex, nam nữ mặc chung"
+          }
+        },
+        {
+          "user": "makarizo.taiwan.of",
+          "product": "MAKARIZO HAIR",
+          "audience": "Indo",
+          "videos": 78,
+          "total_views": 7962000,
+          "followers": 2481,
+          "top_video": {
+            "id": "7660205924358933761",
+            "views": 900000,
+            "title": "Rambut Rapi Cepat Tanpa Ribet",
+            "meaning": "Tóc gọn nhanh, không rắc rối"
+          }
+        },
+        {
+          "user": "aolon.smartwatch.t7",
+          "product": "AOLON (Phi)",
+          "audience": "Phi, tiếng Anh",
+          "videos": 58,
+          "total_views": 6352000,
+          "followers": 3016,
+          "top_video": {
+            "id": "7674204002120142088",
+            "views": 970000,
+            "title": "Premium Design, Powerful Smart Features",
+            "meaning": "Đẹp như hàng đắt, nhiều tính năng"
+          }
+        },
+        {
+          "user": "makarizo.haircare",
+          "product": "MKZ HAIRCARE",
+          "audience": "Indo",
+          "videos": 79,
+          "total_views": 5030000,
+          "followers": 2514,
+          "top_video": {
+            "id": "7667889682981637392",
+            "views": 933000,
+            "title": "Pelurus Rambut Praktis untuk Pria",
+            "meaning": "Duỗi tóc tiện cho nam giới"
+          }
+        },
+        {
+          "user": "aolon.smartwatch.t4",
+          "product": "AOLON (Phi)",
+          "audience": "Phi, tiếng Anh",
+          "videos": 59,
+          "total_views": 4798000,
+          "followers": 2216,
+          "top_video": {
+            "id": "7674202298314263826",
+            "views": 546000,
+            "title": "110+ Sports Modes for Your Active Lifestyle",
+            "meaning": "Dành cho người hay vận động"
+          }
+        },
+        {
+          "user": "aolon.smartwatch.t3",
+          "product": "AOLON (Indo)",
+          "audience": "Indo",
+          "videos": 61,
+          "total_views": 4310000,
+          "followers": 1599,
+          "top_video": {
+            "id": "7670130732219714837",
+            "views": 568000,
+            "title": "Enjoy the 2.01-Inch Curved Display",
+            "meaning": "Màn hình cong lớn"
+          }
+        },
+        {
+          "user": "dermorepubliq.taiw",
+          "product": "DERMO SOAP",
+          "audience": "tiếng Anh",
+          "videos": 49,
+          "total_views": 3780000,
+          "followers": null,
+          "top_video": {
+            "id": "7658280661945552149",
+            "views": 421000,
+            "title": "Your daily clean-skin step starts with Dermorepubliq Face Bar Soap",
+            "meaning": "Bước làm sạch da mỗi ngày"
+          }
+        },
+        {
+          "user": "urban.pipe.taiwan",
+          "product": "SHORTKK",
+          "audience": "tiếng Anh",
+          "videos": 76,
+          "total_views": 3051000,
+          "followers": null,
+          "top_video": {
+            "id": "7651937269456080149",
+            "views": 228000,
+            "title": "Clean urban style that matches with any T-shirt or shirt",
+            "meaning": "Mặc với áo nào cũng hợp"
+          }
+        },
+        {
+          "user": "cyeecaretw",
+          "product": "CYEECARE HAIR",
+          "audience": "Indo",
+          "videos": 36,
+          "total_views": 2558000,
+          "followers": 1242,
+          "top_video": {
+            "id": "7667419793766550801",
+            "views": 302000,
+            "title": "Jahe untuk rambut sehat dan bercahaya",
+            "meaning": "Gừng cho tóc khỏe, bóng"
+          }
+        },
+        {
+          "user": "augeas.haircare.ta",
+          "product": "AUGEAS CREAM",
+          "audience": "tiếng Anh",
+          "videos": 47,
+          "total_views": 2474000,
+          "followers": 1561,
+          "top_video": {
+            "id": "7667427675752975636",
+            "views": 428000,
+            "title": "Straight, Soft and Shiny Hair Made Simple",
+            "meaning": "Tóc thẳng mượt, tự làm ở nhà"
+          }
+        },
+        {
+          "user": "yilixtaiwanofficial",
+          "product": "YILIX",
+          "audience": "Phi, Tagalog",
+          "videos": 127,
+          "total_views": 2269000,
+          "followers": 1173,
+          "top_video": {
+            "id": "7692363985844325684",
+            "views": 333000,
+            "title": "From Work to Night Out — Keep Smelling Good with YILIX",
+            "meaning": "Từ chỗ làm đến lúc đi chơi vẫn thơm"
+          }
+        },
+        {
+          "user": "floral_fashion",
+          "product": "FLORAL",
+          "audience": "tiếng Anh",
+          "videos": 41,
+          "total_views": 2151000,
+          "followers": null,
+          "top_video": {
+            "id": "7660746395355286804",
+            "views": 243000,
+            "title": "For the days when you want to feel comfortable but still look put together",
+            "meaning": "Thoải mái mà vẫn chỉn chu"
+          }
+        },
+        {
+          "user": "bash.manila.taiwan",
+          "product": "BAG TOTE",
+          "audience": "Phi",
+          "videos": 39,
+          "total_views": 2098000,
+          "followers": null,
+          "top_video": {
+            "id": "7675318436192374034",
+            "views": 239000,
+            "title": "Practical Never Looked This Good",
+            "meaning": "Tiện mà vẫn đẹp"
+          }
+        },
+        {
+          "user": "sportspack.taiwan",
+          "product": "NK PANTS",
+          "audience": "tiếng Anh",
+          "videos": 62,
+          "total_views": 1249000,
+          "followers": null,
+          "top_video": {
+            "id": "7689311402128854290",
+            "views": 235000,
+            "title": "NIKE Baggy Pants – Upgrade Your Street Fit",
+            "meaning": "Nâng cấp phong cách đường phố"
+          }
+        },
+        {
+          "user": "mouthspraytw",
+          "product": "XTM EVO",
+          "audience": "Phi, Tagalog",
+          "videos": 46,
+          "total_views": 1139000,
+          "followers": null,
+          "top_video": {
+            "id": "7654502117159406868",
+            "views": 237000,
+            "title": "hindi na mahihiya sa katabi kahit lagi mong kausapin",
+            "meaning": "Không còn ngại người ngồi cạnh dù nói chuyện suốt"
+          }
+        },
+        {
+          "user": "fanmenstore.taiwan",
+          "product": "FANMEN",
+          "audience": "Việt",
+          "videos": 128,
+          "total_views": 1003000,
+          "followers": 261,
+          "top_video": {
+            "id": "7697631156560383252",
+            "views": 62000,
+            "title": "Xanh, Đen Hay Đỏ Anh Em Chọn Mùi Nào",
+            "meaning": "Hỏi để khách bình luận"
+          }
+        },
+        {
+          "user": "skincareibs.taiwan",
+          "product": "IBS SOAP",
+          "audience": "Indo",
+          "videos": 32,
+          "total_views": 952000,
+          "followers": 527,
+          "top_video": {
+            "id": "7693021056449269044",
+            "views": 176000,
+            "title": "(video trả lời bình luận của khách)",
+            "meaning": "Dùng câu hỏi thật của khách làm bằng chứng"
+          }
+        },
+        {
+          "user": "allumereofficial.tw",
+          "product": "ALLUMERA",
+          "audience": "Indo",
+          "videos": 82,
+          "total_views": 795000,
+          "followers": 237,
+          "top_video": {
+            "id": "7698850701589499156",
+            "views": 207000,
+            "title": "Kenalan dengan Amitrea dari Allumere",
+            "meaning": "Làm quen với nước hoa Amitrea"
+          }
+        },
+        {
+          "user": "yotomaryjaneflats",
+          "product": "SUEDE, RETRO",
+          "audience": "tiếng Anh",
+          "videos": 64,
+          "total_views": 676000,
+          "followers": null,
+          "top_video": {
+            "id": "7704535179804609813",
+            "views": 78000,
+            "title": "Taiwan mornings can be hectic…",
+            "meaning": "Sáng ở Đài vội, chọn giày phải nhanh"
+          }
+        },
+        {
+          "user": "inspibomberjacket.tw",
+          "product": "INSPI",
+          "audience": "tiếng Anh",
+          "videos": 49,
+          "total_views": 638000,
+          "followers": 645,
+          "top_video": {
+            "id": "7694573210402032916",
+            "views": 131000,
+            "title": "Discover Your New Favorite Jacket in Taiwan",
+            "meaning": "Chiếc áo khoác bạn sẽ thích nhất ở Đài"
+          }
+        },
+        {
+          "user": "sidequest.of",
+          "product": "SIDEQUEST",
+          "audience": "tiếng Anh",
+          "videos": 40,
+          "total_views": 225000,
+          "followers": 46,
+          "top_video": {
+            "id": "7703886916227173652",
+            "views": 48000,
+            "title": "You don't need a reason to dress cool…",
+            "meaning": "Đi chợ cũng phải mặc đẹp"
+          }
+        },
+        {
+          "user": "corollashoes.global",
+          "product": "CRL RETRO",
+          "audience": "tiếng Anh",
+          "videos": 38,
+          "total_views": 188000,
+          "followers": null,
+          "top_video": {
+            "id": "7704991377305718037",
+            "views": 41000,
+            "title": "Your shoes shouldn't be the reason you're counting down the minutes…",
+            "meaning": "Đừng để giày làm bạn mỏi chân"
+          }
+        },
+        {
+          "user": "abcshopaholic.tw",
+          "product": "SHOPAHOLIC",
+          "audience": "tiếng Anh",
+          "videos": 31,
+          "total_views": 99000,
+          "followers": 66,
+          "top_video": {
+            "id": "7703420172677254452",
+            "views": 36000,
+            "title": "Simple, classy, effortlessly beautiful! This matching set…",
+            "meaning": "Đồ bộ đơn giản mà sang"
+          }
+        }
+      ],
+      "facebook": {
+        "note": "7 page Facebook của Team 5 trong kho (Cuerpo, C+Collagen, Makarizo, Dermorepubliq, EvoSnow, T-Shirt MIDMX, Shop Da Liễu) không có quảng cáo nào đang chạy.",
+        "items": [
+          {
+            "label": "Mới chạy từ 7/11",
+            "title": "Aolon AI Glasses 5.0: kính phiên dịch AI cho người Phi ở Đài",
+            "ad_count": 28,
+            "body": "Mỗi mẫu một tình huống bất tiện vì không biết tiếng: gọi món, hiểu chỉ dẫn ở chỗ làm, hỏi giá khi mua sắm, hỏi đường, kết bạn, du học sinh nghe giảng. Mới chạy vài ngày nên chưa biết có thắng hay không.",
+            "link": "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=TW&media_type=all&search_type=keyword_unordered&q=aolon%20ai%20glasses"
+          },
+          {
+            "label": "Người Phi bán mỹ phẩm",
+            "title": "Mẫu bài chung của seller Phi ở Đài",
+            "ad_count": null,
+            "body": "\"TAIWAN ONLY · On hand, ready to ship · PM lang po\". Phí ship ghi thẳng trong bài: nhận tại 7-11 40 NT, Family Mart 60–75 NT, bưu điện 90–110 NT; một shop freeship 7-11 cho đơn từ 1.000 NT.",
+            "link": "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=TW&media_type=all&search_type=keyword_unordered&q=beauty%20products%20taiwan"
+          },
+          {
+            "label": "Người Việt",
+            "title": "Mạnh HM Taoyuan: đồng hồ Aolon Tetra R4",
+            "ad_count": 3,
+            "body": "Kiểu dáng quân đội, màn AMOLED 1.43\", GPS, chống nước 5ATM. Offer: bảo hành lỗi 1 đổi 1 trong 6 tháng.",
+            "link": "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=TW&media_type=all&search_type=keyword_unordered&q=aolon%20tetra"
+          },
+          {
+            "label": "Người Việt",
+            "title": "Kem triệt lông Socus",
+            "ad_count": 7,
+            "body": "Tạp Hóa Đài Loan, Mĩ Phẩm Đài Loan đang chạy. Ảnh của team: mua 1 tặng 1 = 699 NT, mua 2 tặng 2 = 999 NT.",
+            "link": "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=TW&media_type=all&search_type=keyword_unordered&q=socus"
+          }
+        ]
+      },
+      "playbook": {
+        "note": "Đề xuất dựa trên số liệu ở trên. Số video và mốc thời gian là gợi ý để bắt đầu, chỉnh theo ngân sách.",
+        "test_list": [
+          {
+            "product": "Đồng hồ thông minh (kiểu Aolon)",
+            "why": "Đã xuất 4.300+, đang nhập thêm 300, hai kênh cho người Phi tổng khoảng 11 triệu view",
+            "audience": "Phi, Indo",
+            "caveat": "Hàng điện tử: cần bảo hành hoặc đổi trả"
+          },
+          {
+            "product": "Nước hoa nam (kiểu YILIX)",
+            "why": "697 sản phẩm trong khoảng 5 tuần, đang nhập thêm 100, hook nhắm thẳng lao động Phi",
+            "audience": "Phi",
+            "caveat": "Hoàn 7,5%"
+          },
+          {
+            "product": "Quần baggy unisex (kiểu SIMWOOD)",
+            "why": "Bán nhanh nhất 7 ngày (246), hoàn chỉ 3,9%",
+            "audience": "Phi, Indo",
+            "caveat": "Nhiều màu, nhiều size: quản lý tồn kỹ"
+          },
+          {
+            "product": "Áo thun oversize (kiểu MIDMX)",
+            "why": "Bán nhiều nhất từ trước tới giờ (5.794), kênh 11,5 triệu view",
+            "audience": "Mọi tệp",
+            "caveat": "Đã bán lâu, cạnh tranh có thể đã cao"
+          },
+          {
+            "product": "Kem duỗi tóc có lược (kiểu Augeas)",
+            "why": "176 sản phẩm trong 7 ngày",
+            "audience": "Indo, Phi",
+            "caveat": "Hoàn 12%. Tránh loại Makarizo (hoàn 26%)"
+          }
+        ],
+        "plan": [
+          {
+            "when": "Tuần 1",
+            "title": "Chọn hàng và dựng offer",
+            "tasks": [
+              "Chọn 2–3 sản phẩm trong danh sách, đúng tệp khách công ty đang bán.",
+              "Offer cố định: Freeship toàn Đài + COD + nhắn tin để đặt, cộng một món quà tặng kèm.",
+              "Mở mỗi tệp ngôn ngữ một kênh TikTok, bật nhắn tin và nối vào Pancake."
+            ]
+          },
+          {
+            "when": "Tuần 2",
+            "title": "Sản xuất video hàng loạt",
+            "tasks": [
+              "Mỗi video một lợi ích, tiêu đề là chính lợi ích đó.",
+              "Dải chữ \"FREESHIP TAIWAN · COD\" ở đầu mọi video, chữ viết bằng ngôn ngữ của khách.",
+              "Quay đủ 5 kiểu: tay cầm demo, before/after, mặc thử, trả lời bình luận, người mẫu đúng tệp.",
+              "Bắt đầu 20–30 video mỗi sản phẩm (team đối chiếu có 40–128 video mỗi kênh)."
+            ]
+          },
+          {
+            "when": "Tuần 3–4",
+            "title": "Chạy và đọc số",
+            "tasks": [
+              "Chạy TikTok ads ra tin nhắn song song Facebook để so chi phí mỗi đơn.",
+              "Giữ video thắng, nhân bản sang kênh ngôn ngữ khác.",
+              "Theo dõi tỉ lệ hoàn từng sản phẩm; mốc so sánh của team khoảng 10%."
+            ]
+          },
+          {
+            "when": "Mỗi tuần",
+            "title": "Đọc lại kho Team 5",
+            "tasks": [
+              "Sản phẩm nào được nhập thêm: hàng đã có lời, đưa vào danh sách test.",
+              "Mã mới nào tồn âm nhanh: hàng mới đang ra đơn.",
+              "Sản phẩm nào hoàn trên 15%: loại khỏi danh sách."
+            ]
+          }
+        ],
+        "sample_hooks": [
+          {
+            "text": "Hindi nangingitim kahit pinagpapawisan araw-araw.",
+            "meaning": "Không bị đen dù ngày nào cũng đổ mồ hôi (trang sức cho người làm nhà máy)."
+          },
+          {
+            "text": "Para sa mga Pinay na nagtatrabaho sa Taiwan",
+            "meaning": "Dành cho chị em Phi đang làm việc ở Đài."
+          },
+          {
+            "text": "Regalo sa sarili pagkatapos ng sahod.",
+            "meaning": "Tự thưởng cho mình sau ngày lĩnh lương."
+          },
+          {
+            "text": "Libreng shipping sa buong Taiwan · COD · PM lang po",
+            "meaning": "Freeship toàn Đài, nhận hàng trả tiền, nhắn tin là đặt được."
+          }
+        ]
+      },
+      "limitations": [
+        "Không có doanh thu, giá bán, giá vốn: tài khoản soi không xem được đơn, mọi ô giá trong kho bằng 0.",
+        "Không có ngân sách quảng cáo: lượt xem TikTok gồm cả view từ ads, không cho biết team chi bao nhiêu.",
+        "Giá chỉ báo qua tin nhắn, không có trên video hay quảng cáo (trừ vài ảnh có in combo).",
+        "\"Đang hoàn\" có thể bị cộng dồn nếu team không chuyển sang \"Đã hoàn\". Hàng mới dưới 4 tuần hoàn thấp vì chưa kịp có hàng về.",
+        "\"Xuất 7 ngày\" do Pancake tính, có thể gồm chuyển kho (ví dụ SLIM FIT xuất cả lô 100 một lần).",
+        "Ba sản phẩm chưa rõ kênh bán (BVS thảo mộc, áo đũi, túi Multi Pocket); kênh @evosnowtaiwan đã bị xoá."
+      ],
+      "products": [
+        {
+          "id": "simwood",
+          "group": "running",
+          "name": "SIMWOOD",
+          "description": "Quần nỉ baggy unisex, 9 màu",
+          "audience": "Phi, Indo · tiếng Anh, Tagalog",
+          "image": "/competitor-research/kiot-tw/simwood.jpg",
+          "created_on": "2026-07-15",
+          "shipped": 1644,
+          "shipped_7d": 246,
+          "returning": 64,
+          "return_rate": 0.0389,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 202,
+          "in_delivery": 332,
+          "offer": "Ảnh bảng 9 màu thật, mặc thử ngoài phố",
+          "top_video": {
+            "title": "One fit for him, her, and every style.",
+            "meaning": "Nam nữ mặc chung, hợp mọi kiểu",
+            "views": 1400000
+          },
+          "links": [
+            {
+              "label": "Kênh @simwoodcloset · 8,9M view",
+              "url": "https://www.tiktok.com/@simwoodcloset"
+            },
+            {
+              "label": "Video top 1,4M",
+              "url": "https://www.tiktok.com/@simwoodcloset/video/7661856506379373844"
+            },
+            {
+              "label": "Kênh @simwoodclothingofficial",
+              "url": "https://www.tiktok.com/@simwoodclothingofficial"
+            },
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=simwood%20baggy%20pants%20taiwan"
+            }
+          ]
+        },
+        {
+          "id": "aolon-curve",
+          "group": "running",
+          "name": "AOLON CURVE",
+          "description": "Đồng hồ thông minh màn cong 2.01\", nghe gọi Bluetooth",
+          "audience": "Phi (tiếng Anh) · Indo",
+          "image": "/competitor-research/kiot-tw/aolon-curve.jpg",
+          "created_on": "2026-08-01",
+          "shipped": 2712,
+          "shipped_7d": 184,
+          "returning": 214,
+          "return_rate": 0.0789,
+          "is_new": false,
+          "on_order": 150,
+          "stock": -14,
+          "in_delivery": 187,
+          "offer": "Tặng 2 dây (da + lưới) · giao trong 24h · đổi mới miễn phí · Freeship + COD",
+          "top_video": {
+            "title": "Premium Design, Powerful Smart Features",
+            "meaning": "Đẹp như hàng đắt, nhiều tính năng",
+            "views": 970000
+          },
+          "links": [
+            {
+              "label": "Kênh PH @aolon.smartwatch.t7 · 6,4M",
+              "url": "https://www.tiktok.com/@aolon.smartwatch.t7"
+            },
+            {
+              "label": "Video top 970K",
+              "url": "https://www.tiktok.com/@aolon.smartwatch.t7/video/7674204002120142088"
+            },
+            {
+              "label": "Kênh Indo @aolon.smartwatch.t3 · 4,3M",
+              "url": "https://www.tiktok.com/@aolon.smartwatch.t3"
+            },
+            {
+              "label": "Video top Indo 568K",
+              "url": "https://www.tiktok.com/@aolon.smartwatch.t3/video/7670130732219714837"
+            },
+            {
+              "label": "FB Ad Library: aolon",
+              "url": "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=TW&media_type=all&search_type=keyword_unordered&q=aolon"
+            }
+          ]
+        },
+        {
+          "id": "aolon-gtr3",
+          "group": "running",
+          "name": "AOLON GTR 3",
+          "description": "Đồng hồ AMOLED 1.43\", mỏng 8.8mm, 110+ chế độ thể thao",
+          "audience": "Phi (tiếng Anh) · Indo",
+          "image": "/competitor-research/kiot-tw/aolon-gtr3.jpg",
+          "created_on": "2026-08-03",
+          "shipped": 1616,
+          "shipped_7d": 87,
+          "returning": 130,
+          "return_rate": 0.0804,
+          "is_new": false,
+          "on_order": 150,
+          "stock": -16,
+          "in_delivery": 36,
+          "offer": "Tặng dây da nâu + dây lưới bạc · Freeship + COD",
+          "top_video": {
+            "title": "110+ Sports Modes for Your Active Lifestyle",
+            "meaning": "Dành cho người hay vận động",
+            "views": 546000
+          },
+          "links": [
+            {
+              "label": "Kênh PH @aolon.smartwatch.t4 · 4,8M",
+              "url": "https://www.tiktok.com/@aolon.smartwatch.t4"
+            },
+            {
+              "label": "Video top 546K",
+              "url": "https://www.tiktok.com/@aolon.smartwatch.t4/video/7674202298314263826"
+            },
+            {
+              "label": "Kênh Indo @aolon.smartwatch.t1",
+              "url": "https://www.tiktok.com/@aolon.smartwatch.t1"
+            },
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=aolon%20gtr%203"
+            }
+          ]
+        },
+        {
+          "id": "augeas",
+          "group": "running",
+          "name": "AUGEAS CREAM",
+          "description": "Kem duỗi tóc \"So Easy\" có lược chải kèm",
+          "audience": "tiếng Anh (Phi, Indo)",
+          "image": "/competitor-research/kiot-tw/augeas.jpg",
+          "created_on": "2026-07-30",
+          "shipped": 1472,
+          "shipped_7d": 176,
+          "returning": 179,
+          "return_rate": 0.1216,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 88,
+          "in_delivery": 110,
+          "offer": "Freeship Taiwan + COD · ảnh before/after tóc xoăn thành thẳng",
+          "top_video": {
+            "title": "Straight, Soft and Shiny Hair Made Simple",
+            "meaning": "Tóc thẳng mượt, tự làm ở nhà",
+            "views": 428000
+          },
+          "links": [
+            {
+              "label": "Kênh @augeas.haircare.ta · 2,5M",
+              "url": "https://www.tiktok.com/@augeas.haircare.ta"
+            },
+            {
+              "label": "Video top 428K",
+              "url": "https://www.tiktok.com/@augeas.haircare.ta/video/7667427675752975636"
+            },
+            {
+              "label": "Kênh @augeushaircaretaiwan",
+              "url": "https://www.tiktok.com/@augeushaircaretaiwan"
+            },
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=augeas%20so%20easy%20straightening%20cream"
+            }
+          ]
+        },
+        {
+          "id": "cyeecare",
+          "group": "running",
+          "name": "CYEECARE HAIR",
+          "description": "Serum gừng kích mọc tóc dạng bút",
+          "audience": "Indo · tiếng Indonesia",
+          "image": "/competitor-research/kiot-tw/cyeecare.jpg",
+          "created_on": "2026-07-31",
+          "shipped": 1693,
+          "shipped_7d": 164,
+          "returning": 191,
+          "return_rate": 0.1128,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 87,
+          "in_delivery": 124,
+          "offer": "COD · Gratis ongkir ke Taiwan · nhắn tin để đặt",
+          "top_video": {
+            "title": "Jahe untuk rambut sehat dan bercahaya",
+            "meaning": "Gừng cho tóc khỏe, bóng",
+            "views": 302000
+          },
+          "links": [
+            {
+              "label": "Kênh @cyeecaretw · 2,6M",
+              "url": "https://www.tiktok.com/@cyeecaretw"
+            },
+            {
+              "label": "Video top 302K",
+              "url": "https://www.tiktok.com/@cyeecaretw/video/7667419793766550801"
+            },
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=cyeecare%20ginger%20hair%20serum"
+            }
+          ]
+        },
+        {
+          "id": "mkz",
+          "group": "running",
+          "name": "MKZ HAIRCARE",
+          "description": "Kem duỗi tóc Makarizo Hair Energy #easy straight",
+          "audience": "Indo · tiếng Indonesia",
+          "image": "/competitor-research/kiot-tw/mkz.jpg",
+          "created_on": "2026-07-30",
+          "shipped": 1747,
+          "shipped_7d": 138,
+          "returning": 152,
+          "return_rate": 0.087,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 138,
+          "in_delivery": 0,
+          "offer": "COD + giao toàn Đài · before/after tóc xoăn của nam",
+          "top_video": {
+            "title": "Pelurus Rambut Praktis untuk Pria",
+            "meaning": "Duỗi tóc tiện cho nam giới",
+            "views": 933000
+          },
+          "links": [
+            {
+              "label": "Kênh @makarizo.haircare · 5,0M",
+              "url": "https://www.tiktok.com/@makarizo.haircare"
+            },
+            {
+              "label": "Video top 933K",
+              "url": "https://www.tiktok.com/@makarizo.haircare/video/7667889682981637392"
+            },
+            {
+              "label": "FB page Makarizo",
+              "url": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&media_type=all&search_type=page&view_all_page_id=1139986099205665"
+            },
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=makarizo%20pelurus%20rambut%20taiwan"
+            }
+          ]
+        },
+        {
+          "id": "nk-pants",
+          "group": "running",
+          "name": "NK PANTS",
+          "description": "Quần nỉ Nike dáng baggy (SportsPack), 4 màu",
+          "audience": "tiếng Anh",
+          "image": "/competitor-research/kiot-tw/nk-pants.jpg",
+          "created_on": "2026-09-26",
+          "shipped": 505,
+          "shipped_7d": 120,
+          "returning": 32,
+          "return_rate": 0.0634,
+          "is_new": false,
+          "on_order": 89,
+          "stock": -81,
+          "in_delivery": 0,
+          "offer": "Hàng mang thương hiệu Nike: dễ bị khoá quảng cáo nếu chạy lại",
+          "top_video": {
+            "title": "NIKE Baggy Pants – Upgrade Your Street Fit",
+            "meaning": "Nâng cấp phong cách đường phố",
+            "views": 235000
+          },
+          "links": [
+            {
+              "label": "Kênh @sportspack.taiwan · 1,2M",
+              "url": "https://www.tiktok.com/@sportspack.taiwan"
+            },
+            {
+              "label": "Video top 235K",
+              "url": "https://www.tiktok.com/@sportspack.taiwan/video/7689311402128854290"
+            },
+            {
+              "label": "Kênh @sportspack.taiwan4",
+              "url": "https://www.tiktok.com/@sportspack.taiwan4"
+            }
+          ]
+        },
+        {
+          "id": "bvs-thao-moc",
+          "group": "running",
+          "name": "BVS THẢO MỘC",
+          "description": "Băng vệ sinh thảo mộc",
+          "audience": "chưa rõ kênh",
+          "image": null,
+          "created_on": "2026-06-26",
+          "shipped": 827,
+          "shipped_7d": 115,
+          "returning": 38,
+          "return_rate": 0.0459,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 143,
+          "in_delivery": 84,
+          "offer": "Kho không có ảnh và chưa xác định được kênh bán",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=b%C4%83ng%20v%E1%BB%87%20sinh%20th%E1%BA%A3o%20m%E1%BB%99c%20%C4%91%C3%A0i%20loan"
+            },
+            {
+              "label": "FB Ad Library",
+              "url": "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=TW&media_type=all&search_type=keyword_unordered&q=b%C4%83ng%20v%E1%BB%87%20sinh%20th%E1%BA%A3o%20m%E1%BB%99c"
+            }
+          ]
+        },
+        {
+          "id": "fanmen",
+          "group": "running",
+          "name": "FANMEN",
+          "description": "Body mist nam 100ml, 3 mùi, lưu hương 10 giờ",
+          "audience": "Việt · tiếng Việt",
+          "image": "/competitor-research/kiot-tw/fanmen.jpg",
+          "created_on": "2026-10-19",
+          "shipped": 483,
+          "shipped_7d": 103,
+          "returning": 8,
+          "return_rate": 0.0166,
+          "is_new": true,
+          "on_order": 70,
+          "stock": -3,
+          "in_delivery": 113,
+          "offer": "3 mùi Safari Sunset, Classic Noir, Midnight Whisper",
+          "top_video": {
+            "title": "Xanh, Đen Hay Đỏ Anh Em Chọn Mùi Nào",
+            "meaning": "Hỏi để khách bình luận",
+            "views": 62000
+          },
+          "links": [
+            {
+              "label": "Kênh @fanmenstore.taiwan · 1,0M",
+              "url": "https://www.tiktok.com/@fanmenstore.taiwan"
+            },
+            {
+              "label": "Video top 62K",
+              "url": "https://www.tiktok.com/@fanmenstore.taiwan/video/7697631156560383252"
+            },
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=fanmen%20body%20mist"
+            }
+          ]
+        },
+        {
+          "id": "yilix",
+          "group": "running",
+          "name": "YILIX",
+          "description": "Nước hoa nam EDP 105ml: Red Romance, Purple Ocean, Blue Seduction",
+          "audience": "Phi · tiếng Anh, Tagalog",
+          "image": "/competitor-research/kiot-tw/yilix.jpg",
+          "created_on": "2026-10-05",
+          "shipped": 697,
+          "shipped_7d": 79,
+          "returning": 52,
+          "return_rate": 0.0746,
+          "is_new": false,
+          "on_order": 100,
+          "stock": 3,
+          "in_delivery": 31,
+          "offer": "Limited Edition · hook đổ mồ hôi vẫn thơm cho lao động Phi",
+          "top_video": {
+            "title": "From Work to Night Out — Keep Smelling Good with YILIX",
+            "meaning": "Từ chỗ làm đến lúc đi chơi vẫn thơm",
+            "views": 333000
+          },
+          "links": [
+            {
+              "label": "Kênh @yilixtaiwanofficial · 2,3M",
+              "url": "https://www.tiktok.com/@yilixtaiwanofficial"
+            },
+            {
+              "label": "Video top 333K",
+              "url": "https://www.tiktok.com/@yilixtaiwanofficial/video/7692363985844325684"
+            },
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=yilix%20perfume%20taiwan"
+            }
+          ]
+        },
+        {
+          "id": "xtm-evo",
+          "group": "running",
+          "name": "XTM EVO",
+          "description": "Xịt thơm miệng EvoSnow, nhiều vị",
+          "audience": "Phi (Tagalog) · Indo",
+          "image": "/competitor-research/kiot-tw/xtm-evo.jpg",
+          "created_on": "2026-06-25",
+          "shipped": 1264,
+          "shipped_7d": 72,
+          "returning": 180,
+          "return_rate": 0.1424,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 236,
+          "in_delivery": 46,
+          "offer": "Mua 3 tặng 1 · mua 5 tặng 2 · tặng tăm chỉ nha khoa",
+          "top_video": {
+            "title": "hindi na mahihiya sa katabi kahit lagi mong kausapin",
+            "meaning": "Không còn ngại người ngồi cạnh dù nói chuyện suốt",
+            "views": 237000
+          },
+          "links": [
+            {
+              "label": "Kênh @mouthspraytw · 1,1M",
+              "url": "https://www.tiktok.com/@mouthspraytw"
+            },
+            {
+              "label": "Video top 237K",
+              "url": "https://www.tiktok.com/@mouthspraytw/video/7654502117159406868"
+            },
+            {
+              "label": "Kênh Indo @mouthspraytw1",
+              "url": "https://www.tiktok.com/@mouthspraytw1"
+            },
+            {
+              "label": "FB page EvoSnow",
+              "url": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&media_type=all&search_type=page&view_all_page_id=1263577363502136"
+            }
+          ]
+        },
+        {
+          "id": "shortkk",
+          "group": "running",
+          "name": "SHORTKK",
+          "description": "Quần short Urban Pipe unisex trên gối, 12 màu",
+          "audience": "tiếng Anh · Thái",
+          "image": "/competitor-research/kiot-tw/shortkk.jpg",
+          "created_on": "2026-06-18",
+          "shipped": 1127,
+          "shipped_7d": 67,
+          "returning": 78,
+          "return_rate": 0.0692,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 6,
+          "in_delivery": 0,
+          "offer": "Cotton, unisex, bảng 12 màu",
+          "top_video": {
+            "title": "Clean urban style that matches with any T-shirt or shirt",
+            "meaning": "Mặc với áo nào cũng hợp",
+            "views": 228000
+          },
+          "links": [
+            {
+              "label": "Kênh @urban.pipe.taiwan · 3,1M",
+              "url": "https://www.tiktok.com/@urban.pipe.taiwan"
+            },
+            {
+              "label": "Video top 228K",
+              "url": "https://www.tiktok.com/@urban.pipe.taiwan/video/7651937269456080149"
+            },
+            {
+              "label": "Kênh @urbanpipe.taiwan.o",
+              "url": "https://www.tiktok.com/@urbanpipe.taiwan.o"
+            }
+          ]
+        },
+        {
+          "id": "ibs-soap",
+          "group": "running",
+          "name": "IBS SOAP",
+          "description": "Xà phòng sáng da cho nam, halal, có số BPOM",
+          "audience": "Indo · tiếng Indonesia",
+          "image": "/competitor-research/kiot-tw/ibs-soap.jpg",
+          "created_on": "2026-10-08",
+          "shipped": 420,
+          "shipped_7d": 66,
+          "returning": 26,
+          "return_rate": 0.0619,
+          "is_new": false,
+          "on_order": 207,
+          "stock": -27,
+          "in_delivery": 48,
+          "offer": "\"12X sáng nhanh hơn\" · ảnh trước/sau vết mụn",
+          "top_video": {
+            "title": "(video trả lời bình luận của khách)",
+            "meaning": "Dùng câu hỏi thật của khách làm bằng chứng",
+            "views": 176000
+          },
+          "links": [
+            {
+              "label": "Kênh @skincareibs.taiwan · 0,95M",
+              "url": "https://www.tiktok.com/@skincareibs.taiwan"
+            },
+            {
+              "label": "Video top 176K",
+              "url": "https://www.tiktok.com/@skincareibs.taiwan/video/7693021056449269044"
+            },
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=ibs%20brightening%20soap%20for%20men"
+            }
+          ]
+        },
+        {
+          "id": "midmix",
+          "group": "best_seller",
+          "name": "ÁO THUN MIDMIX",
+          "description": "Áo thun cotton cao cấp dáng rộng, 8 màu",
+          "audience": "tiếng Anh · mọi tệp",
+          "image": "/competitor-research/kiot-tw/midmix.jpg",
+          "created_on": "2026-05-15",
+          "shipped": 5794,
+          "shipped_7d": 30,
+          "returning": 451,
+          "return_rate": 0.0778,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 106,
+          "in_delivery": 14,
+          "offer": "Có kênh riêng cho từng dáng: boxy, tank top, babytee, slim fit",
+          "top_video": {
+            "title": "This is the type of shirt that quietly upgrades your appearance…",
+            "meaning": "Áo trơn mà mặc lên trông sang hơn",
+            "views": 1400000
+          },
+          "links": [
+            {
+              "label": "Kênh @shirtmidmxtaiwanofficial · 11,5M",
+              "url": "https://www.tiktok.com/@shirtmidmxtaiwanofficial"
+            },
+            {
+              "label": "Video top 1,4M",
+              "url": "https://www.tiktok.com/@shirtmidmxtaiwanofficial/video/7639290573400198421"
+            },
+            {
+              "label": "Kênh Babytee @midmxbabytee.tw",
+              "url": "https://www.tiktok.com/@midmxbabytee.tw"
+            },
+            {
+              "label": "FB page T-Shirt MIDMX",
+              "url": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&media_type=all&search_type=page&view_all_page_id=1150440368154019"
+            }
+          ]
+        },
+        {
+          "id": "dermo-soap",
+          "group": "best_seller",
+          "name": "DERMO SOAP",
+          "description": "Xà phòng rửa mặt Dermorepubliq Dermoface",
+          "audience": "tiếng Anh",
+          "image": "/competitor-research/kiot-tw/dermo-soap.jpg",
+          "created_on": "2026-07-08",
+          "shipped": 4207,
+          "shipped_7d": 8,
+          "returning": 410,
+          "return_rate": 0.0975,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 193,
+          "in_delivery": 6,
+          "offer": "Combo mua nhiều giảm giá · 7 ngày gần nhất đã chững",
+          "top_video": {
+            "title": "Your daily clean-skin step starts with Dermorepubliq Face Bar Soap",
+            "meaning": "Bước làm sạch da mỗi ngày",
+            "views": 421000
+          },
+          "links": [
+            {
+              "label": "Kênh @dermorepubliq.taiw · 3,8M",
+              "url": "https://www.tiktok.com/@dermorepubliq.taiw"
+            },
+            {
+              "label": "Video top 421K",
+              "url": "https://www.tiktok.com/@dermorepubliq.taiw/video/7658280661945552149"
+            },
+            {
+              "label": "FB page Dermorepubliq",
+              "url": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&media_type=all&search_type=page&view_all_page_id=1207481465780865"
+            }
+          ]
+        },
+        {
+          "id": "makarizo-hair",
+          "group": "best_seller",
+          "name": "MAKARIZO HAIR",
+          "description": "Lược điện duỗi tóc không dây Makarizo Asters, 4 màu",
+          "audience": "Indo · tiếng Indonesia",
+          "image": "/competitor-research/kiot-tw/makarizo-hair.jpg",
+          "created_on": "2026-07-11",
+          "shipped": 1695,
+          "shipped_7d": 14,
+          "returning": 442,
+          "return_rate": 0.2608,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 255,
+          "in_delivery": 0,
+          "offer": "Hoàn cao nhất kho: không nên làm theo",
+          "top_video": {
+            "title": "Rambut Rapi Cepat Tanpa Ribet",
+            "meaning": "Tóc gọn nhanh, không rắc rối",
+            "views": 900000
+          },
+          "links": [
+            {
+              "label": "Kênh @makarizo.taiwan.of · 8,0M",
+              "url": "https://www.tiktok.com/@makarizo.taiwan.of"
+            },
+            {
+              "label": "Video top 900K",
+              "url": "https://www.tiktok.com/@makarizo.taiwan.of/video/7660205924358933761"
+            }
+          ]
+        },
+        {
+          "id": "floral",
+          "group": "best_seller",
+          "name": "FLORAL",
+          "description": "Quần nỉ gân unisex dây rút, 6 màu",
+          "audience": "tiếng Anh",
+          "image": "/competitor-research/kiot-tw/floral.jpg",
+          "created_on": "2026-07-13",
+          "shipped": 1570,
+          "shipped_7d": 16,
+          "returning": 92,
+          "return_rate": 0.0586,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 15,
+          "in_delivery": 0,
+          "offer": "Đã gần hết hàng",
+          "top_video": {
+            "title": "For the days when you want to feel comfortable but still look put together",
+            "meaning": "Thoải mái mà vẫn chỉn chu",
+            "views": 243000
+          },
+          "links": [
+            {
+              "label": "Kênh @floral_fashion · 2,2M",
+              "url": "https://www.tiktok.com/@floral_fashion"
+            },
+            {
+              "label": "Video top 243K",
+              "url": "https://www.tiktok.com/@floral_fashion/video/7660746395355286804"
+            }
+          ]
+        },
+        {
+          "id": "inspi",
+          "group": "restocking",
+          "name": "INSPI",
+          "description": "Áo khoác bomber dáng lửng unisex kiểu Hàn, 6 màu",
+          "audience": "tiếng Anh",
+          "image": "/competitor-research/kiot-tw/inspi.jpg",
+          "created_on": "2026-10-12",
+          "shipped": 189,
+          "shipped_7d": 27,
+          "returning": 0,
+          "return_rate": 0.0,
+          "is_new": false,
+          "on_order": 201,
+          "stock": -90,
+          "in_delivery": 33,
+          "offer": "Freeship · bán trước khi có hàng (tồn âm 90)",
+          "top_video": {
+            "title": "Discover Your New Favorite Jacket in Taiwan",
+            "meaning": "Chiếc áo khoác bạn sẽ thích nhất ở Đài",
+            "views": 131000
+          },
+          "links": [
+            {
+              "label": "Kênh @inspibomberjacket.tw",
+              "url": "https://www.tiktok.com/@inspibomberjacket.tw"
+            },
+            {
+              "label": "Video top 131K",
+              "url": "https://www.tiktok.com/@inspibomberjacket.tw/video/7694573210402032916"
+            },
+            {
+              "label": "Kênh @inspi.tw",
+              "url": "https://www.tiktok.com/@inspi.tw"
+            }
+          ]
+        },
+        {
+          "id": "ao-dui",
+          "group": "restocking",
+          "name": "ÁO ĐŨI",
+          "description": "Sơ mi đũi cổ trụ nam MANSTR, 10 màu",
+          "audience": "chưa rõ kênh",
+          "image": "/competitor-research/kiot-tw/ao-dui.jpg",
+          "created_on": "2026-07-02",
+          "shipped": 156,
+          "shipped_7d": 26,
+          "returning": 20,
+          "return_rate": 0.1282,
+          "is_new": false,
+          "on_order": 116,
+          "stock": 8,
+          "in_delivery": 0,
+          "offer": "Vải cotton-linen, có bảng size",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=manstr%20linen%20stand%20collar%20shirt"
+            },
+            {
+              "label": "FB Ad Library",
+              "url": "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=TW&media_type=all&search_type=keyword_unordered&q=linen%20shirt%20men"
+            }
+          ]
+        },
+        {
+          "id": "socus",
+          "group": "restocking",
+          "name": "KEM TRIỆT LÔNG SOCUS",
+          "description": "Kem tẩy lông toàn thân cho nam và nữ",
+          "audience": "Việt · tiếng Việt",
+          "image": "/competitor-research/kiot-tw/socus.jpg",
+          "created_on": "2026-07-06",
+          "shipped": 262,
+          "shipped_7d": 51,
+          "returning": 22,
+          "return_rate": 0.084,
+          "is_new": false,
+          "on_order": 100,
+          "stock": -12,
+          "in_delivery": 19,
+          "offer": "Mua 1 tặng 1: 699 NT · Mua 2 tặng 2: 999 NT · Freeship + COD",
+          "top_video": null,
+          "links": [
+            {
+              "label": "FB Ad Library: socus",
+              "url": "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=TW&media_type=all&search_type=keyword_unordered&q=socus"
+            },
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=socus%20kem%20tri%E1%BB%87t%20l%C3%B4ng"
+            }
+          ]
+        },
+        {
+          "id": "allumera",
+          "group": "restocking",
+          "name": "ALLUMERA",
+          "description": "Nước hoa unisex Allumere Amitrea EDP",
+          "audience": "Indo · tiếng Indonesia",
+          "image": "/competitor-research/kiot-tw/allumera.jpg",
+          "created_on": "2026-10-26",
+          "shipped": 202,
+          "shipped_7d": 48,
+          "returning": 0,
+          "return_rate": 0.0,
+          "is_new": true,
+          "on_order": 80,
+          "stock": 18,
+          "in_delivery": 34,
+          "offer": "\"Parfum unisex untuk pria & wanita\"",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Kênh @allumereofficial.tw",
+              "url": "https://www.tiktok.com/@allumereofficial.tw"
+            }
+          ]
+        },
+        {
+          "id": "suede",
+          "group": "testing",
+          "name": "SUEDE",
+          "description": "Giày búp bê Mary Jane da lộn YOTO, 8 màu",
+          "audience": "tiếng Anh",
+          "image": "/competitor-research/kiot-tw/suede.jpg",
+          "created_on": "2026-11-06",
+          "shipped": 55,
+          "shipped_7d": 55,
+          "returning": 0,
+          "return_rate": 0.0,
+          "is_new": true,
+          "on_order": 0,
+          "stock": -55,
+          "in_delivery": 0,
+          "offer": "Bán khi chưa nhập hàng",
+          "top_video": {
+            "title": "Taiwan mornings can be hectic…",
+            "meaning": "Sáng ở Đài vội vàng, chọn giày phải nhanh",
+            "views": 78000
+          },
+          "links": [
+            {
+              "label": "Kênh @yotomaryjaneflats",
+              "url": "https://www.tiktok.com/@yotomaryjaneflats"
+            },
+            {
+              "label": "Video top 78K",
+              "url": "https://www.tiktok.com/@yotomaryjaneflats/video/7704535179804609813"
+            }
+          ]
+        },
+        {
+          "id": "retro",
+          "group": "testing",
+          "name": "RETRO",
+          "description": "Giày Mary Jane French Retro YOTO, 4 màu, size 35–42",
+          "audience": "tiếng Anh",
+          "image": "/competitor-research/kiot-tw/retro.jpg",
+          "created_on": "2026-11-06",
+          "shipped": 46,
+          "shipped_7d": 37,
+          "returning": 0,
+          "return_rate": 0.0,
+          "is_new": true,
+          "on_order": 0,
+          "stock": -46,
+          "in_delivery": 0,
+          "offer": "Cùng kênh với SUEDE",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Kênh @yotomaryjaneflats",
+              "url": "https://www.tiktok.com/@yotomaryjaneflats"
+            }
+          ]
+        },
+        {
+          "id": "sidequest",
+          "group": "testing",
+          "name": "SIDEQUEST",
+          "description": "Quần thể thao ống rộng sọc Tropistyle, 5 màu",
+          "audience": "tiếng Anh",
+          "image": "/competitor-research/kiot-tw/sidequest.jpg",
+          "created_on": "2026-11-09",
+          "shipped": 39,
+          "shipped_7d": 39,
+          "returning": 0,
+          "return_rate": 0.0,
+          "is_new": true,
+          "on_order": 0,
+          "stock": -39,
+          "in_delivery": 0,
+          "offer": "39 sản phẩm trong 3 ngày",
+          "top_video": {
+            "title": "You don't need a reason to dress cool…",
+            "meaning": "Đi chợ cũng phải mặc đẹp",
+            "views": 48000
+          },
+          "links": [
+            {
+              "label": "Kênh @sidequest.of",
+              "url": "https://www.tiktok.com/@sidequest.of"
+            },
+            {
+              "label": "Video top 48K",
+              "url": "https://www.tiktok.com/@sidequest.of/video/7703886916227173652"
+            }
+          ]
+        },
+        {
+          "id": "multi-pocket",
+          "group": "testing",
+          "name": "MULTI POCKET",
+          "description": "Túi tote chần bông nhiều ngăn, 5 màu",
+          "audience": "chưa rõ kênh",
+          "image": "/competitor-research/kiot-tw/multi-pocket.jpg",
+          "created_on": "2026-11-09",
+          "shipped": 31,
+          "shipped_7d": 31,
+          "returning": 0,
+          "return_rate": 0.0,
+          "is_new": true,
+          "on_order": 0,
+          "stock": -31,
+          "in_delivery": 0,
+          "offer": "31 sản phẩm trong 3 ngày",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=multi%20pocket%20padded%20tote%20bag"
+            },
+            {
+              "label": "Kênh có thể là @tasselempang.taiwan",
+              "url": "https://www.tiktok.com/@tasselempang.taiwan"
+            }
+          ]
+        },
+        {
+          "id": "crl-retro",
+          "group": "testing",
+          "name": "CRL RETRO",
+          "description": "Giày sneaker Corolla Retro Casual, 6 màu",
+          "audience": "tiếng Anh",
+          "image": "/competitor-research/kiot-tw/crl-retro.jpg",
+          "created_on": "2026-11-09",
+          "shipped": 29,
+          "shipped_7d": 29,
+          "returning": 0,
+          "return_rate": 0.0,
+          "is_new": true,
+          "on_order": 0,
+          "stock": -29,
+          "in_delivery": 0,
+          "offer": "Nhẹ, chống trơn, lót kháng khuẩn",
+          "top_video": {
+            "title": "Your shoes shouldn't be the reason you're counting down the minutes…",
+            "meaning": "Đừng để giày làm bạn mỏi chân",
+            "views": 41000
+          },
+          "links": [
+            {
+              "label": "Kênh @corollashoes.global",
+              "url": "https://www.tiktok.com/@corollashoes.global"
+            },
+            {
+              "label": "Video top 41K",
+              "url": "https://www.tiktok.com/@corollashoes.global/video/7704991377305718037"
+            }
+          ]
+        },
+        {
+          "id": "shopaholic",
+          "group": "testing",
+          "name": "SHOPAHOLIC",
+          "description": "Set áo + quần ống rộng nữ, 5 màu",
+          "audience": "tiếng Anh",
+          "image": "/competitor-research/kiot-tw/shopaholic.jpg",
+          "created_on": "2026-11-05",
+          "shipped": 12,
+          "shipped_7d": 13,
+          "returning": 0,
+          "return_rate": 0.0,
+          "is_new": true,
+          "on_order": 0,
+          "stock": -12,
+          "in_delivery": 0,
+          "offer": "Đồ bộ mặc đi chơi, đi làm",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Kênh @abcshopaholic.tw",
+              "url": "https://www.tiktok.com/@abcshopaholic.tw"
+            }
+          ]
+        },
+        {
+          "id": "bag-tote",
+          "group": "avoid",
+          "name": "BAG TOTE",
+          "description": "Túi BASH Weekday Tote (thương hiệu Philippines)",
+          "audience": "Phi",
+          "image": "/competitor-research/kiot-tw/bag-tote.jpg",
+          "created_on": "2026-08-21",
+          "shipped": 381,
+          "shipped_7d": 3,
+          "returning": 69,
+          "return_rate": 0.1811,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 189,
+          "in_delivery": 1,
+          "offer": "Tặng móc treo túi · Freeship · COD · đổi trả 14 ngày",
+          "top_video": {
+            "title": "Practical Never Looked This Good",
+            "meaning": "Tiện mà vẫn đẹp",
+            "views": 239000
+          },
+          "links": [
+            {
+              "label": "Kênh @bash.manila.taiwan · 2,1M",
+              "url": "https://www.tiktok.com/@bash.manila.taiwan"
+            },
+            {
+              "label": "Video top 239K",
+              "url": "https://www.tiktok.com/@bash.manila.taiwan/video/7675318436192374034"
+            }
+          ]
+        },
+        {
+          "id": "mat-na-mat",
+          "group": "avoid",
+          "name": "MẶT NẠ MẮT",
+          "description": "Mặt nạ mắt Charmix",
+          "audience": "Việt",
+          "image": "/competitor-research/kiot-tw/mat-na-mat.jpg",
+          "created_on": "2026-07-02",
+          "shipped": 141,
+          "shipped_7d": 0,
+          "returning": 35,
+          "return_rate": 0.2482,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 109,
+          "in_delivery": 0,
+          "offer": "Hoàn gần 1/4",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=charmix%20m%E1%BA%B7t%20n%E1%BA%A1%20m%E1%BA%AFt"
+            }
+          ]
+        },
+        {
+          "id": "dermo-republiq",
+          "group": "avoid",
+          "name": "DERMO REPUBLIQ",
+          "description": "Serum 5% Niacinamide cho da nhạy cảm",
+          "audience": "tiếng Anh",
+          "image": "/competitor-research/kiot-tw/dermo-republiq.jpg",
+          "created_on": "2026-07-06",
+          "shipped": 143,
+          "shipped_7d": 2,
+          "returning": 35,
+          "return_rate": 0.2448,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 57,
+          "in_delivery": 0,
+          "offer": "Cùng thương hiệu với DERMO SOAP nhưng hoàn cao",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Kênh @dermorepubliq.taiw",
+              "url": "https://www.tiktok.com/@dermorepubliq.taiw"
+            }
+          ]
+        },
+        {
+          "id": "lumicub",
+          "group": "avoid",
+          "name": "LUMICUB SHAMPOO",
+          "description": "Dầu gội",
+          "audience": "tiếng Anh",
+          "image": "/competitor-research/kiot-tw/lumicub.jpg",
+          "created_on": "2026-07-04",
+          "shipped": 359,
+          "shipped_7d": 0,
+          "returning": 74,
+          "return_rate": 0.2061,
+          "is_new": false,
+          "on_order": 0,
+          "stock": -9,
+          "in_delivery": 0,
+          "offer": "Đã ngừng bán",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Kênh @lumicubglowstoretw",
+              "url": "https://www.tiktok.com/@lumicubglowstoretw"
+            }
+          ]
+        },
+        {
+          "id": "may-hut-mun",
+          "group": "avoid",
+          "name": "MÁY HÚT MỤN",
+          "description": "Máy hút mụn đầu đen Daily Home, 5 đầu hút",
+          "audience": "Việt",
+          "image": "/competitor-research/kiot-tw/may-hut-mun.jpg",
+          "created_on": "2026-08-07",
+          "shipped": 281,
+          "shipped_7d": 2,
+          "returning": 54,
+          "return_rate": 0.1922,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 25,
+          "in_delivery": 0,
+          "offer": "Hoàn gần 1/5",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Tìm trên TikTok",
+              "url": "https://www.tiktok.com/search?q=m%C3%A1y%20h%C3%BAt%20m%E1%BB%A5n%20%C4%91%E1%BA%A7u%20%C4%91en%20%C4%91%C3%A0i%20loan"
+            }
+          ]
+        },
+        {
+          "id": "c-collagen",
+          "group": "avoid",
+          "name": "C+ COLLAGEN CANTIK",
+          "description": "Collagen uống",
+          "audience": "Indo",
+          "image": null,
+          "created_on": "2026-05-13",
+          "shipped": 998,
+          "shipped_7d": 5,
+          "returning": 177,
+          "return_rate": 0.1774,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 302,
+          "in_delivery": 5,
+          "offer": "Hoàn cao và còn tồn 302",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Kênh @collagentaiwan",
+              "url": "https://www.tiktok.com/@collagentaiwan"
+            },
+            {
+              "label": "FB page C+Collagen",
+              "url": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&media_type=all&search_type=page&view_all_page_id=810361125491299"
+            }
+          ]
+        },
+        {
+          "id": "yyanst",
+          "group": "avoid",
+          "name": "YYANST SENDI",
+          "description": "Thực phẩm hỗ trợ xương khớp",
+          "audience": "Indo",
+          "image": "/competitor-research/kiot-tw/yyanst.jpg",
+          "created_on": "2026-06-29",
+          "shipped": 83,
+          "shipped_7d": 5,
+          "returning": 11,
+          "return_rate": 0.1325,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 417,
+          "in_delivery": 0,
+          "offer": "Nhập 500, còn tồn 417",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Kênh @yyanstsendisehat",
+              "url": "https://www.tiktok.com/@yyanstsendisehat"
+            },
+            {
+              "label": "FB page Yyanst",
+              "url": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ALL&media_type=all&search_type=page&view_all_page_id=1257502064109750"
+            }
+          ]
+        },
+        {
+          "id": "evo-kem",
+          "group": "avoid",
+          "name": "EVO KEM ĐÁNH RĂNG",
+          "description": "Kem đánh răng EvoSnow",
+          "audience": "Phi, Indo",
+          "image": "/competitor-research/kiot-tw/evo-kem.jpg",
+          "created_on": "2026-05-01",
+          "shipped": 670,
+          "shipped_7d": 6,
+          "returning": 76,
+          "return_rate": 0.1134,
+          "is_new": false,
+          "on_order": 0,
+          "stock": 280,
+          "in_delivery": 0,
+          "offer": "Nhập 950, còn tồn 280",
+          "top_video": null,
+          "links": [
+            {
+              "label": "Kênh @mouthspraytw",
+              "url": "https://www.tiktok.com/@mouthspraytw"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

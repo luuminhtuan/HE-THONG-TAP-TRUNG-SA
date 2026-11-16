@@ -38,13 +38,16 @@ status GTC · pattern campaign test · phí 3PL · giá vốn SKU · ngưỡng R
 | Module | Ngôn ngữ | Ai dùng |
 |---|---|---|
 | `dashboard-ui/src/lib/talpha/rules.ts` | TS | route dashboard, `talpha/inventory.ts`, prompt CEO-ask |
-| `ops/talpha_reports/talpha_rules.py` | Python | `format_all.py` |
+| `ops/talpha_reports/talpha_rules.py` | Python | `format_all.py`, `report_account_health.py`, sync |
 | `ops/zalo-alerts/rules.js` | JS | bot Zalo |
 
-TS và Python cùng expose `attribute_order`/`attributeOrder` (rule CEO ba bậc), `parse_campaign`,
-`build_adid_owner`, `shipping_vnd`. Đối chứng 03/08 trên data thật (khi đó bản JS là của bot WhatsApp,
-đã xoá 30/10/2026): Python ≡ TS ≡ JS. Bot Zalo đọc cùng file JSON nhưng chỉ có phần nó cần (chủ camp
-`campaignOwner`, người cầm nước `creditedCampaignOwner`, nước của camp `campaignMarket`).
+Rule CEO ba bậc (gán đơn về marketer) phía TS là `attributeOrder` + `buildAdidOwner`; phía
+Python `format_all.py` tự gán trong vòng ghi Sheet. Các hàm Python `attribute_order`,
+`parse_campaign`, `build_adid_owner`, `shipping_vnd` không còn nơi nào gọi nên đã gỡ 12/11/2026. Bot Zalo
+đọc cùng file JSON nhưng chỉ có phần nó cần (chủ camp `campaignOwner`, người cầm nước
+`creditedCampaignOwner`, nước của camp `campaignMarket`). Mã nước chỉ nhận ở ô đầu tên camp
+(`camp_market_tokens_first_segment`, 11/11/2026 — `VN`) thì cả ba bản cùng soát: `isMarketToken` (TS, bot),
+`is_market_token` (Python).
 
 Đường dẫn tới file cấu hình: phía TS hỏi `lib/talpha/config-path.ts`, đừng tự ghép
 `process.cwd()`. Bản sao `dashboard-ui/config/` đã xoá 11/09 — nó từng lệch thật
@@ -55,7 +58,7 @@ TS và Python cùng expose `attribute_order`/`attributeOrder` (rule CEO ba bậc
 | Chỉ số | Sheet (`format_all.py`) | Dashboard (`realtime/route.ts`) |
 |---|---|---|
 | **Nguồn spend / tin nhắn** | Kho số `fb_ads_data` (sync mỗi giờ; nhánh Postgres là VIEW chỉ TKQC loại vào báo cáo). Nhật: mess đếm từ Pancake | Meta API live |
-| **Gán spend → marketer** | `parse_campaign`: tìm segment thị trường, segment NGAY SAU là tên marketer; bảng biến thể ở `talpha_rules.json → camp_marketer_tokens` | Nhóm theo TKQC/campaign; bot dùng `scanCampaignMarketer` quét cả tên camp |
+| **Gán spend → marketer** | `parse_camp` (`ops/talpha_reports/report_data.py`): tìm ô thị trường (`market_token_index` — mã chỉ-ô-đầu như `VN` chỉ nhận ở ô đầu), ô NGAY SAU là tên marketer; bảng biến thể ở `talpha_rules.json → camp_marketer_tokens` | Nhóm theo TKQC/campaign; bot dùng `scanCampaignMarketer` quét cả tên camp |
 | **Sản phẩm của campaign** | Ô thứ HAI sau ô marketer (ô ngay sau là tệp khách), ô thứ ba là tên trang — cả tên có lẫn không có ô nước. Camp `TEST` tách tab theo trang. Code: `parse_camp_product` | Bot Zalo cùng luật (`shortCampaignName`) |
 | **Ngày của spend** | Ngày theo **timezone TKQC** (Meta trả sẵn) — múi giờ thật của từng TKQC lấy từ Meta API (nhánh Postgres: cột `timezone_name` của bảng `ad_accounts`; `talpha.yaml → ad_account_timezones` chỉ là dự phòng cho TKQC cũ), KHÔNG đoán theo tên | Cùng |
 | **Tin nhắn** | action `onsite_conversion.messaging_conversation_started_7d` | Cùng |

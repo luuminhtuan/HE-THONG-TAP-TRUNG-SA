@@ -74,7 +74,10 @@ async function loadOrders(code: string): Promise<{ don: CodOrder[]; nguon: DataS
                 cod_local: Number(s.cod_local) || 0, khach: s.customer || "",
             };
         });
-        source = isPos
+        // Việt Nam (11/11/2026): POS nối thẳng J&T — trạng thái đọc ngay trong đơn POS, không tra WeShip.
+        source = isPos && tm.provider === "pos"
+            ? { loai: "pos", nhan: "Đơn POS + trạng thái J&T trong POS", cap_nhat: null }
+            : isPos
             ? { loai: "weship", nhan: "Đơn POS + trạng thái tra ở WeShip", cap_nhat: store.last_sync?.ok ? store.last_sync.at : null }
             : { loai: "doi_tac", nhan: partnerSourceLabel(shipments, store as { last_sync?: { register_rejected?: number } }), cap_nhat: lastImport };
     } else {
