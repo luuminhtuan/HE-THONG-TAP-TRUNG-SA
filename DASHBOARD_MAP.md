@@ -275,7 +275,7 @@ cách làm (tải sao kê → máy soát → gõ số ngân hàng), cùng tính 
 ### `/api/query` — cổng SQL dùng chung của 4 tab
 
 Chỉ nhận `SELECT` / `WITH`; chặn `;` và toàn bộ DDL/DML bằng danh sách từ khoá cấm. Câu chạy bằng vai
-CHỈ ĐỌC của Postgres (đăng nhập riêng, transaction READ ONLY, tối đa 30 giây — migration 0003).
+CHỈ ĐỌC của Postgres (đăng nhập riêng, transaction READ ONLY, tối đa 30 giây, `RESET ALL` trước khi trả kết nối).
 Phải đăng nhập (proxy.ts). Người chỉ xem một phần nước: mỗi bảng trong câu bị thay bằng câu con
 đã lọc nước (`vw_orders_std.market`, `sale_order.shop_label`, `order_items` theo shop, chi tiêu
 Meta theo nước ở tên campaign); bảng gộp mọi nước (`vw_attribution_quality`) và mọi đường vòng
@@ -331,9 +331,9 @@ vw_creative_fatigue · vw_campaign_lifecycle
 ```
 
 Sửa `vw_orders_std` hoặc `vw_fb_ads_std` là đụng gần như cả dashboard.
-Tên bảng / cột / hàm là tiếng Anh từ migration 0008 (16/11/2026): `tkqc` → `ad_accounts`, `fb_*_tat_ca` →
-`fb_*_all`, `bao_cao_tab` → `monthly_report_tabs`, `view_van_tay` → `view_fingerprints`; hàm `ngay_theo_mui`
-còn làm bí danh của `date_in_tz` cho câu SQL cũ. Bảng đủ: `docs/POSTGRES.md`.
+Tên bảng / cột / hàm là tiếng Anh từ đầu (`db/migrations/0001_initial_schema.sql`, 16/11/2026): `ad_accounts`,
+`fb_*_all`, `monthly_report_tabs`, `view_fingerprints`, hàm `date_in_tz` (tên cũ thời kho-postgres: `tkqc`,
+`fb_*_tat_ca`, `bao_cao_tab`, `view_van_tay`, `ngay_theo_mui` — bảng đối chiếu ở `docs/POSTGRES.md`).
 Định nghĩa view: `db/views/`, dựng bằng `sync/core/pg_view.py` — tự dựng lại ở đầu vòng sync khi SQL sinh
 từ luật (tỷ giá, số chia, giá vốn, múi giờ TKQC…) đổi. Bảng: `db/migrations/` (thêm file mới, đừng sửa file cũ).
 

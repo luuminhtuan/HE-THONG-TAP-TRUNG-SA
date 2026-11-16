@@ -64,10 +64,11 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   migration `db/migrations/` (thêm file mới, không sửa file cũ), view ở `db/views/` dựng bằng
   `sync/core/pg_view.py` (luật đúc vào SQL, tự dựng lại khi luật đổi). Dashboard đọc qua `lib/db.ts`
   (`query(sql, { ten })` — tham số `@ten`). Câu SQL dựng ở trình duyệt / AI viết chạy bằng vai CHỈ ĐỌC
-  (`queryReadOnly`, vai `talpha_readonly` / `talpha_readonly_market` — migration 0003, tên mới từ 0008) — đừng
-  chạy chúng bằng `query()`. **Bảng / cột / hàm mang tên tiếng Anh từ 16/11/2026** (migration 0008: `ad_accounts`,
-  `fb_ads_all`, `monthly_report_tabs`, `view_fingerprints`, `date_in_tz`…; 0009 đổi giá trị cấu hình đã lưu) —
-  bảng tên cũ ↔ mới ở `docs/POSTGRES.md`.
+  (`queryReadOnly`, vai `talpha_readonly` / `talpha_readonly_market`) — đừng chạy chúng bằng `query()`.
+  **Cấu trúc gốc là `0001_initial_schema.sql` (16/11/2026), tên tiếng Anh từ đầu** (`ad_accounts`, `fb_ads_all`,
+  `monthly_report_tabs`, `view_fingerprints`, `date_in_tz`…): 9 migration của nhánh kho-postgres (chưa từng lên
+  production) gộp lại, KHÔNG có bước đổi tên DB cũ — DB dựng bằng code kho-postgres phải sao lưu rồi dựng lại
+  (`docs/POSTGRES.md` → "Chuyển từ kho-postgres", có bảng tên cũ ↔ mới).
 * **Nguồn thô**: Meta Marketing API và POS Poscake — vừa đồng bộ theo giờ vào Postgres,
   vừa gọi thẳng cho các màn hình cần số tức thời. Bảng đơn của đối tác 3PL (Google Sheet)
   chép vào bảng `partner_orders` mỗi vòng sync.
@@ -96,11 +97,14 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   `talpha_rules.json → access`, đọc qua `lib/talpha/access-rules.ts` (có test). Cửa chặn chung:
   `src/proxy.ts` (Next 16, chạy Node). **Thêm route API mới thì khai vào `API_RULES`** — không
   khai là chỉ giám đốc gọi được. Route gộp nhiều nước phải tự lọc theo `getAccess()`.
-  Bot/việc nền gọi API bằng header `x-talpha-token` (chìa ở `data/.internal_token`).
+  Bot/việc nền gọi API bằng header `x-talpha-token` (chìa ở `data/.internal_token`). DB trắng (chưa có ai trong
+  bảng `users`) thì tạo giám đốc đầu tiên: `docker compose exec dashboard node scripts/create-user.mjs`.
 * **Khoá kết nối** (04/11/2026): token Meta, key POS từng shop, token Pancake, key 17TRACK, khoá Gemini (15/11) nhập ở
   `/admin` → Khoá kết nối — máy gọi thử khoá rồi mới lưu. Lưu ở bảng `api_credentials` (15/11/2026),
   MÃ HOÁ bằng pgcrypto với chìa `TALPHA_ENCRYPTION_KEY` (đổi chìa = phải nhập lại mọi khoá), thắng khoá
-  cùng tên trong `.env.local`. Dashboard đọc qua `getCredential()` (`lib/talpha/credentials.ts`) — **đừng đọc
+  cùng tên trong `.env.local`. Giải mã từng dòng (`safe_decrypt`): khoá mã hoá bằng chìa khác bị bỏ + báo log, khoá
+  khác vẫn chạy; chìa hiện tại không mở được khoá nào đang có thì KHÔNG cho lưu (chìa đã đổi). Dashboard đọc qua
+  `getCredential()` (`lib/talpha/credentials.ts`) — **đừng đọc
   `process.env` thẳng cho khoá**; Python gọi `load_credentials_to_env()` (`sync/core/credentials.py`) lúc bắt đầu.
   Ngoại lệ có chủ đích (16/11/2026): trang Hỏi AI cho dán khoá Gemini RIÊNG, chỉ lưu localStorage của trình
   duyệt đó, gửi kèm từng câu hỏi (header `x-gemini-key`) và thắng khoá mặc định — máy chủ không lưu, không
@@ -111,7 +115,8 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   (`ops/zalo-alerts/market_config.js`) — ba bản chạy chung `tests/fixtures/market_overrides.json`, sửa
   luật phủ thì sửa cả ba. Shop POS sinh từ `markets` (`talpha.yaml → poscake` không còn ai đọc).
   Trạng thái nước `active` / `upcoming` / `disabled` (trước 16/11/2026: `dang_ban` / `sap_chay` / `da_tat` —
-  migration 0009 đổi phần đã lưu). Chỉ nước `active` được kéo đơn / gọi POS; `disabled` giữ lịch sử. Lưu xong
+  file cũ `data/thi_truong.json` được `file_import.py` đổi lúc chép vào kho). Chỉ nước `active` được kéo đơn /
+  gọi POS; `disabled` giữ lịch sử. Lưu xong
   dashboard và bot tự khởi động lại (pm2; docker nhờ `TALPHA_AUTO_RESTART=1`, tên cũ `TALPHA_TU_KHOI_DONG` vẫn
   nhận); vòng sync đầu giờ tự dựng lại view khi tỷ giá / số chia đổi.
 * **Nạp lúc khởi động** (16/11/2026): `rules.ts` (luật gốc + phần phủ `market_overrides`) và `getCredential()`
@@ -119,8 +124,10 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   (`primeStartupData()`, `lib/talpha/startup-data.ts`) trước khi server nhận request — thay cho `execFileSync`
   (`db-sync.ts` + `scripts/sync-query.cjs`, đã xoá) từng chặn event loop. Bot cũng vậy: `bot.js` gọi
   `primeMarketOverrides()` (`market_config.js`, hỏi dashboard bằng `fetch`) rồi mới nạp `bot_main.js`. Module
-  đọc luật bị nạp TRƯỚC bước này là chạy bằng luật gốc, thiếu nước nhập trên trang.
-* **Dữ liệu người dùng nhập nằm trong Postgres** (15/11/2026, migration 0006, tên bảng tiếng Anh):
+  đọc luật bị nạp TRƯỚC bước này là chạy bằng luật gốc, thiếu nước nhập trên trang. Bước nạp có hạn 15 giây;
+  kho lỗi / chưa lên thì dashboard vẫn mở cửa (luật gốc + khoá `.env.local`) và `startup-recovery.ts` đọc lại
+  mỗi 30 giây — thị trường nhập trên trang khác luật đang chạy thì tự khởi động lại.
+* **Dữ liệu người dùng nhập nằm trong Postgres** (15/11/2026):
   `app_documents` (sao kê COD, việc đối soát, thanh toán QC, vận đơn, chi phí vận hành — đọc/ghi qua
   `lib/talpha/store.ts`), `market_overrides`, `market_monthly_reports` (số nước × người cho bot, bot
   đọc qua `/api/talpha/market-report`), `users`, `api_credentials`. File cũ (`data/*.json`, `users.json`,

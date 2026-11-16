@@ -59,7 +59,7 @@ paths:
 
 - Dashboard đọc qua `lib/db.ts`: `query(sql, { ten })`, tham số viết `@ten`.
 - Câu SQL dựng ở trình duyệt hoặc do AI viết (`/api/query`, Hỏi AI) chạy bằng vai **CHỈ ĐỌC**
-  (`queryReadOnly`, vai `talpha_readonly` / `talpha_readonly_market` — migration 0003, tên mới từ 0008) — đừng
+  (`queryReadOnly`, vai `talpha_readonly` / `talpha_readonly_market` — migration 0001) — đừng
   chạy chúng bằng `query()`.
 - Python nối kho qua `sync/core/pg.py` (`get_connection()`).
 

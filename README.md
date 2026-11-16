@@ -39,8 +39,9 @@ Cần Docker Desktop.
 docker compose up -d --remove-orphans   # Postgres + dashboard http://localhost:3200 + lịch việc nền
 ```
 
-`--remove-orphans` bắt buộc lần đầu chạy bản sau 16/11/2026: service lịch đổi tên `lich` → `scheduler`, thiếu
-cờ này thì container lịch cũ vẫn chạy song song và kéo số hai lần mỗi giờ.
+`--remove-orphans`: service lịch tên `scheduler` (trước 16/11/2026 là `lich`) — máy từng chạy bản cũ mà thiếu cờ
+này thì container lịch cũ vẫn chạy song song và kéo số hai lần mỗi giờ. Máy có DB dựng bằng code kho-postgres
+(trước 16/11/2026) phải sao lưu rồi dựng lại DB: `docs/POSTGRES.md` → "Chuyển từ kho-postgres".
 
 Mở http://localhost:3200/admin → **Khoá kết nối**: dán token Meta, key POS từng nước. Máy gọi thử
 khoá rồi mới lưu (mã hoá trong Postgres); việc nền tự kéo số từ giờ kế tiếp. Chi tiết:

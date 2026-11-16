@@ -12,8 +12,9 @@ Cần Docker Desktop.
 docker compose up -d --remove-orphans   # Postgres + dashboard + lịch việc nền (lần đầu cài thư viện ~1 phút)
 ```
 
-`--remove-orphans` bắt buộc lần đầu chạy bản sau 16/11/2026: service lịch đổi tên `lich` → `scheduler`, thiếu cờ
-này thì container `talpha-lich-1` cũ vẫn chạy cạnh `scheduler` — hai lịch cùng kéo số mỗi giờ.
+`--remove-orphans`: service lịch tên `scheduler` (trước 16/11/2026 là `lich`) — máy từng chạy bản cũ mà thiếu cờ
+này thì container `talpha-lich-1` cũ vẫn chạy cạnh `scheduler`, hai lịch cùng kéo số mỗi giờ. Máy từng chạy bản
+cũ còn phải dựng lại DB — xem "Chuyển từ kho-postgres" bên dưới.
 
 1. Mở **http://localhost:3200/admin** → **Khoá kết nối**: dán token Meta, key POS từng nước (Pancake,
    17TRACK nếu có). Máy gọi thử khoá rồi mới lưu. TKQC nằm ở nhiều Business Manager / app thì dán thêm
@@ -73,16 +74,16 @@ rồi mới ghi Sheet nếu có khoá. Một lần tính, ba nơi cùng số.
 ## Bảng và view
 
 * **Bảng**: `db/migrations/` — chạy theo thứ tự tên, mỗi file một lần (bảng `schema_migrations`), như
-  `php artisan migrate`. **Thêm file mới, đừng sửa file đã chạy.** Bảng hai tầng (đơn, dòng hàng, quảng
-  cáo) có `<bảng>_raw` chỉ ghi thêm + bảng sạch dựng lại mỗi vòng — thêm cột thì thêm vào cả hai.
+  `php artisan migrate`. Cấu trúc gốc là `0001_initial_schema.sql` (16/11/2026, tên tiếng Anh từ đầu).
+  **Thêm file mới (`0002_…`), đừng sửa file đã chạy.** Bảng hai tầng (đơn, dòng hàng, quảng cáo) có
+  `<bảng>_raw` chỉ ghi thêm + bảng sạch dựng lại mỗi vòng — thêm cột thì thêm vào cả hai.
 * **View**: `db/views/` — tỷ giá, số chia, giá vốn, múi giờ TKQC, nhóm marketer, ngưỡng đúc vào câu SQL
   lúc dựng (`sync/core/pg_view.py`, sinh từ `config/talpha_rules.json` + `talpha.yaml`). Đầu mỗi vòng
   sync băm câu SQL đã sinh; khác lần trước là dựng lại trong một transaction.
-* **Vai chỉ đọc** (migration 0003, tên tiếng Anh từ 0008): `/api/query` (4 tab Marketing, Sức khoẻ QC, Khách
-  hàng, Market Intel) và "CEO hỏi" đăng nhập Postgres bằng `talpha_readonly` / `talpha_readonly_market`
-  (`queryReadOnly` trong `lib/db.ts`), transaction READ ONLY, 30 giây. Mật khẩu: `TALPHA_READONLY_PASSWORD`
-  (compose đặt sẵn; tên cũ `TALPHA_DOC_PASSWORD` vẫn nhận), đặt lúc `migrate`. Vai tên cũ `talpha_doc` /
-  `talpha_doc_nuoc` vẫn còn trên cụm cho bản code cũ nối cùng cụm — code bây giờ không dùng nữa.
+* **Vai chỉ đọc** (migration 0001, mục 6): `/api/query` (4 tab Marketing, Sức khoẻ QC, Khách hàng, Market
+  Intel) và "CEO hỏi" đăng nhập Postgres bằng `talpha_readonly` / `talpha_readonly_market` (`queryReadOnly`
+  trong `lib/db.ts`), transaction READ ONLY, 30 giây, trả kết nối về pool sau `RESET ALL`. Mật khẩu:
+  `TALPHA_READONLY_PASSWORD` (compose đặt sẵn; tên cũ `TALPHA_DOC_PASSWORD` vẫn nhận), đặt lúc `migrate`.
 
 | Bảng | Nội dung |
 |:--|:--|
@@ -98,8 +99,26 @@ rồi mới ghi Sheet nếu có khoá. Một lần tính, ba nơi cùng số.
 | `monthly_report_tabs` | bảng số báo cáo tháng (= nội dung file TỔNG TEAM) |
 | `view_fingerprints` | vân tay SQL của bộ view lần dựng gần nhất (`pg_view.py`) |
 
-**Tên tiếng Anh từ 16/11/2026.** Migration 0008 chỉ ĐỔI TÊN (dữ liệu, chỉ mục, quyền giữ nguyên) — câu SQL cũ,
-ghi chú cũ còn dùng tên cũ thì dịch theo bảng này:
+## Chuyển từ kho-postgres (DB dựng trước 16/11/2026)
+
+Nhánh `kho-postgres` (04–16/11/2026) chưa từng lên production, nên 16/11/2026 bộ 9 migration của nó gộp thành
+`0001_initial_schema.sql` dựng thẳng tên tiếng Anh — **không có bước đổi tên / chuyển đổi DB cũ**. Kho dựng bằng
+code cũ (có bảng `tkqc`, `bao_cao_tab`…) không chạy tiếp được bằng code này: sao lưu rồi dựng lại từ đầu.
+
+```bash
+mkdir -p data/backups && docker compose exec -T db pg_dump -U talpha -Fc talpha > data/backups/talpha-truoc-chuyen.dump
+docker compose stop dashboard scheduler lich 2>/dev/null
+docker compose exec db psql -U talpha -d postgres -c "DROP DATABASE talpha WITH (FORCE)" -c "CREATE DATABASE talpha"
+docker compose up -d --remove-orphans          # migrate dựng 0001 + view, dashboard + scheduler lên lại
+```
+
+Sau đó nhập lại khoá (/admin → Khoá kết nối, hoặc chép thẳng bảng `api_credentials` từ bản sao lưu — giá trị đã mã
+hoá, chép nguyên được nếu `TALPHA_ENCRYPTION_KEY` không đổi), tạo tài khoản đăng nhập
+(`docker compose exec dashboard node scripts/create-user.mjs`), rồi kéo lại số (mục "Còn lại" bên dưới).
+Vai chỉ đọc tên cũ `talpha_doc` / `talpha_doc_nuoc` còn trên cụm thì bỏ: `DROP ROLE talpha_doc, talpha_doc_nuoc`
+(sau khi không còn DB nào cấp quyền cho chúng).
+
+Câu SQL cũ, ghi chú cũ còn dùng tên cũ thì dịch theo bảng này:
 
 | Tên cũ | Tên mới |
 |:--|:--|
@@ -107,14 +126,14 @@ ghi chú cũ còn dùng tên cũ thì dịch theo bảng này:
 | `fb_ads_tat_ca` · `fb_adset_tat_ca` (+ `_raw`) · `fb_campaign_tat_ca` | `fb_ads_all` · `fb_adset_all` (+ `_raw`) · `fb_campaign_all` |
 | `bao_cao_tab` (`thang`, `tep`, `thu_tu`, `ten_tab`, `hang`, `ghi_luc`) | `monthly_report_tabs` (`month`, `report_key`, `tab_order`, `tab_name`, `rows`, `written_at`) |
 | `view_van_tay` (`van_tay`, `dung_luc`) | `view_fingerprints` (`fingerprint`, `built_at`) |
-| `schema_migrations` (`ten`, `chay_luc`) | `schema_migrations` (`name`, `applied_at`) — `pg.py` tự đổi trước khi chạy migration |
-| hàm `ngay_theo_mui(s, tz)` | `date_in_tz(s, tz)` — tên cũ còn làm bí danh cho câu SQL cũ |
-| vai `talpha_doc` · `talpha_doc_nuoc` | `talpha_readonly` · `talpha_readonly_market` — vai MỚI tạo cạnh vai cũ, không đổi tên |
+| `schema_migrations` (`ten`, `chay_luc`) | `schema_migrations` (`name`, `applied_at`) |
+| hàm `ngay_theo_mui(s, tz)` | `date_in_tz(s, tz)` |
+| vai `talpha_doc` · `talpha_doc_nuoc` | `talpha_readonly` · `talpha_readonly_market` |
 | dòng `app_documents`: `ads_recon_kho` · `chi_phi_van_hanh` | `ads_recon_rows` · `operating_expenses` |
+| giá trị cấu hình: trạng thái nước `dang_ban` / `sap_chay` / `da_tat`, khoá `nguoi_cam`; loại TKQC `hat_giong` / `khac` | `active` / `upcoming` / `disabled`, `owner`; `seed` / `other` |
 
-Migration 0009 đổi giá trị cấu hình đã lưu cho khớp `config/talpha_rules.json` cùng đợt: trạng thái nước trong
-`market_overrides` `dang_ban` / `sap_chay` / `da_tat` → `active` / `upcoming` / `disabled`, khoá `nguoi_cam` →
-`owner`; loại TKQC `hat_giong` / `khac` → `seed` / `other`.
+File của bản chạy bằng file (máy chủ VPS khi chuyển sang Postgres): bước `migrate` chép `data/*.json` vào kho và
+TỰ đổi tên / giá trị cũ ở bảng trên (`sync/core/file_import.py`) — không cần sửa file tay.
 
 ## Viết SQL: BigQuery → Postgres
 
@@ -159,8 +178,7 @@ khoá thật: `docker compose down -v && docker compose up -d`.
   máy chủ), đặt `DATABASE_URL` cho dashboard + các systemd service, sửa `ops/deploy/vps-*-setup.sh`. Chưa làm.
 * **Dữ liệu cũ trên BigQuery** chưa chép sang (chốt 04/11/2026: tính sau). Đơn POS và chi tiêu Meta kéo lại
   được bằng `python sync/talpha/talpha_sync.py --full` và `--days N`; ảnh chụp tồn kho cũ thì không.
-* ~~`data/*.json`, thị trường, người dùng, khoá vẫn là file~~ — xong 15/11/2026 (migration 0006, xem
-  mục dưới).
+* ~~`data/*.json`, thị trường, người dùng, khoá vẫn là file~~ — xong 15/11/2026 (xem mục dưới).
 
 ## Dữ liệu người dùng nhập — cũng trong Postgres (15/11/2026)
 
@@ -172,14 +190,14 @@ khoá thật: `docker compose down -v && docker compose up -d`.
 | `users` | `config/users.json` / `USERS_JSON` | `lib/users.ts` |
 | `api_credentials` | `dashboard-ui/.env.khoa.local` — MÃ HOÁ (pgcrypto) bằng `TALPHA_ENCRYPTION_KEY` | `lib/talpha/credentials.ts`, `sync/core/credentials.py` |
 | `file_imports` | — sổ file cũ nào đã chép vào kho | `sync/core/file_import.py` |
-| `job_runs` · `refresh_requests` | — (migration 0007) sổ lượt việc nền + yêu cầu "Cập nhật ngay" | `ops/docker/scheduler.py` qua `sync/core/job_log.py`; dashboard đọc ở `/api/talpha/refresh` |
+| `job_runs` · `refresh_requests` | — sổ lượt việc nền + yêu cầu "Cập nhật ngay" | `ops/docker/scheduler.py` qua `sync/core/job_log.py`; dashboard đọc ở `/api/talpha/refresh` |
 
 Bước `migrate` chép mỗi file cũ vào kho MỘT lần (không ghi đè dòng đã có, không xoá file) — chép lần
 hai sẽ làm sống lại thứ người dùng đã xoá trên trang. Sau đó file cũ chỉ còn là bản lưu.
 
 `TALPHA_ENCRYPTION_KEY` phải giống nhau ở dashboard và các container Python (compose đặt sẵn một chìa
 cho máy thử). Mất / đổi chìa là khoá trong kho không giải mã được nữa — nhập lại ở /admin → Khoá kết
-nối. Hai vai chỉ đọc không được đọc các bảng này (REVOKE ở migration 0006 và `pg_view.py → PRIVATE_TABLES`).
+nối. Hai vai chỉ đọc không được đọc các bảng này (REVOKE cuối migration 0001 và `pg_view.py → PRIVATE_TABLES`).
 
 Khi chuyển máy chủ VPS sang Postgres: đặt `TALPHA_ENCRYPTION_KEY` (chìa thật, giữ kín) cho dashboard + các
 service Python, rồi chạy migrate trong `/opt/talpha` — sao kê, vận đơn, `users.json`, `.env.khoa.local`
