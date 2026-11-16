@@ -111,9 +111,18 @@ tự khoá mình ra ngoài, phải vào console của Vultr mới gỡ được.
 
 ## Cập nhật code
 
+Máy chủ kéo `main` của repo NÓ clone — `REPO_URL` ở `ops/deploy/vps-setup.sh`
+(`nhuquynh16091999-hash/HE-THONG-TAP-TRUNG-SA`). Đẩy `main` vào đúng repo đó trước; trên máy Mac
+hiện tại nó là remote `upstream` (`origin` là repo riêng):
+
 ```bash
+git push upstream main
 ssh -i ~/.ssh/id_ed25519_talpha_vps root@139.180.131.21 'bash /opt/talpha/ops/deploy/vps-deploy.sh'
 ```
+
+`ops/deploy/from-mac.sh` tự kiểm bước này (dò remote trỏ tới repo máy chủ, dừng nếu `main` còn commit
+chưa đẩy lên đó); gọi thẳng `vps-deploy.sh` như trên thì không ai kiểm — đẩy nhầm remote là máy chủ
+"cập nhật" xong vẫn chạy code cũ.
 
 Kịch bản: kéo code → cài gói → **chạy phép thử** → dựng → khởi động lại → kiểm tra HTTP 200.
 

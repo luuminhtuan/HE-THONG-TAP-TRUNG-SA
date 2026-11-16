@@ -38,7 +38,8 @@ Bản đồ nghiệp vụ đầy đủ: `DASHBOARD_MAP.md`. Hướng dẫn làm 
    (BigQuery hay Postgres đều vậy — cùng nguồn nên cùng sai).
 2. **1 section = 1 commit = push ngay**. Commit bằng pathspec `git commit -- <paths>`
    (index dùng chung giữa các phiên song song). CẤM `git reset HEAD~N`.
-3. **Deploy production** = `bash ops/deploy/from-mac.sh` **TỪ MÁY MAC**, đẩy nhánh `main`. Máy chủ
+3. **Deploy production** = `git push upstream main` (repo máy chủ kéo — `REPO_URL` ở
+   `ops/deploy/vps-setup.sh`; `origin` là repo riêng) rồi `bash ops/deploy/from-mac.sh` **TỪ MÁY MAC**. Máy chủ
    không có khoá GitHub, nó mượn khoá của Mac qua `ssh -A`; `git pull` thẳng trên máy chủ không
    chạy được mà vẫn in `origin/main` cũ nên trông như đã mới nhất. `npm run build` ở Mac chỉ đổi
    bản localhost, KHÔNG phải deploy. KHÔNG `git clean` trên `/opt/talpha` (xoá mất .env.local,

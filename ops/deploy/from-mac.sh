@@ -52,6 +52,27 @@ say "0/5 · Kiểm tra vào được máy chủ bằng khoá"
 "${SSH[@]}" 'echo "   $(hostname) · $(. /etc/os-release && echo $PRETTY_NAME) · $(nproc) CPU · $(free -m | awk "/Mem:/{print \$2}")MB RAM"'
 
 # ─────────────────────────────────────────────────────────────────────────
+# Máy chủ chạy `reset --hard origin/main` của repo NÓ clone (REPO_URL ở vps-setup.sh) — trên máy Mac, repo
+# đó có thể mang tên remote khác "origin" (16/11/2026: origin = repo riêng, repo máy chủ kéo = upstream).
+# Đẩy nhầm remote là deploy chạy hết, báo xanh, mà máy chủ vẫn chạy code cũ. Chặn trước khi chạm máy chủ.
+say "0b · main trên máy Mac đã nằm ở repo máy chủ kéo chưa"
+norm_repo() { printf '%s' "$1" | sed -E 's#^(git@|ssh://git@|https://)github\.com[:/]##; s#\.git$##' | tr 'A-Z' 'a-z'; }
+SERVER_REPO=$("${SSH[@]}" "git -C $APP_DIR remote get-url origin 2>/dev/null" | tr -d '\r' || true)
+[ -n "$SERVER_REPO" ] || SERVER_REPO=$(sed -nE 's/^REPO_URL="\$\{REPO_URL:-([^}]*)\}"$/\1/p' "$REPO_ROOT/ops/deploy/vps-setup.sh")
+[ -n "$SERVER_REPO" ] || die "Không biết máy chủ kéo code từ repo nào (REPO_URL ở ops/deploy/vps-setup.sh)"
+DEPLOY_REMOTE=""
+for r in $(git -C "$REPO_ROOT" remote); do
+    if [ "$(norm_repo "$(git -C "$REPO_ROOT" remote get-url "$r")")" = "$(norm_repo "$SERVER_REPO")" ]; then
+        DEPLOY_REMOTE=$r; break
+    fi
+done
+[ -n "$DEPLOY_REMOTE" ] || die "Máy này chưa có remote trỏ tới repo máy chủ kéo ($SERVER_REPO). Thêm: git remote add upstream $SERVER_REPO"
+git -C "$REPO_ROOT" fetch -q "$DEPLOY_REMOTE" main || die "Không fetch được $DEPLOY_REMOTE/main"
+git -C "$REPO_ROOT" merge-base --is-ancestor main "$DEPLOY_REMOTE/main" \
+    || die "main trên máy Mac có commit CHƯA nằm ở repo máy chủ kéo ($SERVER_REPO). Chạy trước: git push $DEPLOY_REMOTE main"
+echo "   máy chủ sẽ chạy $DEPLOY_REMOTE/main: $(git -C "$REPO_ROOT" log --oneline -1 "$DEPLOY_REMOTE/main")"
+
+# ─────────────────────────────────────────────────────────────────────────
 say "1/5 · Chép cấu hình bí mật (không nằm trong git)"
 [ -f "$REPO_ROOT/dashboard-ui/.env.local" ] || die "Thiếu dashboard-ui/.env.local ở máy Mac"
 

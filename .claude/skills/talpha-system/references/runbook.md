@@ -61,6 +61,8 @@ cd ~/talpha_reports && GOOGLE_APPLICATION_CREDENTIALS=runtime/bigquery_key.json 
 
 ## 5. Deploy máy chủ 139.180.131.21
 
+- **Đẩy `main` vào repo máy chủ kéo trước** — `REPO_URL` ở `ops/deploy/vps-setup.sh`; trên máy Mac
+  hiện tại là remote `upstream`, KHÔNG phải `origin` (repo riêng). `from-mac.sh` tự kiểm, dừng nếu thiếu.
 - **Cách duy nhất**: `bash ops/deploy/from-mac.sh` — chạy TỪ MÁY MAC. Nó chép `.env.local`
   + `bigquery_key.json` + `data/*.json` lên, rồi cho máy chủ mượn khoá GitHub của Mac qua
   `ssh -A` để `git fetch`, build, restart. Máy chủ KHÔNG có khoá GitHub riêng.

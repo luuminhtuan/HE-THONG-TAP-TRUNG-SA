@@ -32,9 +32,14 @@ Docker (`cd dashboard-ui && npm run dev`) thì đặt `DATABASE_URL` + `TALPHA_R
 ## Deploy — từ máy Mac
 
 ```bash
-git push origin main                    # BẮT BUỘC trước: máy chủ lấy code bằng reset --hard origin/main
+git push upstream main                  # BẮT BUỘC trước — đẩy vào repo MÁY CHỦ KÉO, xem dưới
 KEY=~/.ssh/id_ed25519 GH_KEY=~/.ssh/id_ed25519 bash ops/deploy/from-mac.sh
 ```
+
+Máy chủ chạy `reset --hard origin/main` của repo NÓ clone: `nhuquynh16091999-hash/HE-THONG-TAP-TRUNG-SA`
+(`REPO_URL` ở `ops/deploy/vps-setup.sh`). Trên máy Mac này repo đó là remote **`upstream`** — `origin` là repo
+riêng, đẩy vào đó thì deploy vẫn báo xanh mà máy chủ chạy code cũ. `from-mac.sh` tự dò remote trỏ tới repo máy
+chủ và DỪNG nếu `main` còn commit chưa nằm ở đó (bước "0b", 16/11/2026).
 
 Sửa `ops/talpha_reports/*` hoặc luật mà vòng ghi Sheet dùng thì chép thêm sang thư mục chạy
 báo cáo trên máy chủ (bản chép riêng, KHÔNG tự cập nhật theo repo):
