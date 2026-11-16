@@ -219,3 +219,14 @@ def test_drive_error_uses_same_month_cache(tmp_path):
     assert file_set["grand"] == "G" * 30 and "bản nhớ" in source
     file_set, _ = rf.get_month_file_set(2026, 11, here=str(tmp_path / "x"), cache_dir=str(tmp_path), sess=_Sess({}, error=OSError("mạng")))
     assert file_set is None, "không được lấy bản nhớ của tháng khác"
+
+
+def test_missing_month_file_set_still_reaches_postgres(monkeypatch, capsys):
+    # Có khoá Google mà tháng chưa có bộ file: format_all phải đi tiếp tới bước ghi Postgres (dashboard + bot),
+    # chỉ bỏ ghi Sheet. Trước 16/11/2026 _month_file_set trả None → main() chết ở FILE_SET.get('grand').
+    import format_all
+    monkeypatch.setattr(format_all._rf, "get_month_file_set", lambda *a, **k: (None, "chưa có thư mục"))
+    monkeypatch.setenv("TALPHA_REPORT_MONTH", "2026-10")
+    day, file_set = format_all._month_file_set("khoa-gia.json")
+    assert file_set == {} and day.month == 10
+    assert "KHONG GHI SHEET" in capsys.readouterr().out

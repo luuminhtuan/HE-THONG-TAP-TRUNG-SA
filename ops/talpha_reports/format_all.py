@@ -49,7 +49,7 @@ def _google_key() -> str | None:
     return KEY
 
 
-def _month_file_set(KEY: str | None) -> tuple[datetime.date, dict | None]:
+def _month_file_set(KEY: str | None) -> tuple[datetime.date, dict]:
     """Ngày chốt của tháng đang chạy (giờ VN) + bộ file Sheet của CHÍNH tháng đó. In dòng THANG …"""
     _T=_rf.report_end_date(os.environ.get('TALPHA_REPORT_MONTH'))
     _HERE=os.path.dirname(os.path.abspath(__file__))
@@ -64,7 +64,10 @@ def _month_file_set(KEY: str | None) -> tuple[datetime.date, dict | None]:
         print(f"CANH BAO: CHUA CO BO FILE THANG {_T.month}/{_T.year} — KHONG GHI SHEET. {FILE_SET_SOURCE}")
         print(f"    Tao thu muc 'Tháng {_T.month}' trong BÁO CÁO ADS ANTALO + file 'TỔNG TEAM THÁNG {_T.month}' va file tung nguoi "
               f"(hoac chay Apps Script create_month_files.gs), share thu muc goc cho service account.")
-    return _T, FILE_SET
+    # report_files trả None khi không có bộ file → đổi thành {} để main() vẫn đi tiếp tới bước ghi Postgres
+    # (trước 16/11/2026: FILE_SET.get('grand') chết AttributeError, tháng mới chưa tạo thư mục Drive là
+    # dashboard + bot mất số cả tháng).
+    return _T, (FILE_SET or {})
 
 
 def _print_final_warnings(n: int, data, LOST_FILES: list, MISSING_FILES: list, _T: datetime.date,
