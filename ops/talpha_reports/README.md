@@ -14,7 +14,7 @@ Nhánh `kho-postgres` chạy bằng docker compose: lịch `ops/docker/scheduler
 2. `sync_month.py` — kéo lại tháng hiện tại từ POS + Meta vào kho số (production: BigQuery; nhánh
    `kho-postgres`: Postgres). **KHÔNG drop bảng**: raw chỉ thêm + bảng sạch dựng lại (Postgres: trong
    một transaction, `sync/core/pg_writer.py`) — fetch hỏng thì bảng cũ còn nguyên.
-3. `format_all.py` — đọc `fb_ads_data` + `sale_order`, ghi bảng `bao_cao_tab` (tab Tổng quan, P&L,
+3. `format_all.py` — đọc `fb_ads_data` + `sale_order`, ghi bảng `monthly_report_tabs` (tab Tổng quan, P&L,
    Marketer, bot Zalo đọc từ đây) và bảng `market_monthly_reports` (số nước × người cho bot), rồi
    ghi Google Sheet của từng marketer nếu có khoá Google
 4. `report_health.py` + `report_account_health.py` — ghi trạng thái vào bảng `sync_health` /

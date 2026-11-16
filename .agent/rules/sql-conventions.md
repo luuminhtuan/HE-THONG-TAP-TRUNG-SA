@@ -8,7 +8,7 @@ Luật an toàn dữ liệu và bẫy ra số sai: `postgres-data-rules.md` (đ�
 
 ## Phương ngữ
 
-- Postgres 17. Hàm giữ nghĩa cũ có sẵn: `safe_divide`, `safe_ts`, `safe_json`, `ngay_theo_mui`.
+- Postgres 17. Hàm giữ nghĩa cũ có sẵn: `safe_divide`, `safe_ts`, `safe_json`, `date_in_tz`.
 - Viết lại câu cũ thời BigQuery thì theo bảng dịch trong `docs/POSTGRES.md`
   (`IFNULL` → `COALESCE`, `COUNTIF(c)` → `COUNT(*) FILTER (WHERE c)`, `x IN UNNEST(@ds)` → `x = ANY(@ds)`…).
 
@@ -29,7 +29,7 @@ Luật an toàn dữ liệu và bẫy ra số sai: `postgres-data-rules.md` (đ�
 ## Đặt tên
 
 - Bảng, cột, view, hàm: `snake_case` tiếng Anh, chữ thường. Bảng/cột cũ tên Việt (`tkqc`,
-  `bao_cao_tab`…) đổi bằng migration mới, không sửa tay.
+  `monthly_report_tabs`…) đổi bằng migration mới, không sửa tay.
 - Cột tiền ghi rõ đơn vị ở đuôi: `revenue_vnd`, `cost_price_rmb`.
 - Alias cột trong SELECT cũng `snake_case` (Postgres hạ chữ thường alias không nháy).
 

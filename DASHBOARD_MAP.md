@@ -130,7 +130,7 @@ Ba câu hỏi tiền, ba màn hình khác nhau — **đừng trộn**:
 
 | Câu hỏi | Màn hình | Nguồn |
 |:--|:--|:--|
-| Bán được bao nhiêu? | Tổng quan | Bảng **TỔNG TEAM** (`bao_cao_tab`, cùng số file Sheet) — doanh số đơn đã chốt + DS giao TC |
+| Bán được bao nhiêu? | Tổng quan | Bảng **TỔNG TEAM** (`monthly_report_tabs`, cùng số file Sheet) — doanh số đơn đã chốt + DS giao TC |
 | Lãi gộp tạm tính? | P&L | Bảng TỔNG TEAM + giá vốn (mã SP trên đơn POS × bảng Giá tới Taiwan) + phí ship ước tính (trung bình sao kê NAZA) |
 | Đang tiêu bao nhiêu, ngay lúc này? | Ads Command Center | Meta + POS **gọi thẳng**, đơn **ĐÃ ĐẶT** |
 | Tiền có về đủ không? | Kế toán: Tiền COD về · Thanh toán quảng cáo | File sao kê người dùng tải lên |
@@ -154,7 +154,7 @@ POS Poscake (1 shop)┘         sync/talpha/talpha_sync.py
                               talpha-report.timer (:20) ──────┤
                               daily_guarded.sh                │
                                 ├─ sync_month.py  (kéo lại tháng hiện tại)
-                                └─ format_all.py  (bảng bao_cao_tab; + Google Sheets nếu có khoá)
+                                └─ format_all.py  (bảng monthly_report_tabs; + Google Sheets nếu có khoá)
                                                               │
                                             /api/query ◄──────┘──► 6 tab báo cáo
 ```
@@ -179,9 +179,9 @@ Ba màn hình **không đụng kho số lẫn POS**, chạy được cả khi ha
 | Màn hình | File đầu vào | Kho lưu (bảng `app_documents`, dòng…) |
 |:--|:--|:--|
 | Tiền COD về | Sao kê NAZA (xlsx) + Google Sheet tiền hàng (chỉ đọc) | `cod_statements` (+ `_sg`, `_ae`), `cod_actions` |
-| Thanh toán quảng cáo | Chi phí TKQC + sao kê thẻ | `ads_recon`, `ads_recon_kho` |
+| Thanh toán quảng cáo | Chi phí TKQC + sao kê thẻ | `ads_recon`, `ads_recon_rows` |
 | Theo dõi vận đơn · Sổ đơn hàng | Bảng đơn của đối tác (Google Sheet) — **tự nạp 6h sáng**, hoặc bấm “Đọc bảng đối tác” | `tracking` (+ `_sg`, `_ae`, `_jp`) |
-| Lãi lỗ → Chi phí vận hành | Giám đốc gõ tay từng khoản theo tháng (lương, mặt bằng, phần mềm…) | `chi_phi_van_hanh` |
+| Lãi lỗ → Chi phí vận hành | Giám đốc gõ tay từng khoản theo tháng (lương, mặt bằng, phần mềm…) | `operating_expenses` |
 
 Trước 15/11/2026 các kho này là file `data/<kho>.json` (ngoài git); nay nằm trong Postgres
 (`lib/talpha/store.ts`), file cũ được chép vào một lần ở bước migrate. Deploy code không còn đụng
@@ -210,7 +210,7 @@ người ta đã gửi nhau hết mở được.**
 | | P&L theo SP | `tabs/product-pnl-tab.tsx` | `/api/talpha/product-pnl` (đơn đã chốt × giá vốn × ads theo mã SP trong tên camp) |
 | 🧾 Đơn hàng | Sổ đơn hàng (+ khung Đòi tiền NAZA) | `tabs/order-ledger-tab.tsx` · `tabs/order-ledger-market.tsx` | `/api/talpha/order-ledger` + `cod-actions` (Đài) · `order-ledger/market` (Singapore, UAE) |
 | | Theo dõi vận đơn | `tabs/tracking-tab.tsx` | `/api/talpha/tracking` |
-| 💼 Kế toán | Lãi lỗ (04/11/2026, mọi vai) | `tabs/income-statement-tab.tsx` | `/api/talpha/income-statement` (TỔNG TEAM + kiện 3PL + sao kê + kho `chi_phi_van_hanh`) |
+| 💼 Kế toán | Lãi lỗ (04/11/2026, mọi vai) | `tabs/income-statement-tab.tsx` | `/api/talpha/income-statement` (TỔNG TEAM + kiện 3PL + sao kê + kho `operating_expenses`) |
 | | Tiền COD về | `tabs/cod-recon-tab.tsx` | `/api/talpha/order-ledger` + `cod-recon` + `cod-actions` (Đài) · `cod-recon/market` (Singapore, UAE) |
 | | Thanh toán quảng cáo (chỉ giám đốc) | `tabs/ads-recon-tab.tsx` | `/api/talpha/ads-recon` |
 | 📦 Sản phẩm | Sản phẩm & Kho | `tabs/products-tab.tsx` | `/api/talpha/inventory` |
@@ -223,14 +223,14 @@ người ta đã gửi nhau hết mở được.**
 
 Ngoài shell còn `/login` và `/admin` (người dùng, TKQC, thị trường, khoá kết nối). **TKQC tự động** (04/11/2026):
 mọi TKQC các token Meta đọc được; chỉ loại "vào báo cáo" cộng vào số — `fb_ads_data` là view lọc theo loại,
-chi tiêu đủ mọi TK ở `fb_ads_tat_ca`. Xem `sync/core/ad_accounts.py`.
+chi tiêu đủ mọi TK ở `fb_ads_all`. Xem `sync/core/ad_accounts.py`.
 
 **Mốc gốc 15/09/2026** (`talpha_rules.json → report_start_date`, Sỹ Anh chốt 25/09/2026):
 tab Tổng quan · P&L · P&L theo SP · Marketing · Chi phí quảng cáo không tính ngày trước mốc
 (`FLOOR_TABS` trong shell) — chọn sớm hơn mốc thì tự kéo về. **Khoảng ngày mặc định** (15/11/2026, Sỹ Anh chốt): **tháng này** (ngày 1 → hôm nay) cho MỌI tab — danh sách dài là trang nặng. Việc cần làm của tháng trước không mất: cảnh báo ở Theo dõi vận đơn soát mọi kiện đã nạp (danh sách thì chỉ kiện lên đơn trong khoảng; đơn POS Đài nạp lùi 60 ngày cho cảnh báo), Đòi tiền NAZA / kỳ sao kê tính mọi đơn. Đã chọn ngày (`?from=&to=`) thì áp cho mọi tab. Tab
 vận hành (Sổ đơn, Tiền COD về, Vận đơn, Kho, Khách hàng) không chặn: đơn cũ còn chờ thu tiền.
 
-**Tổng quan đọc bảng số TỔNG TEAM, không tự tính** (`bao_cao_tab` — format_all.py ghi cùng lúc với
+**Tổng quan đọc bảng số TỔNG TEAM, không tự tính** (`monthly_report_tabs` — format_all.py ghi cùng lúc với
 file Sheet; trước 04/11/2026 route đọc thẳng file Sheet). Trước 25/09/2026 tab tính lại từ BigQuery theo
 luật riêng (doanh thu chỉ đơn đã giao, tên marketer là tên tài khoản POS, không mốc ngày) nên
 lệch Sheet cả trăm triệu. Muốn đổi cách tính thì sửa `format_all.py` — Sheet, bot Zalo và
@@ -276,7 +276,7 @@ Phải đăng nhập (proxy.ts). Người chỉ xem một phần nước: mỗi 
 đã lọc nước (`vw_orders_std.market`, `sale_order.shop_label`, `order_items` theo shop, chi tiêu
 Meta theo nước ở tên campaign); bảng gộp mọi nước (`vw_attribution_quality`) và mọi đường vòng
 (bảng khác, bảng hệ thống `pg_*`, `information_schema`, nháy kép, chuỗi `$$`, hàm chạy câu SQL nằm
-trong chuỗi) bị từ chối; vai `talpha_doc_nuoc` của họ cũng chỉ được database cho đọc 5 bảng lọc được.
+trong chuỗi) bị từ chối; vai `talpha_readonly_market` của họ cũng chỉ được database cho đọc 5 bảng lọc được.
 
 ### `/api/talpha/*`
 
@@ -329,7 +329,7 @@ Sửa `vw_orders_std` hoặc `vw_fb_ads_std` là đụng gần như cả dashboa
 từ luật (tỷ giá, số chia, giá vốn, múi giờ TKQC…) đổi. Bảng: `db/migrations/` (thêm file mới, đừng sửa file cũ).
 
 Bảng thô dashboard đọc thẳng: `sale_order`, `order_items`, `fb_ads_data`,
-`fb_adset_data`, `inventory_snapshot`, `sync_health`, `bao_cao_tab` (số báo cáo tháng).
+`fb_adset_data`, `inventory_snapshot`, `sync_health`, `monthly_report_tabs` (số báo cáo tháng).
 
 `partner_orders` — bảng đơn của đối tác 3PL (Google Sheet) chép vào bảng này mỗi vòng
 talpha-sync (cần khoá Google): mã vận đơn, ngày xuất kho, trạng thái giao, COD đối tác thu (đơn vị gốc, cột

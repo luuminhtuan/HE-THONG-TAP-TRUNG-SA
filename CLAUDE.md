@@ -61,7 +61,7 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
 * **Nguồn thô**: Meta Marketing API và POS Poscake — vừa đồng bộ theo giờ vào Postgres,
   vừa gọi thẳng cho các màn hình cần số tức thời. Bảng đơn của đối tác 3PL (Google Sheet)
   chép vào bảng `partner_orders` mỗi vòng sync.
-* **Báo cáo số**: `format_all.py` dựng các tab "TỔNG TEAM THÁNG n" và ghi vào bảng `bao_cao_tab`;
+* **Báo cáo số**: `format_all.py` dựng các tab "TỔNG TEAM THÁNG n" và ghi vào bảng `monthly_report_tabs`;
   tab Tổng quan, P&L, Marketer và bot Zalo đọc bảng đó qua `/api/talpha/sheet-report?from&to`. Có khoá
   Google (`bigquery_key.json`) thì ghi thêm file Google Sheet cho team — tuỳ chọn. Giá vốn + phí ship
   ước tính ở `lib/talpha/order-costs.ts` (dùng chung P&L và P&L theo SP). Các tab báo cáo
@@ -72,7 +72,7 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
 * **Sync**: `sync/talpha/talpha_sync.py` + `sync/core/`. Docker: lịch `ops/docker/scheduler.py` (cùng giờ các
   systemd timer của VPS).
 * **TKQC tự động** (04/11/2026): mỗi vòng sync hỏi Meta mọi token (Khoá kết nối: `TALPHA_META_ACCESS_TOKEN`,
-  `_2`, `_3` — nhiều BM / app) thấy TKQC nào, ghi bảng `tkqc`, kéo chi tiêu của TẤT CẢ vào `fb_ads_tat_ca`
+  `_2`, `_3` — nhiều BM / app) thấy TKQC nào, ghi bảng `tkqc`, kéo chi tiêu của TẤT CẢ vào `fb_ads_all`
   (`sync/core/ad_accounts.py` ↔ `lib/talpha/ad-accounts.ts`). `fb_ads_data` / `fb_adset_data` / `fb_campaign_data` là VIEW
   chỉ gồm TKQC loại vao_bao_cao (`talpha_rules.json → tkqc_loai`) — đọc tên cũ là tự đúng. Đổi loại ở
   `/admin` → TKQC, có tác dụng ngay. **Đừng ghi thẳng vào `fb_ads_data`** — nó là view.

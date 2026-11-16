@@ -8,7 +8,7 @@
  * import giữa các file luôn ghi đuôi `.ts`.
  *
  * Tên khoá của kết quả (ky, chay_luc, ket_luan, nguon, so_dong…) GIỮ NGUYÊN: kết quả mỗi kỳ được
- * lưu trong bảng app_documents (dòng ads_recon, ads_recon_kho) và màn Thanh toán quảng cáo đọc
+ * lưu trong bảng app_documents (dòng ads_recon, ads_recon_rows) và màn Thanh toán quảng cáo đọc
  * lại — đổi khoá là kỳ cũ hiện trống. Đổi chúng là việc của migration dữ liệu, không phải ở đây.
  */
 

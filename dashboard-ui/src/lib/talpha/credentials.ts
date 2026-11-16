@@ -243,12 +243,12 @@ async function verifyMeta(tok: string, envVar: string): Promise<VerifyResult> {
     const adAccounts = await graph("me/adaccounts", tok, { fields: "account_id", limit: "500" });
     const readableIds = new Set((adAccounts.data || []).map((a: { account_id: string }) => String(a.account_id)));
     // Import muộn: ad-accounts.ts đọc khoá qua file này — import thẳng là vòng lặp module.
-    let reportingAccounts: { id: string; ten: string; bien_token: string | null }[] = [];
+    let reportingAccounts: { id: string; name: string; token_env_var: string | null }[] = [];
     try {
         reportingAccounts = await (await import("@/lib/talpha/ad-accounts")).reportingAdAccounts(false);
     } catch { /* chưa có kho số / danh bạ — chỉ báo số TK đọc được */ }
     // Chỉ so các TK mà CHÍNH biến này đang đọc — token phụ không thấy TK của token chính là đương nhiên.
-    const missing = reportingAccounts.filter((t) => (t.bien_token || META_TOKEN_VARS[0]) === envVar && !readableIds.has(t.id));
+    const missing = reportingAccounts.filter((t) => (t.token_env_var || META_TOKEN_VARS[0]) === envVar && !readableIds.has(t.id));
     let expiry: string | null = null;
     try {
         const exp = (await graph("debug_token", tok, { input_token: tok }))?.data?.expires_at;
@@ -257,7 +257,7 @@ async function verifyMeta(tok: string, envVar: string): Promise<VerifyResult> {
     return {
         ok: readableIds.size > 0,
         chi_tiet: `${me.name || "Token"} đọc được ${readableIds.size} TKQC — sync kéo tất cả`,
-        canh_bao: missing.length ? `TKQC đang vào báo cáo mà token này KHÔNG thấy: ${missing.map((t) => t.ten || t.id).join(", ")}` : undefined,
+        canh_bao: missing.length ? `TKQC đang vào báo cáo mà token này KHÔNG thấy: ${missing.map((t) => t.name || t.id).join(", ")}` : undefined,
         het_han: expiry,
     };
 }

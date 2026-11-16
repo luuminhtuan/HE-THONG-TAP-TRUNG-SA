@@ -157,7 +157,7 @@ t("ai đăng nhập cũng đọc được markets, me, report-config", () => {
 
 console.log("── /api/query: câu SQL dựng ở trình duyệt (Postgres, 04/11/2026) ──");
 // Mọi bảng / view khác trong database — route lấy danh sách lúc chạy.
-const KHAC = ["sale_order_raw", "order_items_raw", "fb_ads_data_raw", "bao_cao_tab", "partner_orders",
+const KHAC = ["sale_order_raw", "order_items_raw", "fb_ads_data_raw", "monthly_report_tabs", "partner_orders",
     "product_catalog", "vw_product_pnl", "sync_health", "schema_migrations"];
 const sc = (sql, a = loc, ds = KHAC) => A.scopeQuery(sql, a, ds);
 t("giám đốc và người xem đủ ba nước: câu giữ nguyên", () => {
@@ -206,9 +206,9 @@ t("đường vòng tới dữ liệu đều bị chặn", () => {
     for (const s of xau) assert.ok(!sc(s).ok, s);
 });
 t("chữ trùng tên bảng nằm TRONG chuỗi hoặc chú thích không làm hỏng câu", () => {
-    const r = sc("SELECT 'sale_order_raw' AS s, 'it''s vw_orders_std' AS k -- pg_stats bao_cao_tab\nFROM vw_orders_std");
+    const r = sc("SELECT 'sale_order_raw' AS s, 'it''s vw_orders_std' AS k -- pg_stats monthly_report_tabs\nFROM vw_orders_std");
     assert.ok(r.ok, r.error);
-    assert.ok(r.sql.includes("'it''s vw_orders_std'") && r.sql.includes("-- pg_stats bao_cao_tab"), r.sql);
+    assert.ok(r.sql.includes("'it''s vw_orders_std'") && r.sql.includes("-- pg_stats monthly_report_tabs"), r.sql);
 });
 t("câu thật của 4 tab chạy được với leader", () => {
     const cau = [

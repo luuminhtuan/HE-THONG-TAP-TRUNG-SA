@@ -1829,7 +1829,7 @@
     }
   },
   "tkqc_loai": {
-    "_note": "04/11/2026 (Postgres): KHÔNG còn khai danh sách TKQC bằng tay ở talpha.yaml. Mỗi vòng sync hỏi Meta token đọc được TKQC nào (/me/adaccounts), kéo chi tiêu của TẤT CẢ vào bảng fb_ads_tat_ca, ghi danh bạ vào bảng tkqc. Mỗi TKQC một LOẠI: chỉ loại có vao_bao_cao = true mới vào báo cáo (view fb_ads_data → mọi tab, báo cáo tháng, bot). Đổi loại ở /admin → TKQC, có tác dụng ngay. TKQC mới thấy lần đầu nhận loại theo gan_san, không có thì theo tiền tệ: VND → mac_dinh, tiền khác → loai_tien_khac (chi tiêu Meta trả theo tiền của TK; engine coi là VND — TK Canada USD từng ra 110 đồng thay vì 109,77 USD, 20/09/2026).",
+    "_note": "04/11/2026 (Postgres): KHÔNG còn khai danh sách TKQC bằng tay ở talpha.yaml. Mỗi vòng sync hỏi Meta token đọc được TKQC nào (/me/adaccounts), kéo chi tiêu của TẤT CẢ vào bảng fb_ads_all, ghi danh bạ vào bảng tkqc. Mỗi TKQC một LOẠI: chỉ loại có vao_bao_cao = true mới vào báo cáo (view fb_ads_data → mọi tab, báo cáo tháng, bot). Đổi loại ở /admin → TKQC, có tác dụng ngay. TKQC mới thấy lần đầu nhận loại theo gan_san, không có thì theo tiền tệ: VND → mac_dinh, tiền khác → loai_tien_khac (chi tiêu Meta trả theo tiền của TK; engine coi là VND — TK Canada USD từng ra 110 đồng thay vì 109,77 USD, 20/09/2026).",
     "mac_dinh": "antalo",
     "loai_tien_khac": "khac",
     "loai": {
@@ -1843,7 +1843,7 @@
     }
   },
   "report_drive": {
-    "_note": "Sỹ Anh chốt 01/10/2026: MỖI THÁNG MỘT THƯ MỤC. Thư mục gốc 'CÔNG TY ANTALO / BÁO CÁO ADS ANTALO' chứa 'Tháng 9', 'Tháng 10'… Trong thư mục tháng: file 'TỔNG TEAM THÁNG n' + mỗi người một thư mục (LOC, THAI…) chứa '<NƯỚC> T<n>' + file có chữ TEST. format_all.py (ops/talpha_reports/report_files.py) tự tìm bộ file của tháng đang chạy trong đó (chỉ khi có khoá Google — số cho dashboard và bot ghi ở bảng Postgres bao_cao_tab, không cần file) — không còn ID cố định, nên không bao giờ ghi số tháng này vào file tháng khác. Thư mục gốc PHẢI share Editor cho service account talpha-dashboard@cty-507710.iam.gserviceaccount.com. Service account không tạo được file (quota Drive = 0) — file tháng mới do người tạo, hoặc chạy Apps Script ops/talpha_reports/create_month_files.gs.",
+    "_note": "Sỹ Anh chốt 01/10/2026: MỖI THÁNG MỘT THƯ MỤC. Thư mục gốc 'CÔNG TY ANTALO / BÁO CÁO ADS ANTALO' chứa 'Tháng 9', 'Tháng 10'… Trong thư mục tháng: file 'TỔNG TEAM THÁNG n' + mỗi người một thư mục (LOC, THAI…) chứa '<NƯỚC> T<n>' + file có chữ TEST. format_all.py (ops/talpha_reports/report_files.py) tự tìm bộ file của tháng đang chạy trong đó (chỉ khi có khoá Google — số cho dashboard và bot ghi ở bảng Postgres monthly_report_tabs, không cần file) — không còn ID cố định, nên không bao giờ ghi số tháng này vào file tháng khác. Thư mục gốc PHẢI share Editor cho service account talpha-dashboard@cty-507710.iam.gserviceaccount.com. Service account không tạo được file (quota Drive = 0) — file tháng mới do người tạo, hoặc chạy Apps Script ops/talpha_reports/create_month_files.gs.",
     "root_folder_id": "1AW2xgJ-6kQXxjA04VSpjJjeLEe1IcOV6"
   },
   "_todo": [

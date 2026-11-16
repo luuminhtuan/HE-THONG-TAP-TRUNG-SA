@@ -202,24 +202,24 @@ class TestWriteAds:
 
     def test_latest_version_wins_days_outside_window_kept(self, pg):
         pg_writer.write_ads(pg, [self._ad("a", "2026-10-31", 100.0, "t1"), self._ad("a", "2026-11-01", 50.0, "t1")],
-                          "fb_ads_tat_ca", "ad_id")
-        n = pg_writer.write_ads(pg, [self._ad("a", "2026-11-01", 80.0, "t2")], "fb_ads_tat_ca", "ad_id")
+                          "fb_ads_all", "ad_id")
+        n = pg_writer.write_ads(pg, [self._ad("a", "2026-11-01", 80.0, "t2")], "fb_ads_all", "ad_id")
         assert n == 2
-        assert dict((str(d), s) for d, s in pg.execute("SELECT date, spend FROM fb_ads_tat_ca")) == {
+        assert dict((str(d), s) for d, s in pg.execute("SELECT date, spend FROM fb_ads_all")) == {
             "2026-10-31": 100.0, "2026-11-01": 80.0}
 
     def test_invalid_id_col_rejected(self, pg):
         with pytest.raises(ValueError):
-            pg_writer.write_ads(pg, [], "fb_ads_tat_ca", "date; DROP")
+            pg_writer.write_ads(pg, [], "fb_ads_all", "date; DROP")
 
 
 class TestReplaceTable:
     def test_replace_and_zero_rows_keeps_old_table(self, pg):
-        pg_writer.replace_table(pg, "fb_campaign_tat_ca", [{"campaign_id": "1"}, {"campaign_id": "2"}])
-        pg_writer.replace_table(pg, "fb_campaign_tat_ca", [{"campaign_id": "3"}])
-        assert [r[0] for r in pg.execute("SELECT campaign_id FROM fb_campaign_tat_ca")] == ["3"]
-        pg_writer.replace_table(pg, "fb_campaign_tat_ca", [])
-        assert _count(pg, "fb_campaign_tat_ca") == 1
+        pg_writer.replace_table(pg, "fb_campaign_all", [{"campaign_id": "1"}, {"campaign_id": "2"}])
+        pg_writer.replace_table(pg, "fb_campaign_all", [{"campaign_id": "3"}])
+        assert [r[0] for r in pg.execute("SELECT campaign_id FROM fb_campaign_all")] == ["3"]
+        pg_writer.replace_table(pg, "fb_campaign_all", [])
+        assert _count(pg, "fb_campaign_all") == 1
 
     def test_partner_orders_blank_date_and_utc_time(self, pg):
         pg_writer.replace_table(pg, "partner_orders", [{"order_no": "A1", "order_date": "", "ship_date": "2026-11-02",
@@ -233,6 +233,6 @@ class TestAdDictionary:
         pg_writer.write_orders(pg, [_order(1, ad_id="111"), _order(2, p_utm_term="120200000000001", ad_id="222"),
                                _order(3, ad_id="333")], [])
         pg_writer.write_ads(pg, [{"ad_id": "111", "account_id": "1", "date": "2026-11-01", "sync_time": "t"}],
-                          "fb_ads_tat_ca", "ad_id")
+                          "fb_ads_all", "ad_id")
         pg_writer.insert_rows(pg, "ad_dictionary", [{"ad_id": "333", "status": "ok"}])
         assert pg_writer.ad_ids_to_lookup(pg) == ["120200000000001"]

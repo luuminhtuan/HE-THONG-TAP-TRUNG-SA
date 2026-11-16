@@ -234,18 +234,18 @@ def collect_cells(pg, date_from: str, date_to: str) -> ReportCells:
     PANCAKE_MESS = _add_pancake_messages(INDEX_ADS, date_from, date_to, CAMP_TAB, cell, cell_test)
     ad2nv, test_ads, ad2camp = _ad_owner_lookup(Q, date_from, date_to)
     purely_test_pages=test_pages-main_pages  # page CHỈ chạy camp test → đơn không ad_id trên page đó = test
-    ORDERS=Q(f"""SELECT id, ngay_theo_mui(inserted_at,'{POS_TZ}') d,
+    ORDERS=Q(f"""SELECT id, date_in_tz(inserted_at,'{POS_TZ}') d,
     safe_json(marketer) ->> 'name' nm, shop_label, page_id, page_name, seller_name,
     ad_id, adset_id, status_name,
     COALESCE(cod,0) cod, CASE WHEN status_category='{GTC_CAT}' THEN COALESCE(cod,0) ELSE 0 END cod_gtc
   FROM sale_order
-  WHERE ngay_theo_mui(inserted_at,'{POS_TZ}') BETWEEN '{date_from}' AND '{date_to}' AND status_category NOT IN ('HUY','DON_THO')
+  WHERE date_in_tz(inserted_at,'{POS_TZ}') BETWEEN '{date_from}' AND '{date_to}' AND status_category NOT IN ('HUY','DON_THO')
     AND NOT {sql_is_empty_order()}
   ORDER BY d DESC, shop_label, id""")
     # Đơn TRỐNG (không sản phẩm, 0 tiền) KHÔNG tính vào số đơn — Sỹ Anh chốt 17/09/2026, xem la_don_trong.
     # Không bỏ lặng lẽ: đếm lại để in cuối log.
     EMPTY_ORDERS=Q(f"""SELECT shop_label, COUNT(*) n FROM sale_order
-  WHERE ngay_theo_mui(inserted_at,'{POS_TZ}') BETWEEN '{date_from}' AND '{date_to}' AND status_category NOT IN ('HUY','DON_THO')
+  WHERE date_in_tz(inserted_at,'{POS_TZ}') BETWEEN '{date_from}' AND '{date_to}' AND status_category NOT IN ('HUY','DON_THO')
     AND {sql_is_empty_order()} GROUP BY 1 ORDER BY 1""")
     MATCH_COUNTS = _add_orders(ORDERS, PAGE_INDEX, POS_NAMES, CAMP_TAB, ad2nv, test_ads, ad2camp,
                                purely_test_pages, cell, cell_test)

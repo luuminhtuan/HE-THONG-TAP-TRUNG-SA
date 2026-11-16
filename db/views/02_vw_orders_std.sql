@@ -95,11 +95,11 @@ ad_tz AS (
     FROM (
         SELECT
             CAST(f.ad_id AS text) AS ad_id_str,
-            -- Múi giờ Meta báo cho TKQC (bảng tkqc, sync ghi mỗi vòng); TKQC cũ chưa có trong bảng thì
+            -- Múi giờ Meta báo cho TKQC (bảng ad_accounts, sync ghi mỗi vòng); TKQC cũ chưa có trong bảng thì
             -- theo config/projects/talpha.yaml (ad_account_timezones), sinh tự động lúc dựng view.
-            COALESCE(tk.mui_gio, {AD_TZ_CASE}) AS tz
-        FROM fb_ads_tat_ca f
-        LEFT JOIN tkqc tk ON tk.account_id = f.account_id
+            COALESCE(tk.timezone_name, {AD_TZ_CASE}) AS tz
+        FROM fb_ads_all f
+        LEFT JOIN ad_accounts tk ON tk.account_id = f.account_id
         WHERE f.ad_id IS NOT NULL
     ) t
     GROUP BY ad_id_str
@@ -115,7 +115,7 @@ base AS (
         o.shop_label,
         o.order_currency,
         -- Gom ngày theo tz của ad account (POS day = Meta day). inserted_at = UTC naive.
-        ngay_theo_mui(o.inserted_at, COALESCE(atz.tz, 'Asia/Ho_Chi_Minh')) AS order_date,
+        date_in_tz(o.inserted_at, COALESCE(atz.tz, 'Asia/Ho_Chi_Minh')) AS order_date,
         o.status_category,
         o.status_name,
 

@@ -41,11 +41,16 @@ def _read_json(p: Path):
         return json.load(fh)
 
 
+# File cũ tên tiếng Việt → tên dòng app_documents sau migration 0008 (16/11/2026). Máy chủ chuyển sang
+# Postgres SAU đợt đổi tên vẫn còn data/<tên cũ>.json — nhập vào tên cũ thì code mới không thấy dòng đó.
+LEGACY_DOC_NAMES = {"chi_phi_van_hanh": "operating_expenses", "ads_recon_kho": "ads_recon_rows"}
+
+
 def import_app_documents(conn, repo: Path) -> list:
     out = []
     folder = repo / "data"
     for p in sorted(folder.glob("*.json")) if folder.is_dir() else []:
-        name = p.stem
+        name = LEGACY_DOC_NAMES.get(p.stem, p.stem)
         source = f"data/{p.name}"
         if p.name == "thi_truong.json" or not DOC_NAME_RE.match(name) or _already_imported(conn, source):
             continue

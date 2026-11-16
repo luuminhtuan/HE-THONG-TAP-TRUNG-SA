@@ -82,7 +82,7 @@ export async function query<T = any>(sql: string, params?: Record<string, unknow
 // ─── Câu SQL dựng ở trình duyệt (/api/query) ───────────────────────────────────────────
 // Đăng nhập bằng vai CHỈ ĐỌC riêng (migration 0003), KHÔNG dùng tài khoản chủ rồi SET ROLE: phiên
 // của tài khoản quản trị thì câu SQL tự đổi vai ngược lại được bằng set_config('role', …).
-export type ReadOnlyRole = "talpha_doc" | "talpha_doc_nuoc";
+export type ReadOnlyRole = "talpha_readonly" | "talpha_readonly_market";
 const readOnlyPools = new Map<ReadOnlyRole, Pool>();
 
 function getReadOnlyPool(role: ReadOnlyRole): Pool {

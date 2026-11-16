@@ -99,7 +99,7 @@ gõ `/baocao` ở đó bot im, không lộ số ra ngoài.
 
 Cùng máy chủ với dashboard, gọi `http://localhost:3000`:
 
-* **Số đầu bài** mọi tin: `/api/talpha/sheet-report` — đọc bảng `bao_cao_tab`, nơi `format_all.py`
+* **Số đầu bài** mọi tin: `/api/talpha/sheet-report` — đọc bảng `monthly_report_tabs`, nơi `format_all.py`
   ghi các tab **TỔNG TEAM THÁNG n** cùng lúc với file Google Sheet CEO xem. Tin và Sheet không lệch được.
 * **Chi tiết từng campaign**: `/api/talpha/realtime` (Meta + POS live). Chủ campaign tính
   **đúng luật của Sheet** (`rules.js → chuCamp`), nên cộng lại khớp số đầu bài. Route lỗi thì

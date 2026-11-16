@@ -6,7 +6,7 @@
 // Vì sao cần: bot từng tự tính lại số rồi gửi lên nhóm, và mỗi lần rule đổi là tin nhắn
 // lệch với Sheet (01/09: lệch cả camp test lẫn cách gán đơn; rồi lệch tiếp vì hai bên
 // gom ngày theo hai múi giờ khác nhau). Nay chỉ MỘT chỗ tính: format_all.py dựng các tab
-// của file TỔNG TEAM rồi ghi vào bảng Postgres bao_cao_tab (04/11/2026 — trước đó đọc thẳng
+// của file TỔNG TEAM rồi ghi vào bảng Postgres monthly_report_tabs (04/11/2026 — trước đó đọc thẳng
 // file Sheet qua Google Drive); có khoá Google thì ghi thêm lên Sheet. Ô nào cũng đúng như ô
 // trên Sheet.
 //
@@ -33,12 +33,12 @@ export type Tab = { title: string; head: string[]; rows: unknown[][] };
 
 /** Các tab TỔNG TEAM của một tháng ('YYYY-MM'). Tháng chưa có số (format_all chưa chạy) → null. */
 export async function readMonthTabs(yearMonth: string): Promise<Tab[] | null> {
-    const rows = await query<{ ten_tab: string; hang: unknown[][] }>(
-        "SELECT ten_tab, hang FROM bao_cao_tab WHERE thang = @thang AND tep = 'tong_team' ORDER BY thu_tu",
-        { thang: yearMonth });
+    const rows = await query<{ tab_name: string; rows: unknown[][] }>(
+        "SELECT tab_name, rows FROM monthly_report_tabs WHERE month = @month AND report_key = 'tong_team' ORDER BY tab_order",
+        { month: yearMonth });
     if (!rows.length) return null;
     return rows
-        .map((r) => ({ title: r.ten_tab, head: (r.hang[0] || []).map((h) => String(h ?? "").trim()), rows: r.hang.slice(1) }))
+        .map((r) => ({ title: r.tab_name, head: (r.rows[0] || []).map((h) => String(h ?? "").trim()), rows: r.rows.slice(1) }))
         // Chỉ tab SỐ LIỆU (có cột tiền ads).
         .filter((t) => t.head.includes("TỔNG TIỀN ADS"));
 }

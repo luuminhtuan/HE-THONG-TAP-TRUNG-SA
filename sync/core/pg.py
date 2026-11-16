@@ -49,15 +49,23 @@ def run_migrations(conn, folder: Path = MIGRATIONS_DIR) -> list:
     try:
         conn.execute(
             "CREATE TABLE IF NOT EXISTS schema_migrations ("
-            " ten text PRIMARY KEY, chay_luc timestamptz NOT NULL DEFAULT now())")
-        applied = {r[0] for r in conn.execute("SELECT ten FROM schema_migrations")}
+            " name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())")
+        # Kho dựng trước 16/11/2026 có cột tiếng Việt (ten, chay_luc). Đổi ở ĐÂY chứ không trong một file
+        # migration: chính hàm này ghi tên file vào bảng ngay sau khi chạy file — đổi trong migration là
+        # câu INSERT của lượt đó gãy. Đổi tên cột giữ nguyên dữ liệu, chạy lại không làm gì.
+        for old, new in (("ten", "name"), ("chay_luc", "applied_at")):
+            conn.execute(
+                "DO $$ BEGIN IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()"
+                f" AND table_name = 'schema_migrations' AND column_name = '{old}') THEN"
+                f" ALTER TABLE schema_migrations RENAME COLUMN {old} TO {new}; END IF; END $$")
+        applied = {r[0] for r in conn.execute("SELECT name FROM schema_migrations")}
         new_migrations = []
         for f in sorted(Path(folder).glob("*.sql")):
             if f.name in applied:
                 continue
             with conn.transaction():
                 conn.execute(f.read_text(encoding="utf-8"))
-                conn.execute("INSERT INTO schema_migrations (ten) VALUES (%s)", (f.name,))
+                conn.execute("INSERT INTO schema_migrations (name) VALUES (%s)", (f.name,))
             new_migrations.append(f.name)
         return new_migrations
     finally:
@@ -65,20 +73,20 @@ def run_migrations(conn, folder: Path = MIGRATIONS_DIR) -> list:
 
 
 def set_readonly_role_passwords(conn) -> bool:
-    """Cho hai vai chỉ đọc (migration 0003) đăng nhập bằng TALPHA_DOC_PASSWORD — cổng /api/query của
+    """Cho hai vai chỉ đọc (migration 0008) đăng nhập bằng TALPHA_DOC_PASSWORD — cổng /api/query của
     dashboard đăng nhập bằng chúng. Không đặt biến → giữ NOLOGIN, /api/query từ chối chạy."""
     password = (os.environ.get("TALPHA_DOC_PASSWORD") or "").strip()
     if not password:
         return False
-    for role in ("talpha_doc", "talpha_doc_nuoc"):
+    for role in ("talpha_readonly", "talpha_readonly_market"):
         # ALTER ROLE không nhận tham số $1 — ghép chuỗi đã thoát bằng quote_literal của Postgres.
         lit = conn.execute("SELECT quote_literal(%s)", (password,)).fetchone()[0]
         conn.execute(f"ALTER ROLE {role} LOGIN PASSWORD {lit}")
     return True
 
 
-COUNTED_TABLES = ("sale_order", "order_items", "fb_ads_tat_ca", "fb_adset_tat_ca",
-            "fb_campaign_tat_ca", "ad_dictionary", "partner_orders")
+COUNTED_TABLES = ("sale_order", "order_items", "fb_ads_all", "fb_adset_all",
+            "fb_campaign_all", "ad_dictionary", "partner_orders")
 
 
 def count_table_rows(conn) -> list:
@@ -88,8 +96,8 @@ def count_table_rows(conn) -> list:
         column = "synced_at::text" if b == "partner_orders" else "sync_time"
         n, latest = conn.execute(f"SELECT COUNT(*), MAX({column}) FROM {b}").fetchone()
         out.append((b, n, latest))
-    n, latest = conn.execute("SELECT COUNT(*), MAX(thay_lan_cuoi)::text FROM tkqc").fetchone()
-    out.append(("tkqc", n, latest))
+    n, latest = conn.execute("SELECT COUNT(*), MAX(last_seen_at)::text FROM ad_accounts").fetchone()
+    out.append(("ad_accounts", n, latest))
     # Dữ liệu người dùng nhập (migration 0006) — cột "sync gần nhất" là lần sửa gần nhất.
     for b, column in (("app_documents", "updated_at"), ("market_overrides", "updated_at"),
                    ("market_monthly_reports", "written_at"), ("users", "updated_at"),

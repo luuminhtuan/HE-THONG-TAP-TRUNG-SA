@@ -13,7 +13,7 @@ export type AdAccountConfig = {
 };
 
 /** Nhiều token Meta (TKQC ở nhiều BM / app). Thứ tự = ưu tiên: TK đọc bằng token ĐẦU TIÊN thấy nó.
- *  Cùng danh sách với sync/core/ad_accounts.py → BIEN_TOKEN. */
+ *  Cùng danh sách với sync/core/ad_accounts.py → TOKEN_VARS. */
 export const META_TOKEN_VARS = ["TALPHA_META_ACCESS_TOKEN", "TALPHA_META_ACCESS_TOKEN_2", "TALPHA_META_ACCESS_TOKEN_3"];
 
 export const AD_ACCOUNT_CFG: AdAccountConfig = (RULES as unknown as { tkqc_loai?: AdAccountConfig }).tkqc_loai || {};

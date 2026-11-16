@@ -14,7 +14,7 @@ nước và trả lời lệnh gõ trong nhóm. **Bot không tự tính số** �
  bot.js ── vòng rà ──► dựng tin ───────────────────────────────► dashboard (Next.js)
    │                     │                                          │
    │                     │  market-report · sheet-report            ├─ Postgres: market_monthly_reports,
-   │                     │  realtime · pancake-nuoc                 │            bao_cao_tab, sync_health…
+   │                     │  realtime · pancake-nuoc                 │            monthly_report_tabs, sync_health…
    │                     │  tracking · sync-health                  └─ gọi thẳng Meta / POS / Pancake /
    │                     ▼                                             17TRACK / WeShip
    └──── zca-js ────► nhóm Zalo "ADS + VẬN ĐƠN <nước>"
@@ -78,7 +78,7 @@ mốc tự gửi đúng giờ và số đã đủ mới được nhớ — gửi
 | Tin | Nội dung | Nguồn số |
 |---|---|---|
 | Ads (sáng/trưa/chiều/tối, `/baocao`) | Tiền ads · doanh số · %ads · đơn · mess · tỷ lệ chốt; xếp hạng người **trong nước**; dòng "chưa gán cho ai"; ▲▼ | `/api/talpha/market-report?month=` → bảng `market_monthly_reports` (`format_all.py` ghi mỗi giờ, cùng bộ ô với TỔNG TEAM) |
-| Ads — khi bảng trên thiếu, hoặc cũ hơn vòng OK gần nhất quá 45' | Cùng số đầu tin, **không có xếp hạng người** (tin ghi rõ) | `/api/talpha/sheet-report?date=` → bảng `bao_cao_tab`, tab nước của TỔNG TEAM |
+| Ads — khi bảng trên thiếu, hoặc cũ hơn vòng OK gần nhất quá 45' | Cùng số đầu tin, **không có xếp hạng người** (tin ghi rõ) | `/api/talpha/sheet-report?date=` → bảng `monthly_report_tabs`, tab nước của TỔNG TEAM |
 | Ads — chi tiết camp | Mọi camp của nước đó, tên đầy đủ, theo marketer, tiêu nhiều trước. Lỗi thì tin vẫn đi, thiếu phần camp | `/api/talpha/realtime` (Meta + POS gọi thẳng). Một lượt dùng chung cho mọi nước trong 3', lọc nước theo tên camp |
 | Ads Nhật — số mess | Thay số mess của Meta (Meta không báo tin nhắn ở Nhật) | `/api/talpha/pancake-messages` |
 | Tin mỗi giờ (JP) | Ads · tin nhắn · bình luận mới · SĐT · đơn · doanh số **theo page**, "(+N)" so giờ trước | `realtime` + `pancake-nuoc`; tổng giờ trước ở `state.json → gioTruoc` |

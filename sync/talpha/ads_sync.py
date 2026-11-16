@@ -1,5 +1,5 @@
 """
-Kéo chi tiêu Meta Ads (cấp ad + cấp adset) của mọi TKQC → Postgres (fb_ads_tat_ca / fb_adset_tat_ca).
+Kéo chi tiêu Meta Ads (cấp ad + cấp adset) của mọi TKQC → Postgres (fb_ads_all / fb_adset_all).
 
 Tách khỏi talpha_sync.py (16/11/2026) — code chuyển nguyên văn; talpha_sync nhập lại sync_fb_ads
 nên sync_month.py (`ts.sync_fb_ads`) chạy như cũ. Ghi raw chỉ thêm + dựng lại bảng trong MỘT
@@ -194,8 +194,8 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
     # X2: append/rebuild nên account lỗi KHÔNG còn xoá được spend đã có — dòng của
     # account đó chỉ giữ bản cũ. Vẫn raise ở cuối để báo cảnh, nhưng ghi trước đã.
     if all_ads:
-        n_ads = pg_writer.write_ads(_pg(), all_ads, 'fb_ads_tat_ca', 'ad_id')
-        n_adsets = pg_writer.write_ads(_pg(), all_adsets, 'fb_adset_tat_ca', 'adset_id')
+        n_ads = pg_writer.write_ads(_pg(), all_ads, 'fb_ads_all', 'ad_id')
+        n_adsets = pg_writer.write_ads(_pg(), all_adsets, 'fb_adset_all', 'adset_id')
         log.info(f"  ads window {since}→{today} (cửa sổ chỉ làm mới, không xoá lịch sử)")
     else:
         log.warning("  Không fetch được insight ads từ bất kỳ account nào!")

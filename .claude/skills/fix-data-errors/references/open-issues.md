@@ -14,7 +14,7 @@
 | Mã | Lỗi | Mức | Trạng thái | Nhánh Postgres |
 |---|---|---|---|---|
 | X1 | Smart Stop cắt cụt `sale_order` mỗi vòng sync | 🔴 | **ĐÓNG 04/08** (3 chu kỳ verify) | Cơ chế mang sang: `ghi_don` (raw chỉ thêm + dựng lại) |
-| X2 | `fb_ads_data` xoá sạch tháng cũ khi sang tháng mới | 🔴 | **ĐÓNG 05/08** (T5-T7 khớp Meta 0,00%) | Cơ chế mang sang: `ghi_ads` vào `fb_ads_tat_ca_raw`; `fb_ads_data` nay là VIEW |
+| X2 | `fb_ads_data` xoá sạch tháng cũ khi sang tháng mới | 🔴 | **ĐÓNG 05/08** (T5-T7 khớp Meta 0,00%) | Cơ chế mang sang: `ghi_ads` vào `fb_ads_all_raw`; `fb_ads_data` nay là VIEW |
 | X3 | `order_items` thiếu giá + phủ 61% → COGS chỉ 20,7% | 🟡 | ĐANG MỞ | Chưa soát lại sau khi chuyển Postgres (04/11/2026) |
 | X4 | `product_catalog` bẩn — tên SP lọt vào cột `sku` | 🟡 | XỬ LÝ Ở TẦNG VIEW (E2, `00_vw_product_catalog_std.sql`) — bảng thô vẫn giữ sku gốc | Chưa soát lại sau khi chuyển Postgres (04/11/2026) |
 | X5 | `vw_orders_std.cogs_vnd` luôn = 0 (2 đường COGS) | ⚪ | ĐÃ SỬA (E2 — view đọc giá vốn từ rules file, xem chú thích đầu `02_vw_orders_std.sql`) | Chưa soát lại sau khi chuyển Postgres (04/11/2026) |
@@ -158,7 +158,7 @@ SELECT FORMAT_DATE('%Y-%m', date) thang, COUNT(*) dong,
        MIN(CAST(date AS STRING)) tu, MAX(CAST(date AS STRING)) den
 FROM `cty-507710.TALPHA_Dataset.fb_ads_data` GROUP BY 1 ORDER BY 1
 ```
-Postgres (`fb_ads_data` là VIEW chỉ TKQC vào báo cáo — đo đủ mọi TKQC thì đọc `fb_ads_tat_ca`):
+Postgres (`fb_ads_data` là VIEW chỉ TKQC vào báo cáo — đo đủ mọi TKQC thì đọc `fb_ads_all`):
 ```sql
 SELECT to_char(date, 'YYYY-MM') thang, COUNT(*) dong, MIN(date)::text tu, MAX(date)::text den
 FROM fb_ads_data GROUP BY 1 ORDER BY 1;

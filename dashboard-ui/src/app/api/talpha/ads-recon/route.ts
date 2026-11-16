@@ -31,7 +31,7 @@ export const runtime = "nodejs";           // engine đọc .xlsx bằng node:zl
 // ═══════════════════════════════════════════════════════════════════
 
 const STORE = "ads_recon";
-const ROW_STORE = "ads_recon_kho";        // kho dòng giao dịch tích luỹ
+const ROW_STORE = "ads_recon_rows";        // kho dòng giao dịch tích luỹ
 const MAX_PERIODS_KEPT = 52;                     // một năm; kỳ cũ hơn tự rụng khỏi kho
 const MAX_FILES = 12;                    // đủ cho nhiều thẻ + nhiều TKQC trong một kỳ
 
@@ -55,8 +55,8 @@ function cfg(): AdsSettlementConfig {
  *  Kho số lỗi thì engine tự bỏ qua kiểm tra TKQC lạ, không chết. Giữ dạng {projects: {…: {accounts}}}. */
 async function roster(): Promise<Roster | null> {
     try {
-        const rows = await query<{ account_id: string; ten: string | null }>("SELECT account_id, ten FROM tkqc");
-        return { projects: { tkqc: { accounts: rows.map((r) => ({ id: `act_${r.account_id}`, name: r.ten || r.account_id })) } } };
+        const rows = await query<{ account_id: string; name: string | null }>("SELECT account_id, name FROM ad_accounts");
+        return { projects: { ad_accounts: { accounts: rows.map((r) => ({ id: `act_${r.account_id}`, name: r.name || r.account_id })) } } };
     } catch {
         return null;
     }

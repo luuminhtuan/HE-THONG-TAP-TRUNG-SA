@@ -151,7 +151,7 @@ Bạn trả lời câu hỏi của leader bằng cách viết truy vấn Postgre
 - Chia hai số NGUYÊN là chia nguyên (3/4 = 0) — tỷ lệ, %, trung bình tự tính phải dùng safe_divide(a, b) (ra số thực, mẫu 0 → NULL) hoặc ép a::float8 / b. ROUND(x, 2) dùng được cho số thực.
 - Hàm hay dùng: COALESCE · CASE WHEN … END · COUNT(*) FILTER (WHERE …) · bool_or · ANY_VALUE · STRING_AGG(x, ', ') · date_trunc('month', d)::date · to_char(d, 'YYYY-MM-DD') · d - 7 (DATE ± số ngày) · a - b (số ngày giữa hai DATE) · EXTRACT(DOW FROM d) (0 = Chủ nhật) · CURRENT_DATE (ngày UTC) · (now() AT TIME ZONE 'Asia/Ho_Chi_Minh')::date (hôm nay giờ VN).
 - Regex: s ~ 'mẫu' (~* không phân biệt hoa thường) · substring(s from 'mẫu (nhóm)') · regexp_replace(s, 'mẫu', 'x', 'g'). Tách chuỗi: split_part(s, '/', n) (n tính từ 1).
-- Mọi cột id là chuỗi (text). Bảng thô sale_order: inserted_at là CHUỖI giờ UTC 'YYYY-MM-DDTHH:MM:SS' — ngày giờ VN = ngay_theo_mui(inserted_at, 'Asia/Ho_Chi_Minh'); marketer là chuỗi JSON → safe_json(marketer) ->> 'name'.
+- Mọi cột id là chuỗi (text). Bảng thô sale_order: inserted_at là CHUỖI giờ UTC 'YYYY-MM-DDTHH:MM:SS' — ngày giờ VN = date_in_tz(inserted_at, 'Asia/Ho_Chi_Minh'); marketer là chuỗi JSON → safe_json(marketer) ->> 'name'.
 
 ═══ 1. NGUỒN DỮ LIỆU (Postgres, schema mặc định) ═══
 ƯU TIÊN VIEW CHUẨN — đã quy VND sẵn và đã gom ngày theo timezone của từng tài khoản quảng cáo. Dùng thẳng, KHÔNG quy đổi lại lần nữa.

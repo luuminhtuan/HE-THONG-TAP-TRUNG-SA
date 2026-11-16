@@ -110,7 +110,7 @@ export async function GET(req: NextRequest) {
                     safe_json(marketer) ->> 'name' AS tag, COUNT(*) AS n, SUM(COALESCE(cod, 0)) AS cod
              FROM sale_order
              WHERE UPPER(shop_label) = @code
-               AND ngay_theo_mui(inserted_at, 'Asia/Ho_Chi_Minh') = @ngay::date
+               AND date_in_tz(inserted_at, 'Asia/Ho_Chi_Minh') = @ngay::date
                AND status_category NOT IN ('HUY', 'DON_THO')
                AND NOT (COALESCE(CASE WHEN total_quantity ~ '^[[:space:]]*[-+]?([0-9]+[.]?[0-9]*|[.][0-9]+)([eE][-+]?[0-9]+)?[[:space:]]*$'
                                       THEN total_quantity::float8 END, 0) = 0

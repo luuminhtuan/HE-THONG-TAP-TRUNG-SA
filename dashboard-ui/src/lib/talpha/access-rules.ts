@@ -248,7 +248,7 @@ export function checkApi(
 // ═══════════════════════════════════════════════════════════════════
 // /api/query — cổng SQL chung của 4 tab (Marketing, Sức khoẻ QC, Khách hàng, Market Intel).
 // Câu SQL dựng ở trình duyệt nên KHÔNG tin được. Route chạy câu bằng vai CHỈ ĐỌC của Postgres
-// (migration 0003): người xem mọi nước → talpha_doc; người xem một phần nước → talpha_doc_nuoc,
+// (migration 0003): người xem mọi nước → talpha_readonly; người xem một phần nước → talpha_readonly_market,
 // vai mà database chỉ cho đọc đúng 5 bảng/view ở dieuKien() bên dưới. Với người xem một phần, mỗi
 // bảng trong câu còn bị thay bằng một câu con đã lọc theo nước; câu còn đường nào khác tới dữ liệu
 // (tên bảng khác, bảng hệ thống, hàm chạy câu SQL nằm trong chuỗi…) thì từ chối — thà tab trống một
@@ -277,7 +277,7 @@ export function sqlCampaignMarketKey(col = "campaign_name"): string {
 }
 
 /** Bảng → điều kiện lọc theo nước. Bảng không có ở đây = người xem một phần không được đụng
- *  (và vai talpha_doc_nuoc cũng không có quyền đọc — migration 0003 + sync/core/pg_view.py). */
+ *  (và vai talpha_readonly_market cũng không có quyền đọc — migration 0003 + sync/core/pg_view.py). */
 const FILTERABLE_TABLES = ["vw_orders_std", "sale_order", "order_items", "vw_fb_ads_std", "vw_ad_windows"];
 function marketFilterFor(table: string, a: Access): string | null {
     const codes = sqlList(a.codes);

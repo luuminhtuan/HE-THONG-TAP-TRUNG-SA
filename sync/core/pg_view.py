@@ -34,7 +34,7 @@ def _rules() -> dict:
 
 def ad_tz_sql(column: str = "f.account_id") -> str:
     """CASE account_id → múi giờ của TKQC khai tay (talpha.yaml → meta_ads.ad_account_timezones) — DỰ PHÒNG
-    cho TKQC cũ mà bảng tkqc chưa có múi giờ; múi giờ chính lấy từ Meta (tkqc.mui_gio). Đơn gom ngày theo
+    cho TKQC cũ mà bảng ad_accounts chưa có múi giờ; múi giờ chính lấy từ Meta (ad_accounts.timezone_name). Đơn gom ngày theo
     múi của TKQC để ngày POS khớp ngày Meta báo tiền."""
     import yaml
     with open(YAML_FILE, encoding="utf-8") as f:
@@ -186,9 +186,9 @@ def render(name: str) -> str:
     for token, builder in replacements.items():
         if token in sql:
             sql = sql.replace(token, builder())
-    if "{TKQC_MAC_DINH}" in sql or "{TKQC_VAO_BAO_CAO}" in sql:
+    if "{AD_ACCOUNT_DEFAULT_CATEGORY}" in sql or "{AD_ACCOUNT_REPORT_CATEGORIES}" in sql:
         default_type, report_types = ad_account_types()
-        sql = sql.replace("{TKQC_MAC_DINH}", default_type).replace("{TKQC_VAO_BAO_CAO}", report_types)
+        sql = sql.replace("{AD_ACCOUNT_DEFAULT_CATEGORY}", default_type).replace("{AD_ACCOUNT_REPORT_CATEGORIES}", report_types)
     if "{FX_CASE}" in sql or "{FX_KNOWN}" in sql:
         case, known = fx_sql()
         sql = sql.replace("{FX_CASE}", case).replace("{FX_KNOWN}", known)
@@ -221,9 +221,9 @@ def rebuild_views(conn, force: bool = False) -> bool:
     """Dựng lại bộ view nếu luật đổi, hoặc có migration mới (view `SELECT f.*` chốt danh sách cột lúc
     dựng — bảng thêm cột mà không dựng lại là view thiếu cột), hoặc ep=True. Trả True nếu đã dựng."""
     ds, fingerprint = render_all()
-    mig = conn.execute("SELECT COALESCE(string_agg(ten, ',' ORDER BY ten), '') FROM schema_migrations").fetchone()[0]
+    mig = conn.execute("SELECT COALESCE(string_agg(name, ',' ORDER BY name), '') FROM schema_migrations").fetchone()[0]
     fingerprint = hashlib.sha256(f"{fingerprint}|{mig}".encode("utf-8")).hexdigest()[:16]
-    previous = conn.execute("SELECT van_tay FROM view_van_tay WHERE id = 1").fetchone()
+    previous = conn.execute("SELECT fingerprint FROM view_fingerprints WHERE id = 1").fetchone()
     if previous and previous[0] == fingerprint and not force:
         return False
     with conn.transaction():
@@ -231,18 +231,23 @@ def rebuild_views(conn, force: bool = False) -> bool:
             conn.execute(f"DROP VIEW IF EXISTS {name} CASCADE")
         for _, sql in ds:
             conn.execute(sql)
-        # Quyền của hai vai chỉ đọc (migration 0003) mất theo view cũ — cấp lại. talpha_doc_nuoc
+        # Quyền của hai vai chỉ đọc (migration 0008) mất theo view cũ — cấp lại. talpha_readonly_market
         # chỉ được đúng những view mà scopeQuery (access-rules.ts) lọc được theo nước.
-        conn.execute("DO $$ BEGIN EXECUTE format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO talpha_doc', "
+        conn.execute("DO $$ BEGIN EXECUTE format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO talpha_readonly', "
                      "current_schema()); END $$")
         # …trừ bảng riêng (migration 0006): mật khẩu, khoá kết nối, sao kê tiền.
         existing = [r[0] for r in conn.execute(
             "SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename = ANY(%s)",
             (list(PRIVATE_TABLES),))]
         if existing:
-            conn.execute(f"REVOKE ALL ON {', '.join(existing)} FROM talpha_doc, talpha_doc_nuoc")
-        conn.execute("GRANT SELECT ON vw_orders_std, vw_fb_ads_std, vw_ad_windows TO talpha_doc_nuoc")
+            conn.execute(f"REVOKE ALL ON {', '.join(existing)} FROM talpha_readonly, talpha_readonly_market")
+            # Vai chỉ đọc tên cũ (migration 0003) còn trên cụm cho bản code cũ — cũng không được thấy bảng riêng.
+            legacy = [r[0] for r in conn.execute(
+                "SELECT rolname FROM pg_roles WHERE rolname IN ('talpha_doc', 'talpha_doc_nuoc')")]
+            if legacy:
+                conn.execute(f"REVOKE ALL ON {', '.join(existing)} FROM {', '.join(legacy)}")
+        conn.execute("GRANT SELECT ON vw_orders_std, vw_fb_ads_std, vw_ad_windows TO talpha_readonly_market")
         conn.execute(
-            "INSERT INTO view_van_tay (id, van_tay, dung_luc) VALUES (1, %s, now()) "
-            "ON CONFLICT (id) DO UPDATE SET van_tay = EXCLUDED.van_tay, dung_luc = now()", (fingerprint,))
+            "INSERT INTO view_fingerprints (id, fingerprint, built_at) VALUES (1, %s, now()) "
+            "ON CONFLICT (id) DO UPDATE SET fingerprint = EXCLUDED.fingerprint, built_at = now()", (fingerprint,))
     return True

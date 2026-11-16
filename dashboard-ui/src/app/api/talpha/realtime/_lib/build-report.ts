@@ -30,11 +30,11 @@ export async function buildRealtimeReport(request: Request, params: RealtimePara
     const cfg = loadConfig();
     // TKQC: danh bạ tự động (lib/talpha/ad-accounts.ts, 04/11/2026) — TK thuộc loại vào báo cáo mà token còn
     // thấy, tên lấy từ Meta. Trước đó đọc talpha.yaml (ad_account_ids + ad_account_names gõ tay).
-    // Nhiều token Meta: mỗi TK gọi bằng token đã đọc được nó (tkqc.bien_token), thiếu thì token chính.
+    // Nhiều token Meta: mỗi TK gọi bằng token đã đọc được nó (ad_accounts.token_env_var), thiếu thì token chính.
     const adAccounts = await reportingAdAccounts();
     const accountIds = adAccounts.map((t) => `act_${t.id}`);
-    const accountNames: Record<string, string> = Object.fromEntries(adAccounts.map((t) => [`act_${t.id}`, t.ten || `act_${t.id}`]));
-    const tokenVarByAccount = Object.fromEntries(adAccounts.map((t) => [`act_${t.id}`, t.bien_token]));
+    const accountNames: Record<string, string> = Object.fromEntries(adAccounts.map((t) => [`act_${t.id}`, t.name || `act_${t.id}`]));
+    const tokenVarByAccount = Object.fromEntries(adAccounts.map((t) => [`act_${t.id}`, t.token_env_var]));
     const tokenFor = (accId: string) => (tokenVarByAccount[accId] && getCredential(tokenVarByAccount[accId]!)) || cfg.meta_ads.access_token;
     // Shop POS từ talpha_rules.json → markets (cùng nguồn với Kho, 04/11/2026), bỏ nước đã tắt:
     // không gọi POS sống. Đơn cũ của nó vẫn có ở phần đọc kho số (không lọc shop).

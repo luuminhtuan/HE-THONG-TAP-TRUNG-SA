@@ -19,7 +19,7 @@ paths:
   (`sync/core/pg_writer.py`). Fetch hỏng giữa chừng thì bảng cũ còn nguyên.
 - Pattern xoá-trước-rồi-mới-fetch bị **CẤM** — đã mất trắng dữ liệu ngày 06/07/2026 vì nó.
 - `fb_ads_data`, `fb_adset_data`, `fb_campaign_data` là **VIEW** (chỉ TKQC loại vào báo cáo).
-  Ghi thì ghi vào bảng gốc của TKQC (`fb_ads_tat_ca`…) qua engine sync — đừng ghi thẳng vào view.
+  Ghi thì ghi vào bảng gốc của TKQC (`fb_ads_all`…) qua engine sync — đừng ghi thẳng vào view.
 - `docker compose down -v` xoá volume `pgdata` = mất cả kho số. Không chạy khi chưa được dặn.
 
 ## 2. Bảng và view
@@ -41,7 +41,7 @@ paths:
 3. Tên cột không trong nháy bị hạ chữ thường (`AS cpoChung` → `cpochung`). Đặt `cpo_chung`.
 4. Nháy kép `"…"` là TÊN cột / bảng, không phải chuỗi. Chuỗi dùng nháy đơn.
 5. `ORDER BY … DESC` xếp NULL lên ĐẦU — ghi `NULLS LAST` khi thứ tự quyết định số.
-6. Ngày theo giờ VN: `ngay_theo_mui(chuỗi giờ UTC, 'Asia/Ho_Chi_Minh')`. Ngày giờ của đơn
+6. Ngày theo giờ VN: `date_in_tz(chuỗi giờ UTC, 'Asia/Ho_Chi_Minh')`. Ngày giờ của đơn
    (`inserted_at`, `updated_at`, `sync_time`) lưu dạng CHUỖI.
 
 ## 4. Luật nghiệp vụ trong câu SQL

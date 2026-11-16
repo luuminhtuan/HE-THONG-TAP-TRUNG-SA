@@ -92,7 +92,7 @@ export async function POST(request: Request) {
         // ═══ PHÂN QUYỀN THEO TEAM (05/10/2026) ═══
         // Câu SQL dựng ở trình duyệt. Người chỉ xem một phần nước: mỗi bảng bị thay bằng
         // câu con đã lọc theo nước của họ (lib/talpha/access-rules.ts → scopeQuery), và câu chạy
-        // bằng vai talpha_doc_nuoc — database chỉ cho vai này đọc đúng các bảng lọc được.
+        // bằng vai talpha_readonly_market — database chỉ cho vai này đọc đúng các bảng lọc được.
         const a = await getAccess(request);
         if (!a) return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
         let sql: string = sqlText;
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
             sql = scoped.sql;
         }
 
-        const rows = await queryReadOnly(sql, seesAll ? "talpha_doc" : "talpha_doc_nuoc", params || undefined);
+        const rows = await queryReadOnly(sql, seesAll ? "talpha_readonly" : "talpha_readonly_market", params || undefined);
         return NextResponse.json({ data: rows });
     } catch (error: any) {
         console.error("API Error:", error);

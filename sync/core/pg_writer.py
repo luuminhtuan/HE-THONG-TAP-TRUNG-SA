@@ -267,7 +267,7 @@ def write_ads(conn, rows: list, table: str, id_col: str) -> int:
 
 
 def ad_ids_to_lookup(conn, orders_table: str = "sale_order", limit: int = 600) -> list:
-    """ad_id nằm trên đơn mà chưa có trong chi tiêu (mọi TKQC, fb_ads_tat_ca) lẫn ad_dictionary —
+    """ad_id nằm trên đơn mà chưa có trong chi tiêu (mọi TKQC, fb_ads_all) lẫn ad_dictionary —
     câu đầu của sync_ad_dictionary (X9)."""
     return [r[0] for r in conn.execute(f"""
         SELECT id FROM (
@@ -279,6 +279,6 @@ def ad_ids_to_lookup(conn, orders_table: str = "sale_order", limit: int = 600) -
             FROM {_safe_ident(orders_table)}
         ) can
         WHERE id IS NOT NULL
-          AND id NOT IN (SELECT ad_id FROM fb_ads_tat_ca WHERE ad_id IS NOT NULL)
+          AND id NOT IN (SELECT ad_id FROM fb_ads_all WHERE ad_id IS NOT NULL)
           AND id NOT IN (SELECT ad_id FROM ad_dictionary WHERE ad_id IS NOT NULL)
         LIMIT %s""", (int(limit),))]

@@ -25,7 +25,7 @@ Bản đồ nghiệp vụ đầy đủ trong repo: **`DASHBOARD_MAP.md`** — đ
 Meta API (mọi TKQC token đọc được) ─┐
                                      ├─ sync :00 mỗi giờ ─► kho số ─┬─ /api/query ─► tab báo cáo
 POS Poscake (mỗi nước một shop) ────┘   talpha_sync.py              │
-                      vòng báo cáo :20 ─ format_all.py ─► bảng bao_cao_tab (+ Google Sheets nếu có khoá)
+                      vòng báo cáo :20 ─ format_all.py ─► bảng monthly_report_tabs (+ Google Sheets nếu có khoá)
                                                                     └─► Tổng quan, P&L, Marketer, bot Zalo
 
 Meta API + POS ──live──► /api/talpha/realtime   ─► Ads Command Center

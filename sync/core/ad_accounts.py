@@ -4,7 +4,7 @@ sync/core/ad_accounts.py — danh bạ TKQC tự động (04/11/2026).
 Trước: danh sách TKQC gõ tay ở config/projects/talpha.yaml. Token đổi, BM đổi, TK chết / TK mới là phải
 sửa file rồi deploy — 28/10 và 03/11/2026 đều mất nửa ngày chi tiêu vì danh sách lệch với token.
 Nay mỗi vòng sync hỏi Meta token đọc được TKQC nào (/me/adaccounts) rồi kéo chi tiêu của TẤT CẢ; danh bạ
-ghi ở bảng tkqc. Loại của từng TKQC (vào báo cáo hay không) quyết ở talpha_rules.json → tkqc_loai và
+ghi ở bảng ad_accounts. Loại của từng TKQC (vào báo cáo hay không) quyết ở talpha_rules.json → tkqc_loai và
 /admin → TKQC — bản dashboard của file này: dashboard-ui/src/lib/talpha/ad-accounts.ts (cùng luật, có test).
 """
 import logging
@@ -55,8 +55,8 @@ def list_token_ad_accounts(token: str, timeout: int = 60) -> list:
 def write_ad_account_directory(conn, ds: list, rules: dict) -> list:
     """Ghi danh bạ: TKQC mới thì thêm với loại lần đầu; TKQC đã có thì cập nhật tên / trạng thái / múi
     giờ / token đọc nó / lần cuối thấy, GIỮ loại + ghi chú. Mỗi dòng của `ds` là dict Meta trả, kèm
-    "bien_token" nếu có. Trả danh sách TKQC MỚI [(account_id, tên, loại)]."""
-    existing = {r[0] for r in conn.execute("SELECT account_id FROM tkqc")}
+    "token_env_var" nếu có. Trả danh sách TKQC MỚI [(account_id, tên, loại)]."""
+    existing = {r[0] for r in conn.execute("SELECT account_id FROM ad_accounts")}
     new_accounts = []
     with conn.transaction():
         for a in ds:
@@ -66,21 +66,21 @@ def write_ad_account_directory(conn, ds: list, rules: dict) -> list:
             name, currency_code = a.get("name") or "", (a.get("currency") or "").upper()
             if aid in existing:
                 conn.execute(
-                    "UPDATE tkqc SET ten = %s, trang_thai = %s, tien_te = %s, mui_gio = %s, "
-                    "bien_token = COALESCE(%s, bien_token), thay_lan_cuoi = now() WHERE account_id = %s",
-                    (name, a.get("account_status"), currency_code, a.get("timezone_name"), a.get("bien_token"), aid))
+                    "UPDATE ad_accounts SET name = %s, account_status = %s, currency = %s, timezone_name = %s, "
+                    "token_env_var = COALESCE(%s, token_env_var), last_seen_at = now() WHERE account_id = %s",
+                    (name, a.get("account_status"), currency_code, a.get("timezone_name"), a.get("token_env_var"), aid))
                 continue
             account_type = initial_account_type(aid, currency_code, rules)
             conn.execute(
-                "INSERT INTO tkqc (account_id, ten, trang_thai, tien_te, mui_gio, loai, bien_token) "
+                "INSERT INTO ad_accounts (account_id, name, account_status, currency, timezone_name, category, token_env_var) "
                 "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (aid, name, a.get("account_status"), currency_code, a.get("timezone_name"), account_type, a.get("bien_token")))
+                (aid, name, a.get("account_status"), currency_code, a.get("timezone_name"), account_type, a.get("token_env_var")))
             new_accounts.append((aid, name, account_type))
     return new_accounts
 
 
 def ad_accounts_to_fetch(conn, tokens: list, rules: dict) -> list:
-    """TKQC phải kéo chi tiêu vòng này: [{'id': 'act_…', 'name', 'token', 'bien'}] — MỌI TKQC mọi token thấy,
+    """TKQC phải kéo chi tiêu vòng này: [{'id': 'act_…', 'name', 'token', 'token_env_var'}] — MỌI TKQC mọi token thấy,
     mỗi TK một lần, đọc bằng token ĐẦU TIÊN thấy nó. tokens = cac_token().
     Không token nào hỏi được Meta (token chết…) thì trả các TKQC thấy trong 7 ngày gần nhất để vòng kéo
     báo lỗi đúng tên từng TK thay vì im lặng không kéo gì."""
@@ -95,14 +95,14 @@ def ad_accounts_to_fetch(conn, tokens: list, rules: dict) -> list:
         for a in ds:
             aid = str(a.get("account_id") or "").replace("act_", "")
             if aid and aid not in collected:
-                collected[aid] = {**a, "bien_token": token_var}
+                collected[aid] = {**a, "token_env_var": token_var}
     if not collected:
         log.error("  Không token nào hỏi được danh sách TKQC — kéo theo danh bạ 7 ngày gần nhất")
         tok0 = tokens[0][1] if tokens else ""
-        return [{"id": f"act_{aid}", "name": name or aid, "bien": token_var, "token": token_by_var.get(token_var) or tok0}
+        return [{"id": f"act_{aid}", "name": name or aid, "token_env_var": token_var, "token": token_by_var.get(token_var) or tok0}
                 for aid, name, token_var in conn.execute(
-                    "SELECT account_id, ten, bien_token FROM tkqc WHERE thay_lan_cuoi > now() - interval '7 days' ORDER BY ten")]
+                    "SELECT account_id, name, token_env_var FROM ad_accounts WHERE last_seen_at > now() - interval '7 days' ORDER BY name")]
     for aid, name, category in write_ad_account_directory(conn, list(collected.values()), rules):
         log.warning(f"  TKQC MỚI: {name} (act_{aid}) — loại '{category}'. Xem lại loại ở /admin → TKQC.")
-    return [{"id": f"act_{aid}", "name": a.get("name") or aid, "bien": a["bien_token"], "token": token_by_var[a["bien_token"]]}
+    return [{"id": f"act_{aid}", "name": a.get("name") or aid, "token_env_var": a["token_env_var"], "token": token_by_var[a["token_env_var"]]}
             for aid, a in collected.items()]

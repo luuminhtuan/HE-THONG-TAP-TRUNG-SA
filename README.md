@@ -26,7 +26,7 @@ tự động (mọi TKQC các token Meta đọc được).
 | Giao diện + API | Next.js 16 App Router + React 19 + TailwindCSS — `dashboard-ui/`, không có backend riêng |
 | Kho số | Postgres (`DATABASE_URL`): bảng ở `db/migrations/`, view ở `db/views/` |
 | Kéo số | `sync/talpha/talpha_sync.py` + `sync/core/` — đơn POS + chi tiêu Meta mỗi giờ |
-| Báo cáo tháng | `ops/talpha_reports/format_all.py` → bảng `bao_cao_tab` (+ file Google Sheet nếu có khoá Google) |
+| Báo cáo tháng | `ops/talpha_reports/format_all.py` → bảng `monthly_report_tabs` (+ file Google Sheet nếu có khoá Google) |
 | Bot Zalo | `ops/zalo-alerts/` — mỗi nước một nhóm, tin ads + vận đơn |
 | Luật nghiệp vụ | `config/talpha_rules.json` — tỷ giá, số chia tiền POS, marketer, phí 3PL, giá vốn, phân quyền |
 | Việc nền | Docker: `ops/docker/scheduler.py`. Production: systemd timer trên VPS |

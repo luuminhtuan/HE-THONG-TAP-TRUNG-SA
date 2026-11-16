@@ -10,9 +10,9 @@ import { cn } from "@/lib/utils";
 
 type AccountType = { ma: string; ten: string; vao_bao_cao: boolean };
 type AccountRow = {
-    account_id: string; ten: string | null; trang_thai: number | null; tien_te: string | null; mui_gio: string | null;
-    bien_token: string | null; loai: string; da_xac_nhan: boolean; thay_lan_dau: string; thay_lan_cuoi: string; ghi_chu: string | null;
-    chi_7_ngay: number; chi_30_ngay: number; chi_lan_cuoi: string | null;
+    account_id: string; name: string | null; account_status: number | null; currency: string | null; timezone_name: string | null;
+    token_env_var: string | null; category: string; is_confirmed: boolean; first_seen_at: string; last_seen_at: string; note: string | null;
+    spend_7d: number; spend_30d: number; last_spend_date: string | null;
 };
 
 // account_status của Meta.
@@ -44,8 +44,8 @@ export default function AdAccountsTab() {
             const r = await fetch("/api/talpha/ad-accounts", { cache: "no-store" });
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-            setAccountTypes(j.loai);
-            setAccounts(j.tkqc);
+            setAccountTypes(j.categories);
+            setAccounts(j.accounts);
             setError("");
         } catch (e) {
             setError((e as Error).message);
@@ -61,12 +61,12 @@ export default function AdAccountsTab() {
         setNotice("");
         try {
             const r = await fetch("/api/talpha/ad-accounts", {
-                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "quet" }),
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "scan" }),
             });
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-            const byToken = Object.entries(j.theo_token || {}).map(([b, v]) => `${tokenLabel(b)}: ${typeof v === "number" ? `${v} TK` : `lỗi — ${v}`}`).join(" · ");
-            setNotice(`Đọc được ${j.thay} TKQC (${byToken})${j.moi.length ? ` — ${j.moi.length} TK mới: ${j.moi.map((m: { ten: string }) => m.ten).join(", ")}` : ", không có TK mới"}.`);
+            const byToken = Object.entries(j.per_token || {}).map(([b, v]) => `${tokenLabel(b)}: ${typeof v === "number" ? `${v} TK` : `lỗi — ${v}`}`).join(" · ");
+            setNotice(`Đọc được ${j.seen} TKQC (${byToken})${j.added.length ? ` — ${j.added.length} TK mới: ${j.added.map((m: { name: string }) => m.name).join(", ")}` : ", không có TK mới"}.`);
             await load();
         } catch (e) {
             setError((e as Error).message);
@@ -79,7 +79,7 @@ export default function AdAccountsTab() {
         setSavingId(d.account_id);
         try {
             const r = await fetch("/api/talpha/ad-accounts", {
-                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: d.account_id, loai: typeCode }),
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: d.account_id, category: typeCode }),
             });
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -102,10 +102,10 @@ export default function AdAccountsTab() {
     const findType = (typeCode: string) => accountTypes.find((l) => l.ma === typeCode);
     const typeTotals = accountTypes.map((l) => ({
         ...l,
-        so_tk: accounts.filter((d) => d.loai === l.ma).length,
-        chi_30: accounts.filter((d) => d.loai === l.ma).reduce((s, d) => s + Number(d.chi_30_ngay || 0), 0),
+        so_tk: accounts.filter((d) => d.category === l.ma).length,
+        chi_30: accounts.filter((d) => d.category === l.ma).reduce((s, d) => s + Number(d.spend_30d || 0), 0),
     }));
-    const unreviewedCount = accounts.filter((d) => !d.da_xac_nhan).length;
+    const unreviewedCount = accounts.filter((d) => !d.is_confirmed).length;
 
     return (
         <div className="space-y-6">
@@ -180,33 +180,33 @@ export default function AdAccountsTab() {
                         </thead>
                         <tbody className="divide-y divide-white/[0.05]">
                             {accounts.map((d) => {
-                                const st = d.trang_thai != null ? ACCOUNT_STATUS[d.trang_thai] : undefined;
-                                const l = findType(d.loai);
-                                const stale = Date.now() - Date.parse(d.thay_lan_cuoi) > 2 * 86_400_000;
+                                const st = d.account_status != null ? ACCOUNT_STATUS[d.account_status] : undefined;
+                                const l = findType(d.category);
+                                const stale = Date.now() - Date.parse(d.last_seen_at) > 2 * 86_400_000;
                                 return (
                                     <tr key={d.account_id} className={cn(!l?.vao_bao_cao && "opacity-70")}>
                                         <td className="px-3 py-2.5">
                                             <p className="flex items-center gap-2 font-medium text-foreground">
                                                 <Megaphone className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
-                                                {d.ten || d.account_id}
-                                                {!d.da_xac_nhan && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-500">MỚI</span>}
+                                                {d.name || d.account_id}
+                                                {!d.is_confirmed && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-500">MỚI</span>}
                                             </p>
                                             <p className="mt-0.5 font-mono text-[11px] text-slate-500">
-                                                act_{d.account_id}{d.bien_token ? ` · ${tokenLabel(d.bien_token)}` : ""}{d.tien_te && d.tien_te !== "VND" ? ` · ${d.tien_te}` : ""}{d.mui_gio && d.mui_gio !== "Asia/Ho_Chi_Minh" ? ` · ${d.mui_gio}` : ""}
+                                                act_{d.account_id}{d.token_env_var ? ` · ${tokenLabel(d.token_env_var)}` : ""}{d.currency && d.currency !== "VND" ? ` · ${d.currency}` : ""}{d.timezone_name && d.timezone_name !== "Asia/Ho_Chi_Minh" ? ` · ${d.timezone_name}` : ""}
                                             </p>
                                         </td>
                                         <td className="px-3 py-2.5">
                                             <span className={cn("rounded px-2 py-0.5 text-[11px] font-semibold", st?.mau || "bg-white/[0.06] text-slate-400")}>
-                                                {st?.chu || `Mã ${d.trang_thai ?? "?"}`}
+                                                {st?.chu || `Mã ${d.account_status ?? "?"}`}
                                             </span>
-                                            {stale && <p className="mt-1 text-[11px] text-rose-400">Token không còn thấy từ {formatDate(d.thay_lan_cuoi)}</p>}
+                                            {stale && <p className="mt-1 text-[11px] text-rose-400">Token không còn thấy từ {formatDate(d.last_seen_at)}</p>}
                                         </td>
-                                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{vnd(Number(d.chi_7_ngay))}</td>
-                                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{vnd(Number(d.chi_30_ngay))}</td>
-                                        <td className="px-3 py-2.5 text-slate-400">{d.chi_lan_cuoi ? formatDate(d.chi_lan_cuoi) : "—"}</td>
+                                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{vnd(Number(d.spend_7d))}</td>
+                                        <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{vnd(Number(d.spend_30d))}</td>
+                                        <td className="px-3 py-2.5 text-slate-400">{d.last_spend_date ? formatDate(d.last_spend_date) : "—"}</td>
                                         <td className="px-3 py-2.5">
                                             <select
-                                                value={d.loai}
+                                                value={d.category}
                                                 disabled={savingId === d.account_id}
                                                 onChange={(e) => changeType(d, e.target.value)}
                                                 className="rounded-lg border border-white/[0.1] bg-white/[0.04] px-2 py-1.5 text-xs text-foreground"

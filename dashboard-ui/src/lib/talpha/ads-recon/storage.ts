@@ -10,7 +10,7 @@
  * Chống đếm hai lần bằng KHOÁ của từng dòng, không bằng tên file: tải lại đúng
  * file cũ, hay hai bản xuất chồng ngày nhau, đều không làm tiền nhân đôi.
  *
- * Dòng trong kho được lưu ở bảng app_documents (dòng ads_recon_kho) — khoá `_key` và tên
+ * Dòng trong kho được lưu ở bảng app_documents (dòng ads_recon_rows) — khoá `_key` và tên
  * trường của dòng phải giữ nguyên, nếu không dòng đã cất sẽ không còn nhận ra là trùng.
  */
 import type { SideKind, TxnRow } from "./types.ts";

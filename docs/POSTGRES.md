@@ -64,7 +64,7 @@ thì thêm được hai thứ:
 
 `ops/talpha_reports/format_all.py` giữ nguyên toàn bộ luật tính (gán đơn theo page, tách camp test, chia
 tin nhắn Nhật, lấn nước…), chỉ đổi nguồn sang Postgres. Các tab của file TỔNG TEAM ghi vào bảng
-`bao_cao_tab` TRƯỚC — tab Tổng quan, P&L, Marketer và bot Zalo đọc từ đó (`/api/talpha/sheet-report`) —
+`monthly_report_tabs` TRƯỚC — tab Tổng quan, P&L, Marketer và bot Zalo đọc từ đó (`/api/talpha/sheet-report`) —
 rồi mới ghi Sheet nếu có khoá. Một lần tính, ba nơi cùng số.
 
 ## Bảng và view
@@ -76,33 +76,33 @@ rồi mới ghi Sheet nếu có khoá. Một lần tính, ba nơi cùng số.
   lúc dựng (`sync/core/pg_view.py`, sinh từ `config/talpha_rules.json` + `talpha.yaml`). Đầu mỗi vòng
   sync băm câu SQL đã sinh; khác lần trước là dựng lại trong một transaction.
 * **Vai chỉ đọc** (migration 0003): `/api/query` (4 tab Marketing, Sức khoẻ QC, Khách hàng, Market Intel)
-  và "CEO hỏi" đăng nhập Postgres bằng `talpha_doc` / `talpha_doc_nuoc`, transaction READ ONLY, 30 giây.
+  và "CEO hỏi" đăng nhập Postgres bằng `talpha_readonly` / `talpha_readonly_market`, transaction READ ONLY, 30 giây.
   Mật khẩu: `TALPHA_DOC_PASSWORD` (compose đặt sẵn), đặt lúc `migrate`.
 
 | Bảng | Nội dung |
 |:--|:--|
 | `sale_order`, `order_items` (+ `_raw`) | đơn POS + dòng hàng |
-| `fb_ads_tat_ca`, `fb_adset_tat_ca` (+ `_raw`) | chi tiêu MỌI TKQC theo ad / adset × ngày (đã là VND) |
+| `fb_ads_all`, `fb_adset_all` (+ `_raw`) | chi tiêu MỌI TKQC theo ad / adset × ngày (đã là VND) |
 | `fb_ads_data`, `fb_adset_data`, `fb_campaign_data` | **VIEW** — chỉ TKQC loại vào báo cáo; đọc, không ghi |
 | `tkqc` | danh bạ TKQC tự động: tên, trạng thái Meta, tiền tệ, múi giờ, token đọc nó, **loại** (đổi ở /admin → TKQC) |
-| `fb_campaign_tat_ca`, `ad_dictionary` | ngân sách campaign; ad_id lạ trên đơn |
+| `fb_campaign_all`, `ad_dictionary` | ngân sách campaign; ad_id lạ trên đơn |
 | `partner_orders` | bảng đơn đối tác 3PL (cần khoá Google) |
 | `product_catalog` | danh mục SP — nối biến thể POS → mã SKU (giá vốn) |
 | `inventory_snapshot` | ảnh chụp tồn kho, dự phòng tab Kho (giữ 60 ngày) |
 | `sync_health`, `sync_health_accounts` | sức khoẻ vòng chạy, theo từng TKQC / shop |
-| `bao_cao_tab` | bảng số báo cáo tháng (= nội dung file TỔNG TEAM) |
+| `monthly_report_tabs` | bảng số báo cáo tháng (= nội dung file TỔNG TEAM) |
 
 ## Viết SQL: BigQuery → Postgres
 
 Database có sẵn các hàm giữ nghĩa BigQuery: `safe_divide(a, b)`, `round(số thực, n)`, `safe_ts(chuỗi)`,
-`ngay_theo_mui(chuỗi giờ UTC, 'Asia/Ho_Chi_Minh')`, `safe_json(chuỗi)`.
+`date_in_tz(chuỗi giờ UTC, 'Asia/Ho_Chi_Minh')`, `safe_json(chuỗi)`.
 
 | BigQuery | Postgres |
 |:--|:--|
 | `IFNULL(a, b)` · `IF(c, a, b)` · `COUNTIF(c)` | `COALESCE(a, b)` · `CASE WHEN c THEN a ELSE b END` · `COUNT(*) FILTER (WHERE c)` |
 | `SAFE_DIVIDE(a, b)` · `LOGICAL_OR` | `safe_divide(a, b)` · `bool_or` |
 | `DATE_SUB(d, INTERVAL n DAY)` · `DATE_DIFF(a, b, DAY)` | `d - n` · `a - b` |
-| `DATE(TIMESTAMP(inserted_at), 'Asia/Ho_Chi_Minh')` | `ngay_theo_mui(inserted_at, 'Asia/Ho_Chi_Minh')` |
+| `DATE(TIMESTAMP(inserted_at), 'Asia/Ho_Chi_Minh')` | `date_in_tz(inserted_at, 'Asia/Ho_Chi_Minh')` |
 | `CAST(x AS STRING / INT64 / FLOAT64)` | `x::text / bigint / double precision` |
 | `JSON_EXTRACT_SCALAR(m, '$.name')` | `safe_json(m) ->> 'name'` |
 | `REGEXP_CONTAINS(s, r'p')` · `REGEXP_EXTRACT` · `REGEXP_REPLACE` | `s ~ 'p'` · `substring(s from 'p')` · `regexp_replace(s, 'p', x, 'g')` |

@@ -20,7 +20,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 //
 //   Doanh số · ads  ← file TỔNG TEAM (lib/talpha/team-summary-sheet.ts) — khớp tab Tổng quan
 //   Kiện · giá vốn · phí 3PL ← lib/talpha/income-statement-sources.ts — cùng nguồn Sổ đơn, Tiền COD về
-//   Chi phí vận hành ← data/chi_phi_van_hanh.json (giám đốc nhập ở chính tab này)
+//   Chi phí vận hành ← data/operating_expenses.json (giám đốc nhập ở chính tab này)
 //
 // Ai đăng nhập có tab cũng xem được (Sỹ Anh chốt "tất cả"), nhưng chỉ nước của team mình.
 // Chi phí CHUNG chia theo doanh số của MỌI nước — nên route đọc Sheet KHÔNG cắt team để lấy
@@ -29,7 +29,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // ═══════════════════════════════════════════════════════════════════
 
 type OpexStore = { items: OpexItem[] };
-const OPEX_STORE = "chi_phi_van_hanh";
+const OPEX_STORE = "operating_expenses";
 
 type MarketRow = {
     code: string; ten: string;

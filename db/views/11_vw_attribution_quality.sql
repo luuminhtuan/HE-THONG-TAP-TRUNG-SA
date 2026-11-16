@@ -15,7 +15,7 @@
 --   (COD, chat-sale kéo dài), nên chi hôm nay chưa có đơn hôm nay là bình
 --   thường. Cột này để bắt XU HƯỚNG TỤT, không phải để kết tội một ngày.
 --
--- ▸ Cột `don_fx_khong_biet`: đơn thuộc market chưa khai tỷ giá — mọi số tiền
+-- ▸ Cột `orders_unknown_fx`: đơn thuộc market chưa khai tỷ giá — mọi số tiền
 --   của các đơn đó KHÔNG tin được. Bình thường phải bằng 0.
 --
 -- ▸ Cửa sổ 60 ngày để nhìn được xu hướng chứ không chỉ hiện trạng.
@@ -24,7 +24,7 @@
 -- ═══════════════════════════════════════════════════════════════════
 
 CREATE VIEW vw_attribution_quality AS
-WITH ad_ton_tai AS (
+WITH known_ads AS (
     -- Mọi ad_id từng xuất hiện trong bảng ads, BẤT KỂ ngày. Dùng để tách hai
     -- kiểu "không nối được" vốn hay bị gộp làm một:
     --   • đơn KHÔNG CÓ ad_id                        → chat-sale/organic, bình thường
@@ -32,73 +32,73 @@ WITH ad_ton_tai AS (
     --     lại giữ id cũ, hoặc TKQC nằm ngoài roster 14 tài khoản)
     SELECT DISTINCT ad_id FROM vw_fb_ads_std
 ),
-don_theo_ngay AS (
+orders_by_day AS (
     SELECT
         o.order_date                                                        AS report_date,
-        COUNT(DISTINCT o.order_uid)                                         AS don_hop_le,
-        COUNT(DISTINCT CASE WHEN o.resolved_ad_id IS NOT NULL THEN o.order_uid ELSE NULL END) AS don_co_ad,
+        COUNT(DISTINCT o.order_uid)                                         AS valid_orders,
+        COUNT(DISTINCT CASE WHEN o.resolved_ad_id IS NOT NULL THEN o.order_uid ELSE NULL END) AS orders_with_ad,
         -- X9: có ad_id nhưng bảng ads không hề có ad đó ⇒ vĩnh viễn không nối
         -- được vào chi phí. Khác hẳn đơn không có ad_id.
-        COUNT(DISTINCT CASE WHEN o.resolved_ad_id IS NOT NULL AND a.ad_id IS NULL THEN o.order_uid ELSE NULL END)                               AS don_ad_khong_tra_ve,
-        COUNT(DISTINCT CASE WHEN o.marketer_name != 'unknown' THEN o.order_uid ELSE NULL END)  AS don_co_marketer,
-        COUNT(DISTINCT CASE WHEN o.marketer_group = 'external' THEN o.order_uid ELSE NULL END) AS don_nguoi_ngoai,
-        COUNT(DISTINCT CASE WHEN NOT o.is_fx_known THEN o.order_uid ELSE NULL END)            AS don_fx_khong_biet
+        COUNT(DISTINCT CASE WHEN o.resolved_ad_id IS NOT NULL AND a.ad_id IS NULL THEN o.order_uid ELSE NULL END)                               AS orders_unknown_ad,
+        COUNT(DISTINCT CASE WHEN o.marketer_name != 'unknown' THEN o.order_uid ELSE NULL END)  AS orders_with_marketer,
+        COUNT(DISTINCT CASE WHEN o.marketer_group = 'external' THEN o.order_uid ELSE NULL END) AS orders_external,
+        COUNT(DISTINCT CASE WHEN NOT o.is_fx_known THEN o.order_uid ELSE NULL END)            AS orders_unknown_fx
     FROM vw_orders_std o
-    LEFT JOIN ad_ton_tai a ON o.resolved_ad_id = a.ad_id
+    LEFT JOIN known_ads a ON o.resolved_ad_id = a.ad_id
     WHERE o.is_valid
       AND o.order_date >= (CURRENT_DATE - 60)
     GROUP BY o.order_date
 ),
-don_theo_ad_ngay AS (
+orders_by_ad_day AS (
     SELECT order_date AS report_date, resolved_ad_id AS ad_id,
-           COUNT(DISTINCT order_uid) AS don
+           COUNT(DISTINCT order_uid) AS order_count
     FROM vw_orders_std
     WHERE is_valid AND resolved_ad_id IS NOT NULL
       AND order_date >= (CURRENT_DATE - 60)
     GROUP BY 1, 2
 ),
-chi_theo_ad_ngay AS (
+spend_by_ad_day AS (
     SELECT date AS report_date, ad_id, SUM(spend) AS spend
     FROM vw_fb_ads_std
     WHERE date >= (CURRENT_DATE - 60)
     GROUP BY 1, 2
 ),
-chi_theo_ngay AS (
+spend_by_day AS (
     SELECT
         c.report_date,
         SUM(c.spend)                                    AS spend_vnd,
-        SUM(CASE WHEN COALESCE(o.don, 0) > 0 THEN c.spend ELSE 0 END)       AS spend_co_don_cung_ngay,
-        COUNT(DISTINCT c.ad_id)                         AS so_ad_tieu_tien,
-        COUNT(DISTINCT CASE WHEN COALESCE(o.don, 0) > 0 THEN c.ad_id ELSE NULL END) AS so_ad_co_don
-    FROM chi_theo_ad_ngay c
-    LEFT JOIN don_theo_ad_ngay o USING (report_date, ad_id)
+        SUM(CASE WHEN COALESCE(o.order_count, 0) > 0 THEN c.spend ELSE 0 END)       AS spend_with_same_day_orders,
+        COUNT(DISTINCT c.ad_id)                         AS ads_with_spend,
+        COUNT(DISTINCT CASE WHEN COALESCE(o.order_count, 0) > 0 THEN c.ad_id ELSE NULL END) AS ads_with_orders
+    FROM spend_by_ad_day c
+    LEFT JOIN orders_by_ad_day o USING (report_date, ad_id)
     GROUP BY c.report_date
 )
 SELECT
     COALESCE(d.report_date, c.report_date)                  AS report_date,
 
     -- ─── Chiều ĐƠN (mẫu số: đơn hợp lệ trong ngày) ───
-    d.don_hop_le,
-    d.don_co_ad,
-    ROUND(100 * safe_divide(d.don_co_ad, NULLIF(d.don_hop_le, 0)), 1)      AS pct_don_gan_duoc,
+    d.valid_orders,
+    d.orders_with_ad,
+    ROUND(100 * safe_divide(d.orders_with_ad, NULLIF(d.valid_orders, 0)), 1)      AS pct_orders_attributed,
     -- X9 — có ad_id mà bảng ads không có ad đó. Số này >0 nghĩa là đang mất
     -- đơn khỏi mọi phép tính CPO/ROAS theo quảng cáo, im lặng.
-    d.don_ad_khong_tra_ve,
-    ROUND(100 * safe_divide(d.don_ad_khong_tra_ve, NULLIF(d.don_co_ad, 0)), 1)
-                                                            AS pct_ad_khong_tra_ve,
-    d.don_co_marketer,
-    ROUND(100 * safe_divide(d.don_co_marketer, NULLIF(d.don_hop_le, 0)), 1) AS pct_don_co_marketer,
-    d.don_nguoi_ngoai,
-    d.don_fx_khong_biet,
+    d.orders_unknown_ad,
+    ROUND(100 * safe_divide(d.orders_unknown_ad, NULLIF(d.orders_with_ad, 0)), 1)
+                                                            AS pct_unknown_ad,
+    d.orders_with_marketer,
+    ROUND(100 * safe_divide(d.orders_with_marketer, NULLIF(d.valid_orders, 0)), 1) AS pct_orders_with_marketer,
+    d.orders_external,
+    d.orders_unknown_fx,
 
     -- ─── Chiều TIỀN (mẫu số: tổng chi trong ngày) ───
     ROUND(c.spend_vnd, 0)                                   AS spend_vnd,
-    ROUND(c.spend_co_don_cung_ngay, 0)                      AS spend_co_don_cung_ngay,
-    ROUND(100 * safe_divide(c.spend_co_don_cung_ngay, NULLIF(c.spend_vnd, 0)), 1)
-                                                            AS pct_chi_co_don_cung_ngay,
-    c.so_ad_tieu_tien,
-    c.so_ad_co_don
-FROM don_theo_ngay d
-FULL OUTER JOIN chi_theo_ngay c ON d.report_date = c.report_date
+    ROUND(c.spend_with_same_day_orders, 0)                      AS spend_with_same_day_orders,
+    ROUND(100 * safe_divide(c.spend_with_same_day_orders, NULLIF(c.spend_vnd, 0)), 1)
+                                                            AS pct_spend_with_same_day_orders,
+    c.ads_with_spend,
+    c.ads_with_orders
+FROM orders_by_day d
+FULL OUTER JOIN spend_by_day c ON d.report_date = c.report_date
 ORDER BY report_date DESC;
 

@@ -18,7 +18,7 @@
 Meta API ──┐
            ├─ sync :00 mỗi giờ ─► kho số (Postgres) ─┬─ /api/query ────► tab báo cáo
 POS Poscake┘                                         │
-             vòng báo cáo :20 ───────────────────────┴─ format_all.py ─► bảng bao_cao_tab
+             vòng báo cáo :20 ───────────────────────┴─ format_all.py ─► bảng monthly_report_tabs
                                                         (+ Google Sheets nếu có khoá Google)
 
 Meta API + POS ──live──► /api/talpha/realtime  ─► Ads Command Center

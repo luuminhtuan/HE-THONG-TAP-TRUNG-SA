@@ -1,5 +1,5 @@
 """
-Ngân sách campaign (fb_campaign_tat_ca) + từ điển ad_id (ad_dictionary) — gọi thẳng Graph API của Meta.
+Ngân sách campaign (fb_campaign_all) + từ điển ad_id (ad_dictionary) — gọi thẳng Graph API của Meta.
 
 Tách khỏi talpha_sync.py (16/11/2026) — code chuyển nguyên văn; talpha_sync nhập lại
 sync_campaign_data / sync_ad_dictionary nên sync_month.py chạy như cũ.
@@ -94,7 +94,7 @@ def _lookup_ad_dictionary(api: str, ids: list) -> int:
 
 
 def sync_campaign_data() -> int:
-    """Sync campaign budgets → fb_campaign_tat_ca (view fb_campaign_data lọc theo loại TKQC)."""
+    """Sync campaign budgets → fb_campaign_all (view fb_campaign_data lọc theo loại TKQC)."""
     if not meta_tokens():
         log.error("TALPHA_META_ACCESS_TOKEN not set!")
         return 0
@@ -141,6 +141,6 @@ def sync_campaign_data() -> int:
             log.error(f"  [{acct_id}] Campaign error: {e}")
         time.sleep(0.5)
 
-    n = pg_writer.replace_table(_pg(), 'fb_campaign_tat_ca', all_campaigns)
-    log.info(f"  fb_campaign_tat_ca: {n} rows")
+    n = pg_writer.replace_table(_pg(), 'fb_campaign_all', all_campaigns)
+    log.info(f"  fb_campaign_all: {n} rows")
     return n

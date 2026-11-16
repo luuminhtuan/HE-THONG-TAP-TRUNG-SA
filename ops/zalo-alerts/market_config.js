@@ -42,8 +42,8 @@ function loadMarketOverrides() {
         const out = execFileSync(process.execPath, [path.join(__dirname, "fetch_sync.js"), overridesUrl()],
             { timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] });
         const j = JSON.parse(out.toString("utf8"));
-        loadedFingerprint = typeof j.van_tay === "string" ? j.van_tay : null;
-        const overrides = j.phu || null;
+        loadedFingerprint = typeof j.fingerprint === "string" ? j.fingerprint : null;
+        const overrides = j.overrides || null;
         return overrides && isPlainObject(overrides.markets) && Object.keys(overrides.markets).length ? overrides : null;
     } catch (e) {
         const reason = (e && e.stderr && e.stderr.toString().trim()) || (e && e.message) || e;
@@ -58,7 +58,7 @@ async function fetchOverridesFingerprint() {
         const r = await fetch(overridesUrl(), { signal: AbortSignal.timeout(25_000) });
         if (!r.ok) return null;
         const j = await r.json();
-        return typeof j.van_tay === "string" ? j.van_tay : null;
+        return typeof j.fingerprint === "string" ? j.fingerprint : null;
     } catch {
         return null;
     }

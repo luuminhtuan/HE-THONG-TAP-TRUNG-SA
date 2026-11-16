@@ -1,10 +1,10 @@
 """
-Báo cáo tháng "TỔNG TEAM THÁNG n": đọc kho số Postgres, ghi bảng bao_cao_tab + market_monthly_reports,
+Báo cáo tháng "TỔNG TEAM THÁNG n": đọc kho số Postgres, ghi bảng monthly_report_tabs + market_monthly_reports,
 và (có khoá Google) ghi các file Google Sheet của team.
 
 Chạy: `python format_all.py` — vòng :20 của daily_guarded.sh, nút xuất báo cáo (/api/talpha/export-report),
 lịch docker. Không có tham số dòng lệnh; biến môi trường: TALPHA_REPORT_MONTH=YYYY-MM (dựng lại một tháng
-đã qua), TALPHA_FORMAT_DRY=1 (chỉ in bố cục, không ghi Sheet / bao_cao_tab), GOOGLE_APPLICATION_CREDENTIALS,
+đã qua), TALPHA_FORMAT_DRY=1 (chỉ in bố cục, không ghi Sheet / monthly_report_tabs), GOOGLE_APPLICATION_CREDENTIALS,
 TALPHA_RUNTIME_DIR, TALPHA_REPO.
 
 16/11/2026: bỏ lối chạy thẳng ở top-level — gom vào main(). Đọc số + gom ô: report_data.py; dựng bảng:
@@ -17,7 +17,7 @@ import os
 import sys
 import time
 
-# ── NGUỒN SỐ: Postgres (04/11/2026 — trước đó BigQuery) ── Số tính xong ghi vào bảng bao_cao_tab
+# ── NGUỒN SỐ: Postgres (04/11/2026 — trước đó BigQuery) ── Số tính xong ghi vào bảng monthly_report_tabs
 # TRƯỚC; tab Tổng quan / P&L / Marketer của dashboard và bot Zalo đọc từ đó. File Google Sheet
 # "TỔNG TEAM THÁNG n" + file riêng từng người là TUỲ CHỌN: có khoá Google (tài khoản máy) thì ghi
 # thêm cho team xem như cũ, không có thì bỏ qua — báo cáo trên dashboard vẫn đủ.
@@ -98,7 +98,7 @@ def _print_final_warnings(n: int, data, LOST_FILES: list, MISSING_FILES: list, _
 
 
 def main() -> int:
-    """Một vòng báo cáo tháng: đọc số → ghi Sheet file riêng → bao_cao_tab → Sheet TỔNG TEAM →
+    """Một vòng báo cáo tháng: đọc số → ghi Sheet file riêng → monthly_report_tabs → Sheet TỔNG TEAM →
     market_monthly_reports → Sheet TEST → cảnh báo cuối log. Trả mã thoát 0 (lỗi thì ném ra, rc 1)."""
     KEY=_google_key()
     _T, FILE_SET = _month_file_set(KEY)

@@ -86,7 +86,7 @@ const ROW_CAP = 200;
 // Câu SQL do LLM viết = KHÔNG tin được. Hai lớp chặn:
 //   1. Soát chữ ở đây: chỉ 1 câu SELECT/WITH, không từ khoá ghi/DDL (danh sách chung ở
 //      lib/talpha/ceo-ask-sql.ts — dùng chung với prompt builder). Gỡ nháy thừa: cleanSql.
-//   2. Database: chạy bằng vai CHỈ ĐỌC talpha_doc, transaction READ ONLY, tối đa 30 giây
+//   2. Database: chạy bằng vai CHỈ ĐỌC talpha_readonly, transaction READ ONLY, tối đa 30 giây
 //      (queryChiDoc, migration 0003) — lọt qua lớp 1 cũng không ghi / không treo máy được.
 // Bản BigQuery còn khoá "đúng dataset" + hạn mức byte quét; Postgres chỉ có một database và vai
 // chỉ đọc thay cho cả hai.
@@ -97,7 +97,7 @@ async function runSql(rawSql: string): Promise<{ rows?: any[]; error?: string }>
     // Bound result size if the model forgot a LIMIT.
     const limited = /\blimit\b/i.test(sql) ? sql : `${sql.trim()}\nLIMIT ${ROW_CAP}`;
     try {
-        const rows = await queryReadOnly(limited, "talpha_doc");
+        const rows = await queryReadOnly(limited, "talpha_readonly");
         return { rows: rows.slice(0, ROW_CAP) };
     } catch (e: any) {
         return { error: e?.message || String(e) };

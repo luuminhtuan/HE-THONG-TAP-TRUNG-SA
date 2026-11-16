@@ -7,12 +7,12 @@ import { opexItemError, type OpexItem } from "@/lib/talpha/income-statement";
 
 export const dynamic = "force-dynamic";
 
-// Chi phí vận hành (lương, mặt bằng, phần mềm…) của tab Lãi lỗ — kho data/chi_phi_van_hanh.json.
+// Chi phí vận hành (lương, mặt bằng, phần mềm…) của tab Lãi lỗ — kho data/operating_expenses.json.
 // CHỈ người xem hết (giám đốc) ghi được: lương từng người là số riêng của công ty. Cửa proxy.ts
 // đã cho mọi người có tab "income-statement" gọi tới đây (luật /api/talpha/income-statement phủ cả nhánh con),
 // nên route tự chặn ghi.
 type OpexStore = { items: OpexItem[] };
-const OPEX_STORE = "chi_phi_van_hanh";
+const OPEX_STORE = "operating_expenses";
 
 async function requireDirector(req: NextRequest) {
     const a = await getAccess(req);

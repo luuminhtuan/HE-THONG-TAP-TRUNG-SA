@@ -10,7 +10,7 @@ paths:
 ## Chạy ở đâu
 
 - Engine sync DUY NHẤT: `sync/talpha/talpha_sync.py` + `sync/core/`. Đừng chép bản thứ hai đi đâu.
-- Báo cáo tháng: `ops/talpha_reports/format_all.py` (ghi bảng `bao_cao_tab`, có khoá Google thì ghi
+- Báo cáo tháng: `ops/talpha_reports/format_all.py` (ghi bảng `monthly_report_tabs`, có khoá Google thì ghi
   thêm Google Sheet). Máy chủ chạy bản chép ở `/root/talpha_reports/` — sửa ở repo rồi
   `deploy_runtime.sh --yes`, không sửa tay bản chép.
 - Code nhánh này dùng cú pháp Python 3.10+ (`int | None`). Docker chạy Python 3.12 (image

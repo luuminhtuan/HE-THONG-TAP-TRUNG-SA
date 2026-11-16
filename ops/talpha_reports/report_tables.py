@@ -4,7 +4,7 @@ Dựng bảng (danh sách hàng, hàng đầu tiêu đề, hàng cuối TỔNG) 
 
 Tách khỏi format_all.py (16/11/2026) — thân hàm chuyển nguyên văn; các ô và danh sách ngày trước đây
 đọc từ biến toàn cục, nay truyền vào (`cell`, `cell_test`, `days`). Cùng một bộ hàng được ghi lên
-Google Sheet VÀ vào bảng bao_cao_tab (dashboard + bot Zalo đọc) — đổi cột ở đây là đổi cả hai.
+Google Sheet VÀ vào bảng monthly_report_tabs (dashboard + bot Zalo đọc) — đổi cột ở đây là đổi cả hai.
 """
 import re
 

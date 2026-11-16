@@ -16,7 +16,7 @@ description: >-
 TALPHA = vận hành + BI cho đội ANTALO bán trang sức/mỹ phẩm qua FB Ads + chat-sale + COD ở
 **bốn nước**: Đài Loan, Singapore, UAE (từ 15/09/2026) và Nhật Bản (mở 08/10/2026). Mỗi nước một
 shop POS Poscake; TKQC Meta tự động (bảng `tkqc`). Dashboard Next.js 16 + báo cáo tháng
-(`format_all.py`, bảng `bao_cao_tab` + Google Sheet nếu có khoá) + bot Zalo mỗi nước một nhóm.
+(`format_all.py`, bảng `monthly_report_tabs` + Google Sheet nếu có khoá) + bot Zalo mỗi nước một nhóm.
 **Hai bản đang song song**: nhánh `kho-postgres` (04/11/2026) — kho số Postgres, chạy bằng
 `docker compose up -d`; còn **production = nhánh `main` trên VPS `139.180.131.21` VẪN chạy BigQuery**
 `cty-507710.TALPHA_Dataset`. Máy chủ kéo code từ GitHub `nhuquynh16091999-hash/HE-THONG-TAP-TRUNG-SA`
@@ -75,7 +75,7 @@ Bản đồ nghiệp vụ đầy đủ: `DASHBOARD_MAP.md`. Hướng dẫn làm 
    nhầm bản khác.
 3. **X4 — sku bẩn** trong `product_catalog`: đã chuẩn hoá ở tầng view (`db/views/00_vw_product_catalog_std.sql`,
    4 bậc bóc mã); bảng thô vẫn giữ sku gốc của POS. *Chưa soát lại sau khi chuyển Postgres.*
-4. **`fb_campaign_tat_ca` (view `fb_campaign_data`)** — nhánh Postgres ghi bằng `replace_table` (thay cả
+4. **`fb_campaign_all` (view `fb_campaign_data`)** — nhánh Postgres ghi bằng `replace_table` (thay cả
    bảng trong một transaction; 0 dòng thì giữ bảng cũ). Nhưng một TKQC lỗi bị bỏ qua (`continue`)
    rồi bảng vẫn bị thay → campaign của TKQC đó biến khỏi bảng tới vòng sau. Cùng họ lỗi X2, chưa sửa.
 5. **F2 phần user**: Hỏi AI đã bật lại 15/11/2026 (khoá Gemini ở Khoá kết nối → tab Gemini). Việc

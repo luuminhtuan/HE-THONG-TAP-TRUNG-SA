@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
     try {
         if (req.nextUrl.searchParams.get("overrides") === "1") {
             const overrides = await readOverrides();
-            return NextResponse.json({ phu: overrides, van_tay: overridesFingerprint(overrides) });
+            return NextResponse.json({ overrides, fingerprint: overridesFingerprint(overrides) });
         }
         return NextResponse.json(await listMarkets());
     } catch (e) {
@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
 async function marketUsage(key: string, label: string, rules: Rules): Promise<{ don: number; chiTieu: number; camp: number }> {
     const [d] = await query<{ n: number }>("SELECT COUNT(*) AS n FROM sale_order WHERE shop_label = @label", { label });
     const rows = await query<{ campaign_name: string | null; s: number }>(
-        "SELECT campaign_name, SUM(spend) AS s FROM fb_ads_tat_ca GROUP BY campaign_name HAVING SUM(spend) > 0");
+        "SELECT campaign_name, SUM(spend) AS s FROM fb_ads_all GROUP BY campaign_name HAVING SUM(spend) > 0");
     let spend = 0, camp = 0;
     for (const r of rows) {
         if (marketOfCampaign(r.campaign_name, rules) === key) { spend += Number(r.s) || 0; camp++; }

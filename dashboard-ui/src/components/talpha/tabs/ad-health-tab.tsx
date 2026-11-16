@@ -55,9 +55,9 @@ export default function TALPHAAdHealthTab() {
         adKhongDon: 0, tienKhongDon: 0, adXauDi: 0, tienXauDi: 0,
     });
     const [attr, setAttr] = useState<{
-        report_date: string; pct_don_gan_duoc: number;
-        don_ad_khong_tra_ve: number; pct_ad_khong_tra_ve: number;
-        don_fx_khong_biet: number;
+        report_date: string; pct_orders_attributed: number;
+        orders_unknown_ad: number; pct_unknown_ad: number;
+        orders_unknown_fx: number;
     } | null>(null);
 
     useEffect(() => {
@@ -91,8 +91,8 @@ export default function TALPHAAdHealthTab() {
 
                     // Q2 — độ phủ gán của ngày gần nhất đã trọn vẹn. View gộp mọi nước nên tài khoản
                     // xem một phần nước bị /api/query từ chối câu này → ô độ phủ hiện "—".
-                    `SELECT report_date, pct_don_gan_duoc, don_ad_khong_tra_ve,
-                            pct_ad_khong_tra_ve, don_fx_khong_biet
+                    `SELECT report_date, pct_orders_attributed, orders_unknown_ad,
+                            pct_unknown_ad, orders_unknown_fx
                      FROM vw_attribution_quality
                      WHERE report_date < CURRENT_DATE
                      ORDER BY report_date DESC LIMIT 1`,
@@ -146,7 +146,7 @@ export default function TALPHAAdHealthTab() {
         },
         {
             label: "Độ phủ gán quảng cáo",
-            value: attr ? `${attr.pct_don_gan_duoc}%` : "—", icon: Link2,
+            value: attr ? `${attr.pct_orders_attributed}%` : "—", icon: Link2,
             color: "text-foreground", sub: attr ? `ngày ${attr.report_date}` : undefined,
         },
     ];
@@ -166,13 +166,13 @@ export default function TALPHAAdHealthTab() {
                 ))}
             </div>
 
-            {attr && attr.don_ad_khong_tra_ve > 0 && (
+            {attr && attr.orders_unknown_ad > 0 && (
                 <div className="bg-amber-500/10 border border-amber-500/40 rounded-xl p-4">
                     <h3 className="text-sm font-semibold text-amber-600 dark:text-amber-400 mb-1">
-                        ⚠ {attr.don_ad_khong_tra_ve} đơn ngày {attr.report_date} có ad_id nhưng Meta không trả về quảng cáo đó
+                        ⚠ {attr.orders_unknown_ad} đơn ngày {attr.report_date} có ad_id nhưng Meta không trả về quảng cáo đó
                     </h3>
                     <p className="text-xs text-muted-foreground">
-                        Chiếm {attr.pct_ad_khong_tra_ve}% số đơn đã gán. Những đơn này nằm ngoài mọi phép tính
+                        Chiếm {attr.pct_unknown_ad}% số đơn đã gán. Những đơn này nằm ngoài mọi phép tính
                         CPO/ROAS theo quảng cáo — con số &ldquo;tiêu không ra đơn&rdquo; ở trên vì thế là <b>trần trên</b>,
                         không phải lãng phí đã xác nhận. Nguyên nhân: quảng cáo bị xoá rồi tạo lại giữ id cũ,
                         hoặc TKQC nằm ngoài danh sách khai trong talpha.yaml (lỗi X9).

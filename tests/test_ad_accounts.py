@@ -2,7 +2,7 @@
 Danh bạ TKQC tự động + loại TKQC (04/11/2026).
 
 Chạy: DATABASE_URL=postgresql://talpha:talpha@127.0.0.1:5433/talpha \\
-        TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/test_tkqc.py -q
+        TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/test_ad_accounts.py -q
 (phần cần Postgres tự bỏ qua khi không nối được; dựng schema tạm rồi xoá — không đụng bảng thật)
 
 Canh những chỗ làm sai số nếu trượt:
@@ -76,9 +76,9 @@ class TestAdAccountDirectory:
     def test_new_account_gets_type_existing_keeps_user_choice(self, pg):
         new_accounts = write_ad_account_directory(pg, [_meta("111", "Hồ Lý 11"), _meta("2332183394212686", "XUAN THAI (việt)")], RULES)
         assert sorted(new_accounts) == [("111", "Hồ Lý 11", "antalo"), ("2332183394212686", "XUAN THAI (việt)", "hat_giong")]
-        pg.execute("UPDATE tkqc SET loai = 'khac', da_xac_nhan = true WHERE account_id = '111'")   # người đổi trên trang
+        pg.execute("UPDATE ad_accounts SET category = 'khac', is_confirmed = true WHERE account_id = '111'")   # người đổi trên trang
         assert write_ad_account_directory(pg, [_meta("111", "Hồ Lý 11 (đổi tên)", st=2)], RULES) == []
-        assert pg.execute("SELECT loai, ten, trang_thai, da_xac_nhan FROM tkqc WHERE account_id = '111'").fetchone() == (
+        assert pg.execute("SELECT category, name, account_status, is_confirmed FROM ad_accounts WHERE account_id = '111'").fetchone() == (
             "khac", "Hồ Lý 11 (đổi tên)", 2, True)
 
     def test_view_counts_only_report_accounts_type_change_is_immediate(self, pg):
@@ -89,13 +89,13 @@ class TestAdAccountDirectory:
         ad_row = lambda aid, currency: {"ad_id": f"ad{aid}", "account_id": aid, "date": "2026-11-03", "spend": currency,
                                   "campaign_name": "TW/LOC/PHI/042/Trang/0311", "sync_time": "t1"}
         pg_writer.write_ads(pg, [ad_row("111", 100.0), ad_row("2332183394212686", 50.0), ad_row("333", 7.0),
-                               ad_row("999", 3.0)], "fb_ads_tat_ca", "ad_id")
+                               ad_row("999", 3.0)], "fb_ads_all", "ad_id")
         rebuild_views(pg, force=True)
         total = lambda table: pg.execute(f"SELECT COALESCE(SUM(spend), 0) FROM {table}").fetchone()[0]
-        assert total("fb_ads_tat_ca") == 160.0                 # thống kê đủ mọi TK
+        assert total("fb_ads_all") == 160.0                 # thống kê đủ mọi TK
         assert total("fb_ads_data") == 103.0                   # Hồ Lý (antalo) + TK chưa có trong danh bạ (mặc định)
         assert total("vw_fb_ads_std") == 103.0
-        pg.execute("UPDATE tkqc SET loai = 'hat_giong' WHERE account_id = '111'")
+        pg.execute("UPDATE ad_accounts SET category = 'hat_giong' WHERE account_id = '111'")
         assert total("fb_ads_data") == 3.0                     # không cần dựng lại view
 
 
@@ -112,7 +112,7 @@ class TestMultipleTokens:
         monkeypatch.setattr(T, "list_token_ad_accounts", lambda tok: accounts_by_token[tok])
         ds = T.ad_accounts_to_fetch(pg, [("TALPHA_META_ACCESS_TOKEN", "moi"), ("TALPHA_META_ACCESS_TOKEN_2", "cu")], RULES)
         assert {d["id"]: d["token"] for d in ds} == {"act_1": "moi", "act_2": "moi", "act_3": "cu"}
-        assert dict(pg.execute("SELECT account_id, bien_token FROM tkqc").fetchall()) == {
+        assert dict(pg.execute("SELECT account_id, token_env_var FROM ad_accounts").fetchall()) == {
             "1": "TALPHA_META_ACCESS_TOKEN", "2": "TALPHA_META_ACCESS_TOKEN", "3": "TALPHA_META_ACCESS_TOKEN_2"}
 
     def test_one_dead_token_still_fetches_others(self, pg, monkeypatch):
@@ -124,4 +124,4 @@ class TestMultipleTokens:
             return [_meta("3", "XT ANTALO 03")]
         monkeypatch.setattr(T, "list_token_ad_accounts", fake_fetch)
         ds = T.ad_accounts_to_fetch(pg, [("TALPHA_META_ACCESS_TOKEN", "chet"), ("TALPHA_META_ACCESS_TOKEN_2", "cu")], RULES)
-        assert [(d["id"], d["bien"]) for d in ds] == [("act_3", "TALPHA_META_ACCESS_TOKEN_2")]
+        assert [(d["id"], d["token_env_var"]) for d in ds] == [("act_3", "TALPHA_META_ACCESS_TOKEN_2")]

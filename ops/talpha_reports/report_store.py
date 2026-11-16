@@ -1,9 +1,9 @@
 """
-Ghi số báo cáo tháng vào Postgres: bảng bao_cao_tab (tab TỔNG TEAM — dashboard Tổng quan / P&L /
+Ghi số báo cáo tháng vào Postgres: bảng monthly_report_tabs (tab TỔNG TEAM — dashboard Tổng quan / P&L /
 Marketer và bot Zalo đọc) và bảng market_monthly_reports (số nước × người cho bot Zalo).
 
 Tách khỏi format_all.py (16/11/2026) — code chuyển nguyên văn, gom vào hàm; format_all gọi đúng chỗ
-và đúng thứ tự như trước (bao_cao_tab → file TỔNG TEAM trên Sheet → market_monthly_reports).
+và đúng thứ tự như trước (monthly_report_tabs → file TỔNG TEAM trên Sheet → market_monthly_reports).
 """
 import datetime
 
@@ -14,17 +14,17 @@ from talpha_rules import RATE, MONEY_DIV
 
 
 def write_summary_tabs(pg, year: int, month: int, summary_tabs: list) -> None:
-    """Thay trọn tab TỔNG TEAM của tháng trong bao_cao_tab (MỘT transaction)."""
-    # ── GHI POSTGRES (bao_cao_tab) — nguồn của tab Tổng quan / P&L / Marketer và bot Zalo ── Thay trọn
+    """Thay trọn tab TỔNG TEAM của tháng trong monthly_report_tabs (MỘT transaction)."""
+    # ── GHI POSTGRES (monthly_report_tabs) — nguồn của tab Tổng quan / P&L / Marketer và bot Zalo ── Thay trọn
     # tháng trong MỘT transaction: người đang xem thấy bản cũ tới lúc COMMIT, lỗi giữa chừng thì giữ bản
     # cũ. Hàng ghi ĐÚNG như lên Sheet (hàng đầu tiêu đề, hàng cuối TỔNG) — route đọc theo cùng bố cục.
     _month=f"{year}-{month:02d}"
     with pg.transaction():
-        pg.execute("DELETE FROM bao_cao_tab WHERE thang = %s AND tep = 'tong_team'", (_month,))
+        pg.execute("DELETE FROM monthly_report_tabs WHERE month = %s AND report_key = 'tong_team'", (_month,))
         for _i,(_tab_name,_rows) in enumerate(summary_tabs):
-            pg.execute("INSERT INTO bao_cao_tab (thang, tep, thu_tu, ten_tab, hang) VALUES (%s, 'tong_team', %s, %s, %s)",
+            pg.execute("INSERT INTO monthly_report_tabs (month, report_key, tab_order, tab_name, rows) VALUES (%s, 'tong_team', %s, %s, %s)",
                        (_month, _i, _tab_name, Jsonb(_rows)))
-    print(f"POSTGRES bao_cao_tab {_month}: {len(summary_tabs)} tab — " + " · ".join(t for t,_ in summary_tabs))
+    print(f"POSTGRES monthly_report_tabs {_month}: {len(summary_tabs)} tab — " + " · ".join(t for t,_ in summary_tabs))
 
 
 def write_market_report(pg, year: int, month: int, cell: dict) -> None:
