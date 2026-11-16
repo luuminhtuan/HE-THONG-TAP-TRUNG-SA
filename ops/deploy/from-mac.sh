@@ -17,10 +17,15 @@ PUSH_DATA=0
 # --push-users : ghi đè danh sách tài khoản đăng nhập của MÁY CHỦ (config/users.json) bằng
 #   bản trên máy Mac. Mặc định chỉ đẩy khi máy chủ CHƯA có file — xem bước 1.
 PUSH_USERS=0
+# --push-env : ghi đè dashboard-ui/.env.local của MÁY CHỦ bằng bản trên máy Mac. Từ bản Postgres (16/11/2026) bản
+#   máy chủ là bản thật — nó giữ DATABASE_URL + TALPHA_ENCRYPTION_KEY sinh trên máy chủ (vps-postgres-setup.sh); khoá
+#   kết nối nhập ở /admin. Mặc định KHÔNG đè; --push-env chỉ khi chủ ý (bản Mac phải có đủ các khoá đó).
+PUSH_ENV=0
 for arg in "$@"; do
     case "$arg" in
         --push-data) PUSH_DATA=1 ;;
         --push-users) PUSH_USERS=1 ;;
+        --push-env) PUSH_ENV=1 ;;
         *) printf 'Tham số không hiểu: %s\n' "$arg" >&2; exit 2 ;;
     esac
 done
@@ -75,11 +80,17 @@ echo "   máy chủ sẽ chạy $DEPLOY_REMOTE/main: $(git -C "$REPO_ROOT" log -
 # ─────────────────────────────────────────────────────────────────────────
 # Từ 16/11/2026 main là bản kho số POSTGRES (bỏ BigQuery). Máy chủ chưa có Postgres mà deploy bản này là dashboard,
 # sync, bot cùng chết — production đang chạy bản BigQuery thì ĐỨNG cho tới khi dựng xong Postgres. Hai điều kiện:
-# dashboard-ui/.env.local (bước 1 chép lên máy chủ) có DATABASE_URL, và TỪ MÁY CHỦ nối được tới Postgres đó.
-# Không in DATABASE_URL (có mật khẩu). Dựng Postgres trên máy chủ: docs/POSTGRES.md.
+# dashboard-ui/.env.local TRÊN MÁY CHỦ (--push-env thì bản Mac sắp chép lên) có DATABASE_URL, và TỪ MÁY CHỦ nối
+# được tới Postgres đó. Không in DATABASE_URL (có mật khẩu). Dựng: bash ops/deploy/vps-postgres-setup.sh prepare.
 say "0c · Máy chủ có Postgres cho bản này chưa"
-DB_URL=$(sed -nE 's/^DATABASE_URL=["'"'"']?([^"'"'"' #]+).*/\1/p' "$REPO_ROOT/dashboard-ui/.env.local" 2>/dev/null | tail -1)
-[ -n "$DB_URL" ] || die "dashboard-ui/.env.local chưa có DATABASE_URL — bản Postgres không chạy được trên máy chủ. DỪNG để production (bản BigQuery) không sập. Dựng Postgres trên máy chủ trước (docs/POSTGRES.md)."
+# Lấy phần sau "DATABASE_URL=" (dòng cuối nếu trùng), bỏ nháy bao ngoài và ghi chú — làm ở máy Mac cho khỏi lồng nháy qua ssh.
+clean_url() { tr -d '\r' | tail -1 | sed -E "s/^[\"']//; s/[\"'[:space:]].*$//"; }
+if [ "$PUSH_ENV" = 1 ]; then
+    DB_URL=$(sed -n 's/^DATABASE_URL=//p' "$REPO_ROOT/dashboard-ui/.env.local" 2>/dev/null | clean_url)
+else
+    DB_URL=$("${SSH[@]}" "sed -n 's/^DATABASE_URL=//p' $APP_DIR/dashboard-ui/.env.local 2>/dev/null" | clean_url)
+fi
+[ -n "$DB_URL" ] || die "dashboard-ui/.env.local (máy chủ) chưa có DATABASE_URL — bản Postgres không chạy được. DỪNG để production không sập. Dựng trước: bash ops/deploy/vps-postgres-setup.sh prepare (trên máy chủ)."
 DB_HOSTPORT=$(printf '%s' "$DB_URL" | sed -E 's#^[a-z]+://([^@/]*@)?([^/:?]+)(:([0-9]+))?.*#\2 \4#')
 case "$DB_HOSTPORT" in *" "*) ;; *) die "Không đọc được máy / cổng trong DATABASE_URL (dashboard-ui/.env.local) — DỪNG." ;; esac
 DB_HOST=${DB_HOSTPORT% *}; DB_PORT=${DB_HOSTPORT#* }; DB_PORT=${DB_PORT:-5432}
@@ -89,7 +100,8 @@ echo "   máy chủ nối được Postgres ở $DB_HOST:$DB_PORT"
 
 # ─────────────────────────────────────────────────────────────────────────
 say "1/5 · Chép cấu hình bí mật (không nằm trong git)"
-[ -f "$REPO_ROOT/dashboard-ui/.env.local" ] || die "Thiếu dashboard-ui/.env.local ở máy Mac"
+if [ "$PUSH_ENV" = 1 ]; then
+[ -f "$REPO_ROOT/dashboard-ui/.env.local" ] || die "--push-env nhưng máy Mac không có dashboard-ui/.env.local"
 
 # systemd EnvironmentFile KHÔNG cắt ghi chú cuối dòng như bash: nó lấy nguyên
 # phần sau dấu = làm giá trị. Dòng
@@ -104,6 +116,10 @@ if grep -qE '^[A-Z0-9_]+=[^#]*[^ ]  *#' "$REPO_ROOT/dashboard-ui/.env.local"; th
 fi
 "${SSH[@]}" "mkdir -p $APP_DIR/dashboard-ui"
 "${SCP[@]}" "$REPO_ROOT/dashboard-ui/.env.local" "root@$HOST:$APP_DIR/dashboard-ui/.env.local"
+echo "   .env.local: ĐÈ bằng bản Mac (bạn đã yêu cầu --push-env)"
+else
+    echo "   .env.local: giữ bản máy chủ (đè bằng bản Mac: --push-env)"
+fi
 if [ -f "$REPO_ROOT/bigquery_key.json" ]; then
     "${SCP[@]}" "$REPO_ROOT/bigquery_key.json" "root@$HOST:$APP_DIR/bigquery_key.json"
 fi
