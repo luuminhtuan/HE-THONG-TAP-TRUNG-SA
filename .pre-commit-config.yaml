@@ -37,8 +37,8 @@ repos:
   - repo: local
     hooks:
       # 1. Độ dài file: 300 dòng Python, 500 dòng TypeScript.
-      # Nhiều file cốt lõi đang vượt (talpha_sync.py 786, cod-recon-tab.tsx 836) —
-      # tách chúng là việc riêng. Hook này để chặn file MỚI phình ra.
+      # Từ 16/11/2026 mọi file đều trong ngưỡng (đợt tái cấu trúc đã tách các file lớn) —
+      # hook này giữ cho file không phình lại.
       - id: check-file-length
         name: "Độ dài file (300 Python / 500 TS)"
         language: python

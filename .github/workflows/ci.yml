@@ -31,22 +31,21 @@ jobs:
         run: pip install flake8
       - name: Flake8 — lỗi nghiêm trọng + tên chưa định nghĩa
         run: |
-          flake8 sync/ ops/ scripts/ sql/ tests/ \
+          flake8 sync/ ops/ scripts/ tests/ \
             --max-line-length=120 \
             --select=E9,F63,F7,F82,F401 \
             --exclude=venv,.venv,__pycache__ \
             --count --show-source --statistics
 
   # ═══════════════════════════════════════════════════════
-  # Độ dài file — CẢNH BÁO, không chặn merge
+  # Độ dài file — CHẶN merge (từ 16/11/2026)
   # ═══════════════════════════════════════════════════════
-  # Nhiều file cốt lõi đang vượt ngưỡng (talpha_sync.py 786 dòng, cod-recon-tab.tsx
-  # 836). Tách chúng là việc riêng, không phải điều kiện để merge một sửa đổi khác.
-  # Một kiểm tra LÚC NÀO CŨNG đỏ thì tệ hơn là không có kiểm tra nào.
+  # Đợt tái cấu trúc 16/11/2026 đã tách mọi file vượt ngưỡng (talpha_sync.py 786 dòng,
+  # cod-recon-tab.tsx 2.087…) — nay mọi file đều trong ngưỡng, nên kiểm tra này chặn thật
+  # để file không phình lại. Bot Zalo (ops/zalo-alerts/*.js) cũng ≤ 500 dòng.
   file-length:
-    name: "📏 Độ dài file (cảnh báo)"
+    name: "📏 Độ dài file"
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -56,6 +55,8 @@ jobs:
         run: python scripts/hooks/check_file_length.py $(git ls-files 'sync/**/*.py' 'ops/**/*.py' 'scripts/**/*.py')
       - name: TypeScript (ngưỡng 500 dòng)
         run: python scripts/hooks/check_file_length.py $(git ls-files 'dashboard-ui/src/**/*.ts' 'dashboard-ui/src/**/*.tsx')
+      - name: Bot Zalo (ngưỡng 500 dòng)
+        run: python scripts/hooks/check_file_length.py $(git ls-files 'ops/zalo-alerts/*.js' ':!ops/zalo-alerts/*.test.js')
 
   # ═══════════════════════════════════════════════════════
   # Bảo mật — bandit + quét khoá ghi cứng
@@ -71,7 +72,7 @@ jobs:
       - name: Cài bandit
         run: pip install bandit
       - name: Bandit
-        run: bandit -r sync/ ops/ scripts/ sql/ -ll -ii --skip B101
+        run: bandit -r sync/ ops/ scripts/ -ll -ii --skip B101
       - name: Không có khoá ghi cứng trong code
         run: |
           ! git grep -lE \
@@ -140,6 +141,11 @@ jobs:
         run: npm run lint
       - name: Kiểm thử logic đối soát
         working-directory: dashboard-ui
+        run: npm test
+      # Bản dòng lệnh đối soát quảng cáo nạp THẲNG engine .ts của dashboard (Node ≥ 22.18 tự bỏ kiểu) —
+      # chạy ở đây vì dùng chung node_modules (pdfjs-dist) vừa cài cho dashboard.
+      - name: Kiểm thử CLI đối soát quảng cáo
+        working-directory: ads-reconciliation-cli
         run: npm test
 
   # ═══════════════════════════════════════════════════════

@@ -9,7 +9,6 @@ khoá Meta / POS. KHÔNG phải số thật.
 Chỉ ghi vào database đang trống đơn — có đơn rồi (đã kéo số thật) thì dừng, không trộn số giả vào.
 Ghi qua đúng đường sync ghi (pg_writer), nên bảng _raw / bảng sạch y như sau một vòng sync.
 """
-import os
 import random
 import sys
 from datetime import datetime, timedelta

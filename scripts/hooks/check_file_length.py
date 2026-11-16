@@ -3,6 +3,7 @@
 FAOS pre-commit hook: Enforce file length limits.
 - Python files: max 300 lines  (sync, ops, scripts, sql)
 - TypeScript/TSX files: max 500 lines  (dashboard-ui)
+- JavaScript files: max 500 lines  (bot Zalo)
 """
 import sys
 from pathlib import Path
@@ -11,6 +12,7 @@ LIMITS = {
     ".py":  300,
     ".ts":  500,
     ".tsx": 500,
+    ".js":  500,   # bot Zalo (ops/zalo-alerts) — 16/11/2026
 }
 
 errors = []
