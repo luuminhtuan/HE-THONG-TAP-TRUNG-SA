@@ -105,9 +105,9 @@ def find_campaign_by_page(page_name, date, page_index, ad_campaign=None, market=
     for match_type, group in tiers:
         candidates = {}
         for d in group:
-            for cn, ngay_tien in d.items():
+            for cn, amount_by_date in d.items():
                 g = candidates.setdefault(cn, {})
-                for nd, t in ngay_tien.items():
+                for nd, t in amount_by_date.items():
                     g[nd] = max(g.get(nd, 0), t)
         if market:
             candidates = {cn: v for cn, v in candidates.items() if campaign_market(cn)[0] == market}

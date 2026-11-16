@@ -50,18 +50,18 @@ def test_manual_file_names_are_months():
 
 
 def test_september_still_complete():
-    bo = _read_json(REPORTS / "report_files" / "2026-09.json")
-    assert bo.get("grand"), "tháng 9 mất file TỔNG TEAM"
-    assert bo["files"].get("Taiwan"), "tháng 9 không còn file Đài"
+    file_set = _read_json(REPORTS / "report_files" / "2026-09.json")
+    assert file_set.get("grand"), "tháng 9 mất file TỔNG TEAM"
+    assert file_set["files"].get("Taiwan"), "tháng 9 không còn file Đài"
 
 
 def test_markets_people_and_ids_valid():
     marketers = set(RULES["marketers"])
     for p in MANUAL_FILES:
-        bo = _read_json(p)
-        for mkt in bo.get("files") or {}:
+        file_set = _read_json(p)
+        for mkt in file_set.get("files") or {}:
             assert mkt in ALLM, f"{p.name}: '{mkt}' không phải thị trường trong talpha_rules.json ({ALLM})"
-        for kind, emp, fid in _all_ids(bo):
+        for kind, emp, fid in _all_ids(file_set):
             if emp != "-" and kind != "test":
                 assert emp in marketers, f"{p.name}: '{emp}' không phải key marketer — gõ tên hiển thị thay key?"
             assert isinstance(fid, str) and DRIVE_ID.match(fid), f"{p.name}: ID {kind}/{emp} không giống ID Google Sheet: {fid!r}"
@@ -145,24 +145,24 @@ def test_classify_month_folder():
         (_f(6, "UAE T10"), ("THANG",)),      # thư mục người tên Thắng
         (_f(7, "ghi chú"), ()),
     ]
-    bo, excel, unclassified = rf.classify_files(items)
-    assert bo["grand"] == "id" + "1".zfill(24)
-    assert bo["files"]["Taiwan"] == {"Loc": "id" + "2".zfill(24), "Thuong": "id" + "4".zfill(24)}
-    assert bo["files"]["Singapore"] == {"Loc": "id" + "3".zfill(24)}
-    assert bo["files"]["UAE"] == {"Thang": "id" + "6".zfill(24)}
-    assert bo["test"] == {"Thai": "id" + "5".zfill(24)}
+    file_set, excel, unclassified = rf.classify_files(items)
+    assert file_set["grand"] == "id" + "1".zfill(24)
+    assert file_set["files"]["Taiwan"] == {"Loc": "id" + "2".zfill(24), "Thuong": "id" + "4".zfill(24)}
+    assert file_set["files"]["Singapore"] == {"Loc": "id" + "3".zfill(24)}
+    assert file_set["files"]["UAE"] == {"Thang": "id" + "6".zfill(24)}
+    assert file_set["test"] == {"Thai": "id" + "5".zfill(24)}
     assert [x[0]["name"] for x in unclassified] == ["ghi chú"] and excel == []
 
 
 def test_month_folder_not_mistaken_for_marketer_thang():
     # "Tháng 10" bỏ dấu thành "THANG 10" — không được hiểu là người tên Thắng.
-    bo, _, la = rf.classify_files([(_f(1, "TAIWAN T10"), ("Tháng 10",))])
-    assert bo["files"]["Taiwan"] == {} and la
+    file_set, _, unclassified = rf.classify_files([(_f(1, "TAIWAN T10"), ("Tháng 10",))])
+    assert file_set["files"]["Taiwan"] == {} and unclassified
 
 
 def test_two_team_summary_files_not_auto_picked():
-    bo, _, la = rf.classify_files([(_f(1, "TỔNG TEAM THÁNG 10"), ()), (_f(2, "TỔNG TEAM THÁNG 10 (bản sao)"), ())])
-    assert bo["grand"] == "id" + "1".zfill(24) and any("TRÙNG" in x[2] for x in la)
+    file_set, _, unclassified = rf.classify_files([(_f(1, "TỔNG TEAM THÁNG 10"), ()), (_f(2, "TỔNG TEAM THÁNG 10 (bản sao)"), ())])
+    assert file_set["grand"] == "id" + "1".zfill(24) and any("TRÙNG" in x[2] for x in unclassified)
 
 
 # ─── Bộ file một tháng ───
@@ -192,8 +192,8 @@ ROOT = RULES["report_drive"]["root_folder_id"]
 
 
 def test_manual_month_skips_drive(tmp_path):
-    bo, source = rf.get_month_file_set(2026, 9, here=str(REPORTS), cache_dir=str(tmp_path), sess=_Sess({}, error=RuntimeError("không được gọi")))
-    assert bo["grand"] and "khai tay" in source
+    file_set, source = rf.get_month_file_set(2026, 9, here=str(REPORTS), cache_dir=str(tmp_path), sess=_Sess({}, error=RuntimeError("không được gọi")))
+    assert file_set["grand"] and "khai tay" in source
 
 
 def test_scan_drive_builds_file_set_and_caches(tmp_path):
@@ -201,21 +201,21 @@ def test_scan_drive_builds_file_set_and_caches(tmp_path):
            "T10": [_f(1, "TỔNG TEAM THÁNG 10"), {"id": "L", "name": "LOC", "mimeType": FOLDER}],
            "L": [_f(2, "TAIWAN T10")],
            "T9": [_f(9, "TỔNG TEAM THÁNG 9")]}
-    bo, source = rf.get_month_file_set(2026, 10, here=str(tmp_path), cache_dir=str(tmp_path / "nho"), sess=_Sess(cay), log=lambda *a: None)
-    assert bo["grand"] == "id" + "1".zfill(24), "phải lấy file của Tháng 10, không phải Tháng 9"
-    assert bo["files"]["Taiwan"] == {"Loc": "id" + "2".zfill(24)}
+    file_set, source = rf.get_month_file_set(2026, 10, here=str(tmp_path), cache_dir=str(tmp_path / "nho"), sess=_Sess(cay), log=lambda *a: None)
+    assert file_set["grand"] == "id" + "1".zfill(24), "phải lấy file của Tháng 10, không phải Tháng 9"
+    assert file_set["files"]["Taiwan"] == {"Loc": "id" + "2".zfill(24)}
     assert "Tháng 10" in source and (tmp_path / "nho" / "2026-10.json").exists()
 
 
 def test_missing_month_folder_writes_nothing(tmp_path):
     cay = {ROOT: [{"id": "T9", "name": "Tháng 9", "mimeType": FOLDER}], "T9": [_f(9, "TỔNG TEAM THÁNG 9")]}
-    bo, source = rf.get_month_file_set(2026, 10, here=str(tmp_path), cache_dir=str(tmp_path), sess=_Sess(cay))
-    assert bo is None and "Tháng 10" in source
+    file_set, source = rf.get_month_file_set(2026, 10, here=str(tmp_path), cache_dir=str(tmp_path), sess=_Sess(cay))
+    assert file_set is None and "Tháng 10" in source
 
 
 def test_drive_error_uses_same_month_cache(tmp_path):
     (tmp_path / "2026-10.json").write_text(json.dumps({"grand": "G" * 30, "files": {}, "test": {}}), encoding="utf-8")
-    bo, source = rf.get_month_file_set(2026, 10, here=str(tmp_path / "x"), cache_dir=str(tmp_path), sess=_Sess({}, error=OSError("mạng")))
-    assert bo["grand"] == "G" * 30 and "bản nhớ" in source
-    bo, _ = rf.get_month_file_set(2026, 11, here=str(tmp_path / "x"), cache_dir=str(tmp_path), sess=_Sess({}, error=OSError("mạng")))
-    assert bo is None, "không được lấy bản nhớ của tháng khác"
+    file_set, source = rf.get_month_file_set(2026, 10, here=str(tmp_path / "x"), cache_dir=str(tmp_path), sess=_Sess({}, error=OSError("mạng")))
+    assert file_set["grand"] == "G" * 30 and "bản nhớ" in source
+    file_set, _ = rf.get_month_file_set(2026, 11, here=str(tmp_path / "x"), cache_dir=str(tmp_path), sess=_Sess({}, error=OSError("mạng")))
+    assert file_set is None, "không được lấy bản nhớ của tháng khác"

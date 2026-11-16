@@ -129,8 +129,8 @@ def is_month_folder(folder_name, y, m):
 def classify_files(items):
     """items: [(file {id,name,mimeType}, đường dẫn thư mục tuple)] → bộ file + danh sách lỗi.
 
-    Trả (bo, excel, la): bo = {"grand", "files", "test"}; excel = file .xlsx (job không ghi
-    được); la = (file, ngữ cảnh, lý do) không xếp được.
+    Trả (file_set, excel, unclassified): file_set = {"grand", "files", "test"}; excel = file .xlsx (job không ghi
+    được); unclassified = (file, ngữ cảnh, lý do) không xếp được.
     """
     file_set = {'grand': None, 'files': {m: {} for m in ALLM}, 'test': {}}
     excel, unclassified = [], []
@@ -216,8 +216,8 @@ def find_month_folder(sess, root, y, m):
 
 # ─── Bộ file của một tháng ──────────────────────────────────────────────────────────────────
 
-def _has_files(bo):
-    return bool(bo and (bo.get('grand') or any(bo.get('files', {}).values()) or bo.get('test')))
+def _has_files(file_set):
+    return bool(file_set and (file_set.get('grand') or any(file_set.get('files', {}).values()) or file_set.get('test')))
 
 
 def get_month_file_set(y, m, *, here, cache_dir, key=None, log=print, sess=None):
@@ -226,10 +226,10 @@ def get_month_file_set(y, m, *, here, cache_dir, key=None, log=print, sess=None)
     manual_path = os.path.join(here, 'report_files', f'{month_key}.json')
     if os.path.exists(manual_path):
         with open(manual_path, encoding='utf-8') as fh:
-            bo = json.load(fh)
-        bo.setdefault('files', {})
-        bo.setdefault('test', {})
-        return bo, f'khai tay ở report_files/{month_key}.json'
+            file_set = json.load(fh)
+        file_set.setdefault('files', {})
+        file_set.setdefault('test', {})
+        return file_set, f'khai tay ở report_files/{month_key}.json'
 
     root = (RULES.get('report_drive') or {}).get('root_folder_id')
     cache_path = os.path.join(cache_dir, f'{month_key}.json')
@@ -241,23 +241,23 @@ def get_month_file_set(y, m, *, here, cache_dir, key=None, log=print, sess=None)
         if not folder_id:
             return None, (f'không thấy thư mục "Tháng {m}" trong thư mục gốc {root} — chưa tạo, hoặc '
                           'thư mục gốc chưa share Editor cho service account')
-        bo, excel, la = classify_files(list(walk(sess, folder_id)))
+        file_set, excel, unclassified = classify_files(list(walk(sess, folder_id)))
         for f, ctx in excel:
             log(f'CANH BAO: file Excel (.xlsx) không ghi được — {f["name"]} [{ctx}]: mở file → File → Save as Google Sheets')
-        for f, ctx, why in la:
+        for f, ctx, why in unclassified:
             log(f'CANH BAO: không xếp được {f["name"]} [{ctx}] ← {why}')
-        if not _has_files(bo):
+        if not _has_files(file_set):
             return None, f'thư mục "Tháng {m}" ({folder_id}) chưa có Google Sheet nào'
         try:
             os.makedirs(cache_dir, exist_ok=True)
             with open(cache_path, 'w', encoding='utf-8') as fh:
-                json.dump({**bo, '_thu_muc': folder_id}, fh, ensure_ascii=False, indent=1)
+                json.dump({**file_set, '_thu_muc': folder_id}, fh, ensure_ascii=False, indent=1)
         except OSError as e:
             log(f'(không lưu được bản nhớ {cache_path}: {e})')
-        return bo, f'Drive thư mục "Tháng {m}" ({folder_id})'
+        return file_set, f'Drive thư mục "Tháng {m}" ({folder_id})'
     except Exception as e:  # mạng / Drive API lỗi — dùng bản nhớ CỦA CHÍNH THÁNG ĐÓ nếu có
         if os.path.exists(cache_path):
             with open(cache_path, encoding='utf-8') as fh:
-                bo = json.load(fh)
-            return bo, f'bản nhớ {cache_path} (Drive lỗi: {e})'
+                file_set = json.load(fh)
+            return file_set, f'bản nhớ {cache_path} (Drive lỗi: {e})'
         return None, f'Drive lỗi và chưa có bản nhớ tháng {month_key}: {e}'
