@@ -19,7 +19,7 @@ from sync.core.pos_shops import pos_shops_from_markets  # noqa: F401
 # ─── R2 · R1b · R3: Thị trường — ĐỌC TỪ config/talpha_rules.json → markets ──────
 # Trước 15/09/2026 ba bảng dưới gõ cứng đúng một nước (TW). Mở thêm Singapore, UAE mà
 # vẫn gõ tay ở đây là có hai nguồn tỷ giá — đổi JSON thì dashboard đổi, Python đứng yên.
-# Nay sinh từ JSON; chỉ nước ĐÃ có số mới vào bảng (nước "sap_chay" có tỷ giá null thì
+# Nay sinh từ JSON; chỉ nước ĐÃ có số mới vào bảng (nước "upcoming" có tỷ giá null thì
 # không có dòng — to_vnd() với nước đó ném lỗi thay vì âm thầm nhân sai).
 #
 # X13 — số chia là số đơn vị phụ trên 1 đơn vị tiền MÀ POS ĐANG LƯU, không phải số thập

@@ -137,6 +137,22 @@ class TestFileImport:
         import_all(pg, repo)
         assert set(read_credentials(pg)) == {"TALPHA_POSCAKE_TW_KEY"}
 
+    def test_legacy_market_values_converted_on_import(self, pg, tmp_path):
+        # File thị trường của bản chạy bằng file (máy chủ VPS) ghi trạng thái / khoá tiếng Việt. Chép nguyên là
+        # nước đang bán ngừng kéo đơn (pos_shops chỉ nhận "active") — phải đổi lúc chép.
+        repo = _fake_repo(tmp_path)
+        (repo / "data" / "thi_truong.json").write_text(json.dumps({"markets": {
+            "Singapore": {"status": "dang_ban", "nguoi_cam": "THAI"},
+            "UAE": {"status": "da_tat"},
+            "Thailand": {"status": "sap_chay", "owner": "LOC", "nguoi_cam": "CU"},
+            "Japan": {"status": "trang_thai_la"}}}))
+        import_all(pg, repo)
+        assert read_market_overrides_from_db(pg)["markets"] == {
+            "Singapore": {"status": "active", "owner": "THAI"},
+            "UAE": {"status": "disabled"},
+            "Thailand": {"status": "upcoming", "owner": "LOC"},
+            "Japan": {"status": "trang_thai_la"}}
+
     def test_missing_key_defers_credential_import(self, pg, tmp_path, monkeypatch):
         repo = _fake_repo(tmp_path)
         monkeypatch.delenv("TALPHA_ENCRYPTION_KEY")

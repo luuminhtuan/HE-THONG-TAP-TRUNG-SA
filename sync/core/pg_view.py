@@ -78,8 +78,11 @@ def money_divisor_sql() -> str:
     cap = []
     for v in _shop_markets(_rules()["markets"]):
         div = v.get("pos_money_divisor")
-        if div is None and v.get("status") == "sap_chay":
-            continue   # nước sắp chạy: chưa có đơn, chưa đo số chia
+        # Nước sắp chạy: chưa có đơn, chưa đo số chia — /admin → Thị trường cho lưu thiếu số chia (market-config.ts
+        # chỉ bắt buộc với active / disabled), nên phải bỏ qua chứ không dừng: dừng là `migrate` thoát 1, compose
+        # không bật dashboard + scheduler, vòng sync không dựng lại view được nữa (16/11/2026 sửa: trước so "sap_chay").
+        if div is None and v.get("status") == "upcoming":
+            continue
         if div is None:
             raise SystemExit(f"❌ market {v['shop_label']} thiếu `pos_money_divisor` trong {RULES_FILE}. "
                              f"Khai bằng cách LẤY ĐƠN THẬT TỪ POS API so với giá bán, đừng đoán.")

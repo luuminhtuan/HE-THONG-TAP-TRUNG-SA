@@ -62,6 +62,26 @@ def import_app_documents(conn, repo: Path) -> list:
     return out
 
 
+# data/thi_truong.json của bản chạy bằng file ghi trạng thái / khoá tiếng Việt. Ba bộ đọc luật (dashboard
+# rules.ts, sync market_config / pos_shops, bot rules.js) chỉ hiểu giá trị hiện tại — chép nguyên là nước
+# "dang_ban" ngừng kéo đơn POS, nước "da_tat" hiện thành đang bán trên form /admin (16/11/2026).
+LEGACY_MARKET_STATUS = {"dang_ban": "active", "sap_chay": "upcoming", "da_tat": "disabled"}
+LEGACY_MARKET_KEYS = {"nguoi_cam": "owner"}
+
+
+def normalize_legacy_market_settings(settings: dict) -> dict:
+    """Phần phủ một nước từ file cũ → khoá / giá trị hiện tại. Khoá mới đã có thì thắng khoá cũ; giá trị lạ để nguyên."""
+    out = {}
+    for key, value in settings.items():
+        new_key = LEGACY_MARKET_KEYS.get(key, key)
+        if new_key != key and new_key in settings:
+            continue
+        out[new_key] = value
+    if out.get("status") in LEGACY_MARKET_STATUS:
+        out["status"] = LEGACY_MARKET_STATUS[out["status"]]
+    return out
+
+
 def import_market_overrides(conn, repo: Path) -> list:
     p = repo / "data" / "thi_truong.json"
     source = "data/thi_truong.json"
@@ -76,7 +96,7 @@ def import_market_overrides(conn, repo: Path) -> list:
                 continue
             conn.execute(
                 "INSERT INTO market_overrides (market_key, settings, updated_by) VALUES (%s, %s, %s) "
-                "ON CONFLICT (market_key) DO NOTHING", (key, Jsonb(settings), updated_by))
+                "ON CONFLICT (market_key) DO NOTHING", (key, Jsonb(normalize_legacy_market_settings(settings)), updated_by))
             n += 1
         _mark_imported(conn, source, f"market_overrides: {n} nước")
     return [source]

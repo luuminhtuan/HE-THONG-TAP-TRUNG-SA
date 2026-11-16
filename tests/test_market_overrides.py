@@ -103,6 +103,20 @@ class TestNewMarketPropagates:
         assert "WHEN 'TW' THEN 800.0" in case          # nước cũ vẫn nguyên
         assert "WHEN 'TH' THEN 1" in D.money_divisor_sql()
 
+    def test_upcoming_market_without_divisor_does_not_block_views(self, tmp_path, monkeypatch):
+        # Đúng thứ /admin → Thị trường lưu khi thêm nước mới (mặc định "upcoming", chưa đo số chia, chưa có tỷ giá):
+        # bộ dựng view phải bỏ qua nước đó, không SystemExit — dừng là migrate thoát 1, cả stack không lên.
+        p = tmp_path / "thi_truong.json"
+        p.write_text(json.dumps({"markets": {"Korea": {
+            "display": "Hàn Quốc", "shop_label": "KR", "currency": "KRW", "status": "upcoming",
+            "rate_vnd": None, "pos_money_divisor": None, "tokens": ["KR"]}}}), encoding="utf-8")
+        monkeypatch.setenv("TALPHA_MARKET_OVERRIDES_FILE", str(p))
+        from sync.core import pg_view as D
+        divisor = D.money_divisor_sql()
+        assert "'KR'" not in divisor and "WHEN 'TW' THEN 1" in divisor
+        case, known = D.fx_sql()
+        assert "'KR'" not in known
+
     def test_sheet_reads_overridden_rules(self, tmp_path, monkeypatch):
         p = tmp_path / "thi_truong.json"
         p.write_text(json.dumps(THAILAND, ensure_ascii=False), encoding="utf-8")
