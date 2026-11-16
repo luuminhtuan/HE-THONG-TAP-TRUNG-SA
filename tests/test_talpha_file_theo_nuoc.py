@@ -72,9 +72,9 @@ def test_no_file_shared_by_two_reports_even_across_months():
     # đè nhau mỗi giờ; một ID ở HAI THÁNG chính là lỗi 01/10/2026 — tháng mới xoá tháng cũ.
     seen = {}
     for p in MANUAL_FILES:
-        for loai, emp, fid in _all_ids(_read_json(p)):
-            assert fid not in seen, f"ID {fid} dùng hai lần: {seen[fid]} và {p.name}/{loai}/{emp}"
-            seen[fid] = f"{p.name}/{loai}/{emp}"
+        for kind, emp, fid in _all_ids(_read_json(p)):
+            assert fid not in seen, f"ID {fid} dùng hai lần: {seen[fid]} và {p.name}/{kind}/{emp}"
+            seen[fid] = f"{p.name}/{kind}/{emp}"
 
 
 def test_no_return_to_fixed_id_set():
@@ -201,21 +201,21 @@ def test_scan_drive_builds_file_set_and_caches(tmp_path):
            "T10": [_f(1, "TỔNG TEAM THÁNG 10"), {"id": "L", "name": "LOC", "mimeType": FOLDER}],
            "L": [_f(2, "TAIWAN T10")],
            "T9": [_f(9, "TỔNG TEAM THÁNG 9")]}
-    bo, nguon = rf.get_month_file_set(2026, 10, here=str(tmp_path), cache_dir=str(tmp_path / "nho"), sess=_Sess(cay), log=lambda *a: None)
+    bo, source = rf.get_month_file_set(2026, 10, here=str(tmp_path), cache_dir=str(tmp_path / "nho"), sess=_Sess(cay), log=lambda *a: None)
     assert bo["grand"] == "id" + "1".zfill(24), "phải lấy file của Tháng 10, không phải Tháng 9"
     assert bo["files"]["Taiwan"] == {"Loc": "id" + "2".zfill(24)}
-    assert "Tháng 10" in nguon and (tmp_path / "nho" / "2026-10.json").exists()
+    assert "Tháng 10" in source and (tmp_path / "nho" / "2026-10.json").exists()
 
 
 def test_missing_month_folder_writes_nothing(tmp_path):
     cay = {ROOT: [{"id": "T9", "name": "Tháng 9", "mimeType": FOLDER}], "T9": [_f(9, "TỔNG TEAM THÁNG 9")]}
-    bo, nguon = rf.get_month_file_set(2026, 10, here=str(tmp_path), cache_dir=str(tmp_path), sess=_Sess(cay))
-    assert bo is None and "Tháng 10" in nguon
+    bo, source = rf.get_month_file_set(2026, 10, here=str(tmp_path), cache_dir=str(tmp_path), sess=_Sess(cay))
+    assert bo is None and "Tháng 10" in source
 
 
 def test_drive_error_uses_same_month_cache(tmp_path):
     (tmp_path / "2026-10.json").write_text(json.dumps({"grand": "G" * 30, "files": {}, "test": {}}), encoding="utf-8")
-    bo, nguon = rf.get_month_file_set(2026, 10, here=str(tmp_path / "x"), cache_dir=str(tmp_path), sess=_Sess({}, error=OSError("mạng")))
-    assert bo["grand"] == "G" * 30 and "bản nhớ" in nguon
+    bo, source = rf.get_month_file_set(2026, 10, here=str(tmp_path / "x"), cache_dir=str(tmp_path), sess=_Sess({}, error=OSError("mạng")))
+    assert bo["grand"] == "G" * 30 and "bản nhớ" in source
     bo, _ = rf.get_month_file_set(2026, 11, here=str(tmp_path / "x"), cache_dir=str(tmp_path), sess=_Sess({}, error=OSError("mạng")))
     assert bo is None, "không được lấy bản nhớ của tháng khác"

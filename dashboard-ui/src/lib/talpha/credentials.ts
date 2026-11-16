@@ -24,7 +24,7 @@ import { querySync } from "./db-sync";
 import { DISABLED_MARKETS, MESS_PANCAKE, RULES, SHOP2MKT, SHOP_POS } from "./rules";
 import { maskCredential } from "./credential-utils";
 import { META_TOKEN_VARS } from "./ad-account-rules";
-import { PANCAKE_API, hanToken } from "./pancake";
+import { PANCAKE_API, tokenExpiry } from "./pancake";
 import { getQuota, keyId } from "./track17";
 import { TRACK_MARKETS } from "./tracking";
 
@@ -38,7 +38,7 @@ type CredentialRecord = { value: string; note: string | null; updated_at: string
 type CredentialRow = CredentialRecord & { name: string };
 
 let cache: { map: Map<string, CredentialRecord>; luc: number } | null = null;
-let loiLuc = 0;
+let errorAt = 0;
 let refreshing = false;
 let warnedMissingKey = false;
 
@@ -70,12 +70,12 @@ function storedCredentials(): Map<string, CredentialRecord> {
         }
         return new Map();
     }
-    if (Date.now() - loiLuc < 30_000) return new Map();   // kho vừa lỗi — đừng chặn mỗi lượt gọi
+    if (Date.now() - errorAt < 30_000) return new Map();   // kho vừa lỗi — đừng chặn mỗi lượt gọi
     try {
         cache = { map: toMap(querySync<CredentialRow>(READ_SQL, [encryptionKey])), luc: Date.now() };
         return cache.map;
     } catch (e) {
-        loiLuc = Date.now();
+        errorAt = Date.now();
         console.error("khoa: KHÔNG đọc được bảng api_credentials — dùng khoá trong .env.local:", e);
         return new Map();
     }
@@ -272,7 +272,7 @@ async function verifyPos(d: CredentialDef, key: string): Promise<VerifyResult> {
 }
 
 async function verifyPancake(tok: string): Promise<VerifyResult> {
-    const expiry = hanToken(tok);
+    const expiry = tokenExpiry(tok);
     const expiryIso = expiry ? new Date(expiry).toISOString() : null;
     if (expiry && expiry < Date.now()) return { ok: false, chi_tiet: "Token đã hết hạn", het_han: expiryIso };
     const r = await fetch(`${PANCAKE_API}/pages?access_token=${encodeURIComponent(tok)}`,

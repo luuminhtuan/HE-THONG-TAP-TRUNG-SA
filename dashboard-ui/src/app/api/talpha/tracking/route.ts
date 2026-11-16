@@ -5,7 +5,7 @@ import {
     attributeOrder, buildAdidOwner, resolveSale, normPosMarketer, PHONE_RULES, DISABLED_MARKETS, SHOP2MKT,
 } from "@/lib/talpha/rules";
 import { trackingFromLink } from "@/lib/talpha/cod-recon";
-import { homNayVN, filterByOrderDate } from "@/lib/talpha/order-ledger";
+import { todayVn, filterByOrderDate } from "@/lib/talpha/order-ledger";
 import {
     buildAlerts, carrierFor, countByStatus, fixTrack17Code, pickupCode, mergeStatus, planRegister, planTrack,
     trackMarket, TERMINAL, TRACK_CFG, TRACK_MARKETS,
@@ -277,7 +277,7 @@ export async function GET(req: NextRequest) {
         // kiện một lượt là trang nặng). Cảnh báo, chữ trạng thái lạ, số mã chờ đăng ký vẫn tính trên MỌI
         // kiện đã nạp: kiện tháng trước còn kẹt không được biến mất chỉ vì đang xem tháng này. Đơn POS Đài
         // (chỉ đọc theo ngày) nạp lùi tới 60 ngày cho cảnh báo — như mặc định 60 ngày trước đây.
-        const today = homNayVN();
+        const today = todayVn();
         const sixtyDaysAgo = new Date(Date.parse(today) - 60 * 86_400_000).toISOString().slice(0, 10);
         const { shipments: raw, store, lastImport } = await loadShipments(mk, from < sixtyDaysAgo ? from : sixtyDaysAgo, to);
         // Nút WhatsApp kèm tin xác nhận đơn (29/09/2026, chỉ nước bật whatsapp — UAE) — gắn TRƯỚC

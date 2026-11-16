@@ -28,32 +28,32 @@ def test_order_in_window_missing_on_pos_marked_deleted():
 
 def test_order_older_than_window_untouched():
     # Cửa sổ chỉ kéo từ MOC — đơn cũ hơn POS không trả về là chuyện bình thường, không phải bị xoá.
-    xoa, _ = select_deleted_orders([(SG, "12", "2026-09-01T03:00:00")], {SG: (CUTOFF, {"77"})})
-    assert xoa == []
+    deleted, _ = select_deleted_orders([(SG, "12", "2026-09-01T03:00:00")], {SG: (CUTOFF, {"77"})})
+    assert deleted == []
 
 
 def test_failed_shop_not_in_seen_untouched():
-    xoa, _ = select_deleted_orders([(TW, "5", "2026-09-14T00:00:00")], {SG: (CUTOFF, {"77"})})
-    assert xoa == []
+    deleted, _ = select_deleted_orders([(TW, "5", "2026-09-14T00:00:00")], {SG: (CUTOFF, {"77"})})
+    assert deleted == []
 
 
 def test_pos_returns_zero_orders_deletes_nothing():
-    xoa, canh_bao = select_deleted_orders([(SG, "77", "2026-09-14T01:34:00")], {SG: (CUTOFF, set())})
-    assert xoa == [] and "POS trả 0 đơn" in canh_bao[0]
+    deleted, warnings = select_deleted_orders([(SG, "77", "2026-09-14T01:34:00")], {SG: (CUTOFF, set())})
+    assert deleted == [] and "POS trả 0 đơn" in warnings[0]
 
 
 def test_too_many_missing_suspects_partial_pos_response():
-    trong_bang = [(TW, str(i), "2026-09-14T00:00:00") for i in range(100)]
+    in_table = [(TW, str(i), "2026-09-14T00:00:00") for i in range(100)]
     seen_ids = {str(i) for i in range(60)}                       # POS "mất" 40 đơn một lượt
-    xoa, canh_bao = select_deleted_orders(trong_bang, {TW: (CUTOFF, seen_ids)})
-    assert xoa == [] and "nghi POS trả thiếu" in canh_bao[0]
+    deleted, warnings = select_deleted_orders(in_table, {TW: (CUTOFF, seen_ids)})
+    assert deleted == [] and "nghi POS trả thiếu" in warnings[0]
 
 
 def test_few_deleted_still_uses_min_threshold():
-    trong_bang = [(SG, str(i), "2026-09-14T00:00:00") for i in range(25)]
-    thay = {str(i) for i in range(15)}                       # 10 đơn xoá, POS còn 15: dưới ngưỡng 20
-    xoa, canh_bao = select_deleted_orders(trong_bang, {SG: (CUTOFF, thay)})
-    assert len(xoa) == 10 and canh_bao == []
+    in_table = [(SG, str(i), "2026-09-14T00:00:00") for i in range(25)]
+    replaced = {str(i) for i in range(15)}                       # 10 đơn xoá, POS còn 15: dưới ngưỡng 20
+    deleted, warnings = select_deleted_orders(in_table, {SG: (CUTOFF, replaced)})
+    assert len(deleted) == 10 and warnings == []
 
 
 def test_rebuild_drops_tombstones_and_filters_shops():

@@ -116,22 +116,22 @@ const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00
  * Tính theo TIỀN COD, không theo số kiện: kiện to hoàn thì mất nhiều hơn kiện nhỏ.
  */
 export function computeDeliveryRate(parcels: Parcel[], asOf: string, cfg: DeliveryRateConfig = DEFAULT_DELIVERY_RATE_CONFIG): DeliveryRate {
-    const xong = parcels.filter((k) => (k.nhom === "giao" || k.nhom === "hoan") && k.ngay && k.ngay <= asOf);
+    const settled = parcels.filter((k) => (k.nhom === "giao" || k.nhom === "hoan") && k.ngay && k.ngay <= asOf);
     const windowStart = addDays(asOf, -cfg.cua_so_ngay), windowEnd = addDays(asOf, -cfg.bo_gan_ngay);
-    let mau = xong.filter((k) => k.ngay >= windowStart && k.ngay <= windowEnd);
+    let sample = settled.filter((k) => k.ngay >= windowStart && k.ngay <= windowEnd);
     let provisional = false, rangeFrom: string | null = windowStart, rangeTo: string | null = windowEnd;
-    if (mau.length < cfg.mau_toi_thieu) {
-        mau = xong;
+    if (sample.length < cfg.mau_toi_thieu) {
+        sample = settled;
         provisional = true;
-        rangeFrom = mau.reduce<string | null>((m, k) => (!m || k.ngay < m ? k.ngay : m), null);
-        rangeTo = mau.reduce<string | null>((m, k) => (!m || k.ngay > m ? k.ngay : m), null);
+        rangeFrom = sample.reduce<string | null>((m, k) => (!m || k.ngay < m ? k.ngay : m), null);
+        rangeTo = sample.reduce<string | null>((m, k) => (!m || k.ngay > m ? k.ngay : m), null);
     }
-    const g = mau.filter((k) => k.nhom === "giao"), h = mau.filter((k) => k.nhom === "hoan");
+    const g = sample.filter((k) => k.nhom === "giao"), h = sample.filter((k) => k.nhom === "hoan");
     const tg = g.reduce((s, k) => s + k.cod_vnd, 0), th = h.reduce((s, k) => s + k.cod_vnd, 0);
     return {
         r: tg + th > 0 ? tg / (tg + th) : null,
         giao: g.length, hoan: h.length, tu: rangeFrom, den: rangeTo,
-        tam: provisional || mau.length < cfg.mau_toi_thieu,
+        tam: provisional || sample.length < cfg.mau_toi_thieu,
     };
 }
 
@@ -139,11 +139,11 @@ export function computeDeliveryRate(parcels: Parcel[], asOf: string, cfg: Delive
 // Một kiện → doanh thu, giá vốn, phí 3PL
 // ─────────────────────────────────────────────────────────────────────────
 export type Phi3pl = { di: number; giao: number; hoan: number; ty_gia: number };
-export type Khoan = { doanh_thu: number; gia_von: number; phi: Phi3pl };
-export const emptyAmounts = (): Khoan => ({ doanh_thu: 0, gia_von: 0, phi: { di: 0, giao: 0, hoan: 0, ty_gia: 0 } });
+export type Amounts = { doanh_thu: number; gia_von: number; phi: Phi3pl };
+export const emptyAmounts = (): Amounts => ({ doanh_thu: 0, gia_von: 0, phi: { di: 0, giao: 0, hoan: 0, ty_gia: 0 } });
 export const totalFees = (p: Phi3pl) => p.di + p.giao + p.hoan + p.ty_gia;
 
-function addAmounts(a: Khoan, b: Khoan, he = 1) {
+function addAmounts(a: Amounts, b: Amounts, he = 1) {
     a.doanh_thu += b.doanh_thu * he; a.gia_von += b.gia_von * he;
     a.phi.di += b.phi.di * he; a.phi.giao += b.phi.giao * he; a.phi.hoan += b.phi.hoan * he; a.phi.ty_gia += b.phi.ty_gia * he;
 }
@@ -153,7 +153,7 @@ function addAmounts(a: Khoan, b: Khoan, he = 1) {
  * (hàng đã bán) lẫn khi hoàn mà hàng không quay lại kho bán tiếp; phí chặng đi mất cả hai đường.
  * Chênh tỷ giá chỉ có khi tiền về: tiền niêm yết − tiền 3PL thật quy ra (âm = được lợi).
  */
-export function parcelAmounts(k: Parcel, p: number): Khoan {
+export function parcelAmounts(k: Parcel, p: number): Amounts {
     if (k.nhom === "huy") {
         // Huỷ trước khi đi: hàng chưa rời kho. Sao kê vẫn thu phí kiện này thì tính phí đó.
         return { doanh_thu: 0, gia_von: 0, phi: { di: k.phi_that ? k.phi_di_vnd : 0, giao: 0, hoan: 0, ty_gia: 0 } };
@@ -167,7 +167,7 @@ export function parcelAmounts(k: Parcel, p: number): Khoan {
     };
 }
 
-const xacSuat = (k: Parcel, r: number) => (k.nhom === "giao" ? 1 : k.nhom === "hoan" ? 0 : r);
+const probability = (k: Parcel, r: number) => (k.nhom === "giao" ? 1 : k.nhom === "hoan" ? 0 : r);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tổng một nước trong kỳ
@@ -177,8 +177,8 @@ export type ParcelTotals = {
     kien: Record<ParcelGroup, GroupCount> & { tong: GroupCount };
     /** Doanh thu ĐÃ CHẮC: tiền COD kiện đã giao xong. */
     doanh_thu_chac: number;
-    du_kien: Khoan;
-    toi_thieu: Khoan;
+    du_kien: Amounts;
+    toi_thieu: Amounts;
     /** Kiện có mã chưa khai giá vốn (đang tính 0 cho phần thiếu). */
     thieu_gia_von: number;
     /** Kiện mà phí chặng đi là ước tính (chưa có trong sao kê nào). */
@@ -199,8 +199,8 @@ export function sumParcels(parcels: Parcel[], r: number | null): ParcelTotals {
         if (k.nhom !== "huy" && k.gia_von_vnd == null) missingCogsCount++;
         if (k.nhom !== "huy" && !k.phi_that) estimatedFeeCount++;
         if (k.nhom === "hoan" && k.hoan_con_han && !k.hang_ve_kho) { returnsInStorage.n++; returnsInStorage.gia_von += k.gia_von_vnd ?? 0; }
-        addAmounts(expected, parcelAmounts(k, xacSuat(k, rr)));
-        addAmounts(minimum, parcelAmounts(k, xacSuat(k, 0)));
+        addAmounts(expected, parcelAmounts(k, probability(k, rr)));
+        addAmounts(minimum, parcelAmounts(k, probability(k, 0)));
     }
     return { kien: counts, doanh_thu_chac: chac, du_kien: expected, toi_thieu: minimum, thieu_gia_von: missingCogsCount, phi_uoc: estimatedFeeCount, hoan_con_han: returnsInStorage };
 }
@@ -208,7 +208,7 @@ export function sumParcels(parcels: Parcel[], r: number | null): ParcelTotals {
 // ─────────────────────────────────────────────────────────────────────────
 // Đơn đã chốt mà CHƯA lên 3PL — vài ngày cuối kỳ
 // ─────────────────────────────────────────────────────────────────────────
-export type Pending3pl = { vnd: number; ngay: { date: string; doanh_so: number; kien: number }[]; khoan: Khoan };
+export type Pending3pl = { vnd: number; ngay: { date: string; doanh_so: number; kien: number }[]; khoan: Amounts };
 
 /**
  * Sale lên đơn sang bảng 3PL trễ một hai ngày: nhìn kỳ tới hôm nay thì tiền ads đã tiêu cho các
@@ -219,28 +219,28 @@ export type Pending3pl = { vnd: number; ngay: { date: string; doanh_so: number; 
  */
 export function estimatePending3pl(
     dailySales: { date: string; doanh_so: number }[], periodParcels: Parcel[], r: number | null,
-    homNay: string, recentDays: number,
+    today: string, recentDays: number,
 ): Pending3pl {
-    const windowStart = addDays(homNay, -(recentDays - 1));
+    const windowStart = addDays(today, -(recentDays - 1));
     const codByDate = new Map<string, number>();
     for (const k of periodParcels) codByDate.set(k.ngay, (codByDate.get(k.ngay) || 0) + k.cod_vnd);
     const days = dailySales
-        .filter((d) => d.date >= windowStart && d.date <= homNay)
+        .filter((d) => d.date >= windowStart && d.date <= today)
         .map((d) => ({ date: d.date, doanh_so: d.doanh_so, kien: codByDate.get(d.date) || 0 }))
         .filter((d) => d.doanh_so - d.kien > 0);
     const vnd = days.reduce((s, d) => s + (d.doanh_so - d.kien), 0);
-    const khoan = emptyAmounts();
+    const item = emptyAmounts();
     if (vnd > 0 && r != null) {
         // Tỷ lệ trên mỗi đồng COD nếu kiện còn đang đi — lấy từ chính các kiện trong kỳ.
         const baseParcels = periodParcels.filter((k) => k.nhom !== "huy");
         const cod = baseParcels.reduce((s, k) => s + k.cod_vnd, 0);
         if (cod > 0) {
-            const mau = emptyAmounts();
-            for (const k of baseParcels) addAmounts(mau, parcelAmounts({ ...k, nhom: "dang_di" }, r));
-            addAmounts(khoan, mau, vnd / cod);
+            const sample = emptyAmounts();
+            for (const k of baseParcels) addAmounts(sample, parcelAmounts({ ...k, nhom: "dang_di" }, r));
+            addAmounts(item, sample, vnd / cod);
         }
     }
-    return { vnd, ngay: days, khoan };
+    return { vnd, ngay: days, khoan: item };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -308,14 +308,14 @@ export function allocateOpex(
     const bucket = (c: string) => (byMarket[c] ||= { rieng: 0, chung: 0 });
     const details = items.map((k) => ({ ...k, trong_ky_vnd: opexInRange(k, from, to) }))
         .filter((k) => k.trong_ky_vnd > 0);
-    let chung = 0;
+    let shared = 0;
     for (const k of details) {
-        if (k.thuoc === "CHUNG") chung += k.trong_ky_vnd;
+        if (k.thuoc === "CHUNG") shared += k.trong_ky_vnd;
         else bucket(k.thuoc).rieng += k.trong_ky_vnd;
     }
     const totalSales = Object.values(salesByMarket).reduce((s, v) => s + Math.max(0, v), 0);
-    if (totalSales > 0) for (const [c, v] of Object.entries(salesByMarket)) if (v > 0) bucket(c).chung += chung * v / totalSales;
-    return { theo_nuoc: byMarket, chung, chung_chua_chia: totalSales > 0 ? 0 : chung, chi_tiet: details };
+    if (totalSales > 0) for (const [c, v] of Object.entries(salesByMarket)) if (v > 0) bucket(c).chung += shared * v / totalSales;
+    return { theo_nuoc: byMarket, chung: shared, chung_chua_chia: totalSales > 0 ? 0 : shared, chi_tiet: details };
 }
 
 /** Kiểm một khoản người dùng gõ. Trả câu lỗi tiếng Việt, hoặc null nếu hợp lệ. */

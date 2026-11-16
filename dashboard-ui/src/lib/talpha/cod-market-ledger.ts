@@ -27,9 +27,9 @@ import { normTracking } from "./naza-statement";
 import type { CodOrder } from "./cod-market";
 import type { MarketMatchResult, MarketPeriod, MarketStatement } from "./cod-statement-market";
 
-const tron = (n: number) => Math.round(n * 100) / 100;
+const round2 = (n: number) => Math.round(n * 100) / 100;
 const vnd = (n: number) => Math.round(n).toLocaleString("vi-VN");
-const so2 = (n: number) => tron(n).toLocaleString("vi-VN");
+const so2 = (n: number) => round2(n).toLocaleString("vi-VN");
 const dmy = (s?: string | null) => (s ? `${s.slice(8, 10)}/${s.slice(5, 7)}/${s.slice(0, 4)}` : "—");
 const gon = (s: string) => s.replace(/\s+/g, "");
 
@@ -64,29 +64,29 @@ export function periodCashFlow(s: MarketStatement): MarketCashFlow | null {
     const n = s.naza;
     if (!n || !n.tong_dong || !n.tong_dong.length) return null;
     const d = n.tong_dong;
-    const laNet = (zh: string) => gon(zh).includes("本期应退金额");
+    const isNetLine = (zh: string) => gon(zh).includes("本期应退金额");
     const rmbDeductions: DeductionLine[] = [];
     const codFeeRmb = n.quy_te_rmb != null && n.ve_rmb != null ? n.quy_te_rmb - n.ve_rmb : 0;
     if (codFeeRmb > 0.005) {
         rmbDeductions.push({
-            nhan: "Phí thu hộ COD", so: tron(codFeeRmb),
+            nhan: "Phí thu hộ COD", so: round2(codFeeRmb),
             ghi: n.quy_te_rmb ? `${(codFeeRmb / n.quy_te_rmb * 100).toFixed(1).replace(".", ",")}% tiền COD` : undefined,
         });
     }
     for (const x of d) {
-        if (!/RMB/i.test(x.zh) || x.so >= 0 || laNet(x.zh)) continue;
-        rmbDeductions.push({ nhan: lineLabel(x), so: tron(-x.so) });
+        if (!/RMB/i.test(x.zh) || x.so >= 0 || isNetLine(x.zh)) continue;
+        rmbDeductions.push({ nhan: lineLabel(x), so: round2(-x.so) });
     }
-    const netRmb = d.find((x) => laNet(x.zh) && /RMB/i.test(x.zh))?.so ?? null;
+    const netRmb = d.find((x) => isNetLine(x.zh) && /RMB/i.test(x.zh))?.so ?? null;
     const tyVnd = n.ty_gia_vnd ?? null;
     const convertedVnd = netRmb != null && tyVnd != null ? netRmb * tyVnd : null;
     const vndDeductions = d.filter((x) => gon(x.zh).includes("采购费") && x.so !== 0)
         .map((x) => ({ nhan: lineLabel(x), so: x.so }));
     const phai = n.phai_nhan_vnd ?? null;
-    const chenh = phai != null && convertedVnd != null ? phai - (convertedVnd - vndDeductions.reduce((t, x) => t + x.so, 0)) : 0;
+    const difference = phai != null && convertedVnd != null ? phai - (convertedVnd - vndDeductions.reduce((t, x) => t + x.so, 0)) : 0;
     return {
         so_don: s.rows.length,
-        cod_local: tron(s.rows.reduce((t, r) => t + (Number(r.amount) || 0), 0)),
+        cod_local: round2(s.rows.reduce((t, r) => t + (Number(r.amount) || 0), 0)),
         ty_gia_rmb: n.ty_gia_rmb ?? null,
         rmb: n.quy_te_rmb ?? null,
         tru_rmb: rmbDeductions,
@@ -94,7 +94,7 @@ export function periodCashFlow(s: MarketStatement): MarketCashFlow | null {
         ty_gia_vnd: tyVnd,
         vnd: convertedVnd,
         tru_vnd: vndDeductions,
-        chenh_vnd: Math.abs(chenh) < 1 ? 0 : Math.round(chenh),
+        chenh_vnd: Math.abs(difference) < 1 ? 0 : Math.round(difference),
         phai_nhan_vnd: phai,
     };
 }
@@ -125,17 +125,17 @@ export function auditFeeLine(
     const kg = d.kg ?? 0;
     const lastLeg = Number(b.last_leg?.first_2kg ?? 0) + Math.max(0, Math.ceil(kg - 2 - 1e-9)) * Number(b.last_leg?.extra_per_kg ?? 0);
     const firstLeg = Math.ceil(Math.round(kg * 1000) / 100 - 1e-9) * Number(b.first_leg_per_100g?.thuong ?? 0);
-    const goi = Number(b.single_parcel_fee ?? 0);
-    const expected = tron(lastLeg + firstLeg + goi), charged = tron(d.ship + d.first_leg + d.op);
+    const parcelFee = Number(b.single_parcel_fee ?? 0);
+    const expected = round2(lastLeg + firstLeg + parcelFee), charged = round2(d.ship + d.first_leg + d.op);
     if (Math.abs(charged - expected) < 0.01) return null;
-    const lyDo = [
+    const reason = [
         Math.abs(d.ship - lastLeg) >= 0.01 ? `chặng cuối ${so2(d.ship)}¥ (bảng ${so2(lastLeg)}¥)` : "",
         Math.abs(d.first_leg - firstLeg) >= 0.01 ? `chặng đầu ${so2(d.first_leg)}¥ (bảng ${so2(firstLeg)}¥` +
             (b.first_leg_per_100g?.dac_thu && Math.abs(d.first_leg - firstLeg / Number(b.first_leg_per_100g.thuong) * Number(b.first_leg_per_100g.dac_thu)) < 0.01
                 ? ` — bằng giá hàng đặc thù ${so2(Number(b.first_leg_per_100g.dac_thu))}¥/0,1 kg` : "") + ")" : "",
-        Math.abs(d.op - goi) >= 0.01 ? `đóng gói ${so2(d.op)}¥ (bảng ${so2(goi)}¥)` : "",
+        Math.abs(d.op - parcelFee) >= 0.01 ? `đóng gói ${so2(d.op)}¥ (bảng ${so2(parcelFee)}¥)` : "",
     ].filter(Boolean).join(" · ");
-    return { tracking: d.tracking, order_id: d.order_id, kg: d.kg, thu: charged, dung: expected, chenh: tron(charged - expected), ly_do: lyDo };
+    return { tracking: d.tracking, order_id: d.order_id, kg: d.kg, thu: charged, dung: expected, chenh: round2(charged - expected), ly_do: reason };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -214,7 +214,7 @@ export function buildCodMarketLedger(o: {
             luong: periodCashFlow(s),
             bank, trang_thai: status, trang_thai_chu: statusText, lech_bank_vnd: diff,
             lech_tien: k.lech.filter((l) => l.ky === x.filename)
-                .map((l) => ({ order_no: l.order_id, tracking: l.tracking, cod: l.cod_don, tra: l.tra, chenh: tron(l.tra - l.cod_don) })),
+                .map((l) => ({ order_no: l.order_id, tracking: l.tracking, cod: l.cod_don, tra: l.tra, chenh: round2(l.tra - l.cod_don) })),
             thua_sao_ke: k.khong_co_don.filter((l) => l.ky === x.filename)
                 .map((l) => ({ order_no: l.order_id, tracking: l.tracking, so_tien: l.so_tien })),
             phi_sai: feeMismatches,
@@ -236,17 +236,17 @@ export function buildCodMarketLedger(o: {
     const feeByTracking = new Map<string, number>();
     for (const s of statements) for (const d of s.naza?.phi_dong || []) feeByTracking.set(normTracking(d.tracking), d.ship + d.first_leg + d.op);
     const avgFee = feeByTracking.size ? [...feeByTracking.values()].reduce((a, b) => a + b, 0) / feeByTracking.size : 0;
-    const coLuongNaza = !!ratePeriod;
+    const hasNazaFlow = !!ratePeriod;
     const estimate = (ds: CodOrder[]): Estimate => {
         const cod = ds.reduce((t, d) => t + (Number(d.cod_local) || 0), 0);
-        if (!coLuongNaza) {
-            return { so_don: ds.length, cod_local: tron(cod), don_chua_tru_phi: 0, phi_uoc_rmb: 0, vnd_uoc: o.rateVnd > 0 ? Math.round(cod * o.rateVnd) : null };
+        if (!hasNazaFlow) {
+            return { so_don: ds.length, cod_local: round2(cod), don_chua_tru_phi: 0, phi_uoc_rmb: 0, vnd_uoc: o.rateVnd > 0 ? Math.round(cod * o.rateVnd) : null };
         }
         const r1 = ratePeriod!.luong!.ty_gia_rmb!, r2 = ratePeriod!.luong!.ty_gia_vnd!;
         const notYetCharged = ds.filter((d) => !feeByTracking.has(normTracking(d.tracking)));
         const estFee = notYetCharged.length * avgFee;
         const rmb = cod * r1 * (1 - (codFeePct ?? 0)) - estFee;
-        return { so_don: ds.length, cod_local: tron(cod), don_chua_tru_phi: notYetCharged.length, phi_uoc_rmb: tron(estFee), vnd_uoc: Math.round(rmb * r2) };
+        return { so_don: ds.length, cod_local: round2(cod), don_chua_tru_phi: notYetCharged.length, phi_uoc_rmb: round2(estFee), vnd_uoc: Math.round(rmb * r2) };
     };
     const remaining = k.don.filter((d) => !d.da_tra);
 
@@ -437,7 +437,7 @@ export function buildCodMarketLedger(o: {
             ky_da_doi_chieu_bank: periods.filter((x) => x.bank).length,
             thuc_nhan_vnd: periods.reduce((t, x) => t + (x.bank?.thuc_nhan_vnd ?? 0), 0),
             ty_gia: { rmb: ratePeriod?.luong?.ty_gia_rmb ?? null, vnd: ratePeriod?.luong?.ty_gia_vnd ?? null, thu_ho_pct: codFeePct, ngay: ratePeriod?.ngay ?? null },
-            cach_uoc: coLuongNaza ? "naza" : "ty_gia_khai",
+            cach_uoc: hasNazaFlow ? "naza" : "ty_gia_khai",
             con_lai_da_giao: estimate(remaining.filter((d) => d.nhom === "da_giao")),
             con_lai_chua_giao: estimate(remaining.filter((d) => d.nhom === "chua_giao")),
         },

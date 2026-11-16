@@ -81,8 +81,8 @@ class TestViewFingerprint:
         assert self._fingerprint(tmp_path, monkeypatch, THAILAND) != baseline
 
     def test_display_name_change_keeps_fingerprint(self, tmp_path, monkeypatch):
-        goc = self._fingerprint(tmp_path, monkeypatch, None)
-        assert self._fingerprint(tmp_path, monkeypatch, {"markets": {"Singapore": {"display": "Sing"}}}) == goc
+        base = self._fingerprint(tmp_path, monkeypatch, None)
+        assert self._fingerprint(tmp_path, monkeypatch, {"markets": {"Singapore": {"display": "Sing"}}}) == base
 
 
 class TestNewMarketPropagates:

@@ -4,7 +4,7 @@ import { MARKETS_PUBLIC, PHONE_RULES } from "@/lib/talpha/rules";
 import { buildAlerts, trackMarket, TRACK_MARKETS } from "@/lib/talpha/tracking";
 import { loadMarketShipments, partnerSourceLabel } from "@/lib/talpha/tracking-market";
 import { buildMarketLedger, type ProductInfo } from "@/lib/talpha/market-ledger";
-import { homNayVN, filterByOrderDate } from "@/lib/talpha/order-ledger";
+import { todayVn, filterByOrderDate } from "@/lib/talpha/order-ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
         const alerts = buildAlerts(shipments, new Date(), { staleDays: tm.stale_days });
         const products = await loadOrderProducts(code, tm.source === "partner" ? tm.partner_market : null);
         const sp = req.nextUrl.searchParams;
-        const inRange = filterByOrderDate(shipments, sp.get("from"), sp.get("to"), homNayVN());
+        const inRange = filterByOrderDate(shipments, sp.get("from"), sp.get("to"), todayVn());
         const rows = buildMarketLedger(inRange, products.map, alerts, {
             rateVnd: m.rate_vnd,
             phone: PHONE_RULES[code] ?? null,

@@ -50,7 +50,7 @@ DELETED_ON_POS = "__da_xoa_tren_pos__"
 BACKFILL_COLUMNS = ("page_name", "seller_name")
 
 
-def select_orders_to_upsert(orders, known, missing_columns=False, empty_keys=None, cot=BACKFILL_COLUMNS):
+def select_orders_to_upsert(orders, known, missing_columns=False, empty_keys=None, columns=BACKFILL_COLUMNS):
     """Đơn phải nối vào raw:
       · đơn mới, hoặc `updated_at` mới hơn bản đang có;
       · bảng sạch CHƯA có cột mới (thieu_cot) → mọi đơn trong cửa sổ, để điền ngược;
@@ -62,7 +62,7 @@ def select_orders_to_upsert(orders, known, missing_columns=False, empty_keys=Non
         k = f"{o.get('shop_id', '')}|{o.get('id', '')}"
         if (missing_columns
                 or str(o.get("updated_at", "")) > known.get(k, "")
-                or any(o.get(c) and k in empty_keys.get(c, ()) for c in cot)):
+                or any(o.get(c) and k in empty_keys.get(c, ()) for c in columns)):
             out.append(o)
     return out
 
@@ -107,12 +107,12 @@ def _safe_ident(table: str) -> str:
     return table
 
 
-def table_columns(conn, bang: str) -> dict:
+def table_columns(conn, table: str) -> dict:
     """{tên cột: kiểu} theo thứ tự cột của bảng. Bảng chưa có → {}."""
     rows = conn.execute(
         "SELECT column_name, data_type FROM information_schema.columns "
         "WHERE table_schema = current_schema() AND table_name = %s ORDER BY ordinal_position",
-        (bang,)).fetchall()
+        (table,)).fetchall()
     return {c: k for c, k in rows}
 
 
@@ -133,42 +133,42 @@ def _to_db_value(v, col_type: str):
     return v
 
 
-def insert_rows(conn, bang: str, rows: list) -> int:
+def insert_rows(conn, table: str, rows: list) -> int:
     """Ghi thêm dòng (COPY). Gọi trong transaction của người gọi nếu cần ghi nhiều bảng cùng lúc."""
     if not rows:
         return 0
-    cot = table_columns(conn, _safe_ident(bang))
-    if not cot:
-        raise RuntimeError(f"Postgres chưa có bảng {bang} — chạy: python -m sync.core.pg migrate")
-    unknown_columns = sorted({k for r in rows for k in r} - set(cot))
+    columns = table_columns(conn, _safe_ident(table))
+    if not columns:
+        raise RuntimeError(f"Postgres chưa có bảng {table} — chạy: python -m sync.core.pg migrate")
+    unknown_columns = sorted({k for r in rows for k in r} - set(columns))
     if unknown_columns:
-        raise RuntimeError(f"bảng {bang} thiếu cột {unknown_columns} — thêm file migration trong db/migrations/")
-    col_names = list(cot)
+        raise RuntimeError(f"bảng {table} thiếu cột {unknown_columns} — thêm file migration trong db/migrations/")
+    col_names = list(columns)
     with conn.cursor() as cur:
-        with cur.copy(f"COPY {bang} ({', '.join(col_names)}) FROM STDIN") as cp:
+        with cur.copy(f"COPY {table} ({', '.join(col_names)}) FROM STDIN") as cp:
             for r in rows:
-                cp.write_row([_to_db_value(r.get(c), cot[c]) for c in col_names])
+                cp.write_row([_to_db_value(r.get(c), columns[c]) for c in col_names])
     return len(rows)
 
 
-def replace_table(conn, bang: str, rows: list) -> int:
+def replace_table(conn, table: str, rows: list) -> int:
     """Thay toàn bộ bảng bằng `rows` — tương đương load_truncate. 0 dòng → giữ bảng cũ."""
     if not rows:
-        log.warning(f"  [postgres] {bang}: 0 dòng — giữ nguyên bảng cũ")
+        log.warning(f"  [postgres] {table}: 0 dòng — giữ nguyên bảng cũ")
         return 0
     with conn.transaction():
-        conn.execute(f"DELETE FROM {_safe_ident(bang)}")
-        insert_rows(conn, bang, rows)
-    log.info(f"  [postgres] {bang}: {len(rows)} dòng (thay cả bảng)")
+        conn.execute(f"DELETE FROM {_safe_ident(table)}")
+        insert_rows(conn, table, rows)
+    log.info(f"  [postgres] {table}: {len(rows)} dòng (thay cả bảng)")
     return len(rows)
 
 
-def _rebuild_from_raw(conn, bang: str, select_sql: str) -> int:
+def _rebuild_from_raw(conn, table: str, select_sql: str) -> int:
     """Bảng sạch = kết quả `chon_sql` (đọc từ raw). Chạy trong transaction của người gọi."""
-    ten = ", ".join(table_columns(conn, bang))
-    conn.execute(f"DELETE FROM {bang}")
-    conn.execute(f"INSERT INTO {bang} ({ten}) SELECT {ten} FROM ({select_sql}) t")
-    return conn.execute(f"SELECT COUNT(*) FROM {bang}").fetchone()[0]
+    name = ", ".join(table_columns(conn, table))
+    conn.execute(f"DELETE FROM {table}")
+    conn.execute(f"INSERT INTO {table} ({name}) SELECT {name} FROM ({select_sql}) t")
+    return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
 
 def sql_rebuild_orders(orders_table: str, shop_ids=None) -> str:
@@ -197,76 +197,76 @@ def sql_rebuild_items(items_table: str, shop_ids=None) -> str:
     """
 
 
-def write_orders(conn, orders: list, items: list, bang_don: str = "sale_order",
-            bang_item: str = "order_items", shop_ids=None, da_thay=None) -> tuple:
+def write_orders(conn, orders: list, items: list, orders_table: str = "sale_order",
+            items_table: str = "order_items", shop_ids=None, replaced=None) -> tuple:
     """Ghi đơn + dòng hàng theo cơ chế hai tầng. Trả (số đơn, số item) của bảng sạch.
 
     Chỉ nối vào raw đơn MỚI hoặc có `updated_at` mới hơn bản đang có (kèm toàn bộ item của đơn đó),
     cộng bia mộ cho đơn đã xoá trên POS (da_thay: {shop_id: (mốc inserted_at, {id POS trả})} của
     những shop kéo ĐỦ ở vòng này). Khoá đơn là (shop_id, id): POS đánh số riêng từng shop."""
-    bang_don, bang_item = _safe_ident(bang_don), _safe_ident(bang_item)
+    orders_table, items_table = _safe_ident(orders_table), _safe_ident(items_table)
     with conn.transaction():
         known = {f"{s}|{i}": (t or "") for s, i, t in conn.execute(
-            f"SELECT shop_id, id, MAX(updated_at) FROM {bang_don} GROUP BY 1, 2")}
-        trong = {c: {f"{s}|{i}" for s, i in conn.execute(
-            f"SELECT shop_id, id FROM {bang_don} WHERE COALESCE({_safe_ident(c)}, '') = ''")}
+            f"SELECT shop_id, id, MAX(updated_at) FROM {orders_table} GROUP BY 1, 2")}
+        empty_keys = {c: {f"{s}|{i}" for s, i in conn.execute(
+            f"SELECT shop_id, id FROM {orders_table} WHERE COALESCE({_safe_ident(c)}, '') = ''")}
             for c in BACKFILL_COLUMNS}
-        changed = select_orders_to_upsert(orders, known, empty_keys=trong)
+        changed = select_orders_to_upsert(orders, known, empty_keys=empty_keys)
         changed_keys = {(str(o.get("shop_id", "")), str(o.get("id", ""))) for o in changed}
         changed_items = [it for it in items
                     if (str(it.get("shop_id", "")), str(it.get("order_id", ""))) in changed_keys]
         log.info(f"  [postgres] Đơn kéo về {len(orders)} → {len(changed)} đơn mới/đổi trạng thái")
-        insert_rows(conn, f"{bang_don}_raw", changed)
-        insert_rows(conn, f"{bang_item}_raw", changed_items)
+        insert_rows(conn, f"{orders_table}_raw", changed)
+        insert_rows(conn, f"{items_table}_raw", changed_items)
 
-        if da_thay:
-            shops = [str(x) for x in da_thay if str(x).isdigit()]
+        if replaced:
+            shops = [str(x) for x in replaced if str(x).isdigit()]
             existing = conn.execute(
-                f"SELECT shop_id, id, inserted_at FROM {bang_don} WHERE shop_id = ANY(%s)",
+                f"SELECT shop_id, id, inserted_at FROM {orders_table} WHERE shop_id = ANY(%s)",
                 (shops,)).fetchall() if shops else []
-            xoa, canh_bao = select_deleted_orders(existing, da_thay)
-            for c in canh_bao:
-                log.warning(f"  [postgres] {bang_don}: {c}")
-            if xoa:
+            deleted, warnings = select_deleted_orders(existing, replaced)
+            for c in warnings:
+                log.warning(f"  [postgres] {orders_table}: {c}")
+            if deleted:
                 from datetime import datetime
                 from psycopg.rows import dict_row
 
-                keys = [f"{a}|{b}" for a, b in xoa]
+                keys = [f"{a}|{b}" for a, b in deleted]
                 now = (max((str(o.get("sync_time") or "") for o in orders), default="")
                            or datetime.utcnow().isoformat())
                 with conn.cursor(row_factory=dict_row) as cur:
                     tombstones = cur.execute(
-                        f"SELECT * FROM {bang_don} WHERE shop_id || '|' || id = ANY(%s)", (keys,)).fetchall()
+                        f"SELECT * FROM {orders_table} WHERE shop_id || '|' || id = ANY(%s)", (keys,)).fetchall()
                 for d in tombstones:
                     d["status_name"] = DELETED_ON_POS
                     d["sync_time"] = now
-                insert_rows(conn, f"{bang_don}_raw", tombstones)
-                log.info(f"  [postgres] {bang_don}: {len(tombstones)} đơn không còn trên POS → bỏ khỏi bảng: "
+                insert_rows(conn, f"{orders_table}_raw", tombstones)
+                log.info(f"  [postgres] {orders_table}: {len(tombstones)} đơn không còn trên POS → bỏ khỏi bảng: "
                          f"{', '.join(keys[:20])}")
 
-        n_orders = _rebuild_from_raw(conn, bang_don, sql_rebuild_orders(bang_don, shop_ids))
-        n_item = _rebuild_from_raw(conn, bang_item, sql_rebuild_items(bang_item, shop_ids))
-    log.info(f"  [postgres] {bang_don}: {n_orders} đơn · {bang_item}: {n_item} item (dựng lại từ raw)")
+        n_orders = _rebuild_from_raw(conn, orders_table, sql_rebuild_orders(orders_table, shop_ids))
+        n_item = _rebuild_from_raw(conn, items_table, sql_rebuild_items(items_table, shop_ids))
+    log.info(f"  [postgres] {orders_table}: {n_orders} đơn · {items_table}: {n_item} item (dựng lại từ raw)")
     return n_orders, n_item
 
 
-def write_ads(conn, rows: list, bang: str, id_col: str) -> int:
+def write_ads(conn, rows: list, table: str, id_col: str) -> int:
     """Ghi insight quảng cáo theo cơ chế hai tầng: khoá (account_id, id_col, date), bản
     sync_time mới nhất thắng. Cửa sổ kéo chỉ quyết định ngày nào được làm mới, không xoá ngày nào."""
     if id_col not in ("ad_id", "adset_id"):
         raise ValueError(f"id_col lạ: {id_col!r}")
-    bang = _safe_ident(bang)
+    table = _safe_ident(table)
     with conn.transaction():
-        insert_rows(conn, f"{bang}_raw", rows)
-        n = _rebuild_from_raw(conn, bang, f"""
-            SELECT DISTINCT ON (account_id, {id_col}, date) * FROM {bang}_raw
+        insert_rows(conn, f"{table}_raw", rows)
+        n = _rebuild_from_raw(conn, table, f"""
+            SELECT DISTINCT ON (account_id, {id_col}, date) * FROM {table}_raw
             ORDER BY account_id, {id_col}, date, sync_time DESC NULLS LAST
         """)
-    log.info(f"  [postgres] {bang}: {len(rows)} dòng kéo về → bảng {n} dòng (dựng lại từ raw)")
+    log.info(f"  [postgres] {table}: {len(rows)} dòng kéo về → bảng {n} dòng (dựng lại từ raw)")
     return n
 
 
-def ad_ids_to_lookup(conn, bang_don: str = "sale_order", limit: int = 600) -> list:
+def ad_ids_to_lookup(conn, orders_table: str = "sale_order", limit: int = 600) -> list:
     """ad_id nằm trên đơn mà chưa có trong chi tiêu (mọi TKQC, fb_ads_tat_ca) lẫn ad_dictionary —
     câu đầu của sync_ad_dictionary (X9)."""
     return [r[0] for r in conn.execute(f"""
@@ -276,7 +276,7 @@ def ad_ids_to_lookup(conn, bang_don: str = "sale_order", limit: int = 600) -> li
                      AND p_utm_term ~ '^[0-9]+$' THEN p_utm_term
                 WHEN ad_id IS NOT NULL AND TRIM(ad_id) <> '' THEN ad_id
             END AS id
-            FROM {_safe_ident(bang_don)}
+            FROM {_safe_ident(orders_table)}
         ) can
         WHERE id IS NOT NULL
           AND id NOT IN (SELECT ad_id FROM fb_ads_tat_ca WHERE ad_id IS NOT NULL)

@@ -79,17 +79,17 @@ export function statusText(status?: string | null, raw?: string | null): string 
     return status ? statusLabel(status) : (String(raw || "").trim() || "Chưa rõ");
 }
 
-export type Khoan = { so_don: number; cod_local: number; vnd_uoc: number | null };
+export type MoneyItem = { so_don: number; cod_local: number; vnd_uoc: number | null };
 export type CodSummary = {
-    da_giao: Khoan;
-    chua_giao: Khoan & { theo_trang_thai: { trang_thai: string; so_don: number; cod_local: number }[] };
-    khong_tinh: Khoan & { hoan: number; huy: number; tieu_huy: number };
+    da_giao: MoneyItem;
+    chua_giao: MoneyItem & { theo_trang_thai: { trang_thai: string; so_don: number; cod_local: number }[] };
+    khong_tinh: MoneyItem & { hoan: number; huy: number; tieu_huy: number };
 };
 
 /** Cộng từng nhóm. rateVnd ≤ 0 (chưa khai tỷ giá) → vnd_uoc null, KHÔNG nhân bừa. */
 export function summarizeCod(orders: CodOrder[], rateVnd: number): CodSummary {
     const vnd = (x: number) => (rateVnd > 0 ? Math.round(x * rateVnd) : null);
-    const sumGroup = (xs: CodOrder[]): Khoan => {
+    const sumGroup = (xs: CodOrder[]): MoneyItem => {
         const cod = xs.reduce((n, d) => n + (Number(d.cod_local) || 0), 0);
         return { so_don: xs.length, cod_local: Math.round(cod * 100) / 100, vnd_uoc: vnd(cod) };
     };

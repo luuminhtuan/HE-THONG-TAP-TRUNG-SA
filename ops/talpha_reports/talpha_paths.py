@@ -87,7 +87,7 @@ def bq_key() -> str:
     khoản). Trả về đường dẫn đầu tiên có thật; không có thì trả ứng viên đầu để
     lỗi báo rõ tên file thiếu thay vì báo `None`.
     """
-    ung_vien = [
+    candidates = [
         os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
         os.path.join(runtime_dir(), "bigquery_key.json"),
         os.path.join(reports_dir(), "bigquery_key.json"),
@@ -95,13 +95,13 @@ def bq_key() -> str:
     # repo_dir() nay NÉM lỗi khi không thấy cây repo. Tìm key là việc phụ, không
     # đáng để cả vòng chạy chết chỉ vì repo chưa gắn — thiếu repo thì bỏ ứng viên này.
     try:
-        ung_vien.append(os.path.join(repo_dir(), "bigquery_key.json"))
+        candidates.append(os.path.join(repo_dir(), "bigquery_key.json"))
     except RuntimeError:
         pass
-    for k in ung_vien:
+    for k in candidates:
         if k and os.path.isfile(k):
             return k
-    return ung_vien[1]
+    return candidates[1]
 
 
 def setup_runtime_env() -> str:

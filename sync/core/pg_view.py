@@ -119,16 +119,16 @@ def product_costs_sql() -> str:
     rate = r.get("cost_rate_rmb_vnd")
     if not isinstance(rate, (int, float)) or rate <= 0:
         raise SystemExit(f"❌ {RULES_FILE}: thiếu `cost_rate_rmb_vnd` — không quy được giá vốn tệ ra VND.")
-    dong = sorted((sku, int(round(v["cost_price_rmb"] * rate)))
+    rows = sorted((sku, int(round(v["cost_price_rmb"] * rate)))
                   for sku, v in (r.get("products") or {}).items()
                   if not sku.startswith("_") and isinstance(v, dict)
                   and isinstance(v.get("cost_price_rmb"), (int, float)) and v["cost_price_rmb"] > 0)
-    if not dong:
+    if not rows:
         raise SystemExit(f"❌ {RULES_FILE}: mục `products` rỗng — view sẽ có COGS = 0 toàn bộ.")
-    invalid = [sku for sku, _ in dong if not sku.replace("-", "").replace("_", "").isalnum()]
+    invalid = [sku for sku, _ in rows if not sku.replace("-", "").replace("_", "").isalnum()]
     if invalid:
         raise SystemExit(f"❌ SKU không hợp lệ trong rules file (chỉ cho chữ/số/-/_): {invalid}")
-    return ",\n        ".join(f"('{sku}', {cost})" for sku, cost in dong)
+    return ",\n        ".join(f"('{sku}', {cost})" for sku, cost in rows)
 
 
 def test_campaign_re() -> str:
@@ -174,8 +174,8 @@ def _apply_thresholds(sql: str, name: str) -> str:
     return sql
 
 
-def render(ten: str) -> str:
-    sql = _apply_thresholds((VIEWS_DIR / ten).read_text(encoding="utf-8"), ten)
+def render(name: str) -> str:
+    sql = _apply_thresholds((VIEWS_DIR / name).read_text(encoding="utf-8"), name)
     replacements = {
         "{PRODUCT_COSTS}": product_costs_sql,
         "{MARKETER_GROUP}": marketer_group_sql,
@@ -187,14 +187,14 @@ def render(ten: str) -> str:
         if token in sql:
             sql = sql.replace(token, builder())
     if "{TKQC_MAC_DINH}" in sql or "{TKQC_VAO_BAO_CAO}" in sql:
-        mac_dinh, vao = ad_account_types()
-        sql = sql.replace("{TKQC_MAC_DINH}", mac_dinh).replace("{TKQC_VAO_BAO_CAO}", vao)
+        default_type, report_types = ad_account_types()
+        sql = sql.replace("{TKQC_MAC_DINH}", default_type).replace("{TKQC_VAO_BAO_CAO}", report_types)
     if "{FX_CASE}" in sql or "{FX_KNOWN}" in sql:
         case, known = fx_sql()
         sql = sql.replace("{FX_CASE}", case).replace("{FX_KNOWN}", known)
     leftover = re.findall(r"\{[A-Z_]+\}", sql)
     if leftover:
-        raise SystemExit(f"❌ {ten}: còn token chưa thay {sorted(set(leftover))}")
+        raise SystemExit(f"❌ {name}: còn token chưa thay {sorted(set(leftover))}")
     return sql
 
 
@@ -220,15 +220,15 @@ def render_all() -> tuple:
 def rebuild_views(conn, force: bool = False) -> bool:
     """Dựng lại bộ view nếu luật đổi, hoặc có migration mới (view `SELECT f.*` chốt danh sách cột lúc
     dựng — bảng thêm cột mà không dựng lại là view thiếu cột), hoặc ep=True. Trả True nếu đã dựng."""
-    ds, van_tay = render_all()
+    ds, fingerprint = render_all()
     mig = conn.execute("SELECT COALESCE(string_agg(ten, ',' ORDER BY ten), '') FROM schema_migrations").fetchone()[0]
-    van_tay = hashlib.sha256(f"{van_tay}|{mig}".encode("utf-8")).hexdigest()[:16]
+    fingerprint = hashlib.sha256(f"{fingerprint}|{mig}".encode("utf-8")).hexdigest()[:16]
     previous = conn.execute("SELECT van_tay FROM view_van_tay WHERE id = 1").fetchone()
-    if previous and previous[0] == van_tay and not force:
+    if previous and previous[0] == fingerprint and not force:
         return False
     with conn.transaction():
-        for ten, _ in reversed(ds):
-            conn.execute(f"DROP VIEW IF EXISTS {ten} CASCADE")
+        for name, _ in reversed(ds):
+            conn.execute(f"DROP VIEW IF EXISTS {name} CASCADE")
         for _, sql in ds:
             conn.execute(sql)
         # Quyền của hai vai chỉ đọc (migration 0003) mất theo view cũ — cấp lại. talpha_doc_nuoc
@@ -244,5 +244,5 @@ def rebuild_views(conn, force: bool = False) -> bool:
         conn.execute("GRANT SELECT ON vw_orders_std, vw_fb_ads_std, vw_ad_windows TO talpha_doc_nuoc")
         conn.execute(
             "INSERT INTO view_van_tay (id, van_tay, dung_luc) VALUES (1, %s, now()) "
-            "ON CONFLICT (id) DO UPDATE SET van_tay = EXCLUDED.van_tay, dung_luc = now()", (van_tay,))
+            "ON CONFLICT (id) DO UPDATE SET van_tay = EXCLUDED.van_tay, dung_luc = now()", (fingerprint,))
     return True

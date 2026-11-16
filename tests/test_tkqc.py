@@ -36,14 +36,14 @@ class TestInitialAccountType:
         assert account_type == "khac" and not RULES["tkqc_loai"]["loai"][account_type]["vao_bao_cao"]
 
     def test_seed_account_preassigned(self):
-        loai = initial_account_type("2332183394212686", "VND", RULES)
-        assert loai == "hat_giong" and not RULES["tkqc_loai"]["loai"][loai]["vao_bao_cao"]
+        category = initial_account_type("2332183394212686", "VND", RULES)
+        assert category == "hat_giong" and not RULES["tkqc_loai"]["loai"][category]["vao_bao_cao"]
 
     def test_every_preassigned_type_is_declared(self):
         cfg = RULES["tkqc_loai"]
-        loai = {k for k in cfg["loai"] if not k.startswith("_")}
+        category = {k for k in cfg["loai"] if not k.startswith("_")}
         preassigned = {v for k, v in cfg["gan_san"].items() if not k.startswith("_")}
-        assert preassigned | {cfg["mac_dinh"], cfg["loai_tien_khac"]} <= loai
+        assert preassigned | {cfg["mac_dinh"], cfg["loai_tien_khac"]} <= category
 
 
 @pytest.fixture

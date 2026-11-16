@@ -300,15 +300,15 @@ function marketFilterFor(table: string, a: Access): string | null {
  * thoát), U& (tên / chuỗi mã unicode), chú thích khối mở bằng "/" + "*" (lồng nhau được), nháy không đóng. Tách lệch
  * Postgres là kẽ hở: một đoạn code chạy thật mà máy tưởng là chuỗi thì không bị soát.
  */
-function cheChuoi(sql: string): { code: string; chuoi: string[] } | null {
+function maskStringLiterals(sql: string): { code: string; chuoi: string[] } | null {
     if (/["$\\\u0000]|\/\*|\bU&|\b[eE]'/.test(sql)) return null;
-    const chuoi: string[] = [];
+    const literals: string[] = [];
     const code = sql.replace(/'(?:[^']|'')*'|--[^\n]*/g, (m) => {
-        chuoi.push(m);
-        return ` \u0000${chuoi.length - 1}\u0000 `;
+        literals.push(m);
+        return ` \u0000${literals.length - 1}\u0000 `;
     });
     if (/'/.test(code)) return null;     // nháy không đóng
-    return { code, chuoi };
+    return { code, chuoi: literals };
 }
 
 /**
@@ -319,26 +319,26 @@ export function scopeQuery(
     sql: string, a: Access, otherTables: string[] = [],
 ): { ok: true; sql: string } | { ok: false; error: string } {
     if (seesAllMarkets(a)) return { ok: true, sql };
-    const reject = (ly: string) => ({ ok: false as const, error: `Câu truy vấn có ${ly} — không cho phép với tài khoản xem một phần nước` });
+    const reject = (reason: string) => ({ ok: false as const, error: `Câu truy vấn có ${reason} — không cho phép với tài khoản xem một phần nước` });
     if (/__T\d+__/.test(sql)) return reject("ký hiệu __T…__");
-    const che = cheChuoi(sql);
+    const che = maskStringLiterals(sql);
     if (!che) return reject("dấu \", $, gạch ngược, chuỗi E'…' / U&, chú thích khối hoặc dấu nháy không đóng");
     // Soát TRƯỚC khi thay bảng: thay xong thì "db.public.sale_order" chỉ còn "db. (câu con)".
     const THREE_PART_NAME = /\b[A-Za-z_]\w*\s*\.\s*[A-Za-z_]\w*\s*\.\s*[A-Za-z_]\w*\b(?!\s*\()/;
     if (THREE_PART_NAME.test(che.code)) return reject("đường dẫn bảng 3 phần");
 
     const replacements: string[] = [];
-    let loi: string | null = null;
+    let error: string | null = null;
     // Tên bảng của dashboard, có hoặc không có tiền tố schema "public." — mọi chỗ nó xuất hiện trong code.
     const re = new RegExp(`(?:\\bpublic\\s*\\.\\s*)?\\b(${[...FILTERABLE_TABLES, "vw_attribution_quality", "fb_ads_data", "fb_adset_data"].join("|")})\\b`, "gi");
     const withPlaceholders = che.code.replace(re, (_m, table: string) => {
         const b = table.toLowerCase();
         const dk = marketFilterFor(b, a);
-        if (!dk) { loi = loi || `Bảng ${b} gộp số mọi nước — tài khoản chỉ xem một phần nước không đọc được`; return " "; }
+        if (!dk) { error = error || `Bảng ${b} gộp số mọi nước — tài khoản chỉ xem một phần nước không đọc được`; return " "; }
         replacements.push(`(SELECT * FROM ${b} WHERE ${dk})`);
         return ` __T${replacements.length - 1}__ `;
     });
-    if (loi) return { ok: false, error: loi };
+    if (error) return { ok: false, error: error };
     if (!replacements.length) return { ok: false, error: "Câu truy vấn không đọc bảng nào của dashboard" };
 
     // Phần code còn lại không được có đường nào khác tới dữ liệu.

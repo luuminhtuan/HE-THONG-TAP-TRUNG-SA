@@ -61,8 +61,8 @@ export async function needsRestart(): Promise<boolean> {
 }
 
 /** Đặt (`khoi`) hoặc bỏ (`null`) phần sửa của một nước. */
-export async function saveMarketOverride(key: string, khoi: MarketOverride | null, ai: string): Promise<void> {
-    if (khoi === null || !Object.keys(khoi).length) {
+export async function saveMarketOverride(key: string, block: MarketOverride | null, ai: string): Promise<void> {
+    if (block === null || !Object.keys(block).length) {
         await query("DELETE FROM market_overrides WHERE market_key = @key", { key });
         return;
     }
@@ -71,7 +71,7 @@ export async function saveMarketOverride(key: string, khoi: MarketOverride | nul
          VALUES (@key, @settings::jsonb, now(), @ai)
          ON CONFLICT (market_key) DO UPDATE
            SET settings = EXCLUDED.settings, updated_at = now(), updated_by = EXCLUDED.updated_by`,
-        { key, settings: JSON.stringify(khoi), ai });
+        { key, settings: JSON.stringify(block), ai });
 }
 
 /**

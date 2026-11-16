@@ -307,8 +307,8 @@ async function fetchPOSFromDirectAPI(shops: YamlConfig["poscake"]["shops"], star
                     // chia cho tỷ giá như bước sync làm (business_rules.convert_order_currency),
                     // để phép nhân tỷ giá bên dưới trả lại đúng số VND — không thì 730.000đ
                     // hoá 584 triệu. Đường kho số không cần: bảng đơn đã quy đổi sẵn.
-                    const laVnd = String(o.order_currency || '').toUpperCase() === 'VND';
-                    const priceLocal = (o.cod || o.total_price || 0) / (laVnd ? rate : posMoneyDivisor(shopName));
+                    const isVnd = String(o.order_currency || '').toUpperCase() === 'VND';
+                    const priceLocal = (o.cod || o.total_price || 0) / (isVnd ? rate : posMoneyDivisor(shopName));
                     const mkRaw = o.marketer || o.pke_mkter || null;
                     const marketerName = mkRaw && typeof mkRaw === 'object' ? (mkRaw.name || '') : (mkRaw || '');
                     const custRaw = o.customer_name;

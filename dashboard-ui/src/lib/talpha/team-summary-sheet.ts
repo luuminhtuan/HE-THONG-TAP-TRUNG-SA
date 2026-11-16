@@ -127,8 +127,8 @@ export async function reportForRange(fromIn: string, to: string, a: Access | nul
     // từng ngày. Tab marketer gộp mọi nước của người đó (Sheet không tách) nên KHÔNG trả —
     // trả là lộ số team khác. "(không gán)" cũng vậy. Tháng nào file chỉ có một nước có số
     // thì format_all.py không dựng tab nước → tháng đó người xem một phần thấy 0.
-    const hep = !!a && !seesAllMarkets(a);
-    if (hep) {
+    const narrow = !!a && !seesAllMarkets(a);
+    if (narrow) {
         byDay.clear();
         for (const [code, m] of byMarketDay) {
             if (!canMarket(a!, code)) continue;
@@ -141,7 +141,7 @@ export async function reportForRange(fromIn: string, to: string, a: Access | nul
     for (const d of days) {
         const n = months.get(d.date.slice(0, 7)) || emptyMetrics(); addMetrics(n, d); months.set(d.date.slice(0, 7), n);
     }
-    const teamResult = hep ? days.reduce((s, d) => { addMetrics(s, d); return s; }, emptyMetrics()) : team;
+    const teamResult = narrow ? days.reduce((s, d) => { addMetrics(s, d); return s; }, emptyMetrics()) : team;
 
     return {
         from, to, start_date: REPORT_START_DATE,
@@ -150,20 +150,20 @@ export async function reportForRange(fromIn: string, to: string, a: Access | nul
         missing_months: missingMonths,
         team: teamResult,
         // true = số đã cắt theo team của người xem (giao diện ẩn bảng marketer, KPI cả công ty).
-        scoped: hep,
-        marketers: hep ? [] : [...byMarketer.entries()]
+        scoped: narrow,
+        marketers: narrow ? [] : [...byMarketer.entries()]
             .map(([tab, metrics]) => ({ tab, display: DISPLAY[tab] || tab, ...metrics }))
             .sort((a, b) => b.doanh_so - a.doanh_so),
-        unassigned: !hep && (unassigned.ads || unassigned.don) ? unassigned : null,
+        unassigned: !narrow && (unassigned.ads || unassigned.don) ? unassigned : null,
         markets: [...byMarket.entries()]
-            .filter(([, v]) => !hep || (!!v.code && canMarket(a!, v.code)))
+            .filter(([, v]) => !narrow || (!!v.code && canMarket(a!, v.code)))
             .map(([tab, v]) => ({ tab, code: v.code || null, ...v.so }))
             .sort((a, b) => b.doanh_so - a.doanh_so),
         days,
         // Từng ngày của từng tab NƯỚC (04/11/2026, cho tab Lãi lỗ: so doanh số với kiện đã lên
         // 3PL theo ngày). Cùng luật cắt theo team như `markets`.
         market_days: [...byMarketDay.entries()]
-            .filter(([code]) => !hep || canMarket(a!, code))
+            .filter(([code]) => !narrow || canMarket(a!, code))
             .flatMap(([code, m]) => [...m.entries()].map(([date, metrics]) => ({ code, date, ...metrics })))
             .sort((x, y) => x.date.localeCompare(y.date) || x.code.localeCompare(y.code)),
         months: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, metrics]) => ({ month, ...metrics })),

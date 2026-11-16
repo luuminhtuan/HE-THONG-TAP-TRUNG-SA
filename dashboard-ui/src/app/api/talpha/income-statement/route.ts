@@ -3,11 +3,11 @@ import { MARKETS_PUBLIC, REPORT_START_DATE } from "@/lib/talpha/rules";
 import { getAccess } from "@/lib/talpha/access";
 import { canMarket, seesAllMarkets } from "@/lib/talpha/access-rules";
 import { reportForRange } from "@/lib/talpha/team-summary-sheet";
-import { homNayVN } from "@/lib/talpha/order-ledger";
+import { todayVn } from "@/lib/talpha/order-ledger";
 import { readStoreFresh } from "@/lib/talpha/store";
 import {
     estimatePending3pl, emptyAmounts, allocateOpex, sumParcels, totalFees, computeDeliveryRate,
-    type Pending3pl, type Khoan, type OpexItem, type ParcelTotals, type DeliveryRate,
+    type Pending3pl, type Amounts, type OpexItem, type ParcelTotals, type DeliveryRate,
 } from "@/lib/talpha/income-statement";
 import { DELIVERY_RATE_CFG, PENDING_3PL_DAYS, OPEX_CATEGORIES, loadMarketParcels } from "@/lib/talpha/income-statement-sources";
 
@@ -39,11 +39,11 @@ type MarketRow = {
     tk: ParcelTotals | null;
     cho_len_3pl: Pending3pl | null;
     van_hanh: { rieng: number; chung: number };
-    du_kien: Khoan; toi_thieu: Khoan;
+    du_kien: Amounts; toi_thieu: Amounts;
     loi_nhuan: { du_kien: number; toi_thieu: number };
 };
 
-const accumulate = (a: Khoan, b: Khoan) => {
+const accumulate = (a: Amounts, b: Amounts) => {
     a.doanh_thu += b.doanh_thu; a.gia_von += b.gia_von;
     a.phi.di += b.phi.di; a.phi.giao += b.phi.giao; a.phi.hoan += b.phi.hoan; a.phi.ty_gia += b.phi.ty_gia;
 };
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     const a = await getAccess(req);
     if (!a) return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
     const seesAll = seesAllMarkets(a);
-    const today = homNayVN();
+    const today = todayVn();
     const asOf = to < today ? to : today;
 
     try {

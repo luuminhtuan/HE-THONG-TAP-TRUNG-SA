@@ -46,5 +46,5 @@ def test_already_backfilled_does_nothing():
 
 def test_seller_assigned_later_also_backfilled():
     ds = [order("1", "2026-09-10T01:00", "Page A", "Chun Ho")]
-    trong = {"page_name": set(), "seller_name": {"1022091930|1"}}
-    assert [o["id"] for o in select_orders_to_upsert(ds, KNOWN, empty_keys=trong)] == ["1"]
+    empty = {"page_name": set(), "seller_name": {"1022091930|1"}}
+    assert [o["id"] for o in select_orders_to_upsert(ds, KNOWN, empty_keys=empty)] == ["1"]

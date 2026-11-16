@@ -77,17 +77,17 @@ const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00Z
  */
 export function statementOverdue(
     periodEndDates: (string | null | undefined)[],
-    homNay: string,
+    today: string,
     opts: { chuKy?: number; an?: number } = {},
 ): { tre: boolean; tre_ngay: number; ky_gan_nhat: string | null; du_kien: string | null } {
     const cycleDays = opts.chuKy ?? STATEMENT_CYCLE_DAYS;
     const graceDays = opts.an ?? 1;
     const sortedDates = periodEndDates.filter(IS_ISO_DATE).sort();
     const latest = sortedDates.length ? sortedDates[sortedDates.length - 1] : null;
-    if (!latest || !IS_ISO_DATE(homNay)) return { tre: false, tre_ngay: 0, ky_gan_nhat: latest, du_kien: null };
+    if (!latest || !IS_ISO_DATE(today)) return { tre: false, tre_ngay: 0, ky_gan_nhat: latest, du_kien: null };
 
     const expected = addDays(latest, cycleDays);
-    const daysLate = dayDiff(homNay, expected);
+    const daysLate = dayDiff(today, expected);
     return { tre: daysLate > graceDays, tre_ngay: Math.max(daysLate, 0), ky_gan_nhat: latest, du_kien: expected };
 }
 
@@ -101,19 +101,19 @@ export function statementOverdue(
  * `tu` / `den` rỗng hoặc sai dạng = không chặn phía đó.
  */
 export function filterByOrderDate<T extends { order_date?: string | null; ship_date?: string | null }>(
-    rows: T[], fromDate: string | null | undefined, toDate: string | null | undefined, homNay: string,
+    rows: T[], fromDate: string | null | undefined, toDate: string | null | undefined, today: string,
 ): T[] {
     const a = IS_ISO_DATE(fromDate) ? fromDate : null;
     const b = IS_ISO_DATE(toDate) ? toDate : null;
     if (!a && !b) return rows;
     return rows.filter((r) => {
-        const d = String(r.order_date || r.ship_date || homNay).slice(0, 10);
+        const d = String(r.order_date || r.ship_date || today).slice(0, 10);
         return (!a || d >= a) && (!b || d <= b);
     });
 }
 
 /** Ngày hôm nay theo giờ Việt Nam (YYYY-MM-DD) — máy chủ chạy UTC, 0h–7h sáng VN còn là hôm qua. */
-export const homNayVN = (now: Date = new Date()) => now.toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
+export const todayVn = (now: Date = new Date()) => now.toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
 /** Tỷ giá dự phòng khi bản sao kê không nói tỷ giá của kỳ đó. */
 export const FALLBACK_TWD_VND = Number(TW.rate_vnd ?? 800);
 /** Tỷ giá RMB→VND dự phòng, chỉ dùng khi bản sao kê không nói tỷ giá kỳ đó — talpha_rules.json → cost_rate_rmb_vnd. */

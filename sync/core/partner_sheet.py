@@ -103,13 +103,13 @@ def normalize_rows(values: list, column_map: dict, meta: dict, synced_at: str) -
         i = columns.get(k)
         return str(r[i]).strip() if i is not None and i < len(r) and r[i] is not None else ""
 
-    ra = []
+    result = []
     for row_no, r in enumerate(values[1:], start=2):
         order_no, tracking = o(r, "order_no"), re.sub(r"\s+", "", o(r, "tracking"))
         if not order_no and not tracking:
             continue
         qty = parse_number(o(r, "quantity"))
-        ra.append({
+        result.append({
             "market": meta["market"], "shop_label": meta["shop_label"], "sheet_id": meta["sheet_id"],
             "row_no": row_no,
             "marketer": o(r, "marketer"), "recon": o(r, "recon"), "note": o(r, "note"),
@@ -125,7 +125,7 @@ def normalize_rows(values: list, column_map: dict, meta: dict, synced_at: str) -
             "cod": parse_number(o(r, "cod")), "currency": o(r, "currency"),
             "synced_at": synced_at,
         })
-    return ra
+    return result
 
 
 def read_public_sheet(sheet_id: str, gid: str = "0") -> list:

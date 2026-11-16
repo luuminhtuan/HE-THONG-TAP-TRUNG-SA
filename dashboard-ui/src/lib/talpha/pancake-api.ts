@@ -11,14 +11,14 @@
 import { campaignMarket, MESS_PANCAKE } from "./rules";
 import { getCredential } from "./credentials";
 import {
-    PANCAKE_API, normalizePageName, splitMessByCampaign, countForRange, hanToken, batchDoneForDay, pageOfCampaign,
+    PANCAKE_API, normalizePageName, splitMessByCampaign, countForRange, tokenExpiry, batchDoneForDay, pageOfCampaign,
     type Conversation,
 } from "./pancake";
 
 export const GIAN_MS = 400;
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function goiPancake(url: string): Promise<any> {
+export async function callPancake(url: string): Promise<any> {
     for (let attempt = 0; attempt < 4; attempt++) {
         const r = await fetch(url, { cache: "no-store" });
         if (r.status === 429) { await sleep(5000 * 2 ** attempt); continue; }
@@ -33,17 +33,17 @@ export async function goiPancake(url: string): Promise<any> {
 /** Token tài khoản Pancake + lỗi nếu thiếu / hết hạn. */
 export function tokenPancake(): { tok: string; het_han: string | null; loi: string } {
     const tok = getCredential("TALPHA_PANCAKE_API_TOKEN");
-    const expiry = hanToken(tok);
-    const loi = !tok ? "chưa có token Pancake (Quản trị → Khoá kết nối)"
+    const expiry = tokenExpiry(tok);
+    const error = !tok ? "chưa có token Pancake (Quản trị → Khoá kết nối)"
         : expiry && expiry < Date.now() ? `token Pancake đã hết hạn ${new Date(expiry).toISOString().slice(0, 10)}` : "";
-    return { tok, het_han: expiry ? new Date(expiry).toISOString() : null, loi };
+    return { tok, het_han: expiry ? new Date(expiry).toISOString() : null, loi: error };
 }
 
 // Danh sách page của tài khoản — 10 phút mới hỏi lại.
 let dsPage: { at: number; tok: string; pages: { id: string; name: string }[] } | null = null;
-export async function cacPage(tok: string): Promise<{ id: string; name: string }[]> {
+export async function listPages(tok: string): Promise<{ id: string; name: string }[]> {
     if (dsPage && dsPage.tok === tok && Date.now() - dsPage.at < 600_000) return dsPage.pages;
-    const j = await goiPancake(`${PANCAKE_API}/pages?access_token=${encodeURIComponent(tok)}`);
+    const j = await callPancake(`${PANCAKE_API}/pages?access_token=${encodeURIComponent(tok)}`);
     const c = j.categorized || {};
     const pages = [...(c.activated || []), ...(c.inactivated || [])]
         .filter((p: any) => p && p.id).map((p: any) => ({ id: String(p.id), name: String(p.name || "") }));
@@ -68,7 +68,7 @@ export async function conversationsSince(tok: string, pageId: string, from: stri
     let cc = 0, complete = false;
     for (let batch = 0; batch < MAX_BATCHES; batch++) {
         if (deadline && batch > 0 && Date.now() > deadline) break;
-        const j = await goiPancake(`${PANCAKE_API}/pages/${pageId}/conversations?access_token=${encodeURIComponent(tok)}&current_count=${cc}`);
+        const j = await callPancake(`${PANCAKE_API}/pages/${pageId}/conversations?access_token=${encodeURIComponent(tok)}&current_count=${cc}`);
         const ds: Conversation[] = (j.conversations || []).map((h: any) => ({
             id: String(h.id), type: h.type, inserted_at: h.inserted_at, updated_at: h.updated_at, has_phone: !!h.has_phone,
         }));
@@ -106,10 +106,10 @@ export async function pancakeMessByCampaign<C extends CampMess>(camps: C[], from
         byPage.get(k)!.cs.push(c);
     }
     if (!byPage.size) { kq.ok = true; return kq; }
-    const { tok, loi } = tokenPancake();
-    if (loi) { kq.loi = loi; return kq; }
+    const { tok, loi: error } = tokenPancake();
+    if (error) { kq.loi = error; return kq; }
     try {
-        const allPages = await cacPage(tok);
+        const allPages = await listPages(tok);
         for (const [k, g] of byPage) {
             const p = allPages.find((x) => normalizePageName(x.name) === k);
             if (!p) { kq.khong_thay.push(g.ten); continue; }

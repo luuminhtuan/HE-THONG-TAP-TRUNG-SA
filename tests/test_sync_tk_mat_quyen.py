@@ -31,16 +31,16 @@ def test_account_dead_while_spending_still_skipped():
 
 def test_network_error_on_one_account_also_skipped():
     # Dòng cũ của TK lỗi giữ nguyên (append_and_rebuild_ads) nên bỏ qua không ghi số 0.
-    bo_qua, chan = split_failed_accounts([NETWORK_ERROR], 12)
-    assert bo_qua == [NETWORK_ERROR] and chan == []
+    skipped, chan = split_failed_accounts([NETWORK_ERROR], 12)
+    assert skipped == [NETWORK_ERROR] and chan == []
 
 
 def test_many_dead_accounts_with_readable_ones_skips_all():
-    bo_qua, chan = split_failed_accounts([SA01, ANTALO1, NETWORK_ERROR], 4)
-    assert bo_qua == [SA01, ANTALO1, NETWORK_ERROR] and chan == []
+    skipped, chan = split_failed_accounts([SA01, ANTALO1, NETWORK_ERROR], 4)
+    assert skipped == [SA01, ANTALO1, NETWORK_ERROR] and chan == []
 
 
 def test_no_readable_account_blocks():
     # Token chết / app bị chặn (02/09, 08/10): ghi Sheet là ghi tiền ads cũ cạnh đơn mới.
-    bo_qua, chan = split_failed_accounts([SA01, ANTALO1, NETWORK_ERROR], 3)
-    assert bo_qua == [] and chan == [SA01, ANTALO1, NETWORK_ERROR]
+    skipped, chan = split_failed_accounts([SA01, ANTALO1, NETWORK_ERROR], 3)
+    assert skipped == [] and chan == [SA01, ANTALO1, NETWORK_ERROR]

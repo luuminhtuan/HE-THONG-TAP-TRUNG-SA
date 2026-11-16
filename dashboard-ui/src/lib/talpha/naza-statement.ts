@@ -216,10 +216,10 @@ function rowFitsColumns(row: unknown[], iOrd: number, iVal: number): boolean {
  * thì giữ 0 — file đúng mẫu không bị đụng tới.
  */
 export function detectColumnShift(grid: Grid, headerRow: number, iOrd: number, iVal: number): number {
-    const mau = grid.slice(headerRow + 1).filter((r) => (r || []).some((c) => cellText(c))).slice(0, 20);
+    const sampleRows = grid.slice(headerRow + 1).filter((r) => (r || []).some((c) => cellText(c))).slice(0, 20);
     let best = 0, bestScore = 0;
     for (const d of [0, 1, -1]) {
-        const score = mau.filter((r) => rowFitsColumns(r || [], iOrd + d, iVal + d)).length;
+        const score = sampleRows.filter((r) => rowFitsColumns(r || [], iOrd + d, iVal + d)).length;
         if (score > bestScore) { best = d; bestScore = score; }
     }
     return best;
@@ -227,10 +227,10 @@ export function detectColumnShift(grid: Grid, headerRow: number, iOrd: number, i
 
 /** Cột ngày khi tiêu đề của nó bị mất (kỳ 2026.10.16): cột đầu tiên mà quá nửa dòng mẫu là ngày. */
 function findUnlabeledDateColumn(grid: Grid, headerRow: number): number {
-    const mau = grid.slice(headerRow + 1).filter((r) => (r || []).some((c) => cellText(c))).slice(0, 20);
-    const width = Math.max(0, ...mau.map((r) => (r || []).length));
+    const sampleRows = grid.slice(headerRow + 1).filter((r) => (r || []).some((c) => cellText(c))).slice(0, 20);
+    const width = Math.max(0, ...sampleRows.map((r) => (r || []).length));
     for (let i = 0; i < width; i++) {
-        if (mau.filter((r) => toIsoDate((r || [])[i]) !== null).length * 2 > mau.length) return i;
+        if (sampleRows.filter((r) => toIsoDate((r || [])[i]) !== null).length * 2 > sampleRows.length) return i;
     }
     return -1;
 }
@@ -530,14 +530,14 @@ export function fillTrackingFromFees<T extends { tracking: string; order_id: str
         const orderId = String(f.order_id ?? "").trim();
         const trk = String(f.tracking ?? "").trim();
         if (!orderId || !trk) continue;
-        const cac = byOrderId.get(orderId) ?? new Map<string, string>();
-        cac.set(normTracking(trk), trk);
-        byOrderId.set(orderId, cac);
+        const fields = byOrderId.get(orderId) ?? new Map<string, string>();
+        fields.set(normTracking(trk), trk);
+        byOrderId.set(orderId, fields);
     }
     return lines.map((d) => {
         if (String(d.tracking ?? "").trim()) return d;
-        const cac = byOrderId.get(String(d.order_id ?? "").trim());
-        return cac && cac.size === 1 ? { ...d, tracking: [...cac.values()][0] } : d;
+        const fields = byOrderId.get(String(d.order_id ?? "").trim());
+        return fields && fields.size === 1 ? { ...d, tracking: [...fields.values()][0] } : d;
     });
 }
 

@@ -337,24 +337,24 @@ def build_page_index(ad_rows):
          "o_khac": {ô khác sau marketer: {camp: {ngày: tiền}}}}.
     "o_khac" đỡ tên camp đặt lệch ô — tên page nằm ở ô sản phẩm, kiểu
     TW/THAI/PHI/Jewelry GJ International - TW - 05/09 (10 đơn tháng 9)."""
-    trang, other_cells = {}, {}
-    for cn, ngay, spend in ad_rows:
+    page, other_cells = {}, {}
+    for cn, date, spend in ad_rows:
         p = [x.strip() for x in (cn or "").split("/")]
         mi = next((i for i, x in enumerate(p) if x.upper() in MARKETS), None)
         k = mi + 1 if mi is not None else next((i for i, x in enumerate(p[:2]) if norm_nv(x)), None)
         if k is None:
             continue
         _sp, camp_page_name, _pid = parse_camp_product(cn)
-        targets = [(trang, normalize_page_name(camp_page_name))] if camp_page_name else []
+        targets = [(page, normalize_page_name(camp_page_name))] if camp_page_name else []
         targets += [(other_cells, normalize_page_name(x)) for x in p[k + 1:] if x]
         for table, key in targets:
             if key:
                 spend_by_date = table.setdefault(key, {}).setdefault(cn, {})
-                spend_by_date[str(ngay)] = spend_by_date.get(str(ngay), 0) + (spend or 0)
-    return {"trang": trang, "o_khac": other_cells}
+                spend_by_date[str(date)] = spend_by_date.get(str(date), 0) + (spend or 0)
+    return {"trang": page, "o_khac": other_cells}
 
 
-def find_campaign_by_page(page_name, ngay, page_index, ad_campaign=None, nuoc=None):
+def find_campaign_by_page(page_name, date, page_index, ad_campaign=None, market=None):
     """NGUỒN ĐƠN của POS (tên page) → campaign. Luật Sỹ Anh chốt 17/09/2026:
     đơn lấy từ POS → cột "Nguồn đơn" → khớp ô tên page trong tên camp Meta → ra camp đó →
     ra sản phẩm, marketer, tiền ads.
@@ -387,8 +387,8 @@ def find_campaign_by_page(page_name, ngay, page_index, ad_campaign=None, nuoc=No
                 g = candidates.setdefault(cn, {})
                 for nd, t in ngay_tien.items():
                     g[nd] = max(g.get(nd, 0), t)
-        if nuoc:
-            candidates = {cn: v for cn, v in candidates.items() if campaign_market(cn)[0] == nuoc}
+        if market:
+            candidates = {cn: v for cn, v in candidates.items() if campaign_market(cn)[0] == market}
         if candidates:
             break
     else:
@@ -397,8 +397,8 @@ def find_campaign_by_page(page_name, ngay, page_index, ad_campaign=None, nuoc=No
         return next(iter(candidates)), match_type
     if ad_campaign in candidates:
         return ad_campaign, match_type
-    ngay = str(ngay)
-    spend_dates = sorted({nd for v in candidates.values() for nd, t in v.items() if t > 0 and nd <= ngay})
+    date = str(date)
+    spend_dates = sorted({nd for v in candidates.values() for nd, t in v.items() if t > 0 and nd <= date})
     if spend_dates:
         nd = spend_dates[-1]
         return max(candidates, key=lambda cn: (candidates[cn].get(nd, 0), cn)), match_type
@@ -424,11 +424,11 @@ def camp_page_cells(cn):
     if k is None:
         return None, []
     sp = p[k + 2] if len(p) > k + 2 else ""
-    trang = p[k + 3] if len(p) > k + 3 else ""
+    page = p[k + 3] if len(p) > k + 3 else ""
     not_a_name = lambda x: not x or _DATE_LIKE.fullmatch(x) or NUMID.match(x.replace(" ", ""))
-    if not_a_name(trang):
-        trang = "" if (not_a_name(sp) or sp.upper() == "TEST") else sp
-    return (trang or None), [x for x in p[k + 1:] if x]
+    if not_a_name(page):
+        page = "" if (not_a_name(sp) or sp.upper() == "TEST") else sp
+    return (page or None), [x for x in p[k + 1:] if x]
 
 
 def build_page_tab_names(pos_page_names, campaign_names):
@@ -452,27 +452,27 @@ def build_page_tab_names(pos_page_names, campaign_names):
     def match_pos_name(text):
         if text in pos_names:
             return text
-        ung = [k for k in pos_names if text.startswith(k + " ")]
-        return max(ung, key=len) if ung else None
+        candidates = [k for k in pos_names if text.startswith(k + " ")]
+        return max(candidates, key=len) if candidates else None
 
     camp_tab, unmatched = {}, {}
     for cn in dict.fromkeys(campaign_names):
-        trang, cells = camp_page_cells(cn)
-        if trang is None and not cells:
+        page, cells = camp_page_cells(cn)
+        if page is None and not cells:
             camp_tab[cn] = None
             continue
-        k = match_pos_name(normalize_page_name(trang)) if trang else None
+        k = match_pos_name(normalize_page_name(page)) if page else None
         for o in ([] if k else cells):
             k = match_pos_name(normalize_page_name(o))
             if k:
                 break
         if k:
             camp_tab[cn] = pos_names[k]
-        elif trang:
+        elif page:
             # "DD/MM" viết trong tên camp bị dấu / cắt đôi, nửa ngày dính vào đuôi tên page.
-            trang = _DATE_SUFFIX.sub("", trang) or trang
-            unmatched.setdefault(normalize_page_name(trang), trang)
-            camp_tab[cn] = ("__le__", normalize_page_name(trang))
+            page = _DATE_SUFFIX.sub("", page) or page
+            unmatched.setdefault(normalize_page_name(page), page)
+            camp_tab[cn] = ("__le__", normalize_page_name(page))
         else:
             camp_tab[cn] = None
     canonical = {}
@@ -484,10 +484,10 @@ def build_page_tab_names(pos_page_names, campaign_names):
     return pos_names, camp_tab
 
 
-def order_tab_name(ten_page, pos_ten):
+def order_tab_name(page_name, pos_name):
     """Tên tab của một đơn = tên page trên POS (cách viết chuẩn trong bảng); không có nguồn → None."""
-    k = normalize_page_name(ten_page)
-    return pos_ten.get(k, str(ten_page).strip()) if k else None
+    k = normalize_page_name(page_name)
+    return pos_name.get(k, str(page_name).strip()) if k else None
 
 
 # ═══ ĐƠN TRỐNG — KHÔNG TÍNH VÀO SỐ ĐƠN (Sỹ Anh chốt 17/09/2026) ═══════════════════════════════
@@ -508,10 +508,10 @@ def is_empty_order(total_quantity, total_price, cod):
     return q == 0 and p == 0 and c == 0
 
 
-def sql_is_empty_order(bang=""):
+def sql_is_empty_order(table=""):
     """Cùng điều kiện la_don_trong, viết bằng SQL Postgres cho bảng sale_order (total_quantity là
     chuỗi: không phải số thì coi như 0, đừng để ép kiểu làm chết cả câu)."""
-    t = f"{bang}." if bang else ""
+    t = f"{table}." if table else ""
     return (f"(COALESCE(CASE WHEN btrim({t}total_quantity) ~ '^-?[0-9]+(\\.[0-9]+)?$' "
             f"THEN btrim({t}total_quantity)::float8 END, 0) = 0 "
             f"AND COALESCE({t}total_price, 0) = 0 AND COALESCE({t}cod, 0) = 0)")

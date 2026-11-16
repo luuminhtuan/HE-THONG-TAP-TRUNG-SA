@@ -96,7 +96,7 @@ export function parsePurchasePayments(grid: string[][]): PurchasePayment[] {
         return new Date().getFullYear();
     })();
 
-    const dot: PurchasePayment[] = [];
+    const payments: PurchasePayment[] = [];
     let year = nam0, prevMonth = 0;
     grid.forEach((row, r) => {
         for (const raw of row) {
@@ -121,7 +121,7 @@ export function parsePurchasePayments(grid: string[][]): PurchasePayment[] {
 
             const paidMatch = upper.match(RE_PAID_AMOUNT);
             const outstandingMatch = upper.match(RE_OUTSTANDING);
-            dot.push({
+            payments.push({
                 ngay: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
                 tong_vnd: total,
                 moi_vnd: newAmount,
@@ -135,7 +135,7 @@ export function parsePurchasePayments(grid: string[][]): PurchasePayment[] {
             break;                      // mỗi dòng tối đa một đợt
         }
     });
-    return dot;
+    return payments;
 }
 
 /**
@@ -164,14 +164,14 @@ const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(
  * nào được duyệt trước.
  */
 export function matchPaymentsToPeriods(
-    dot: PurchasePayment[],
+    payments: PurchasePayment[],
     periods: { id: string; ngay: string | null }[],
     windowDays = CFG.match_window_days ?? 4,
 ): Map<string, PurchasePayment> {
     const cap: { id: string; i: number; d: number }[] = [];
     for (const k of periods) {
         if (!k.ngay) continue;
-        dot.forEach((x, i) => {
+        payments.forEach((x, i) => {
             const d = daysApart(k.ngay!, x.ngay);
             if (d <= windowDays) cap.push({ id: k.id, i, d });
         });
@@ -181,7 +181,7 @@ export function matchPaymentsToPeriods(
     const usedPayments = new Set<number>();
     for (const c of cap) {
         if (out.has(c.id) || usedPayments.has(c.i)) continue;
-        out.set(c.id, dot[c.i]);
+        out.set(c.id, payments[c.i]);
         usedPayments.add(c.i);
     }
     return out;
@@ -207,15 +207,15 @@ export async function readPurchaseSheet(): Promise<PurchaseSheetResult> {
         try {
             const r = await fetchSheetCsv(CFG.sheet_id, CFG.sheet_gid || "0");
             const grid = csvToGrid(r.csv);
-            const dot = parsePurchasePayments(grid);
+            const payments = parsePurchasePayments(grid);
             // Cả file chỉ còn ô lỗi công thức (#REF!, #N/A…) thì nói thẳng ra. 14/09/2026 bản
             // sao dùng IMPORTRANGE theo TÊN tab, tab gốc đổi tên là cả file thành một ô #REF!
             // — câu "không thấy đợt nào" khi đó chỉ khiến người ta đi soát nhầm chỗ.
             const o = grid.flat().map((c) => c.trim()).filter(Boolean);
             const allFormulaErrors = o.length > 0 && o.every((c) => /^#(REF!|N\/A|ERROR!|VALUE!|NAME\?)$/i.test(c));
             result = {
-                dot,
-                loi: dot.length ? null
+                dot: payments,
+                loi: payments.length ? null
                     : allFormulaErrors ? `File tiền hàng đang ra lỗi công thức ${o[0]} — thường là IMPORTRANGE trỏ tới tab đã đổi tên. Sửa công thức, hoặc khai thẳng file gốc vào cod_settlement.purchase_sheet.`
                         : "Đọc được file tiền hàng nhưng không thấy đợt thanh toán nào.",
                 doc_luc: luc,

@@ -62,11 +62,11 @@ def count_by_date(conversations, from_date, to_date):
     return out
 
 
-def is_batch_exhausted(batch, tu_ngay):
+def is_batch_exhausted(batch, from_date):
     """Cả lô đã cập nhật trước 00:00 VN của tu_ngay → các lô sau không còn hội thoại tạo từ ngày đó."""
     if not batch:
         return True
-    cutoff = datetime.datetime.fromisoformat(tu_ngay) - VN       # 00:00 VN tính theo UTC
+    cutoff = datetime.datetime.fromisoformat(from_date) - VN       # 00:00 VN tính theo UTC
     for h in batch:
         t = _utc(h.get("updated_at") or h.get("inserted_at"))
         if t is None or t >= cutoff:
@@ -106,7 +106,7 @@ def token_expiry(tok):
         return None
 
 
-def messages_by_page(camp_page_names, ma_nuoc, tu_ngay, toi_ngay, log=print, token=None):
+def messages_by_page(camp_page_names, market_code, from_date, to_date, log=print, token=None):
     """Số tin nhắn mới theo page × ngày cho MỘT nước.
 
     ten_trang_camp: tên page lấy từ ô page của các camp nước đó (khớp chính).
@@ -125,27 +125,27 @@ def messages_by_page(camp_page_names, ma_nuoc, tu_ngay, toi_ngay, log=print, tok
         j = _call(f"{API}/pages?access_token={urllib.parse.quote(tok)}", log)
         c = j.get("categorized") or {}
         pages = [p for p in (c.get("activated") or []) + (c.get("inactivated") or []) if p and p.get("id")]
-        selected = [p for p in pages if normalize_page_name(p.get("name")) in wanted or is_market_page(p.get("name"), ma_nuoc)]
+        selected = [p for p in pages if normalize_page_name(p.get("name")) in wanted or is_market_page(p.get("name"), market_code)]
         out = {}
         for p in selected:
             all_conversations, cc = [], 0
             try:
                 for _ in range(60):
                     time.sleep(CALL_INTERVAL)
-                    lo = _call(f"{API}/pages/{p['id']}/conversations?access_token={urllib.parse.quote(tok)}&current_count={cc}", log).get("conversations") or []
-                    all_conversations += lo
-                    if is_batch_exhausted(lo, tu_ngay):
+                    batch = _call(f"{API}/pages/{p['id']}/conversations?access_token={urllib.parse.quote(tok)}&current_count={cc}", log).get("conversations") or []
+                    all_conversations += batch
+                    if is_batch_exhausted(batch, from_date):
                         break
-                    cc += len(lo)
+                    cc += len(batch)
             except RuntimeError as e:
                 # Page chưa chạy camp nào mà lỗi (chưa có gói cước…) thì thôi; page có camp thì báo.
                 if normalize_page_name(p.get("name")) in wanted:
                     log(f"CANH BAO: Pancake page {p.get('name')}: {e}")
                 continue
-            out[normalize_page_name(p.get("name"))] = {"ten": p.get("name"), "ngay": count_by_date(all_conversations, tu_ngay, toi_ngay)}
+            out[normalize_page_name(p.get("name"))] = {"ten": p.get("name"), "ngay": count_by_date(all_conversations, from_date, to_date)}
         seen = {normalize_page_name(p.get("name")) for p in pages}
         for k in wanted - seen:
-            log(f"CANH BAO: tai khoan Pancake khong thay page '{k}' cua camp {ma_nuoc} — tin nhan page do = 0")
+            log(f"CANH BAO: tai khoan Pancake khong thay page '{k}' cua camp {market_code} — tin nhan page do = 0")
         return out
     except Exception as e:       # noqa: BLE001
         log(f"CANH BAO: Pancake loi ({e}) — tin nhan Nhat giu so Meta (0)")

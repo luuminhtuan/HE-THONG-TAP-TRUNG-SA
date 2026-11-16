@@ -115,12 +115,12 @@ class TestMatchOrderSourceToCampaignPage:
             ("SGP/LOC/PHI/040/Lucky Silver Philippines/13-9", "2026-09-13", 300000),
             ("TW/THAI/PHI/040/Lucky Silver Philippines/14-9", "2026-09-14", 100000),
         ])
-        assert find_campaign_by_page("Lucky Silver Philippines", "2026-09-15", cm, nuoc="Taiwan")[0] == \
+        assert find_campaign_by_page("Lucky Silver Philippines", "2026-09-15", cm, market="Taiwan")[0] == \
             "TW/THAI/PHI/040/Lucky Silver Philippines/14-9"
-        assert find_campaign_by_page("Lucky Silver Philippines", "2026-09-15", cm, nuoc="Singapore")[0] == \
+        assert find_campaign_by_page("Lucky Silver Philippines", "2026-09-15", cm, market="Singapore")[0] == \
             "SGP/LOC/PHI/040/Lucky Silver Philippines/13-9"
         # Page chỉ có camp nước khác → không khớp, không nhận nhầm.
-        assert find_campaign_by_page("Lucky Silver Philippines", "2026-09-15", self.CM, nuoc="Taiwan") == \
+        assert find_campaign_by_page("Lucky Silver Philippines", "2026-09-15", self.CM, market="Taiwan") == \
             (None, "khong_khop")
 
     def test_no_match_and_no_source(self):

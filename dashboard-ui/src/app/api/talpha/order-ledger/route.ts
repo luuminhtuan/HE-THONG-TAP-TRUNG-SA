@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readStoreFresh } from "@/lib/talpha/store";
 import { loadTwOrderLedger } from "@/lib/talpha/tw-order-ledger";
 import {
-    buildLedger, summarise, statementOverdue, filterByOrderDate, homNayVN, STATEMENT_CYCLE_DAYS,
+    buildLedger, summarise, statementOverdue, filterByOrderDate, todayVn, STATEMENT_CYCLE_DAYS,
     redeliveryOrigin, nazaRedeliveryOrigin, orderKey, trackKey, sortNewestFirst,
     type OrderSource, type PaidLine, type FeeLine,
 } from "@/lib/talpha/order-ledger";
@@ -767,7 +767,7 @@ export async function GET(req: NextRequest) {
         // Tiền COD về gọi không có `from` — màn đó tính theo kỳ sao kê, cần mọi đơn. Kỳ sao kê,
         // khung Đòi tiền NAZA và cảnh báo ở trên vẫn tính trên MỌI đơn: tiền còn nợ của đơn
         // tháng trước không được biến mất chỉ vì đang xem tháng này.
-        const ledgerRows = q.get("from") ? filterByOrderDate(rows, q.get("from"), asOf, homNayVN()) : rows;
+        const ledgerRows = q.get("from") ? filterByOrderDate(rows, q.get("from"), asOf, todayVn()) : rows;
 
         return NextResponse.json({
             as_of: asOf,

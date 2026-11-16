@@ -77,11 +77,11 @@ HEADERS_JP = ["T1611", "Đối soát", "", "Ghi chú", "Trạng Thái", "Ngày l
 
 
 def test_japan_sheet_maps_main_columns():
-    cot = map_columns(HEADERS_JP, COLUMN_MAP)
-    assert cot["order_no"] == 8 and cot["tracking"] == 10 and cot["cod"] == 24
-    assert cot["return_order_no"] == 9 and cot["status"] == 4 and cot["note"] == 3
-    assert cot["ship_method"] == 7 and cot["order_date"] == 5
-    assert "marketer" not in cot          # A1 "T1611" — phải sửa thành "MKT" trên Sheet mới có tên
+    columns = map_columns(HEADERS_JP, COLUMN_MAP)
+    assert columns["order_no"] == 8 and columns["tracking"] == 10 and columns["cod"] == 24
+    assert columns["return_order_no"] == 9 and columns["status"] == 4 and columns["note"] == 3
+    assert columns["ship_method"] == 7 and columns["order_date"] == 5
+    assert "marketer" not in columns          # A1 "T1611" — phải sửa thành "MKT" trên Sheet mới có tên
 
 
 def test_japan_sheet_real_row():

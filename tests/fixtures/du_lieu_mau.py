@@ -122,12 +122,12 @@ def main():
                 counters[label] += 1
                 person = RNG.choice(PEOPLE[label])
                 aid, cid, camp = RNG.choice(ads_by_person[(label, person)])
-                ten, nhom = _pick_status()
+                name, group = _pick_status()
                 created_at = datetime.combine(day, datetime.min.time()) + timedelta(minutes=RNG.randint(0, 1439))
                 cod = RNG.randint(lo, hi)
                 page = f"Page {POS_NAMES[person]} {label}"
-                o = {"id": str(counters[label]), "shop_id": shop_id, "shop_label": label, "status": ten,
-                     "status_name": ten, "status_category": nhom, "status_sub": "",
+                o = {"id": str(counters[label]), "shop_id": shop_id, "shop_label": label, "status": name,
+                     "status_name": name, "status_category": group, "status_sub": "",
                      "total_price": float(cod), "shipping_fee": float(divisor * 5), "cod": float(cod),
                      "total_discount": 0.0, "partner_fee": float(divisor * 3), "return_fee": 0.0, "surcharge": 0.0,
                      "money_to_collect": float(cod), "total_quantity": "1",

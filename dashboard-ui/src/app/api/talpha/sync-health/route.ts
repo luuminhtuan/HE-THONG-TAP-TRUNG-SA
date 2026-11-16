@@ -60,15 +60,15 @@ export async function GET() {
         // 23/09/2026: TKQC mất quyền ads_read vẫn còn dòng cũ nên accountHealth() báo "ok" —
         // lấy tên thẳng từ log vòng chạy rồi gộp vào danh sách lỗi để bot báo đích danh.
         const fetch_errors = parseFetchErrors(last.detail);
-        const loiFetch = [
+        const fetchErrors = [
             ...fetch_errors.tkqc.map((name) => ({
                 kind: "ads", name, rows: null, prev_rows: null,
                 status: fetch_errors.mat_quyen.includes(name) ? "mat_quyen" : "khong_doc_duoc",
             })),
             ...fetch_errors.shops.map((name) => ({ kind: "orders", name, rows: null, prev_rows: null, status: "khong_doc_duoc" })),
         ];
-        const accountsOut = accounts || loiFetch.length
-            ? { ...(accounts || { run_ts: null, checked: 0 }), failing: [...loiFetch, ...(accounts?.failing || [])] }
+        const accountsOut = accounts || fetchErrors.length
+            ? { ...(accounts || { run_ts: null, checked: 0 }), failing: [...fetchErrors, ...(accounts?.failing || [])] }
             : null;
         return NextResponse.json({
             status: last.ok ? "ok" : "fail",

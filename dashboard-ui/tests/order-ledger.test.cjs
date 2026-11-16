@@ -384,8 +384,8 @@ t("ngày có giờ (ISO) vẫn so theo ngày", () => {
 });
 
 t("hôm nay theo giờ Việt Nam: 23:30 UTC ngày 26 là sáng 27/10 ở VN", () => {
-    assert.strictEqual(L.homNayVN(new Date("2026-10-26T23:30:00Z")), "2026-10-27");
-    assert.strictEqual(L.homNayVN(new Date("2026-10-27T16:59:00Z")), "2026-10-27");
+    assert.strictEqual(L.todayVn(new Date("2026-10-26T23:30:00Z")), "2026-10-27");
+    assert.strictEqual(L.todayVn(new Date("2026-10-27T16:59:00Z")), "2026-10-27");
 });
 
 t("danh sách đơn: mới nhất lên đầu, cùng ngày mã lớn trước, không ngày xuống cuối", () => {

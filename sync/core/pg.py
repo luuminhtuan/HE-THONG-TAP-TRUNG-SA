@@ -105,8 +105,8 @@ def main(argv) -> int:
     command = argv[1] if len(argv) > 1 else "migrate"
     with get_connection() as conn:
         if command == "migrate":
-            moi = run_migrations(conn)
-            print("Đã chạy: " + ", ".join(moi) if moi else "Không còn migration nào chưa chạy.")
+            new_migrations = run_migrations(conn)
+            print("Đã chạy: " + ", ".join(new_migrations) if new_migrations else "Không còn migration nào chưa chạy.")
             # File cũ (data/*.json, users.json, .env.khoa.local) → bảng — mỗi file một lần (file_import.py).
             from sync.core.file_import import import_all
             imported = import_all(conn)
@@ -121,8 +121,8 @@ def main(argv) -> int:
             from sync.core.pg_view import rebuild_views
             print("Đã dựng lại bộ view." if rebuild_views(conn, force="--ep" in argv) else "View đang khớp luật.")
         elif command == "dem":
-            for b, n, moi_nhat in count_table_rows(conn):
-                print(f"  {b:<22} {n:>8} dòng   sync gần nhất: {moi_nhat or '—'}")
+            for b, n, latest in count_table_rows(conn):
+                print(f"  {b:<22} {n:>8} dòng   sync gần nhất: {latest or '—'}")
         else:
             print(f"Lệnh lạ {command!r} — dùng: migrate | dem", file=sys.stderr)
             return 2

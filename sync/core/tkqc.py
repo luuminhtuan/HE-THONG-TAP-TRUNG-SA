@@ -52,7 +52,7 @@ def list_token_ad_accounts(token: str, timeout: int = 60) -> list:
     return out
 
 
-def write_ad_account_directory(conn, ds: list, luat: dict) -> list:
+def write_ad_account_directory(conn, ds: list, rules: dict) -> list:
     """Ghi danh bạ: TKQC mới thì thêm với loại lần đầu; TKQC đã có thì cập nhật tên / trạng thái / múi
     giờ / token đọc nó / lần cuối thấy, GIỮ loại + ghi chú. Mỗi dòng của `ds` là dict Meta trả, kèm
     "bien_token" nếu có. Trả danh sách TKQC MỚI [(account_id, tên, loại)]."""
@@ -70,7 +70,7 @@ def write_ad_account_directory(conn, ds: list, luat: dict) -> list:
                     "bien_token = COALESCE(%s, bien_token), thay_lan_cuoi = now() WHERE account_id = %s",
                     (name, a.get("account_status"), currency_code, a.get("timezone_name"), a.get("bien_token"), aid))
                 continue
-            account_type = initial_account_type(aid, currency_code, luat)
+            account_type = initial_account_type(aid, currency_code, rules)
             conn.execute(
                 "INSERT INTO tkqc (account_id, ten, trang_thai, tien_te, mui_gio, loai, bien_token) "
                 "VALUES (%s, %s, %s, %s, %s, %s, %s)",
@@ -79,7 +79,7 @@ def write_ad_account_directory(conn, ds: list, luat: dict) -> list:
     return new_accounts
 
 
-def ad_accounts_to_fetch(conn, tokens: list, luat: dict) -> list:
+def ad_accounts_to_fetch(conn, tokens: list, rules: dict) -> list:
     """TKQC phải kéo chi tiêu vòng này: [{'id': 'act_…', 'name', 'token', 'bien'}] — MỌI TKQC mọi token thấy,
     mỗi TK một lần, đọc bằng token ĐẦU TIÊN thấy nó. tokens = cac_token().
     Không token nào hỏi được Meta (token chết…) thì trả các TKQC thấy trong 7 ngày gần nhất để vòng kéo
@@ -99,10 +99,10 @@ def ad_accounts_to_fetch(conn, tokens: list, luat: dict) -> list:
     if not collected:
         log.error("  Không token nào hỏi được danh sách TKQC — kéo theo danh bạ 7 ngày gần nhất")
         tok0 = tokens[0][1] if tokens else ""
-        return [{"id": f"act_{aid}", "name": ten or aid, "bien": token_var, "token": token_by_var.get(token_var) or tok0}
-                for aid, ten, token_var in conn.execute(
+        return [{"id": f"act_{aid}", "name": name or aid, "bien": token_var, "token": token_by_var.get(token_var) or tok0}
+                for aid, name, token_var in conn.execute(
                     "SELECT account_id, ten, bien_token FROM tkqc WHERE thay_lan_cuoi > now() - interval '7 days' ORDER BY ten")]
-    for aid, ten, loai in write_ad_account_directory(conn, list(collected.values()), luat):
-        log.warning(f"  TKQC MỚI: {ten} (act_{aid}) — loại '{loai}'. Xem lại loại ở /admin → TKQC.")
+    for aid, name, category in write_ad_account_directory(conn, list(collected.values()), rules):
+        log.warning(f"  TKQC MỚI: {name} (act_{aid}) — loại '{category}'. Xem lại loại ở /admin → TKQC.")
     return [{"id": f"act_{aid}", "name": a.get("name") or aid, "bien": a["bien_token"], "token": token_by_var[a["bien_token"]]}
             for aid, a in collected.items()]

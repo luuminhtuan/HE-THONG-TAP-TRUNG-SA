@@ -248,7 +248,7 @@ def sync_all_orders(window_start=None) -> tuple[int, int]:
         # Gồm CẢ shop của nước đã tắt — lọc nó ra ở đây là đơn cũ của nước đó biến mất.
         n_orders, n_items = pg_writer.write_orders(
             _pg(), all_orders, all_items,
-            shop_ids=[s["shop_id"] for s in POS_SHOPS], da_thay=seen_by_shop)
+            shop_ids=[s["shop_id"] for s in POS_SHOPS], replaced=seen_by_shop)
     else:
         log.warning("  Không fetch được order từ bất kỳ shop nào!")
         n_orders = n_items = 0

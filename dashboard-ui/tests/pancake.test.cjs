@@ -49,8 +49,8 @@ t("page của nước theo tên: CHỈ từ cuối là mã nước — 'Japan Pr
 });
 t("hạn token Pancake đọc từ JWT", () => {
     const pl = Buffer.from(JSON.stringify({ exp: 1798876733 })).toString("base64url");
-    assert.strictEqual(P.hanToken(`x.${pl}.y`), 1798876733000);
-    assert.strictEqual(P.hanToken("khong-phai-jwt"), null);
+    assert.strictEqual(P.tokenExpiry(`x.${pl}.y`), 1798876733000);
+    assert.strictEqual(P.tokenExpiry("khong-phai-jwt"), null);
 });
 console.log("── Dashboard Nhật (13/10/2026): mess theo khoảng ngày, chia cho camp, bản số theo nước ──");
 t("đếm hội thoại TẠO trong khoảng ngày VN, bỏ trùng id, comment tách riêng", () => {

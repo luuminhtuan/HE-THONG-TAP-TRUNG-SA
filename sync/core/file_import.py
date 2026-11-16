@@ -31,9 +31,9 @@ def _already_imported(conn, source: str) -> bool:
     return conn.execute("SELECT 1 FROM file_imports WHERE source = %s", (source,)).fetchone() is not None
 
 
-def _mark_imported(conn, nguon: str, detail: str) -> None:
+def _mark_imported(conn, source: str, detail: str) -> None:
     conn.execute("INSERT INTO file_imports (source, detail) VALUES (%s, %s) ON CONFLICT (source) DO NOTHING",
-                 (nguon, detail))
+                 (source, detail))
 
 
 def _read_json(p: Path):
@@ -46,21 +46,21 @@ def import_app_documents(conn, repo: Path) -> list:
     folder = repo / "data"
     for p in sorted(folder.glob("*.json")) if folder.is_dir() else []:
         name = p.stem
-        nguon = f"data/{p.name}"
-        if p.name == "thi_truong.json" or not DOC_NAME_RE.match(name) or _already_imported(conn, nguon):
+        source = f"data/{p.name}"
+        if p.name == "thi_truong.json" or not DOC_NAME_RE.match(name) or _already_imported(conn, source):
             continue
         with conn.transaction():
             conn.execute("INSERT INTO app_documents (name, content) VALUES (%s, %s) ON CONFLICT (name) DO NOTHING",
                          (name, Jsonb(_read_json(p))))
-            _mark_imported(conn, nguon, f"app_documents.{name}")
-        out.append(nguon)
+            _mark_imported(conn, source, f"app_documents.{name}")
+        out.append(source)
     return out
 
 
 def import_market_overrides(conn, repo: Path) -> list:
     p = repo / "data" / "thi_truong.json"
-    nguon = "data/thi_truong.json"
-    if not p.is_file() or _already_imported(conn, nguon):
+    source = "data/thi_truong.json"
+    if not p.is_file() or _already_imported(conn, source):
         return []
     overrides = _read_json(p)
     updated_by = overrides.get("updated_by")
@@ -73,35 +73,35 @@ def import_market_overrides(conn, repo: Path) -> list:
                 "INSERT INTO market_overrides (market_key, settings, updated_by) VALUES (%s, %s, %s) "
                 "ON CONFLICT (market_key) DO NOTHING", (key, Jsonb(settings), updated_by))
             n += 1
-        _mark_imported(conn, nguon, f"market_overrides: {n} nước")
-    return [nguon]
+        _mark_imported(conn, source, f"market_overrides: {n} nước")
+    return [source]
 
 
 def import_market_reports(conn, repo: Path) -> list:
     out = []
-    thu_muc = repo / "data" / "bao_cao_nuoc"
-    for p in sorted(thu_muc.glob("*.json")) if thu_muc.is_dir() else []:
-        nguon = f"data/bao_cao_nuoc/{p.name}"
-        if not re.match(r"^\d{4}-\d{2}$", p.stem) or _already_imported(conn, nguon):
+    directory = repo / "data" / "bao_cao_nuoc"
+    for p in sorted(directory.glob("*.json")) if directory.is_dir() else []:
+        source = f"data/bao_cao_nuoc/{p.name}"
+        if not re.match(r"^\d{4}-\d{2}$", p.stem) or _already_imported(conn, source):
             continue
         with conn.transaction():
             conn.execute(
                 "INSERT INTO market_monthly_reports (month, content) VALUES (%s, %s) ON CONFLICT (month) DO NOTHING",
                 (p.stem, Jsonb(_read_json(p))))
-            _mark_imported(conn, nguon, f"market_monthly_reports.{p.stem}")
-        out.append(nguon)
+            _mark_imported(conn, source, f"market_monthly_reports.{p.stem}")
+        out.append(source)
     return out
 
 
 def import_users(conn, repo: Path) -> list:
     p = repo / "config" / "users.json"
     if p.is_file():
-        nguon, ds = "config/users.json", _read_json(p)
+        source, ds = "config/users.json", _read_json(p)
     elif (os.environ.get("USERS_JSON") or "").strip():
-        nguon, ds = "env:USERS_JSON", json.loads(os.environ["USERS_JSON"])
+        source, ds = "env:USERS_JSON", json.loads(os.environ["USERS_JSON"])
     else:
         return []
-    if _already_imported(conn, nguon):
+    if _already_imported(conn, source):
         return []
     n = 0
     with conn.transaction():
@@ -115,8 +115,8 @@ def import_users(conn, repo: Path) -> list:
                  u.get("role") or "sale", Jsonb(u.get("teams") or []), Jsonb(u.get("projects") or []),
                  u.get("status") if u.get("status") in ("active", "pending") else "active"))
             n += 1
-        _mark_imported(conn, nguon, f"users: {n} tài khoản")
-    return [nguon]
+        _mark_imported(conn, source, f"users: {n} tài khoản")
+    return [source]
 
 
 def parse_credentials_file(text: str) -> tuple:
@@ -139,8 +139,8 @@ def parse_credentials_file(text: str) -> tuple:
 
 def import_credentials(conn, repo: Path) -> list:
     p = repo / "dashboard-ui" / ".env.khoa.local"
-    nguon = "dashboard-ui/.env.khoa.local"
-    if not p.is_file() or _already_imported(conn, nguon):
+    source = "dashboard-ui/.env.khoa.local"
+    if not p.is_file() or _already_imported(conn, source):
         return []
     from sync.core.credentials import get_encryption_key, save_credential
     if not get_encryption_key():
@@ -148,16 +148,16 @@ def import_credentials(conn, repo: Path) -> list:
         print("⚠️  có dashboard-ui/.env.khoa.local nhưng chưa đặt TALPHA_ENCRYPTION_KEY — chưa chép khoá vào kho",
               file=sys.stderr)
         return []
-    khoa, ghi_chu = parse_credentials_file(p.read_text(encoding="utf-8"))
+    credentials, note = parse_credentials_file(p.read_text(encoding="utf-8"))
     n = 0
     with conn.transaction():
-        for ten, value in khoa.items():
-            if conn.execute("SELECT 1 FROM api_credentials WHERE name = %s", (ten,)).fetchone():
+        for name, value in credentials.items():
+            if conn.execute("SELECT 1 FROM api_credentials WHERE name = %s", (name,)).fetchone():
                 continue
-            save_credential(conn, ten, value, ghi_chu.get(ten, ""), "chép từ .env.khoa.local")
+            save_credential(conn, name, value, note.get(name, ""), "chép từ .env.khoa.local")
             n += 1
-        _mark_imported(conn, nguon, f"api_credentials: {n} khoá")
-    return [nguon]
+        _mark_imported(conn, source, f"api_credentials: {n} khoá")
+    return [source]
 
 
 def import_all(conn, repo: Path = REPO) -> list:

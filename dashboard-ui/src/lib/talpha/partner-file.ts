@@ -241,7 +241,7 @@ export type DuplicateTracking = { tracking: string; don: string[] };
  */
 export function assignRowKeys(rows: PartnerRow[]): { khoa: (string | null)[]; trung: DuplicateTracking[] } {
     const giu = new Map<string, string>();          // khoá → mã đơn đang giữ khoá đó
-    const trung = new Map<string, string[]>();      // mã vận đơn → các đơn cùng mang
+    const duplicates = new Map<string, string[]>();      // mã vận đơn → các đơn cùng mang
     const claim = (k: string, order: string) => {
         const holder = giu.get(k);
         if (holder !== undefined && normOrderNo(holder) !== normOrderNo(order)) return false;
@@ -255,9 +255,9 @@ export function assignRowKeys(rows: PartnerRow[]): { khoa: (string | null)[]; tr
         if (claim(baseKey, r.order_no)) return baseKey;
 
         // Mã này đã thuộc về một đơn KHÁC ngay trong Sheet.
-        const ds = trung.get(baseKey) || [giu.get(baseKey)!];
+        const ds = duplicates.get(baseKey) || [giu.get(baseKey)!];
         if (!ds.some((d) => normOrderNo(d) === normOrderNo(r.order_no))) ds.push(r.order_no);
-        trung.set(baseKey, ds);
+        duplicates.set(baseKey, ds);
 
         const nen = r.order_no || baseKey;
         for (let n = 1; ; n++) {
@@ -266,7 +266,7 @@ export function assignRowKeys(rows: PartnerRow[]): { khoa: (string | null)[]; tr
         }
     });
 
-    return { khoa: keys, trung: [...trung].map(([tracking, order]) => ({ tracking, don: order })) };
+    return { khoa: keys, trung: [...duplicates].map(([tracking, order]) => ({ tracking, don: order })) };
 }
 
 /**

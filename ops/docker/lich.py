@@ -84,9 +84,9 @@ def run_and_log(name: str, command: list, triggered_by: str = "lịch", env: dic
     try:
         p = subprocess.Popen(command, cwd=REPO, env=env or build_env(), stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT, text=True, errors="replace")
-        for dong in p.stdout:
-            print(dong, end="", flush=True)
-            tail.append(dong)
+        for line in p.stdout:
+            print(line, end="", flush=True)
+            tail.append(line)
         rc = p.wait()
     except Exception as e:   # noqa: BLE001
         rc = f"lỗi {e}"
@@ -96,17 +96,17 @@ def run_and_log(name: str, command: list, triggered_by: str = "lịch", env: dic
     return rc
 
 
-def start_job(ten: str, lenh: list):
-    if _running.get(ten):
-        print(f"{datetime.now(VN):%F %T} [{ten}] lượt trước còn chạy — bỏ lượt", flush=True)
+def start_job(name: str, command: list):
+    if _running.get(name):
+        print(f"{datetime.now(VN):%F %T} [{name}] lượt trước còn chạy — bỏ lượt", flush=True)
         return
 
     def _worker():
-        _running[ten] = True
+        _running[name] = True
         try:
-            run_and_log(ten, lenh)
+            run_and_log(name, command)
         finally:
-            _running[ten] = False
+            _running[name] = False
 
     threading.Thread(target=_worker, daemon=True).start()
 
@@ -129,7 +129,7 @@ def handle_refresh_request():
         return
     ai = f"bấm tay: {request[1] or '?'}"
 
-    def _lam():
+    def _run():
         for k in ("cap_nhat", "sync", "bao_cao"):
             _running[k] = True
         ok = False
@@ -143,7 +143,7 @@ def handle_refresh_request():
             for k in ("cap_nhat", "sync", "bao_cao"):
                 _running[k] = False
 
-    threading.Thread(target=_lam, daemon=True).start()
+    threading.Thread(target=_run, daemon=True).start()
 
 
 def main():
@@ -165,10 +165,10 @@ def main():
     while True:
         now = datetime.now(VN)
         slot = now.strftime("%Y-%m-%d %H:%M")
-        for ten, minute, hours, lenh in JOBS:
-            if now.minute == minute and (hours is None or now.hour in hours) and (ten, slot) not in already_run:
-                already_run.add((ten, slot))
-                start_job(ten, lenh)
+        for name, minute, hours, command in JOBS:
+            if now.minute == minute and (hours is None or now.hour in hours) and (name, slot) not in already_run:
+                already_run.add((name, slot))
+                start_job(name, command)
         if len(already_run) > 500:
             already_run = {x for x in already_run if x[1] == slot}
         handle_refresh_request()

@@ -21,7 +21,7 @@ export type MarketOverride = Record<string, unknown> & {
 export type OverridesFile = { markets?: Record<string, MarketOverride | unknown>; updated_at?: string; updated_by?: string };
 
 const OVERRIDE_ONLY_FIELDS = new Set(["tokens", "team"]);
-const laKhoi = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const isPlainObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 
 type RulesWithMarkets = {
     markets?: Record<string, unknown>;
@@ -54,13 +54,13 @@ export function applyMarketOverrides<T extends RulesWithMarkets>(rules: T, overr
     out.market_aliases = out.market_aliases || {};
     out.camp_market_tokens = out.camp_market_tokens || [];
     const teams = out.access?.teams || {};
-    for (const [key, khoi] of Object.entries(overrides?.markets || {})) {
-        if (key.startsWith("_") || !laKhoi(khoi)) continue;
-        const merged: Record<string, unknown> = laKhoi(out.markets[key]) ? { ...(out.markets[key] as object) } : {};
-        for (const [k, v] of Object.entries(khoi)) if (!OVERRIDE_ONLY_FIELDS.has(k)) merged[k] = v;
+    for (const [key, block] of Object.entries(overrides?.markets || {})) {
+        if (key.startsWith("_") || !isPlainObject(block)) continue;
+        const merged: Record<string, unknown> = isPlainObject(out.markets[key]) ? { ...(out.markets[key] as object) } : {};
+        for (const [k, v] of Object.entries(block)) if (!OVERRIDE_ONLY_FIELDS.has(k)) merged[k] = v;
         out.markets[key] = merged;
 
-        for (const t of Array.isArray(khoi.tokens) ? khoi.tokens : []) {
+        for (const t of Array.isArray(block.tokens) ? block.tokens : []) {
             const T = String(t).trim().toUpperCase();
             if (!T) continue;
             const owner = out.market_aliases[T];
@@ -69,10 +69,10 @@ export function applyMarketOverrides<T extends RulesWithMarkets>(rules: T, overr
             if (!out.camp_market_tokens.includes(T)) out.camp_market_tokens.push(T);
         }
 
-        const team = typeof khoi.team === "string" ? khoi.team : null;
-        if (team && laKhoi(teams[team])) {
+        const team = typeof block.team === "string" ? block.team : null;
+        if (team && isPlainObject(teams[team])) {
             for (const [teamKey, t] of Object.entries(teams)) {
-                if (!laKhoi(t)) continue;
+                if (!isPlainObject(t)) continue;
                 const ds = Array.isArray(t.markets) ? (t.markets as string[]) : [];
                 t.markets = teamKey === team ? (ds.includes(key) ? ds : [...ds, key]) : ds.filter((m) => m !== key);
             }
@@ -91,12 +91,12 @@ export type MarketInput = {
 };
 
 const teamOf = (key: string, rules: RulesWithMarkets): string | null =>
-    Object.entries(rules.access?.teams || {}).find(([, t]) => laKhoi(t) && Array.isArray(t.markets) && (t.markets as string[]).includes(key))?.[0] || null;
+    Object.entries(rules.access?.teams || {}).find(([, t]) => isPlainObject(t) && Array.isArray(t.markets) && (t.markets as string[]).includes(key))?.[0] || null;
 const numberOrNull = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 /** Một nước của luật (đã phủ) ở dạng ô nhập trên trang — để mở form sửa. */
 export function inputFromRules(key: string, rules: RulesWithMarkets): MarketInput {
-    const v = (laKhoi(rules.markets?.[key]) ? rules.markets![key] : {}) as Record<string, unknown>;
+    const v = (isPlainObject(rules.markets?.[key]) ? rules.markets![key] : {}) as Record<string, unknown>;
     const status = String(v.status || "dang_ban");
     return {
         key,
@@ -124,23 +124,23 @@ export function inputFromRules(key: string, rules: RulesWithMarkets): MarketInpu
 export function overrideFromInput(n: MarketInput, baseRules: RulesWithMarkets): MarketOverride {
     // So với đúng cái form HIỆN cho bản gốc (đã điền mặc định: ký hiệu tiền = mã tiền…), không so
     // với ô thô — không thì bấm Lưu mà chẳng sửa gì vẫn ghi ô mặc định vào file phủ.
-    const existing = laKhoi(baseRules.markets?.[n.key]) ? (inputFromRules(n.key, baseRules) as unknown as Record<string, unknown>) : null;
+    const existing = isPlainObject(baseRules.markets?.[n.key]) ? (inputFromRules(n.key, baseRules) as unknown as Record<string, unknown>) : null;
     const o: Record<string, unknown> = {
         display: n.display.trim(), shop_label: n.shop_label, currency: n.currency, currency_symbol: n.currency_symbol.trim(),
         rate_vnd: n.rate_vnd, pos_money_divisor: n.pos_money_divisor, shop_id: n.shop_id, status: n.status,
         orders_from: n.orders_from, flag: n.flag.trim(),
     };
     const isEmpty = (x: unknown) => x === undefined || x === null || x === "";
-    const khoi: MarketOverride = {};
+    const block: MarketOverride = {};
     for (const [k, v] of Object.entries(o)) {
         if (existing ? JSON.stringify(existing[k]) === JSON.stringify(v) : isEmpty(v)) continue;
-        khoi[k] = v;
+        block[k] = v;
     }
     const baseTokens = new Set(inputFromRules(n.key, baseRules).tokens);
     const newTokens = [...new Set(n.tokens.map((t) => t.trim().toUpperCase()).filter(Boolean))].filter((t) => !baseTokens.has(t));
-    if (newTokens.length) khoi.tokens = newTokens;
-    if (n.team && n.team !== teamOf(n.key, baseRules)) khoi.team = n.team;
-    return khoi;
+    if (newTokens.length) block.tokens = newTokens;
+    if (n.team && n.team !== teamOf(n.key, baseRules)) block.team = n.team;
+    return block;
 }
 
 /**
@@ -151,41 +151,41 @@ export function overrideFromInput(n: MarketInput, baseRules: RulesWithMarkets): 
  *   • mã campaign trùng nước khác → chi tiêu nước này chạy sang nước kia.
  */
 export function marketInputErrors(n: MarketInput, rules: RulesWithMarkets, isNew: boolean): string[] {
-    const loi: string[] = [];
-    const markets = Object.entries(rules.markets || {}).filter(([k, v]) => !k.startsWith("_") && laKhoi(v)) as [string, Record<string, unknown>][];
+    const error: string[] = [];
+    const markets = Object.entries(rules.markets || {}).filter(([k, v]) => !k.startsWith("_") && isPlainObject(v)) as [string, Record<string, unknown>][];
     const khac = markets.filter(([k]) => k !== n.key);
     const existing = markets.find(([k]) => k === n.key)?.[1];
 
-    if (!/^[A-Z][A-Za-z]{1,29}$/.test(n.key)) loi.push("Tên khoá phải là chữ cái không dấu, viết hoa chữ đầu (vd Thailand)");
-    if (isNew && existing) loi.push(`Đã có nước ${n.key}`);
-    if (!isNew && !existing) loi.push(`Chưa có nước ${n.key}`);
-    if (!n.display.trim() || n.display.length > 40) loi.push("Tên hiển thị trống hoặc dài quá 40 ký tự");
-    if (!/^[A-Z]{2,3}$/.test(n.shop_label)) loi.push("Mã shop phải là 2–3 chữ in hoa (vd TH)");
-    if (existing && existing.shop_label && existing.shop_label !== n.shop_label) loi.push(`Không đổi được mã shop ${existing.shop_label} — đơn cũ đang mang mã đó`);
-    if (khac.some(([, v]) => v.shop_label === n.shop_label)) loi.push(`Mã shop ${n.shop_label} đã thuộc nước khác`);
-    if (!/^[A-Z]{3}$/.test(n.currency)) loi.push("Mã tiền tệ phải là 3 chữ in hoa (vd THB)");
-    if (!n.currency_symbol.trim() || n.currency_symbol.length > 5) loi.push("Ký hiệu tiền trống hoặc dài quá 5 ký tự");
-    if (n.flag.length > 8) loi.push("Cờ dài quá");
-    if (!["dang_ban", "sap_chay", "da_tat"].includes(n.status)) loi.push("Trạng thái lạ");
+    if (!/^[A-Z][A-Za-z]{1,29}$/.test(n.key)) error.push("Tên khoá phải là chữ cái không dấu, viết hoa chữ đầu (vd Thailand)");
+    if (isNew && existing) error.push(`Đã có nước ${n.key}`);
+    if (!isNew && !existing) error.push(`Chưa có nước ${n.key}`);
+    if (!n.display.trim() || n.display.length > 40) error.push("Tên hiển thị trống hoặc dài quá 40 ký tự");
+    if (!/^[A-Z]{2,3}$/.test(n.shop_label)) error.push("Mã shop phải là 2–3 chữ in hoa (vd TH)");
+    if (existing && existing.shop_label && existing.shop_label !== n.shop_label) error.push(`Không đổi được mã shop ${existing.shop_label} — đơn cũ đang mang mã đó`);
+    if (khac.some(([, v]) => v.shop_label === n.shop_label)) error.push(`Mã shop ${n.shop_label} đã thuộc nước khác`);
+    if (!/^[A-Z]{3}$/.test(n.currency)) error.push("Mã tiền tệ phải là 3 chữ in hoa (vd THB)");
+    if (!n.currency_symbol.trim() || n.currency_symbol.length > 5) error.push("Ký hiệu tiền trống hoặc dài quá 5 ký tự");
+    if (n.flag.length > 8) error.push("Cờ dài quá");
+    if (!["dang_ban", "sap_chay", "da_tat"].includes(n.status)) error.push("Trạng thái lạ");
 
     const requiresComplete = n.status === "dang_ban" || n.status === "da_tat";
-    if (n.rate_vnd !== null && !(Number.isFinite(n.rate_vnd) && n.rate_vnd > 0)) loi.push("Tỷ giá phải là số dương");
-    if (requiresComplete && n.rate_vnd === null) loi.push("Nước đang bán / đã tắt phải có tỷ giá");
-    if (n.pos_money_divisor !== null && !(Number.isInteger(n.pos_money_divisor) && n.pos_money_divisor > 0)) loi.push("Số chia tiền POS phải là số nguyên dương");
-    if (requiresComplete && n.pos_money_divisor === null) loi.push("Nước đang bán / đã tắt phải có số chia tiền POS");
-    if (n.shop_id && !/^\d{3,20}$/.test(n.shop_id)) loi.push("Mã shop POS chỉ gồm chữ số");
-    if (requiresComplete && !n.shop_id) loi.push("Nước đang bán / đã tắt phải có shop POS");
-    if (n.shop_id && khac.some(([, v]) => String(v.shop_id || "") === n.shop_id)) loi.push(`Shop POS ${n.shop_id} đã thuộc nước khác`);
-    if (n.orders_from !== null && !/^\d{4}-\d{2}-\d{2}$/.test(n.orders_from)) loi.push("Ngày bắt đầu tính đơn phải dạng YYYY-MM-DD");
+    if (n.rate_vnd !== null && !(Number.isFinite(n.rate_vnd) && n.rate_vnd > 0)) error.push("Tỷ giá phải là số dương");
+    if (requiresComplete && n.rate_vnd === null) error.push("Nước đang bán / đã tắt phải có tỷ giá");
+    if (n.pos_money_divisor !== null && !(Number.isInteger(n.pos_money_divisor) && n.pos_money_divisor > 0)) error.push("Số chia tiền POS phải là số nguyên dương");
+    if (requiresComplete && n.pos_money_divisor === null) error.push("Nước đang bán / đã tắt phải có số chia tiền POS");
+    if (n.shop_id && !/^\d{3,20}$/.test(n.shop_id)) error.push("Mã shop POS chỉ gồm chữ số");
+    if (requiresComplete && !n.shop_id) error.push("Nước đang bán / đã tắt phải có shop POS");
+    if (n.shop_id && khac.some(([, v]) => String(v.shop_id || "") === n.shop_id)) error.push(`Shop POS ${n.shop_id} đã thuộc nước khác`);
+    if (n.orders_from !== null && !/^\d{4}-\d{2}-\d{2}$/.test(n.orders_from)) error.push("Ngày bắt đầu tính đơn phải dạng YYYY-MM-DD");
 
     const aliases = rules.market_aliases || {};
     for (const t of n.tokens) {
         const T = t.trim().toUpperCase();
-        if (!/^[\p{Lu}0-9]{2,20}$/u.test(T)) { loi.push(`Mã campaign "${t}" không hợp lệ (2–20 chữ hoặc số, không khoảng trắng)`); continue; }
-        if (aliases[T] && aliases[T] !== n.key) loi.push(`Mã campaign ${T} đang thuộc ${aliases[T]}`);
+        if (!/^[\p{Lu}0-9]{2,20}$/u.test(T)) { error.push(`Mã campaign "${t}" không hợp lệ (2–20 chữ hoặc số, không khoảng trắng)`); continue; }
+        if (aliases[T] && aliases[T] !== n.key) error.push(`Mã campaign ${T} đang thuộc ${aliases[T]}`);
     }
-    if (!n.tokens.length) loi.push("Cần ít nhất một mã trên tên campaign (vd TH) — không có thì chi tiêu không tách được về nước này");
+    if (!n.tokens.length) error.push("Cần ít nhất một mã trên tên campaign (vd TH) — không có thì chi tiêu không tách được về nước này");
     const teams = rules.access?.teams || {};
-    if (n.team !== null && !laKhoi(teams[n.team])) loi.push(`Không có team ${n.team}`);
-    return loi;
+    if (n.team !== null && !isPlainObject(teams[n.team])) error.push(`Không có team ${n.team}`);
+    return error;
 }

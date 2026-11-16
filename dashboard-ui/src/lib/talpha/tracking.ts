@@ -533,7 +533,7 @@ export function planRegister(
     }
 
     const gap = cand.filter((s) => alertedShipments!.has(s));
-    const thuong = cand.filter((s) => !alertedShipments!.has(s));
+    const regular = cand.filter((s) => !alertedShipments!.has(s));
     const pickGap = gap.slice(0, cap);
     let nhip = 0;
     if (Number.isFinite(remain)) {
@@ -542,12 +542,12 @@ export function planRegister(
         const remainingDays = Math.max(1, opt.daysLeft ?? daysLeftInMonth(now));
         nhip = Math.max(0, Math.floor((remain - pickGap.length - reserve) / remainingDays));
     }
-    const pickThuong = thuong.slice(0, Math.max(0, Math.min(cap - pickGap.length, nhip)));
-    const pick = [...pickGap, ...pickThuong];
+    const pickRegular = regular.slice(0, Math.max(0, Math.min(cap - pickGap.length, nhip)));
+    const pick = [...pickGap, ...pickRegular];
     return {
         pick, eligible: cand.length, over_cap: cand.length - pick.length,
         quota_limited: gap.length > pickGap.length && remain < perRun,
-        deferred: thuong.length - pickThuong.length,
+        deferred: regular.length - pickRegular.length,
     };
 }
 

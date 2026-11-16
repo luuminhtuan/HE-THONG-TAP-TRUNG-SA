@@ -50,11 +50,11 @@ class TestTableStructure:
 
     def test_synced_columns_exist_in_tables(self):
         # Sync ghi dòng có cột bảng chưa có thì dừng giữa chừng (pg_writer.them_dong) — soát trước.
-        bang = _schema_migration()
-        columns = lambda b: {c for c, _ in bang[b]}
+        table = _schema_migration()
+        columns = lambda b: {c for c, _ in table[b]}
         assert {"page_name", "seller_name", "inserted_at", "updated_at", "sync_time", "cod"} <= columns("sale_order")
         assert {"spend", "date", "messaging_conversations_started", "account_id"} <= columns("fb_ads_data")
-        assert dict(bang["fb_ads_data"])["date"] == "date" and dict(bang["sale_order"])["inserted_at"] == "text"
+        assert dict(table["fb_ads_data"])["date"] == "date" and dict(table["sale_order"])["inserted_at"] == "text"
 
     def test_ad_dictionary_has_all_columns(self):
         assert [c for c, _ in _schema_migration()["ad_dictionary"]] == [
@@ -126,8 +126,8 @@ def _item(order_id, item_id, shop=SHOP_TW, sync="t1", qty=1):
             "retail_price": 500.0, "sync_time": sync}
 
 
-def _count(conn, bang):
-    return conn.execute(f"SELECT COUNT(*) FROM {bang}").fetchone()[0]
+def _count(conn, table):
+    return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
 
 
 class TestMigration:
@@ -163,7 +163,7 @@ class TestWriteOrders:
     def test_order_deleted_on_pos_dropped_from_table_kept_in_raw(self, pg):
         pg_writer.write_orders(pg, [_order(1), _order(2)], [])
         pg_writer.write_orders(pg, [_order(1, sync="t2")], [],
-                          da_thay={SHOP_TW: ("2026-10-01T00:00:00", {"1"})})
+                          replaced={SHOP_TW: ("2026-10-01T00:00:00", {"1"})})
         assert [r[0] for r in pg.execute("SELECT id FROM sale_order")] == ["1"]
         assert pg.execute("SELECT COUNT(*) FROM sale_order_raw WHERE id = '2' AND status_name = %s",
                           (DELETED_ON_POS,)).fetchone()[0] == 1
@@ -172,7 +172,7 @@ class TestWriteOrders:
 
     def test_pos_returns_zero_orders_deletes_nothing(self, pg):
         pg_writer.write_orders(pg, [_order(1), _order(2)], [])
-        pg_writer.write_orders(pg, [], [], da_thay={SHOP_TW: ("2026-10-01T00:00:00", set())})
+        pg_writer.write_orders(pg, [], [], replaced={SHOP_TW: ("2026-10-01T00:00:00", set())})
         assert _count(pg, "sale_order") == 2
 
     def test_clean_table_only_configured_shops(self, pg):

@@ -31,16 +31,16 @@ def read_credentials(conn) -> dict:
     return {name: value for name, value in rows}
 
 
-def save_credential(conn, ten: str, gia_tri: str, note: str = "", updated_by: str = "") -> None:
-    chia = get_encryption_key()
-    if not chia:
+def save_credential(conn, name: str, value: str, note: str = "", updated_by: str = "") -> None:
+    secret = get_encryption_key()
+    if not secret:
         raise RuntimeError(f"chưa đặt {ENCRYPTION_KEY_VAR} — không mã hoá được khoá")
     conn.execute(
         "INSERT INTO api_credentials (name, encrypted_value, note, updated_by, updated_at) "
         "VALUES (%s, public.pgp_sym_encrypt(%s, %s), %s, %s, now()) "
         "ON CONFLICT (name) DO UPDATE SET encrypted_value = EXCLUDED.encrypted_value, note = EXCLUDED.note, "
         "updated_by = EXCLUDED.updated_by, updated_at = now()",
-        (ten, gia_tri, chia, note or None, updated_by or None))
+        (name, value, secret, note or None, updated_by or None))
 
 
 def load_credentials_to_env(env=None) -> list:
@@ -58,7 +58,7 @@ def load_credentials_to_env(env=None) -> list:
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  không đọc được khoá kết nối trong kho ({e}) — dùng khoá trong .env.local", file=sys.stderr)
         return []
-    for ten, gia_tri in credentials.items():
-        if gia_tri:
-            env[ten] = gia_tri
+    for name, value in credentials.items():
+        if value:
+            env[name] = value
     return sorted(credentials)

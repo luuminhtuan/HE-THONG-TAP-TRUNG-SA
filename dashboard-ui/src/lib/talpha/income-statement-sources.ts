@@ -90,7 +90,7 @@ async function twParcels(asOf: string): Promise<MarketSource> {
         }))
         .filter((k) => k.tw && k.rv)
         .sort((a, b) => b.ngay.localeCompare(a.ngay));
-    const chuoi = periods.length ? periods[0].tw! * periods[0].rv! : null;
+    const rateChain = periods.length ? periods[0].tw! * periods[0].rv! : null;
     const knownFees = rows.filter((r) => r.fee_vnd != null).map((r) => r.fee_vnd as number);
     const avgFee = tb(knownFees) ?? 0;
 
@@ -104,7 +104,7 @@ async function twParcels(asOf: string): Promise<MarketSource> {
             nuoc: "TW", ma: r.order_no || r.tracking, ngay: date, ngay_gui: r.ship_date || null, nhom: group,
             trang_thai: r.status_raw || r.status || "",
             cod_vnd: r.cod_twd * rTw,
-            cod_that_vnd: r.gross_vnd ?? (chuoi ? r.cod_twd * chuoi : null),
+            cod_that_vnd: r.gross_vnd ?? (rateChain ? r.cod_twd * rateChain : null),
             gia_von_vnd: isRedelivery ? 0 : r.cogs_vnd,
             phi_di_vnd: r.fee_vnd ?? avgFee,
             phi_giao_vnd: 0,
@@ -120,8 +120,8 @@ async function twParcels(asOf: string): Promise<MarketSource> {
         co_so: [
             `Phí 3PL: phí thật trong sheet PHÍ của ${stm.statements.length} kỳ sao kê NAZA (vận chuyển + thao tác, NAZA thu cả kiện hoàn); `
             + `kiện chưa vào kỳ nào lấy trung bình ${fmt(avgFee)}đ/kiện của ${knownFees.length} kiện đã có phí. Hoàn về kho NAZA miễn phí 1 tháng.`,
-            chuoi
-                ? `Chênh tỷ giá: NAZA quy TWD→tệ→đồng theo tỷ giá từng kỳ (kỳ mới nhất ${fmt(chuoi)}đ/TWD) so với ${fmt(rTw)}đ/TWD của Doanh số.`
+            rateChain
+                ? `Chênh tỷ giá: NAZA quy TWD→tệ→đồng theo tỷ giá từng kỳ (kỳ mới nhất ${fmt(rateChain)}đ/TWD) so với ${fmt(rTw)}đ/TWD của Doanh số.`
                 : "Chênh tỷ giá: chưa có kỳ sao kê nào ghi đủ tỷ giá.",
             "Giá vốn: mã SP trong cột SKU bảng NAZA × bảng products; kiện giao lại không tính giá vốn lần hai.",
         ],
@@ -155,7 +155,7 @@ async function partnerParcels(code: "SG" | "JP", asOf: string): Promise<MarketSo
     // Phí từng kiện trong sao kê, quy VND theo tỷ giá tệ của kỳ đó. Một kiện có thể bị thu ở
     // hai kỳ (NAZA thu bù hàng đặc thù kỳ sau) — cộng dồn.
     const outboundFees = new Map<string, number>(), codFees = new Map<string, number>(), parcelWeights: number[] = [];
-    let chuoi: { tw: number; rv: number; ngay: string } | null = null;
+    let rateChain: { tw: number; rv: number; ngay: string } | null = null;
     for (const s of sk.statements) {
         const n = s.naza;
         if (!n) continue;
@@ -170,7 +170,7 @@ async function partnerParcels(code: "SG" | "JP", asOf: string): Promise<MarketSo
             codFees.set(k, (codFees.get(k) || 0) + Number(l.phi_rmb) * rv);
         }
         const date = s.ngay || "";
-        if (n.ty_gia_rmb && n.ty_gia_vnd && (!chuoi || date > chuoi.ngay)) chuoi = { tw: n.ty_gia_rmb, rv: n.ty_gia_vnd, ngay: date };
+        if (n.ty_gia_rmb && n.ty_gia_vnd && (!rateChain || date > rateChain.ngay)) rateChain = { tw: n.ty_gia_rmb, rv: n.ty_gia_vnd, ngay: date };
     }
     const knownFees = [...outboundFees.values()];
     const f = FEES[code] || {};
@@ -196,7 +196,7 @@ async function partnerParcels(code: "SG" | "JP", asOf: string): Promise<MarketSo
         const date = s.order_date || s.ship_date || "";
         const group = classifyParcel(s.status, s.sub_status, s.raw_status, !!s.ship_date);
         const codVnd = s.cod_local * rLocal;
-        const codRmb = chuoi ? s.cod_local * chuoi.tw : codVnd / COST_RATE_RMB_VND;
+        const codRmb = rateChain ? s.cod_local * rateChain.tw : codVnd / COST_RATE_RMB_VND;
         let di = outboundFees.get(k);
         const that = di != null;
         let deliveryFee = 0, returnFee = 0;
@@ -216,7 +216,7 @@ async function partnerParcels(code: "SG" | "JP", asOf: string): Promise<MarketSo
             nuoc: code, ma: s.order_id || s.tracking, ngay: date, ngay_gui: s.ship_date || null, nhom: group,
             trang_thai: s.raw_status || s.status || "",
             cod_vnd: codVnd,
-            cod_that_vnd: chuoi ? s.cod_local * chuoi.tw * chuoi.rv : null,
+            cod_that_vnd: rateChain ? s.cod_local * rateChain.tw * rateChain.rv : null,
             gia_von_vnd: skuCogs(s.sku, s.quantity || 1),
             phi_di_vnd: di, phi_giao_vnd: deliveryFee, phi_hoan_vnd: returnFee, phi_that: that,
             hang_ve_kho: RESTOCKABLE_MARKETS.has(code),
@@ -233,8 +233,8 @@ async function partnerParcels(code: "SG" | "JP", asOf: string): Promise<MarketSo
             code === "SG"
                 ? `Thu hộ COD ${(Number(f.cod_fee?.pct || 0) * 100).toFixed(0)}% (tối thiểu ${f.cod_fee?.min || 0} tệ) chỉ khi giao được; hàng hoàn mất phí đi + nhập kho hoàn ${f.returns?.return_inbound || 0} tệ, lưu tối đa 30 ngày rồi huỷ.`
                 : `Phí thu hộ theo bậc tiền COD thu dù khách có nhận hay không; khách từ chối mất thêm ${fmt(Number(f.refusal_fee_jpy || 0))}¥, hàng về kho NAZA Nhật.`,
-            chuoi
-                ? `Chênh tỷ giá: NAZA quy ${code === "SG" ? "S$" : "¥"}→tệ ${chuoi.tw} × ${fmt(chuoi.rv)}đ/tệ (kỳ mới nhất) so với ${fmt(rLocal)}đ của Doanh số.`
+            rateChain
+                ? `Chênh tỷ giá: NAZA quy ${code === "SG" ? "S$" : "¥"}→tệ ${rateChain.tw} × ${fmt(rateChain.rv)}đ/tệ (kỳ mới nhất) so với ${fmt(rLocal)}đ của Doanh số.`
                 : `Chênh tỷ giá: chưa có kỳ sao kê nào ghi tỷ giá — tính theo ${fmt(rLocal)}đ.`,
             "Giá vốn: mã SP trong cột SKU bảng đối tác × bảng products.",
         ],

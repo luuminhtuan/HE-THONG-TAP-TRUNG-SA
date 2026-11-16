@@ -37,26 +37,26 @@ class TestVndOrderInTwdShop:
         assert result is not None and result[0] is order
 
     def test_order_without_currency_uses_shop_currency(self):
-        don = _order(order_currency=None, cod=999.0)
-        assert convert_order_currency(don, [], "TWD", 800)[0]["cod"] == 999.0
+        order = _order(order_currency=None, cod=999.0)
+        assert convert_order_currency(order, [], "TWD", 800)[0]["cod"] == 999.0
 
     def test_vnd_order_to_twd_revenue_matches_original(self):
         # Đơn thật shop 1022091930: 1.210.000đ ghi ở ô phí vận chuyển.
-        don, _ = convert_order_currency(_order(), [], "TWD", 800)
-        assert don["order_currency"] == "TWD"
-        assert don["cod"] == 1512.5
-        assert revenue_vnd(don["cod"], "TW") == 1_210_000.0
+        order, _ = convert_order_currency(_order(), [], "TWD", 800)
+        assert order["order_currency"] == "TWD"
+        assert order["cod"] == 1512.5
+        assert revenue_vnd(order["cod"], "TW") == 1_210_000.0
 
     def test_minor_unit_shop_multiplies_divisor(self):
         # Singapore: số chia 100. 1.210.000đ → 60,5 SGD → lưu 6050 → ÷100 × 20.000 = 1.210.000đ.
-        don, _ = convert_order_currency(_order(), [], "SGD", 20000, 100)
-        assert don["cod"] == 6050.0
-        assert revenue_vnd(don["cod"], "SG") == 1_210_000.0
+        order, _ = convert_order_currency(_order(), [], "SGD", 20000, 100)
+        assert order["cod"] == 6050.0
+        assert revenue_vnd(order["cod"], "SG") == 1_210_000.0
 
     def test_all_money_fields_converted(self):
-        don, _ = convert_order_currency(_order(total_discount=80_000.0), [], "TWD", 800)
-        assert don["shipping_fee"] == 1512.5 and don["money_to_collect"] == 1512.5
-        assert don["total_discount"] == 100.0
+        order, _ = convert_order_currency(_order(total_discount=80_000.0), [], "TWD", 800)
+        assert order["shipping_fee"] == 1512.5 and order["money_to_collect"] == 1512.5
+        assert order["total_discount"] == 100.0
 
     def test_original_order_not_mutated(self):
         original = _order()

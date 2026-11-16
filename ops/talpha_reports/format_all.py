@@ -205,7 +205,7 @@ for r in ORDERS:
     # Lộc ngày 15/09 ra 3 đơn, POS 2.
     ad_same_market = bool(cqc) and campaign_market(cqc)[0]==mkt
     if not ad_same_market: cqc=None
-    camp,match_type=find_campaign_by_page(r.page_name, str(r.d), PAGE_INDEX, cqc, nuoc=mkt)   # chỉ camp cùng nước với shop
+    camp,match_type=find_campaign_by_page(r.page_name, str(r.d), PAGE_INDEX, cqc, market=mkt)   # chỉ camp cùng nước với shop
     MATCH_COUNTS[match_type]+=1
     nv_camp=parse_camp(camp)[1] if camp else None
     # Người NGOÀI TEAM chạy chung TKQC + bán chung shop POS. Nhận diện TRƯỚC bậc 2 để

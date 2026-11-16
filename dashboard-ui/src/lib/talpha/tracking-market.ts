@@ -167,7 +167,7 @@ export async function syncWeshipMarket(mk: TrackMarket, now: Date = new Date()):
     });
 
     let checked = 0, changed = 0, notFound = 0;
-    const loi = kq.filter((x) => "error" in x) as { awb: string; error: string }[];
+    const error = kq.filter((x) => "error" in x) as { awb: string; error: string }[];
     const updatedStore = await updateStore<WeshipStore>(mk.store, emptyWeship(), (cur) => {
         for (const x of kq) {
             if (!("page" in x) || !x.page) continue;
@@ -183,11 +183,11 @@ export async function syncWeshipMarket(mk: TrackMarket, now: Date = new Date()):
                 events: x.page.events.slice(0, 15),
             };
         }
-        const ok = !targets.length || loi.length < targets.length;
+        const ok = !targets.length || error.length < targets.length;
         cur.last_sync = {
             at: nowIso, ok, provider: "weship",
-            targets: targets.length, checked, changed, not_found: notFound, failed: loi.length,
-            ...(loi.length ? { error: `${loi.length}/${targets.length} mã lỗi — ${loi[0].awb}: ${loi[0].error}` } : {}),
+            targets: targets.length, checked, changed, not_found: notFound, failed: error.length,
+            ...(error.length ? { error: `${error.length}/${targets.length} mã lỗi — ${error[0].awb}: ${error[0].error}` } : {}),
         };
         return cur;
     });

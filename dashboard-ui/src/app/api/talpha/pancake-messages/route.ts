@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { MARKETS_PUBLIC, EXCHANGE_RATES, posMoneyDivisor, campaignMarket, DISPLAY, normCampMarketer, CAMP_MARKETS } from "@/lib/talpha/rules";
 import { normalizePageName, pageOfCampaign, countForDay, isMarketPage } from "@/lib/talpha/pancake";
-import { cacPage, conversationsSince, sleep, GIAN_MS, tokenPancake } from "@/lib/talpha/pancake-api";
+import { listPages, conversationsSince, sleep, GIAN_MS, tokenPancake } from "@/lib/talpha/pancake-api";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -77,7 +77,7 @@ export async function GET(req: NextRequest) {
     const pages: Result[] = [];
     if (!tokenError) {
         try {
-            const allPages = await cacPage(tok);
+            const allPages = await listPages(tok);
             // Khớp theo tên camp là chính; luật đuôi tên CHỈ nhận đúng mã nước (… JP) — "Prime Leather
             // Japan", "GoutEase … Spray Japan" là page SẢN PHẨM bán ở Đài, đuôi "Japan" là tên hàng.
             const marketPages = allPages.filter((p) => pageOwners.has(normalizePageName(p.name)) || isMarketPage(p.name, [market.code]));

@@ -57,7 +57,7 @@ const EXTRA_COLUMN_ALIASES: Record<string, string[]> =
     (RULES as unknown as { cod_settlement?: { column_map?: Record<string, string[]> } }).cod_settlement?.column_map || {};
 
 const aliasesFor = (f: StatementField) => [...(EXTRA_COLUMN_ALIASES[f] || []).map(normalizeColumnName), ...COLUMN_ALIASES[f]].filter(Boolean);
-const coHan = (s: string) => /[㐀-鿿]/.test(s);
+const hasHanChars = (s: string) => /[㐀-鿿]/.test(s);
 /** Cột phí cũng hay có chữ "cod" ("COD fee") — đừng để nó thành cột tiền COD. */
 const FEE_COLUMN_RE = /\b(fee|fees|phi|charge|charges)\b|运费|手续费/;
 
@@ -83,7 +83,7 @@ export function detectStatementColumns(header: string[]): StatementColumns {
         assign(f, h.findIndex((x, i) => {
             if (usedColumns.has(i) || !x) return false;
             if (f === "amount" && FEE_COLUMN_RE.test(x)) return false;
-            return name.some((t) => coHan(t) ? x.includes(t) : x === t || x.startsWith(`${t} `));
+            return name.some((t) => hasHanChars(t) ? x.includes(t) : x === t || x.startsWith(`${t} `));
         }));
     }
     return out;
@@ -231,9 +231,9 @@ export function pickNazaRows(naza: NazaStatement, code: string, filename: string
     }
     const rate = picked.find((l) => l.ty_gia_rmb != null)?.ty_gia_rmb ?? null;
     const hasRates = picked.length > 0 && picked.every((l) => l.ty_gia_rmb != null);
-    const tron = (n: number) => Math.round(n * 100) / 100;
+    const round2 = (n: number) => Math.round(n * 100) / 100;
     const codFees = picked.filter((l) => l.ty_gia_rmb != null && l.ve_rmb != null).map((l) => ({
-        tracking: l.tracking, cod_rmb: tron(l.cod_twd * l.ty_gia_rmb!), phi_rmb: tron(l.cod_twd * l.ty_gia_rmb! - l.ve_rmb!),
+        tracking: l.tracking, cod_rmb: round2(l.cod_twd * l.ty_gia_rmb!), phi_rmb: round2(l.cod_twd * l.ty_gia_rmb! - l.ve_rmb!),
     }));
     const feeTrackings = new Set(pickedFees.map((l) => normTracking(l.tracking)));
     return {
@@ -255,8 +255,8 @@ export function pickNazaRows(naza: NazaStatement, code: string, filename: string
             phai_nhan_vnd: caFile ? s.payable_vnd ?? null : null,
             sheets: naza.sheets,
             tong_dong: caFile ? naza.summary_lines || [] : [],
-            quy_te_rmb: hasRates ? tron(picked.reduce((t, l) => t + l.cod_twd * l.ty_gia_rmb!, 0)) : picked.length ? null : 0,
-            ve_rmb: hasReceived ? tron(picked.reduce((t, l) => t + (Number(l.ve_rmb) || 0), 0)) : picked.length ? null : 0,
+            quy_te_rmb: hasRates ? round2(picked.reduce((t, l) => t + l.cod_twd * l.ty_gia_rmb!, 0)) : picked.length ? null : 0,
+            ve_rmb: hasReceived ? round2(picked.reduce((t, l) => t + (Number(l.ve_rmb) || 0), 0)) : picked.length ? null : 0,
             thu_ho: codFees,
             phi_dong: pickedFees.map((l) => ({
                 tracking: l.tracking, order_id: l.order_id, kg: l.chargeable_kg,
@@ -308,10 +308,10 @@ export function replaceSamePeriod(list: MarketStatement[], incoming: MarketState
         if (normFilename(s.filename) === normFilename(incoming.filename)) { replaced.push(s.filename); return false; }
         if (s.kieu === "naza" && incoming.kieu === "naza" && s.ngay && s.ngay === incoming.ngay) { replaced.push(s.filename); return false; }
         const ks = new Set(s.rows.map(rowKey));
-        let chung = 0;
-        for (const k of ks) if (incomingKeys.has(k)) chung++;
+        let shared = 0;
+        for (const k of ks) if (incomingKeys.has(k)) shared++;
         const smallerSize = Math.min(ks.size, incomingKeys.size);
-        if (smallerSize > 0 && chung * 2 >= smallerSize) { replaced.push(s.filename); return false; }
+        if (smallerSize > 0 && shared * 2 >= smallerSize) { replaced.push(s.filename); return false; }
         return true;
     });
     return { list: [...giu, incoming].slice(-30), thay: replaced };

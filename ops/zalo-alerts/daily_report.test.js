@@ -232,8 +232,8 @@ function fakeFetch({ sheet = SHEET, camps = CAMPS, realtimeStatus = 200, sheetSt
     });
 
     await t("tin ADS trưa: ▲▼ so với CÙNG MỐC hôm qua, không hỏi số cả ngày hôm qua", async () => {
-        const base = fakeFetch(), hoi = [];
-        const f = async (url) => { hoi.push(url); return base(url); };
+        const base = fakeFetch(), calls = [];
+        const f = async (url) => { calls.push(url); return base(url); };
         const r = await buildMarketerReports(CFG, "2026-09-15", { fetch: f, intraday: true, khongSoCaNgay: true,
             soCungGio: { so: { ads: 2500000, don: 8, mess: 200, doanh_so: 7500000 }, nhan: "13:00 hôm qua" },
             tieuDe: "🌤 ADS · TRƯA 15/09 · KẾT QUẢ TỚI 13:00", nguon: "Số đang chạy · sync 12:34 ✓ · ngày chưa chốt, còn lên tiếp" });
@@ -243,17 +243,17 @@ function fakeFetch({ sheet = SHEET, camps = CAMPS, realtimeStatus = 200, sheetSt
         assert.ok(g.includes("🛒 10 đơn ▲2 · 180 mess ▼20 · chốt 5,6%"), g);
         assert.ok(g.includes("▲▼ so với 13:00 hôm qua"), g);
         assert.ok(!g.includes("cả ngày hôm qua"), g);
-        assert.ok(!hoi.some((u) => u.includes("date=2026-09-14")), "không được hỏi số cả ngày hôm qua");
+        assert.ok(!calls.some((u) => u.includes("date=2026-09-14")), "không được hỏi số cả ngày hôm qua");
     });
 
     await t("tin ADS trưa: chưa có số cùng mốc hôm qua thì không ▲▼ (không so với cả ngày)", async () => {
-        const base = fakeFetch(), hoi = [];
-        const f = async (url) => { hoi.push(url); return base(url); };
+        const base = fakeFetch(), calls = [];
+        const f = async (url) => { calls.push(url); return base(url); };
         const r = await buildMarketerReports(CFG, "2026-09-15", { fetch: f, intraday: true, khongSoCaNgay: true, soCungGio: null });
         const g = plainText(r.tinGop);
         assert.ok(g.includes("💰 Ads 3.000.000đ · DS"), g);
         assert.ok(!g.includes("▲▼") && !g.includes("▲") && !g.includes("▼"), g);
-        assert.ok(!hoi.some((u) => u.includes("date=2026-09-14")));
+        assert.ok(!calls.some((u) => u.includes("date=2026-09-14")));
     });
 
     // 30/09/2026: Sheet tạo sẵn dòng mọi ngày → vòng ghi chưa chạy từ 00:00 thì dòng hôm nay toàn 0.

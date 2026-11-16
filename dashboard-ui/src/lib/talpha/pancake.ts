@@ -113,7 +113,7 @@ export function batchDoneForDay(batch: Conversation[], date: string): boolean {
 }
 
 /** Hạn của token Pancake (JWT, trường exp) → epoch ms; không đọc được → null. */
-export function hanToken(jwt?: string | null): number | null {
+export function tokenExpiry(jwt?: string | null): number | null {
     const p = String(jwt || "").split(".");
     if (p.length !== 3) return null;
     try {

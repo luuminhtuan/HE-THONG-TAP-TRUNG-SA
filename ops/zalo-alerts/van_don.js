@@ -431,8 +431,8 @@ function upcomingBlock(x, currency, marketCode) {
 function upcomingTranslations(xs, marketCode) {
     const stageNames = { HomNay: "giao hôm nay", NgayMai: "hẹn giao ngày mai", SapGiao: "sắp giao" };
     return ["HomNay", "NgayMai", "SapGiao"].filter((m) => xs.some((x) => x.moc === m)).map((m) => {
-        const mau = { customer: "{tên}", track17_code: "{mã}", status: (xs.find((x) => x.moc === m).shipment || {}).status };
-        return `🇻🇳 Dịch (${stageNames[m]}): ${upcomingDeliveryMessage(mau, m, marketCode, "vi")}`;
+        const template = { customer: "{tên}", track17_code: "{mã}", status: (xs.find((x) => x.moc === m).shipment || {}).status };
+        return `🇻🇳 Dịch (${stageNames[m]}): ${upcomingDeliveryMessage(template, m, marketCode, "vi")}`;
     });
 }
 

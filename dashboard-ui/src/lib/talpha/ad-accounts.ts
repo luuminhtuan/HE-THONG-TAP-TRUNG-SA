@@ -17,7 +17,7 @@ export type MetaAdAccount = {
 };
 
 /** [(biến, token)] của các token Meta đã nhập, theo thứ tự ưu tiên. */
-export function cacToken(): [string, string][] {
+export function metaTokens(): [string, string][] {
     return META_TOKEN_VARS.map((b) => [b, getCredential(b)] as [string, string]).filter(([, t]) => !!t);
 }
 
@@ -46,19 +46,19 @@ export async function writeAdAccountDirectory(ds: MetaAdAccount[]): Promise<{ ac
         for (const a of ds) {
             const id = String(a.account_id || "").replace(/^act_/, "");
             if (!id) continue;
-            const tham = {
+            const record = {
                 id, ten: a.name || "", st: a.account_status ?? null, tien: (a.currency || "").toUpperCase(),
                 tz: a.timezone_name || null, bien: a.bien_token || null,
             };
             if (coSan.has(id)) {
                 await q(`UPDATE tkqc SET ten = @ten, trang_thai = @st, tien_te = @tien, mui_gio = @tz,
-                         bien_token = COALESCE(@bien, bien_token), thay_lan_cuoi = now() WHERE account_id = @id`, tham);
+                         bien_token = COALESCE(@bien, bien_token), thay_lan_cuoi = now() WHERE account_id = @id`, record);
                 continue;
             }
-            const kind = initialAccountKind(id, tham.tien);
+            const kind = initialAccountKind(id, record.tien);
             await q(`INSERT INTO tkqc (account_id, ten, trang_thai, tien_te, mui_gio, loai, bien_token)
-                     VALUES (@id, @ten, @st, @tien, @tz, @loai, @bien)`, { ...tham, loai: kind });
-            newAccounts.push({ account_id: id, ten: tham.ten, loai: kind });
+                     VALUES (@id, @ten, @st, @tien, @tz, @loai, @bien)`, { ...record, loai: kind });
+            newAccounts.push({ account_id: id, ten: record.ten, loai: kind });
         }
         return newAccounts;
     });
@@ -69,7 +69,7 @@ export async function writeAdAccountDirectory(ds: MetaAdAccount[]): Promise<{ ac
 export async function scanNow(): Promise<{
     thay: number; moi: { account_id: string; ten: string; loai: string }[]; theo_token: Record<string, number | string>;
 }> {
-    const tokens = cacToken();
+    const tokens = metaTokens();
     if (!tokens.length) throw new Error("Chưa có token Meta — nhập ở /admin → Khoá kết nối");
     const byId = new Map<string, MetaAdAccount>();
     const perToken: Record<string, number | string> = {};
@@ -97,7 +97,7 @@ export async function reportingAdAccounts(scanIfEmpty = true): Promise<{ id: str
         `SELECT account_id AS id, ten, mui_gio, bien_token FROM tkqc
          WHERE loai = ANY(@vao) AND thay_lan_cuoi > now() - interval '7 days' ORDER BY ten`, { vao: reportKinds });
     let ds = await readAccounts();
-    if (!ds.length && scanIfEmpty && cacToken().length) {
+    if (!ds.length && scanIfEmpty && metaTokens().length) {
         const co = await query<{ n: number }>("SELECT COUNT(*) AS n FROM tkqc");
         if (!co[0]?.n) {
             await scanNow().catch((e) => console.error("Quét TKQC lần đầu lỗi:", e?.message || e));

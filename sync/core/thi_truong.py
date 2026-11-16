@@ -62,7 +62,7 @@ def load_market_overrides(repo=None):
     return overrides if overrides["markets"] else None
 
 
-def apply_market_overrides(rules: dict, phu) -> dict:
+def apply_market_overrides(rules: dict, overrides) -> dict:
     """Phủ file thị trường lên luật gốc. Không sửa `luat` truyền vào.
 
     Mỗi nước: ô trong file phủ đè ô cùng tên của bản gốc, ô không nhắc tới giữ nguyên. Mã campaign
@@ -73,7 +73,7 @@ def apply_market_overrides(rules: dict, phu) -> dict:
     aliases = out.setdefault("market_aliases", {})
     tokens = out.setdefault("camp_market_tokens", [])
     teams = (out.get("access") or {}).get("teams") or {}
-    for key, settings in ((phu or {}).get("markets") or {}).items():
+    for key, settings in ((overrides or {}).get("markets") or {}).items():
         if key.startswith("_") or not isinstance(settings, dict):
             continue
         merged = dict(markets[key]) if isinstance(markets.get(key), dict) else {}
@@ -105,5 +105,5 @@ def load_rules(base_path=None, repo=None) -> dict:
     """talpha_rules.json (mặc định của repo) ĐÃ phủ thị trường nhập trên trang."""
     rules_path = base_path or str(Path(repo or REPO) / "config" / "talpha_rules.json")
     with open(rules_path, encoding="utf-8") as fh:
-        luat = json.load(fh)
-    return apply_market_overrides(luat, load_market_overrides(repo))
+        rules = json.load(fh)
+    return apply_market_overrides(rules, load_market_overrides(repo))

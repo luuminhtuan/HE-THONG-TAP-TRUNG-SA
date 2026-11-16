@@ -104,9 +104,9 @@ function formatVnTime(ts) {
 // Vì sao sync hỏng — tên TKQC / shop đọc lỗi (stale.loi = fetch_errors của /api/talpha/sync-health).
 // 23/09/2026 tin chỉ nói "sync đứng 12 giờ 40 phút", không ai biết hai TKQC BM Thuyên bị Meta
 // chặn quyền đọc tới khi mở log trên máy chủ. Có tên thì người đọc biết phải gọi ai.
-function errorReason(loi) {
-    if (!loi) return "";
-    const failedAccounts = loi.tkqc || [], shop = loi.shops || [], lostAccess = new Set(loi.mat_quyen || []);
+function errorReason(error) {
+    if (!error) return "";
+    const failedAccounts = error.tkqc || [], shop = error.shops || [], lostAccess = new Set(error.mat_quyen || []);
     const sentences = [];
     if (failedAccounts.length) {
         sentences.push(`TKQC không đọc được: ${failedAccounts.join(", ")}`
