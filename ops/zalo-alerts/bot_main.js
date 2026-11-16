@@ -12,7 +12,7 @@ const {
 } = require("./bot_config");
 const {
     enableServiceMode, loadZalo, isLoggedIn, getMarketGroups,
-    connect, groupOf, keepSessionAlive, introduceNewGroups, loadGroups, autoAssignGroups, waitOrWake,
+    connect, groupOf, keepSessionAlive, introduceNewGroups, loadGroups, autoAssignGroups, waitOrWake, pruneStaleGroups,
 } = require("./bot_session");
 const { startControl } = require("./bot_control");
 const { sendReport, sendHourly, sendShipmentDigest, checkCorrections } = require("./bot_reports");
@@ -30,7 +30,7 @@ async function runService() {
     // thật. Đứng chờ, 10' thử lại một lần — ghép nick / chọn nhóm trên trang thì thử lại ngay.
     for (;;) {
         loadGroups();
-        try { await connect(); await autoAssignGroups(); }
+        try { await connect(); await pruneStaleGroups(); await autoAssignGroups(); }
         catch (e) { log("Đăng nhập Zalo lỗi:", e.message); }
         if (isLoggedIn() && Object.keys(getMarketGroups()).length) break;
         if (isLoggedIn()) log("Chưa có nhóm nước nào — thêm nick phụ vào nhóm \"ADS + VẬN ĐƠN <nước>\", hoặc chọn nhóm ở /admin → Khoá kết nối → Zalo.");

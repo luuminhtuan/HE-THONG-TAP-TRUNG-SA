@@ -27,9 +27,13 @@ function testMessage(market, info, at) {
 }
 
 /**
- * session — bot_session.js (connect, getMarketGroups, loadGroups, autoAssignGroups, introduceNewGroups, enqueue,
- *           sendOne, isLoggedIn, resetSession, logout, wakeUp)
- * zalo    — zalo.js (pairByQr, listGroups, saveMarketGroup, sessionAccountName)
+ * session — bot_session.js (connect, getMarketGroups, loadGroups, enqueue, sendOne, isLoggedIn, resetSession, logout,
+ *           wakeUp, markPageManaged, pruneGroups, markIntroduced)
+ * zalo    — zalo.js (pairByQr, listGroups, saveMarketGroup, removeMarketGroup, sessionAccountName)
+ *
+ * Nhóm do TRANG quản lý: ghép nick / chọn nhóm ở đây thì bot thôi tự nhận nhóm theo tên và thôi tự gửi tin giới
+ * thiệu — chỉ gửi vào nhóm người chọn, tin thử chỉ khi bấm "Gửi thử". (16/11/2026: ghép một nick đang ở sẵn nhóm
+ * thật của team, bot tự nhận 4 nhóm và nhắn giới thiệu vào cả 4 ngay lúc ghép.)
  * http    — {get(path), post(path, body)} → JSON
  */
 function createControl({ session, zalo, http, log, markets, marketInfo = {}, now = () => new Date() }) {
@@ -58,35 +62,49 @@ function createControl({ session, zalo, http, log, markets, marketInfo = {}, now
                 },
             });
             session.resetSession();              // bỏ phiên cũ (nếu đang ghép nick khác) — connect() đọc phiên vừa ghép
+            session.markPageManaged();
             const groups = await readGroups();
-            await session.autoAssignGroups();    // nhóm tên "ADS + VẬN ĐƠN <nước>" tự nhận như trước
-            await pushStatus({ groups, last_error: null, pairing: { stage: "done", message: `Đã ghép nick "${name}" · nick đang ở ${groups.length} nhóm`, qr_png: null } });
+            const dropped = session.pruneGroups(groups);   // nhóm chọn cho nick cũ mà nick này không ở → bỏ
+            const note = dropped.length ? ` · bỏ nhóm cũ của ${dropped.join(", ")} (nick này không ở trong)` : "";
+            await pushStatus({ groups, last_error: null, pairing: { stage: "done", message: `Đã ghép nick "${name}" · nick đang ở ${groups.length} nhóm${note}. Chọn nhóm cho từng nước ở dưới.`, qr_png: null } });
             session.wakeUp();
-            return `Đã ghép nick "${name}" · ${groups.length} nhóm`;
+            return `Đã ghép nick "${name}" · ${groups.length} nhóm${note}`;
         },
 
         async refresh_groups() {
             const groups = await readGroups();
+            const dropped = session.pruneGroups(groups);
             await pushStatus({ groups });
-            return `Nick đang ở ${groups.length} nhóm`;
+            return `Nick đang ở ${groups.length} nhóm${dropped.length ? ` · bỏ nhóm của ${dropped.join(", ")} (nick không còn ở trong)` : ""}`;
         },
 
         async set_group({ market, group_id: groupId }) {
             if (!markets.includes(market)) throw new Error(`bot không phục vụ nước ${market}`);
+            session.markPageManaged();
+            if (!groupId) {                       // chọn "chưa có nhóm" → nước đó thôi nhận tin
+                zalo.removeMarketGroup(market);
+                session.loadGroups();
+                await pushStatus();
+                return `Bỏ nhóm ${market} — không gửi gì cho ${market}`;
+            }
             const groups = await readGroups();
             const group = groups.find((g) => String(g.id) === String(groupId));
             if (!group) throw new Error("nick phụ không ở nhóm này — thêm nick vào nhóm rồi tải lại danh sách");
             zalo.saveMarketGroup(market, group, "trang");
+            session.markIntroduced(group.id);     // không tự nhắn giới thiệu — muốn thì bấm "Gửi thử"
             session.loadGroups();
             await pushStatus({ groups });
             session.wakeUp();
-            await session.introduceNewGroups();  // lần đầu vào nhóm: một tin hướng dẫn lệnh (như nhóm tự nhận)
-            return `Nhóm ${market}: "${group.name}"`;
+            return `Nhóm ${market}: "${group.name}" — nhận báo cáo theo lịch từ mốc kế tiếp`;
         },
 
         async send_test({ market }) {
             const group = session.getMarketGroups()[market];
             if (!group) throw new Error(`chưa chọn nhóm cho ${market}`);
+            const groups = await readGroups();
+            if (!groups.some((g) => String(g.id) === String(group.id))) {
+                throw new Error(`nick đang ghép không ở nhóm "${group.name}" — chọn lại nhóm cho ${market}`);
+            }
             await session.enqueue(() => session.sendOne(testMessage(market, marketInfo[market], now()), group));
             return `Đã gửi tin thử vào "${group.name}"`;
         },

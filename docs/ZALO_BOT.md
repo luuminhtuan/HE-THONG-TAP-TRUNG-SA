@@ -183,9 +183,14 @@ Lệnh lỗi → bot trả một dòng `⚠️ Chưa lấy được số lúc n�
    "Bot Zalo đang chạy" khi thấy nhịp tim (30 giây/lần).
 2. **Ghép nick Zalo** → mã QR hiện trên trang → quét bằng app Zalo của NICK PHỤ → bấm xác nhận trên điện thoại.
    Mã do chính bot xin (phiên sinh ra ở máy chạy bot, ghi `.zalo_session.json` ở đó — không về trang).
-3. **Nhóm nhận tin từng nước**: chọn trong danh sách nhóm nick phụ đang ở (nhóm "ADS + VẬN ĐƠN <nước>" bot vẫn tự
-   nhận). Chọn xong bot gửi một tin hướng dẫn lệnh vào nhóm đó (như nhóm tự nhận).
+3. **Nhóm nhận tin từng nước**: chọn trong danh sách nhóm nick phụ đang ở; chọn "chưa có nhóm" là nước đó thôi nhận.
+   Nhóm đã chọn nhận báo cáo THEO LỊCH từ mốc kế tiếp.
 4. **Gửi thử** từng nước — một tin "TIN THỬ" vào nhóm đã chọn; kết quả hiện ở "Việc gần đây".
+
+**Nhóm do trang quản lý** (cờ `nhomTuTrang` trong `state.json`, ghi khi ghép nick / chọn nhóm trên trang): bot THÔI tự nhận
+nhóm theo tên và THÔI tự gửi tin giới thiệu — chỉ gửi vào nhóm người chọn. Lý do (16/11/2026): ghép một nick đang ở sẵn
+4 nhóm thật của team, bot tự nhận cả 4 và nhắn giới thiệu vào cả 4 ngay lúc ghép. Đổi nick thì nhóm chọn cho nick cũ mà
+nick mới không ở trong bị bỏ (gửi vào đó Zalo báo "Tham số không hợp lệ"); lúc khởi động bot cũng soát lại như vậy.
 
 Bên dưới: trang ghi yêu cầu vào bảng `zalo_requests`, bot (`bot_control.js`) nhặt qua `/api/talpha/zalo/bot` (chìa
 nội bộ), làm rồi ghi kết quả + trạng thái vào `zalo_bot_status` (migration 0002). Bot không chạy thì trang không nhận

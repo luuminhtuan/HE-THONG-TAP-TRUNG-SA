@@ -12,15 +12,23 @@ const t = async (name, fn) => {
 
 function harness({ requests = [], groups = [{ id: "111", name: "ADS + VẬN ĐƠN TAIWAN" }, { id: "222", name: "TEST BOT" }], paired = true } = {}) {
     const queue = [...requests];
-    const posts = [], sent = [], saved = [];
-    const state = { marketGroups: {}, loggedIn: paired, account: paired ? "Nick phụ" : null, reset: 0, logout: 0, woke: 0 };
+    const posts = [], sent = [], saved = [], removed = [], introduced = [];
+    const state = { marketGroups: {}, loggedIn: paired, account: paired ? "Nick phụ" : null, reset: 0, logout: 0, woke: 0, pageManaged: false };
     const session = {
         isLoggedIn: () => state.loggedIn,
         getMarketGroups: () => state.marketGroups,
         connect: async () => { if (!state.account) throw new Error("chưa ghép nick Zalo"); state.loggedIn = true; return {}; },
-        loadGroups: () => { state.marketGroups = Object.fromEntries(saved.map((x) => [x.market, x.group])); },
-        autoAssignGroups: async () => {},
-        introduceNewGroups: async () => {},
+        loadGroups: () => {
+            state.marketGroups = Object.fromEntries(saved.filter((x) => !removed.includes(x.market)).map((x) => [x.market, x.group]));
+        },
+        markPageManaged: () => { state.pageManaged = true; },
+        markIntroduced: (id) => { introduced.push(id); },
+        pruneGroups: (list) => {
+            const ids = new Set(list.map((g) => g.id));
+            const dropped = Object.keys(state.marketGroups).filter((m) => !ids.has(state.marketGroups[m].id));
+            for (const m of dropped) delete state.marketGroups[m];
+            return dropped;
+        },
         enqueue: (fn) => fn(),
         sendOne: async (text, group) => { sent.push({ text, group }); return 1; },
         resetSession: () => { state.reset++; },
@@ -31,6 +39,7 @@ function harness({ requests = [], groups = [{ id: "111", name: "ADS + VẬN ĐƠ
         sessionAccountName: () => state.account,
         listGroups: async () => groups,
         saveMarketGroup: (market, group, method) => { saved.push({ market, group, method }); },
+        removeMarketGroup: (market) => { removed.push(market); },
         pairByQr: async ({ onEvent }) => {
             await onEvent({ stage: "qr", qrPng: "QRBASE64", attempt: 1, maxAttempts: 5 });
             await onEvent({ stage: "scanned", name: "Nick mới" });
@@ -48,7 +57,7 @@ function harness({ requests = [], groups = [{ id: "111", name: "ADS + VẬN ĐƠ
     });
     const finishes = () => posts.filter((p) => p.finish).map((p) => p.finish);
     const statuses = () => posts.filter((p) => p.status).map((p) => p.status);
-    return { control, state, posts, sent, saved, finishes, statuses };
+    return { control, state, posts, sent, saved, removed, introduced, finishes, statuses };
 }
 
 (async () => {
@@ -70,7 +79,18 @@ function harness({ requests = [], groups = [{ id: "111", name: "ADS + VẬN ĐƠ
         assert.strictEqual(done.pairing.qr_png, null, "xong thì không giữ mã QR");
         assert.strictEqual(done.groups.length, 2);
         assert.ok(h.state.reset === 1 && h.state.woke === 1);
+        assert.ok(h.state.pageManaged, "ghép trên trang → nhóm do trang quản lý (bot thôi tự nhận, thôi tự nhắn)");
+        assert.strictEqual(h.sent.length, 0, "ghép xong KHÔNG được nhắn gì vào nhóm nào");
         assert.deepStrictEqual(h.finishes(), [{ id: 1, ok: true, result: 'Đã ghép nick "Nick mới" · 2 nhóm' }]);
+    });
+
+    await t("đổi nick: bỏ nhóm đã chọn cho nick cũ mà nick mới không ở trong", async () => {
+        const h = harness({ paired: false, requests: [{ id: 11, action: "pair", payload: {} }] });
+        h.state.marketGroups = { TW: { id: "394918045257421366", name: "ADS + VẬN ĐƠN TAIWAN (nick cũ)" }, SG: { id: "222", name: "TEST BOT" } };
+        const r = await h.control.pollOnce();
+        assert.ok(r.ok, r.result);
+        assert.deepStrictEqual(Object.keys(h.state.marketGroups), ["SG"]);
+        assert.ok(/bỏ nhóm cũ của TW/.test(r.result));
     });
 
     await t("chọn nhóm: ghi file nhóm của nước, nạp lại, báo nhóm mới", async () => {
@@ -79,6 +99,16 @@ function harness({ requests = [], groups = [{ id: "111", name: "ADS + VẬN ĐƠ
         assert.ok(r.ok, r.result);
         assert.deepStrictEqual(h.saved, [{ market: "TW", group: { id: "222", name: "TEST BOT" }, method: "trang" }]);
         assert.deepStrictEqual(h.statuses().pop().market_groups, { TW: { id: "222", name: "TEST BOT" } });
+        assert.deepStrictEqual(h.introduced, ["222"], "đánh dấu đã giới thiệu — không tự nhắn");
+        assert.strictEqual(h.sent.length, 0);
+    });
+
+    await t("bỏ chọn nhóm (trống): xoá nhóm của nước, không gửi gì", async () => {
+        const h = harness({ requests: [{ id: 12, action: "set_group", payload: { market: "TW", group_id: "" } }] });
+        const r = await h.control.pollOnce();
+        assert.ok(r.ok, r.result);
+        assert.deepStrictEqual(h.removed, ["TW"]);
+        assert.strictEqual(h.saved.length, 0);
     });
 
     await t("chọn nhóm nick không ở trong: lỗi rõ, không ghi file", async () => {
@@ -98,6 +128,15 @@ function harness({ requests = [], groups = [{ id: "111", name: "ADS + VẬN ĐƠ
         assert.strictEqual(h.sent.length, 1);
         assert.strictEqual(h.sent[0].group.id, "222");
         assert.ok(h.sent[0].text.includes("🇹🇼 Đài Loan"));
+    });
+
+    await t("gửi thử vào nhóm nick không ở trong: lỗi dễ hiểu, không gọi Zalo", async () => {
+        const h = harness({ requests: [{ id: 13, action: "send_test", payload: { market: "TW" } }] });
+        h.state.marketGroups = { TW: { id: "394918045257421366", name: "ADS + VẬN ĐƠN TAIWAN" } };
+        const r = await h.control.pollOnce();
+        assert.strictEqual(r.ok, false);
+        assert.ok(/không ở nhóm/.test(r.result), r.result);
+        assert.strictEqual(h.sent.length, 0);
     });
 
     await t("gửi thử nước chưa có nhóm: lỗi, không gửi gì", async () => {

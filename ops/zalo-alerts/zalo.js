@@ -134,6 +134,11 @@ function saveMarketGroup(m, g, method = "") {
     return marketGroupFile(m);
 }
 
+/** Bỏ nhóm của một nước — nước đó không nhận tin nữa tới khi chọn lại. */
+function removeMarketGroup(m) {
+    try { fs.unlinkSync(marketGroupFile(m)); } catch { /* chưa chọn */ }
+}
+
 async function listGroups(api) {
     const { gridVerMap } = await api.getAllGroups();
     const ids = Object.keys(gridVerMap || {});
@@ -177,5 +182,5 @@ function startListening(api, { onMessage, onClosed, log }) {
 module.exports = {
     SESSION_FILE, MAX_QR_ATTEMPTS, marketGroupFile, ThreadType,
     createZalo, writePrivateFile, saveSession, pairByQr, sessionAccountName, removeSession,
-    login, readMarketGroup, saveMarketGroup, listGroups, sendToGroup, startListening,
+    login, readMarketGroup, saveMarketGroup, removeMarketGroup, listGroups, sendToGroup, startListening,
 };

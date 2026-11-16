@@ -170,7 +170,8 @@ export default function ZaloBotPanel() {
                                 <MessageCircle className="h-4 w-4 text-indigo-400" /> Nhóm nhận tin từng nước
                             </p>
                             <p className="mt-0.5 text-xs text-slate-500">
-                                Nick phụ phải ở sẵn trong nhóm. Nhóm tên “ADS + VẬN ĐƠN &lt;nước&gt;” bot tự nhận; chọn ở đây để đổi sang nhóm khác (vd nhóm thử).
+                                Nick phụ phải ở sẵn trong nhóm. Nhóm chọn ở đây nhận báo cáo ads + vận đơn THEO LỊCH (8:30, 13:00, 18:00,
+                                22:00…) — muốn thử thì chọn nhóm thử trước. Bot không tự nhận nhóm, không tự nhắn gì; “Gửi thử” mới gửi tin thử.
                             </p>
                         </div>
                         <button type="button" onClick={() => request("refresh_groups")} disabled={!data.online || !!sending}
@@ -186,7 +187,7 @@ export default function ZaloBotPanel() {
                                 <div key={code} className="flex flex-wrap items-center gap-2">
                                     <span className="w-32 shrink-0 text-sm text-slate-300">{marketName(code)}</span>
                                     <select value={current?.id || ""} disabled={!data.online || !!sending}
-                                        onChange={(e) => e.target.value && request("set_group", { market: code, group_id: e.target.value })}
+                                        onChange={(e) => request("set_group", { market: code, group_id: e.target.value })}
                                         className="min-w-0 flex-1 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-sm text-foreground focus:border-indigo-500 focus:outline-none">
                                         <option value="">— chưa có nhóm (không gửi gì) —</option>
                                         {current && !s.groups.some((g) => g.id === current.id) && <option value={current.id}>{current.name}</option>}

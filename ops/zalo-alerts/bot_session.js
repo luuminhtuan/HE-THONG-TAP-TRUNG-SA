@@ -157,7 +157,44 @@ async function keepSessionAlive() {
     catch (e) { log("keepAlive lỗi — lần gửi tới sẽ đăng nhập lại:", e.message); api = null; }
 }
 
+// Nhóm do trang /admin → Khoá kết nối → Zalo quản lý (16/11/2026): ghép nick / chọn nhóm trên trang là ghi cờ này —
+// từ đó bot KHÔNG tự nhận nhóm theo tên, KHÔNG tự gửi tin giới thiệu: chỉ gửi vào nhóm người chọn. Ghép nick
+// mà nick đó ở sẵn trong nhóm thật của team thì tự nhận + giới thiệu là nhắn vào nhóm thật ngay (đã xảy ra 16/11).
+const PAGE_MANAGED_KEY = "nhomTuTrang";
+const pageManaged = () => !!loadState()[PAGE_MANAGED_KEY];
+function markPageManaged() { markState((s) => { s[PAGE_MANAGED_KEY] = new Date().toISOString(); }); }
+
+/** Bỏ nhóm của nước mà nick ĐANG ghép không ở trong (đổi nick, bị kick khỏi nhóm) — gửi vào đó Zalo báo
+ *  "Tham số không hợp lệ". Trả mã các nước vừa bỏ. */
+function pruneGroups(groups) {
+    if (!zalo) zalo = require("./zalo");
+    const ids = new Set((groups || []).map((g) => String(g.id)));
+    const dropped = [];
+    for (const m of MARKET_CODES) {
+        const g = zalo.readMarketGroup(m);
+        if (g && !ids.has(String(g.id))) {
+            zalo.removeMarketGroup(m);
+            dropped.push(m);
+            log(`Bỏ nhóm ${m} "${g.name}" — nick đang ghép không ở nhóm này.`);
+        }
+    }
+    if (dropped.length) loadGroups();
+    return dropped;
+}
+
+/** Lúc khởi động: đọc danh sách nhóm của nick đang ghép, bỏ nhóm nick không ở (file nhóm còn từ nick cũ). */
+async function pruneStaleGroups() {
+    if (!zalo) zalo = require("./zalo");
+    return pruneGroups(await zalo.listGroups(await connect()));
+}
+
+/** Nhóm chọn trên trang: đánh dấu đã giới thiệu để bot không tự nhắn gì — người chọn bấm "Gửi thử" khi muốn. */
+function markIntroduced(groupId) {
+    markState((s) => { (s.gioiThieu = s.gioiThieu || {})[groupId] = new Date().toISOString(); });
+}
+
 async function introduceNewGroups() {
+    if (pageManaged()) return;
     for (const m of MARKET_CODES) {
         const group = marketGroups[m];
         if (!group || (loadState().gioiThieu || {})[group.id]) continue;
@@ -174,6 +211,7 @@ function loadGroups() {
 // Nước chưa có file nhóm → tìm trong các nhóm nick phụ đang ở, theo đúng mẫu tên "ADS + VẬN ĐƠN
 // <nước>" (rules.nuocTuTenNhom). Một nước khớp hai nhóm trở lên thì KHÔNG đoán.
 async function autoAssignGroups() {
+    if (pageManaged()) return;           // nhóm do trang quản lý — chỉ người chọn trên trang
     const missing = MARKET_CODES.filter((m) => !marketGroups[m]);
     if (!missing.length) return;
     let allGroups;
@@ -192,5 +230,5 @@ async function autoAssignGroups() {
 module.exports = {
     enableServiceMode, loadZalo, isLoggedIn, getMarketGroups,
     connect, sendOne, enqueue, sendBatch, groupOf, startListener, keepSessionAlive, introduceNewGroups, loadGroups, autoAssignGroups,
-    resetSession, logout, waitOrWake, wakeUp,
+    resetSession, logout, waitOrWake, wakeUp, pageManaged, markPageManaged, pruneGroups, pruneStaleGroups, markIntroduced,
 };

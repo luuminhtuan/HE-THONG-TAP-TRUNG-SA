@@ -34,8 +34,9 @@ export function parseZaloRequest(body: unknown, markets: string[]): ZaloRequestI
         if (!known.includes(market)) return { error: `Nước lạ: ${market || "(trống)"} — bot phục vụ ${known.join(", ") || "(chưa có nước nào)"}` };
     }
     if (action === "set_group") {
+        // group_id rỗng = bỏ nhóm của nước đó (nước đó thôi nhận tin).
         const groupId = String(raw.group_id || "").trim();
-        if (!/^\d{1,30}$/.test(groupId)) return { error: "Mã nhóm Zalo không hợp lệ" };
+        if (groupId && !/^\d{1,30}$/.test(groupId)) return { error: "Mã nhóm Zalo không hợp lệ" };
         return { action, payload: { market, group_id: groupId } };
     }
     if (action === "send_test") return { action, payload: { market } };

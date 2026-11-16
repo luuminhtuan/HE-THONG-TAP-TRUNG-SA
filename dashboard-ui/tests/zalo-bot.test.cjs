@@ -17,7 +17,8 @@ t("chọn nhóm: nước viết thường vẫn nhận, mã nhóm phải là s�
     assert.deepStrictEqual(Z.parseZaloRequest({ action: "set_group", payload: { market: "tw", group_id: " 7316 " } }, MARKETS),
         { action: "set_group", payload: { market: "TW", group_id: "7316" } });
     assert.ok("error" in Z.parseZaloRequest({ action: "set_group", payload: { market: "TW", group_id: "1; DROP" } }, MARKETS));
-    assert.ok("error" in Z.parseZaloRequest({ action: "set_group", payload: { market: "TW" } }, MARKETS));
+    assert.deepStrictEqual(Z.parseZaloRequest({ action: "set_group", payload: { market: "TW" } }, MARKETS),
+        { action: "set_group", payload: { market: "TW", group_id: "" } }, "bỏ trống = bỏ nhóm của nước đó");
 });
 t("gửi thử / chọn nhóm cho nước bot không phục vụ: từ chối", () => {
     assert.ok("error" in Z.parseZaloRequest({ action: "send_test", payload: { market: "KR" } }, MARKETS));
