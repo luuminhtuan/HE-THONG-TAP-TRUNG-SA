@@ -8,7 +8,7 @@
  * Cột `username` là tên đăng nhập; phía code vẫn gọi là `email` (tên ô cũ của users.json) để các
  * route, phiên đăng nhập, phân quyền không phải đổi.
  */
-import { giaoDich, query } from "@/lib/db";
+import { withTransaction, query } from "@/lib/db";
 
 /** Vai trò và tab mỗi vai thấy: config/talpha_rules.json → access.roles. */
 export type UserRole = "admin" | "director" | "leader" | "marketer" | "sale";
@@ -28,14 +28,14 @@ export interface UserRecord {
     status?: "active" | "pending";
 }
 
-type Dong = {
+type UserRow = {
     id: string; username: string; name: string; password_hash: string; role: UserRole;
     teams: string[] | null; projects: string[] | null; status: "active" | "pending";
 };
 
-const COT = "id, username, name, password_hash, role, teams, projects, status";
+const COLUMNS = "id, username, name, password_hash, role, teams, projects, status";
 
-function tuDong(d: Dong): UserRecord {
+function fromRow(d: UserRow): UserRecord {
     return {
         id: d.id, email: d.username, name: d.name, password: d.password_hash, role: d.role,
         projects: d.projects || [], teams: d.teams || [], status: d.status,
@@ -45,7 +45,7 @@ function tuDong(d: Dong): UserRecord {
 /** Đọc danh sách người dùng. Kho lỗi → mảng rỗng (login trả 401 / 500, không sập). */
 export async function loadUsers(): Promise<UserRecord[]> {
     try {
-        return (await query<Dong>(`SELECT ${COT} FROM users ORDER BY created_at, id`)).map(tuDong);
+        return (await query<UserRow>(`SELECT ${COLUMNS} FROM users ORDER BY created_at, id`)).map(fromRow);
     } catch (e) {
         console.error("Không đọc được bảng users:", e);
         return [];
@@ -59,17 +59,17 @@ export async function loadUsers(): Promise<UserRecord[]> {
 export async function withUsersLock(
     callback: (users: UserRecord[]) => UserRecord[] | Promise<UserRecord[]>,
 ): Promise<UserRecord[]> {
-    return giaoDich(async (q) => {
+    return withTransaction(async (q) => {
         await q("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE");
-        const cu = ((await q(`SELECT ${COT} FROM users ORDER BY created_at, id`)) as Dong[]).map(tuDong);
+        const existing = ((await q(`SELECT ${COLUMNS} FROM users ORDER BY created_at, id`)) as UserRow[]).map(fromRow);
         // Callback được phép sửa thẳng phần tử (users[idx].name = …) — giữ bản chụp để so.
-        const chup = new Map(cu.map((u) => [u.id, JSON.stringify(u)]));
-        const moi = await callback(cu.map((u) => ({ ...u })));
-        const conLai = new Set(moi.map((u) => u.id));
+        const chup = new Map(existing.map((u) => [u.id, JSON.stringify(u)]));
+        const nextUsers = await callback(existing.map((u) => ({ ...u })));
+        const remainingIds = new Set(nextUsers.map((u) => u.id));
         for (const id of chup.keys()) {
-            if (!conLai.has(id)) await q("DELETE FROM users WHERE id = @id", { id });
+            if (!remainingIds.has(id)) await q("DELETE FROM users WHERE id = @id", { id });
         }
-        for (const u of moi) {
+        for (const u of nextUsers) {
             if (chup.get(u.id) === JSON.stringify(u)) continue;
             await q(
                 `INSERT INTO users (id, username, name, password_hash, role, teams, projects, status)
@@ -83,6 +83,6 @@ export async function withUsersLock(
                     status: u.status === "pending" ? "pending" : "active",
                 });
         }
-        return moi;
+        return nextUsers;
     });
 }

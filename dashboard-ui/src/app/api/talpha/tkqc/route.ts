@@ -5,14 +5,14 @@
 //   POST {account_id, loai, ghi_chu?}   đổi loại — có tác dụng ngay ở mọi báo cáo
 //   POST {action: "quet"}       hỏi Meta ngay bằng token đang lưu (khỏi chờ vòng sync đầu giờ)
 import { NextRequest, NextResponse } from "next/server";
-import { danhBa, doiLoai, quetNgay } from "@/lib/talpha/tkqc";
-import { cacLoai } from "@/lib/talpha/tkqc-luat";
+import { getAdAccountDirectory, setAccountKind, scanNow } from "@/lib/talpha/tkqc";
+import { listAccountKinds } from "@/lib/talpha/tkqc-luat";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
     try {
-        return NextResponse.json({ loai: cacLoai(), tkqc: await danhBa() });
+        return NextResponse.json({ loai: listAccountKinds(), tkqc: await getAdAccountDirectory() });
     } catch (e: any) {
         return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
     }
@@ -26,11 +26,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Thân yêu cầu phải là JSON" }, { status: 400 });
     }
     try {
-        if (body?.action === "quet") return NextResponse.json(await quetNgay());
+        if (body?.action === "quet") return NextResponse.json(await scanNow());
         const id = String(body?.account_id || "");
         if (!/^(act_)?\d+$/.test(id)) return NextResponse.json({ error: "account_id lạ" }, { status: 400 });
-        const ghi = typeof body?.ghi_chu === "string" ? body.ghi_chu.slice(0, 500) : null;
-        await doiLoai(id, String(body?.loai || ""), ghi);
+        const note = typeof body?.ghi_chu === "string" ? body.ghi_chu.slice(0, 500) : null;
+        await setAccountKind(id, String(body?.loai || ""), note);
         return NextResponse.json({ ok: true });
     } catch (e: any) {
         return NextResponse.json({ error: e?.message || String(e) }, { status: 400 });

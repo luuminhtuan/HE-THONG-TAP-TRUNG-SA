@@ -10,16 +10,16 @@
 // Phần THUẦN (có test, tests/pancake.test.cjs). Phần đọc kho (docBan, messPancakeTuBan) ở
 // ./market-report-store.ts — tách riêng để bản build test không kéo theo lib/db.ts.
 
-export type BanNuoc = {
+export type MarketMonthlyReport = {
     thang: string; ghi_luc?: string | null; khong_gan?: string;
     nuoc: Record<string, Record<string, Record<string, { mess?: number | null }>>>;
 };
 
 /** Các tháng "YYYY-MM" chạm khoảng [tu, den]. */
-export function cacThang(tu: string, den: string): string[] {
+export function monthsInRange(from: string, to: string): string[] {
     const out: string[] = [];
-    let y = Number(tu.slice(0, 4)), m = Number(tu.slice(5, 7));
-    const yd = Number(den.slice(0, 4)), md = Number(den.slice(5, 7));
+    let y = Number(from.slice(0, 4)), m = Number(from.slice(5, 7));
+    const yd = Number(to.slice(0, 4)), md = Number(to.slice(5, 7));
     while ((y < yd || (y === yd && m <= md)) && out.length < 36) {
         out.push(`${y}-${String(m).padStart(2, "0")}`);
         if (++m > 12) { m = 1; y++; }
@@ -28,21 +28,21 @@ export function cacThang(tu: string, den: string): string[] {
 }
 
 /** Mess của các nước `keys` trong khoảng [tu, den], gom theo người (khoá tab: "SAnh"…). THUẦN. */
-export function gomMess(bans: BanNuoc[], tu: string, den: string, keys: string[]): { tong: number; theoNguoi: Record<string, number> } {
-    const theoNguoi: Record<string, number> = {};
-    let tong = 0;
+export function sumMessByPerson(bans: MarketMonthlyReport[], from: string, to: string, keys: string[]): { tong: number; theoNguoi: Record<string, number> } {
+    const byPerson: Record<string, number> = {};
+    let total = 0;
     for (const b of bans) {
         for (const k of keys) {
-            for (const [ngay, nguoi] of Object.entries(b.nuoc?.[k] || {})) {
-                if (ngay < tu || ngay > den) continue;
-                for (const [nv, so] of Object.entries(nguoi || {})) {
-                    const n = Number(so?.mess || 0);
+            for (const [date, people] of Object.entries(b.nuoc?.[k] || {})) {
+                if (date < from || date > to) continue;
+                for (const [nv, stats] of Object.entries(people || {})) {
+                    const n = Number(stats?.mess || 0);
                     if (!n) continue;
-                    theoNguoi[nv] = (theoNguoi[nv] || 0) + n;
-                    tong += n;
+                    byPerson[nv] = (byPerson[nv] || 0) + n;
+                    total += n;
                 }
             }
         }
     }
-    return { tong, theoNguoi };
+    return { tong: total, theoNguoi: byPerson };
 }

@@ -10,7 +10,7 @@ import {
     buildLedger, type OrderSource, type PaidLine, type FeeLine,
 } from "@/lib/talpha/order-ledger";
 import type { StatementRow } from "@/lib/talpha/cod-recon";
-import { dienMaVanDonKho, type NazaStatement } from "@/lib/talpha/naza-statement";
+import { fillTrackingInStatements, type NazaStatement } from "@/lib/talpha/naza-statement";
 
 export type PartnerMeta = {
     /** Mã vận đơn đúng như Sheet ghi. Kho cũ chưa có trường này thì khoá chính là mã. */
@@ -44,22 +44,22 @@ export type Statement = {
 };
 
 /** Nạp sổ đơn Đài tính tới ngày `asOf` (đếm kỳ sao kê đã qua, tuổi đơn). */
-export async function napSoDonDai(asOf: string) {
+export async function loadTwOrderLedger(asOf: string) {
     const track = await readStoreFresh<TrackingStore>("tracking", { statuses: {}, partner: {} });
     // Kỳ 05/10–16/10/2026 sheet COD bị đọc mất mã vận đơn (cột tên 运单号): điền lại từ
     // sheet PHÍ lúc đọc, không phải tải lại file. Xem dienMaVanDonTuPhi.
-    const kho = await readStoreFresh<{ statements: Statement[] }>("cod_statements", { statements: [] });
-    const stm = { ...kho, statements: dienMaVanDonKho(kho.statements) };
+    const statementStore = await readStoreFresh<{ statements: Statement[] }>("cod_statements", { statements: [] });
+    const stm = { ...statementStore, statements: fillTrackingInStatements(statementStore.statements) };
 
     // ── Đơn ────────────────────────────────────────────────────────
     const partner = track.partner || {};
     // Khoá kho thường là mã vận đơn, nhưng dòng dùng chung mã với dòng khác thì
     // khoá theo mã đơn (xem khoaChoDong) — nên mã vận đơn đọc từ trường riêng.
-    const orders: OrderSource[] = Object.entries(partner).map(([khoa, p]) => {
-        const st = track.statuses[khoa];
+    const orders: OrderSource[] = Object.entries(partner).map(([storeKey, p]) => {
+        const st = track.statuses[storeKey];
         return {
-            order_no: p.order_no || khoa,
-            tracking: p.tracking ?? khoa,
+            order_no: p.order_no || storeKey,
+            tracking: p.tracking ?? storeKey,
             track17_code: p.track17_code,
             return_order_no: p.return_order_no || "",
             order_date: st?.order_date || p.order_date || null,

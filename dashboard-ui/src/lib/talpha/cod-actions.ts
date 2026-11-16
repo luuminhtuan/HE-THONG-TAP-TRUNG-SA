@@ -73,8 +73,8 @@ export const emptyActions = (): CodActions => ({ bank: {}, done: {} });
 export const bankKey = (filename: string) => filename.trim().toLowerCase();
 
 /** Khoá việc: gộp loại với mã đơn để hai loại việc trên cùng một đơn không đè nhau. */
-export const doneKey = (loai: "doi" | "lech" | "thua" | "phi", ma: string) =>
-    `${loai}:${String(ma || "").trim().toUpperCase()}`;
+export const doneKey = (kind: "doi" | "lech" | "thua" | "phi", code: string) =>
+    `${kind}:${String(code || "").trim().toUpperCase()}`;
 
 // ─────────────────────────────────────────────────────────────────────────
 // Vòng đời một kỳ sao kê
@@ -121,10 +121,10 @@ export function periodState(
     // Làm tròn về đồng NGAY tại đây. Số phải nhận là kết quả nhân chia ba tầng
     // nên mang đuôi thập phân (38.927.359,52), trừ đi số nguyên người gõ vào ra
     // "lệch 0,48đ" — nhìn như hệ thống tính sai trong khi tiền về đúng khớp.
-    const lech = Math.round(bank.thuc_nhan_vnd - payableVnd);
+    const diff = Math.round(bank.thuc_nhan_vnd - payableVnd);
     return {
-        state: Math.abs(lech) <= tolerance ? "khop" : "lech",
-        lech_vnd: lech,
+        state: Math.abs(diff) <= tolerance ? "khop" : "lech",
+        lech_vnd: diff,
     };
 }
 
@@ -151,17 +151,17 @@ export function shouldResurface(
 ): { lai: boolean; ky_da_qua: number } {
     if (!done) return { lai: true, ky_da_qua: 0 };          // chưa làm gì thì đương nhiên còn việc
     if (done.viec === "bo_qua") return { lai: false, ky_da_qua: 0 };
-    const qua = periodEnds.filter((d) => d > done.ngay).length;
-    return { lai: qua >= 1, ky_da_qua: qua };
+    const passedCount = periodEnds.filter((d) => d > done.ngay).length;
+    return { lai: passedCount >= 1, ky_da_qua: passedCount };
 }
 
 /** Câu mô tả tình trạng đòi, để màn hình khỏi phải tự ghép chuỗi. */
-export function doiLabel(done: DoneEntry | undefined, kyDaQua: number): string {
+export function chaseLabel(done: DoneEntry | undefined, periodsPassed: number): string {
     if (!done) return "chưa đòi lần nào";
     if (done.viec === "bo_qua") return `bỏ qua ${done.ngay}${done.ghi_chu ? ` — ${done.ghi_chu}` : ""}`;
-    const lan = done.lan > 1 ? ` (${done.lan} lần)` : "";
-    if (kyDaQua >= 1) return `đã đòi ${done.ngay}${lan} — ${kyDaQua} kỳ rồi vẫn im`;
-    return `đã đòi ${done.ngay}${lan}`;
+    const timesSuffix = done.lan > 1 ? ` (${done.lan} lần)` : "";
+    if (periodsPassed >= 1) return `đã đòi ${done.ngay}${timesSuffix} — ${periodsPassed} kỳ rồi vẫn im`;
+    return `đã đòi ${done.ngay}${timesSuffix}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -222,12 +222,12 @@ export function fxLoss(periods: RatePeriod[]): {
         if (v > bestV) { best = p; bestV = v; }
     }
 
-    let tong = 0;
+    let totalLoss = 0;
     const rows: FxRow[] = periods.map((p) => {
         const v = eff(p);
         if (v == null) return { ...p, vnd_per_twd: null, thiet_vnd: null, tot_nhat: false };
         const thiet = (bestV - v) * p.cod_twd;
-        tong += thiet;
+        totalLoss += thiet;
         return {
             ...p, vnd_per_twd: v,
             thiet_vnd: thiet,
@@ -237,7 +237,7 @@ export function fxLoss(periods: RatePeriod[]): {
     return {
         best_vnd_per_twd: bestV,
         best_period: best.period_date || best.filename,
-        total_thiet_vnd: tong,
+        total_thiet_vnd: totalLoss,
         rows,
     };
 }

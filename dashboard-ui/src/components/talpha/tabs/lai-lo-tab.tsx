@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import TabSkeleton from "@/components/ui/tab-skeleton";
 import { formatVNDCompact, formatMoney, formatNumber, cn } from "../utils";
-import { tenPhamVi, useAccess } from "../access-context";
+import { scopeLabel, useAccess } from "../access-context";
 import {
     ReportHero, KpiRow, KpiTile, ResultCard, WaterfallList, ReportTable, FootNotes, DASH,
     type Column, type WaterfallRow,
@@ -23,26 +23,26 @@ import {
 
 interface Props { dateRange?: { from: Date; to: Date } }
 
-type Phi = { di: number; giao: number; hoan: number; ty_gia: number };
-type Khoan = { doanh_thu: number; gia_von: number; phi: Phi };
-type Dem = { n: number; cod: number };
-type NhomK = "giao" | "hoan" | "dang_di" | "cho_gui" | "huy";
-type TyLe = { r: number | null; giao: number; hoan: number; tu: string | null; den: string | null; tam: boolean };
-type Nuoc = {
+type Fees = { di: number; giao: number; hoan: number; ty_gia: number };
+type Scenario = { doanh_thu: number; gia_von: number; phi: Fees };
+type Tally = { n: number; cod: number };
+type ParcelGroup = "giao" | "hoan" | "dang_di" | "cho_gui" | "huy";
+type DeliveryRate = { r: number | null; giao: number; hoan: number; tu: string | null; den: string | null; tam: boolean };
+type MarketResult = {
     code: string; ten: string; nguon: string; co_so: string[]; loi: string | null;
     don: number; doanh_so: number; ads: number;
-    ty_le: TyLe | null;
+    ty_le: DeliveryRate | null;
     tk: {
-        kien: Record<NhomK, Dem> & { tong: Dem };
+        kien: Record<ParcelGroup, Tally> & { tong: Tally };
         doanh_thu_chac: number; thieu_gia_von: number; phi_uoc: number;
         hoan_con_han: { n: number; gia_von: number };
     } | null;
     cho_len_3pl: { vnd: number; ngay: { date: string; doanh_so: number; kien: number }[] } | null;
     van_hanh: { rieng: number; chung: number };
-    du_kien: Khoan; toi_thieu: Khoan;
+    du_kien: Scenario; toi_thieu: Scenario;
     loi_nhuan: { du_kien: number | null; toi_thieu: number | null };
 };
-type KhoanVH = {
+type OpexItem = {
     id: string; nhom: string; ten: string; so_tien_thang_vnd: number;
     tu_thang: string; den_thang: string | null; thuoc: string; ghi_chu?: string;
     sua_luc?: string; sua_boi?: string; trong_ky_vnd?: number;
@@ -51,27 +51,27 @@ type Data = {
     from: string; to: string; as_of: string; hom_nay: string; scoped: boolean;
     missing_months: string[];
     cfg: { ty_le: { cua_so_ngay: number; bo_gan_ngay: number; mau_toi_thieu: number }; cho_len_3pl_ngay: number; nhom_van_hanh: string[] };
-    nuoc: Nuoc[];
+    nuoc: MarketResult[];
     ngoai_nuoc: { ads: number; doanh_so: number; don: number } | null;
     tong: {
         don: number; doanh_so: number; ads: number; van_hanh: number; doanh_thu_chac: number;
-        du_kien: Khoan; toi_thieu: Khoan; loi_nhuan: { du_kien: number; toi_thieu: number }; thieu_nuoc: string[];
+        du_kien: Scenario; toi_thieu: Scenario; loi_nhuan: { du_kien: number; toi_thieu: number }; thieu_nuoc: string[];
     };
     van_hanh: {
-        ghi_duoc: boolean; items: KhoanVH[]; trong_ky: KhoanVH[];
+        ghi_duoc: boolean; items: OpexItem[]; trong_ky: OpexItem[];
         chung: number | null; chung_chua_chia: number; nuoc_khac: number;
     };
     nuoc_ban: { code: string; ten: string }[];
 };
 
-const tongPhi = (p: Phi) => p.di + p.giao + p.hoan + p.ty_gia;
-const ngayVN = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+const totalFees = (p: Fees) => p.di + p.giao + p.hoan + p.ty_gia;
+const formatDmy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const pct = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(1)}%` : DASH);
 const signed = (n: number) => `${n >= 0 ? "+" : "−"}${formatMoney(Math.abs(n))}`;
-const laiClass = (n: number | null) => (n == null ? "" : n >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400");
-const thangVN = (ym: string | null) => (ym ? `${ym.slice(5, 7)}/${ym.slice(0, 4)}` : "nay");
+const profitClass = (n: number | null) => (n == null ? "" : n >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400");
+const formatMonth = (ym: string | null) => (ym ? `${ym.slice(5, 7)}/${ym.slice(0, 4)}` : "nay");
 
-async function layJson<T>(url: string, init?: RequestInit): Promise<T> {
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     const r = await fetch(url, init);
     const d = await r.json().catch(() => ({}));
     if (!r.ok || d?.error) throw new Error(d?.error || `HTTP ${r.status}`);
@@ -79,125 +79,125 @@ async function layJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 /** Cầu từ Doanh số xuống Doanh thu dự kiến của một nước — các bậc cộng lại đúng bằng nhau. */
-function cau(n: Nuoc) {
+function salesBridge(n: MarketResult) {
     if (!n.tk) return null;
     const k = n.tk.kien;
-    const cho = n.cho_len_3pl?.vnd || 0;
-    const dangDi = k.dang_di.cod + k.cho_gui.cod + cho;
+    const awaiting3pl = n.cho_len_3pl?.vnd || 0;
+    const inTransit = k.dang_di.cod + k.cho_gui.cod + awaiting3pl;
     const dt = n.du_kien.doanh_thu;
     return {
-        khong_thanh_kien: n.doanh_so - k.tong.cod - cho,
+        khong_thanh_kien: n.doanh_so - k.tong.cod - awaiting3pl,
         hoan_huy: k.hoan.cod + k.huy.cod,
         // Phần còn lại của tiền đang đi mà tỉ lệ giao nói sẽ không về.
-        uoc_hoan: dangDi - (dt - k.giao.cod),
-        dang_di: dangDi,
+        uoc_hoan: inTransit - (dt - k.giao.cod),
+        dang_di: inTransit,
     };
 }
 
-export default function TALPHALaiLoTab({ dateRange }: Props) {
+export default function IncomeStatementTab({ dateRange }: Props) {
     const [data, setData] = useState<Data | null>(null);
     const [loading, setLoading] = useState(true);
-    const [loi, setLoi] = useState<string | null>(null);
-    const [lan, setLan] = useState(0);
-    const phamVi = tenPhamVi(useAccess());
+    const [error, setError] = useState<string | null>(null);
+    const [reloadKey, setReloadKey] = useState(0);
+    const scope = scopeLabel(useAccess());
 
     const from = format(dateRange?.from ?? new Date(), "yyyy-MM-dd");
     const to = format(dateRange?.to ?? new Date(), "yyyy-MM-dd");
     useEffect(() => {
-        let dung = false;
-        setLoading(true); setLoi(null);
-        layJson<Data>(`/api/talpha/lai-lo?from=${from}&to=${to}`)
-            .then((d) => { if (!dung) setData(d); })
-            .catch((e) => { if (!dung) { setData(null); setLoi(String(e?.message || e)); } })
-            .finally(() => { if (!dung) setLoading(false); });
-        return () => { dung = true; };
-    }, [from, to, lan]);
-    const taiLai = useCallback(() => setLan((x) => x + 1), []);
+        let cancelled = false;
+        setLoading(true); setError(null);
+        fetchJson<Data>(`/api/talpha/lai-lo?from=${from}&to=${to}`)
+            .then((d) => { if (!cancelled) setData(d); })
+            .catch((e) => { if (!cancelled) { setData(null); setError(String(e?.message || e)); } })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+    }, [from, to, reloadKey]);
+    const reload = useCallback(() => setReloadKey((x) => x + 1), []);
 
     if (loading && !data) return <TabSkeleton cards={6} showChart={false} rows={6} />;
-    if (loi || !data) {
+    if (error || !data) {
         return (
             <div className="rounded-xl border border-rose-300 bg-rose-50 p-5 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
                 <p className="font-semibold">Không tính được lãi lỗ.</p>
-                <p className="mt-1">{loi}</p>
+                <p className="mt-1">{error}</p>
             </div>
         );
     }
 
     const t = data.tong;
-    const dk = t.du_kien;
-    const phi3pl = tongPhi(dk.phi);
-    const laiGop = dk.doanh_thu - dk.gia_von - phi3pl;
-    const khaiThac = t.ads + t.van_hanh;
-    const ln = t.loi_nhuan.du_kien, lnMin = t.loi_nhuan.toi_thieu;
-    const okNuoc = data.nuoc.filter((n) => !n.loi && n.tk);
-    const caus = okNuoc.map(cau).filter(Boolean) as NonNullable<ReturnType<typeof cau>>[];
-    const sumC = (f: (c: NonNullable<ReturnType<typeof cau>>) => number) => caus.reduce((s, c) => s + f(c), 0);
-    const loiNuoc = data.nuoc.filter((n) => n.loi);
+    const expected = t.du_kien;
+    const fees3pl = totalFees(expected.phi);
+    const grossProfit = expected.doanh_thu - expected.gia_von - fees3pl;
+    const operatingCost = t.ads + t.van_hanh;
+    const netProfit = t.loi_nhuan.du_kien, minNetProfit = t.loi_nhuan.toi_thieu;
+    const okMarkets = data.nuoc.filter((n) => !n.loi && n.tk);
+    const bridges = okMarkets.map(salesBridge).filter(Boolean) as NonNullable<ReturnType<typeof salesBridge>>[];
+    const sumC = (f: (c: NonNullable<ReturnType<typeof salesBridge>>) => number) => bridges.reduce((s, c) => s + f(c), 0);
+    const failedMarkets = data.nuoc.filter((n) => n.loi);
     // Doanh số của nước đọc kiện lỗi + phần ngoài các nước đang bán: không có kiện để soi.
-    const dsKhongKien = loiNuoc.reduce((s, n) => s + n.doanh_so, 0) + (data.ngoai_nuoc?.doanh_so || 0);
-    const khongThanhKien = sumC((c) => c.khong_thanh_kien) + dsKhongKien;
-    const thieuGia = okNuoc.reduce((s, n) => s + (n.tk?.thieu_gia_von || 0), 0);
-    const tamNuoc = okNuoc.filter((n) => n.ty_le?.tam || n.ty_le?.r == null);
-    const conHan = okNuoc.filter((n) => (n.tk?.hoan_con_han.n || 0) > 0);
-    const period = `${ngayVN(data.from)} → ${ngayVN(data.to)}`;
-    const dangDiTong = sumC((c) => c.dang_di);
+    const salesWithoutParcels = failedMarkets.reduce((s, n) => s + n.doanh_so, 0) + (data.ngoai_nuoc?.doanh_so || 0);
+    const salesNotShipped = sumC((c) => c.khong_thanh_kien) + salesWithoutParcels;
+    const missingCogs = okMarkets.reduce((s, n) => s + (n.tk?.thieu_gia_von || 0), 0);
+    const provisionalMarkets = okMarkets.filter((n) => n.ty_le?.tam || n.ty_le?.r == null);
+    const openReturnMarkets = okMarkets.filter((n) => (n.tk?.hoan_con_han.n || 0) > 0);
+    const period = `${formatDmy(data.from)} → ${formatDmy(data.to)}`;
+    const totalInTransit = sumC((c) => c.dang_di);
 
-    const thac: WaterfallRow[] = [
+    const waterfallRows: WaterfallRow[] = [
         { label: "Doanh số", hint: `${formatNumber(t.don)} đơn đã chốt · file TỔNG TEAM`, value: formatMoney(t.doanh_so), kind: "base" },
-        khongThanhKien >= 0 ? {
+        salesNotShipped >= 0 ? {
             label: "Chốt nhưng không thành kiện 3PL",
-            hint: "huỷ / bom trước khi gửi, sửa giá khi lên đơn" + (dsKhongKien > 0 ? " · gồm doanh số chưa soi được kiện" : ""),
-            value: formatMoney(khongThanhKien), kind: "minus",
+            hint: "huỷ / bom trước khi gửi, sửa giá khi lên đơn" + (salesWithoutParcels > 0 ? " · gồm doanh số chưa soi được kiện" : ""),
+            value: formatMoney(salesNotShipped), kind: "minus",
         } : {
             label: "Kiện 3PL nhiều hơn doanh số Sheet",
             hint: "kiện của đơn không nằm trong file TỔNG TEAM — người ngoài team, đơn lên tay ở 3PL, giao lại, tăng giá khi lên đơn",
-            value: `+${formatMoney(-khongThanhKien)}`, kind: "plus",
+            value: `+${formatMoney(-salesNotShipped)}`, kind: "plus",
         },
         { label: "Hoàn · huỷ", hint: "tiền COD không bao giờ về", value: formatMoney(sumC((c) => c.hoan_huy)), kind: "minus" },
         {
             label: "Đang đi — phần ước sẽ hoàn",
-            hint: `${formatMoney(dangDiTong)} còn trên đường × (1 − tỉ lệ giao)`,
+            hint: `${formatMoney(totalInTransit)} còn trên đường × (1 − tỉ lệ giao)`,
             value: formatMoney(sumC((c) => c.uoc_hoan)), kind: "minus",
         },
-        { label: "Doanh thu dự kiến", hint: `đã chắc ${formatMoney(t.doanh_thu_chac)} — kiện giao xong`, value: formatMoney(dk.doanh_thu), kind: "total" },
+        { label: "Doanh thu dự kiến", hint: `đã chắc ${formatMoney(t.doanh_thu_chac)} — kiện giao xong`, value: formatMoney(expected.doanh_thu), kind: "total" },
         {
-            label: "Giá vốn", hint: thieuGia ? `${formatNumber(thieuGia)} kiện thiếu giá vốn — đang tính 0` : "hàng đã bán + hàng hoàn không quay lại kho",
-            value: formatMoney(dk.gia_von), kind: "minus", missing: false,
+            label: "Giá vốn", hint: missingCogs ? `${formatNumber(missingCogs)} kiện thiếu giá vốn — đang tính 0` : "hàng đã bán + hàng hoàn không quay lại kho",
+            value: formatMoney(expected.gia_von), kind: "minus", missing: false,
         },
         {
             label: "Chi phí 3PL",
-            hint: `vận chuyển + thao tác ${formatVNDCompact(dk.phi.di)} · thu hộ ${formatVNDCompact(dk.phi.giao)} · hàng hoàn ${formatVNDCompact(dk.phi.hoan)} · tỷ giá ${formatVNDCompact(dk.phi.ty_gia)}`,
-            value: formatMoney(phi3pl), kind: "minus",
+            hint: `vận chuyển + thao tác ${formatVNDCompact(expected.phi.di)} · thu hộ ${formatVNDCompact(expected.phi.giao)} · hàng hoàn ${formatVNDCompact(expected.phi.hoan)} · tỷ giá ${formatVNDCompact(expected.phi.ty_gia)}`,
+            value: formatMoney(fees3pl), kind: "minus",
         },
-        { label: "Lãi gộp", hint: `biên ${pct(laiGop, dk.doanh_thu)} doanh thu`, value: signed(laiGop), kind: "total" },
+        { label: "Lãi gộp", hint: `biên ${pct(grossProfit, expected.doanh_thu)} doanh thu`, value: signed(grossProfit), kind: "total" },
         { label: "Tiền ads", hint: "chi phí khai thác · file TỔNG TEAM", value: formatMoney(t.ads), kind: "minus" },
         {
             label: "Chi phí vận hành", hint: t.van_hanh ? "chi phí khai thác · lương, mặt bằng, phần mềm…" : "chưa nhập khoản nào",
             value: t.van_hanh ? formatMoney(t.van_hanh) : DASH, kind: "minus", missing: !t.van_hanh,
         },
-        { label: "Lợi nhuận sau cùng (dự kiến)", value: signed(ln), kind: "total" },
+        { label: "Lợi nhuận sau cùng (dự kiến)", value: signed(netProfit), kind: "total" },
     ];
 
     return (
         <div className={cn("space-y-6", loading && "opacity-60 transition-opacity")}>
             <ReportHero
                 emoji="📒"
-                title={`Lãi lỗ${phamVi ? ` team ${phamVi}` : ""} — ${period}`}
+                title={`Lãi lỗ${scope ? ` team ${scope}` : ""} — ${period}`}
                 subtitle={
                     <>
                         Doanh số và tiền ads lấy từ file <strong>TỔNG TEAM</strong> (khớp tab Tổng quan). Doanh thu, giá vốn, phí 3PL
                         tính trên <strong>từng kiện thật</strong> đã lên 3PL — kiện giao xong là tiền chắc, kiện đang đi nhân tỉ lệ giao
                         thật của nước đó. Phí 3PL lấy từ sao kê, kiện chưa vào sao kê ước theo bảng giá và cơ chế của từng 3PL.
-                        Kỳ tính theo ngày lên đơn{data.as_of < data.to ? <> · trạng thái tới <strong>{ngayVN(data.as_of)}</strong></> : null}.
+                        Kỳ tính theo ngày lên đơn{data.as_of < data.to ? <> · trạng thái tới <strong>{formatDmy(data.as_of)}</strong></> : null}.
                     </>
                 }
             />
 
-            {(data.missing_months.length > 0 || loiNuoc.length > 0) && (
+            {(data.missing_months.length > 0 || failedMarkets.length > 0) && (
                 <div className="space-y-1 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
                     {data.missing_months.length > 0 && <p>Thiếu số tháng {data.missing_months.join(", ")} — chưa có file TỔNG TEAM của tháng đó, doanh số và ads tháng đó đang là 0.</p>}
-                    {loiNuoc.map((n) => (
+                    {failedMarkets.map((n) => (
                         <p key={n.code}><strong>{n.ten}</strong>: không đọc được kiện ({n.loi}) — doanh thu, giá vốn, phí 3PL của nước này CHƯA nằm trong tổng, nên lợi nhuận tổng đang thiếu nước này.</p>
                     ))}
                 </div>
@@ -206,22 +206,22 @@ export default function TALPHALaiLoTab({ dateRange }: Props) {
             <KpiRow>
                 <KpiTile emoji="💵" label="Doanh số" value={formatVNDCompact(t.doanh_so)} sub={`${formatNumber(t.don)} đơn đã chốt`}
                     tooltip="Cột Doanh Số file TỔNG TEAM: mọi đơn đã chốt trên POS, trừ huỷ, nháp, đơn trống — chưa biết giao được hay không." />
-                <KpiTile emoji="📥" label="Doanh thu dự kiến" value={formatVNDCompact(dk.doanh_thu)}
-                    sub={`đã chắc ${formatVNDCompact(t.doanh_thu_chac)} · ${pct(dk.doanh_thu, t.doanh_so)} doanh số`}
+                <KpiTile emoji="📥" label="Doanh thu dự kiến" value={formatVNDCompact(expected.doanh_thu)}
+                    sub={`đã chắc ${formatVNDCompact(t.doanh_thu_chac)} · ${pct(expected.doanh_thu, t.doanh_so)} doanh số`}
                     tooltip="Tiền COD của kiện giao thành công, cộng kiện còn đang đi × tỉ lệ giao thật của nước đó. 'Đã chắc' = chỉ kiện giao xong." />
-                <KpiTile emoji="📦" label="Giá vốn" value={formatVNDCompact(dk.gia_von)}
-                    sub={thieuGia ? `${formatNumber(thieuGia)} kiện thiếu giá` : `${pct(dk.gia_von, dk.doanh_thu)} doanh thu`}
-                    tone={thieuGia ? "warn" : "neutral"}
+                <KpiTile emoji="📦" label="Giá vốn" value={formatVNDCompact(expected.gia_von)}
+                    sub={missingCogs ? `${formatNumber(missingCogs)} kiện thiếu giá` : `${pct(expected.gia_von, expected.doanh_thu)} doanh thu`}
+                    tone={missingCogs ? "warn" : "neutral"}
                     tooltip="Mã SP trên kiện × bảng giá vốn. Hàng hoàn ở Đài, Sing, Nhật tính mất (không gửi lại là bị huỷ); UAE hàng hoàn về kho D&T bán tiếp nên không mất." />
-                <KpiTile emoji="🚚" label="Chi phí 3PL" value={formatVNDCompact(phi3pl)} sub={`${pct(phi3pl, dk.doanh_thu)} doanh thu`}
+                <KpiTile emoji="🚚" label="Chi phí 3PL" value={formatVNDCompact(fees3pl)} sub={`${pct(fees3pl, expected.doanh_thu)} doanh thu`}
                     tooltip="Vận chuyển + thao tác (mất cả khi hoàn), thu hộ COD, phí hàng hoàn, chênh tỷ giá 3PL quy đổi. Phí thật từ sao kê; kiện chưa vào sao kê thì ước." />
-                <KpiTile emoji="📣" label="Chi phí khai thác" value={formatVNDCompact(khaiThac)}
+                <KpiTile emoji="📣" label="Chi phí khai thác" value={formatVNDCompact(operatingCost)}
                     sub={`ads ${formatVNDCompact(t.ads)} · vận hành ${t.van_hanh ? formatVNDCompact(t.van_hanh) : "chưa nhập"}`}
                     tone={t.van_hanh ? "neutral" : "warn"}
                     tooltip="Tiền ads (file TỔNG TEAM) + chi phí vận hành nhập ở cuối tab (lương, mặt bằng, phần mềm…)." />
-                <KpiTile emoji="🏁" label="Lợi nhuận sau cùng" value={formatVNDCompact(ln)}
-                    sub={`tối thiểu ${formatVNDCompact(lnMin)} · biên ${pct(ln, dk.doanh_thu)}`}
-                    tone={ln >= 0 ? "good" : "bad"}
+                <KpiTile emoji="🏁" label="Lợi nhuận sau cùng" value={formatVNDCompact(netProfit)}
+                    sub={`tối thiểu ${formatVNDCompact(minNetProfit)} · biên ${pct(netProfit, expected.doanh_thu)}`}
+                    tone={netProfit >= 0 ? "good" : "bad"}
                     tooltip="Dự kiến = theo tỉ lệ giao thật. Tối thiểu = coi mọi kiện đang đi đều hoàn — lãi thật nằm giữa hai số." />
             </KpiRow>
 
@@ -231,55 +231,55 @@ export default function TALPHALaiLoTab({ dateRange }: Props) {
                 note={
                     <>
                         Đã trừ đủ: giá vốn, chi phí 3PL (cả kiện hoàn), tiền ads và chi phí vận hành đã nhập. Phần &ldquo;dự kiến&rdquo; dựa vào tỉ lệ
-                        giao — kiện đang đi càng ít thì số càng chắc. <strong>Tối thiểu {signed(lnMin)}</strong> nếu từ giờ không kiện nào giao được thêm.
+                        giao — kiện đang đi càng ít thì số càng chắc. <strong>Tối thiểu {signed(minNetProfit)}</strong> nếu từ giờ không kiện nào giao được thêm.
                     </>
                 }
-                value={signed(ln)}
-                caption={`biên ${pct(ln, dk.doanh_thu)} doanh thu · ${pct(ln, t.doanh_so)} doanh số`}
-                tone={ln >= 0 ? "good" : "bad"}
+                value={signed(netProfit)}
+                caption={`biên ${pct(netProfit, expected.doanh_thu)} doanh thu · ${pct(netProfit, t.doanh_so)} doanh số`}
+                tone={netProfit >= 0 ? "good" : "bad"}
                 segments={[
-                    { color: "bg-sky-400", value: dk.gia_von, label: "Giá vốn" },
-                    { color: "bg-amber-400", value: phi3pl, label: "Chi phí 3PL" },
+                    { color: "bg-sky-400", value: expected.gia_von, label: "Giá vốn" },
+                    { color: "bg-amber-400", value: fees3pl, label: "Chi phí 3PL" },
                     { color: "bg-rose-400", value: t.ads, label: "Tiền ads" },
                     { color: "bg-violet-400", value: t.van_hanh, label: "Vận hành" },
-                    { color: "bg-emerald-500", value: Math.max(0, ln), label: "Lợi nhuận" },
+                    { color: "bg-emerald-500", value: Math.max(0, netProfit), label: "Lợi nhuận" },
                 ]}
                 subStats={[
-                    { label: "Lãi gộp", value: signed(laiGop), hint: "doanh thu − giá vốn − chi phí 3PL" },
-                    { label: "Lãi sau ads", value: signed(laiGop - t.ads), hint: "chưa trừ vận hành" },
-                    { label: "Lợi nhuận tối thiểu", value: signed(lnMin), hint: "nếu mọi kiện đang đi đều hoàn" },
+                    { label: "Lãi gộp", value: signed(grossProfit), hint: "doanh thu − giá vốn − chi phí 3PL" },
+                    { label: "Lãi sau ads", value: signed(grossProfit - t.ads), hint: "chưa trừ vận hành" },
+                    { label: "Lợi nhuận tối thiểu", value: signed(minNetProfit), hint: "nếu mọi kiện đang đi đều hoàn" },
                 ]}
             >
-                <WaterfallList rows={thac} />
+                <WaterfallList rows={waterfallRows} />
             </ResultCard>
 
-            <BangNuoc data={data} />
-            <BangKien data={data} />
-            <BangPhi data={data} />
+            <MarketTable data={data} />
+            <ParcelTable data={data} />
+            <FeeTable data={data} />
 
-            {(conHan.length > 0 || thieuGia > 0 || tamNuoc.length > 0) && (
+            {(openReturnMarkets.length > 0 || missingCogs > 0 || provisionalMarkets.length > 0) && (
                 <section className="rounded-xl border border-amber-300 bg-amber-50/60 p-5 dark:border-amber-500/30 dark:bg-amber-500/5">
                     <h3 className="section-header mb-2">🧩 Việc làm số đúng hơn — và đỡ lỗ</h3>
                     <ul className="space-y-2 text-sm text-foreground">
-                        {conHan.map((n) => (
+                        {openReturnMarkets.map((n) => (
                             <li key={n.code}>
                                 <strong>{n.ten}: {formatNumber(n.tk!.hoan_con_han.n)} kiện hoàn còn trong hạn lưu kho 3PL</strong> — giá vốn {formatMoney(n.tk!.hoan_con_han.gia_von)}đ
                                 đang tính là mất. Gửi lại cho khách mới (chỉ tốn phí ship) trước khi 3PL tiêu huỷ thì gỡ lại được khoản này.
                             </li>
                         ))}
-                        {thieuGia > 0 && (
-                            <li><strong>{formatNumber(thieuGia)} kiện thiếu giá vốn</strong> ({okNuoc.filter((n) => n.tk?.thieu_gia_von).map((n) => `${n.ten} ${formatNumber(n.tk!.thieu_gia_von)}/${formatNumber(n.tk!.kien.tong.n - n.tk!.kien.huy.n)}`).join(" · ")})
+                        {missingCogs > 0 && (
+                            <li><strong>{formatNumber(missingCogs)} kiện thiếu giá vốn</strong> ({okMarkets.filter((n) => n.tk?.thieu_gia_von).map((n) => `${n.ten} ${formatNumber(n.tk!.thieu_gia_von)}/${formatNumber(n.tk!.kien.tong.n - n.tk!.kien.huy.n)}`).join(" · ")})
                                 {" "}— phần thiếu đang tính 0 nên <strong>lãi đang cao hơn thật</strong>. Mã 3 số chưa có giá tệ thì khai ở <code className="rounded bg-muted px-1">talpha_rules.json → products</code>;
                                 UAE tra theo mã vạch / tên hàng trên POS (<code className="rounded bg-muted px-1">markets.UAE.product_costs_vnd</code>). Danh sách tên/mã thiếu ở tab P&L (mục Báo cáo).</li>
                         )}
-                        {tamNuoc.map((n) => (
+                        {provisionalMarkets.map((n) => (
                             <li key={n.code}><strong>Tỉ lệ giao {n.ten} còn tạm</strong> — {n.ty_le?.r == null ? "chưa có kiện nào giao xong hay hoàn để đo" : `mới đo trên ${formatNumber((n.ty_le?.giao || 0) + (n.ty_le?.hoan || 0))} kiện (cần ${data.cfg.ty_le.mau_toi_thieu} kiện lên đơn từ ${data.cfg.ty_le.bo_gan_ngay} ngày trước)`}; doanh thu dự kiến nước này còn trôi.</li>
                         ))}
                     </ul>
                 </section>
             )}
 
-            <VanHanh data={data} taiLai={taiLai} />
+            <OpexSection data={data} taiLai={reload} />
 
             <FootNotes
                 warning={
@@ -294,7 +294,7 @@ export default function TALPHALaiLoTab({ dateRange }: Props) {
                     <>Doanh thu: tiền COD trên kiện 3PL, quy theo tỷ giá niêm yết (như Doanh số). Phần 3PL quy đổi lệch tỷ giá nằm ở dòng &ldquo;tỷ giá&rdquo; của Chi phí 3PL.
                         {" "}{data.cfg.cho_len_3pl_ngay} ngày cuối kỳ, đơn đã chốt mà chưa lên 3PL được ước như kiện đang đi.</>,
                     <>Chi phí khai thác = tiền ads + chi phí vận hành. Khoản vận hành &ldquo;chung&rdquo; chia cho các nước theo phần doanh số của nước trên doanh số mọi nước.</>,
-                    ...okNuoc.flatMap((n) => n.co_so.map((c, i) => <><strong>{n.ten}</strong>{i === 0 ? ` (${n.nguon})` : ""}: {c}</>)),
+                    ...okMarkets.flatMap((n) => n.co_so.map((c, i) => <><strong>{n.ten}</strong>{i === 0 ? ` (${n.nguon})` : ""}: {c}</>)),
                 ]}
             />
         </div>
@@ -302,17 +302,17 @@ export default function TALPHALaiLoTab({ dateRange }: Props) {
 }
 
 // ═══ Bảng theo nước ═══
-type DongNuoc = {
+type MarketRow = {
     key: string; ten: string; ghi?: string; doanh_so: number; doanh_thu: number | null; chac: number | null;
     gia_von: number | null; phi: number | null; ads: number; van_hanh: number; ln: number | null; ln_min: number | null;
 };
 
-function BangNuoc({ data }: { data: Data }) {
-    const rows: DongNuoc[] = data.nuoc.map((n) => ({
+function MarketTable({ data }: { data: Data }) {
+    const rows: MarketRow[] = data.nuoc.map((n) => ({
         key: n.code, ten: n.ten, ghi: n.loi ? "không đọc được kiện" : undefined,
         doanh_so: n.doanh_so,
         doanh_thu: n.loi ? null : n.du_kien.doanh_thu, chac: n.loi ? null : n.tk?.doanh_thu_chac ?? null,
-        gia_von: n.loi ? null : n.du_kien.gia_von, phi: n.loi ? null : tongPhi(n.du_kien.phi),
+        gia_von: n.loi ? null : n.du_kien.gia_von, phi: n.loi ? null : totalFees(n.du_kien.phi),
         ads: n.ads, van_hanh: n.van_hanh.rieng + n.van_hanh.chung,
         ln: n.loi_nhuan.du_kien, ln_min: n.loi_nhuan.toi_thieu,
     }));
@@ -323,32 +323,32 @@ function BangNuoc({ data }: { data: Data }) {
             ads: data.ngoai_nuoc.ads, van_hanh: 0, ln: null, ln_min: null,
         });
     }
-    const vhKhac = data.van_hanh.chung_chua_chia + data.van_hanh.nuoc_khac;
-    if (vhKhac > 0) {
+    const otherOpex = data.van_hanh.chung_chua_chia + data.van_hanh.nuoc_khac;
+    if (otherOpex > 0) {
         rows.push({
             key: "_vh", ten: "Vận hành chưa chia được", ghi: "kỳ không có doanh số / khoản thuộc nước đã dừng",
-            doanh_so: 0, doanh_thu: null, chac: null, gia_von: null, phi: null, ads: 0, van_hanh: vhKhac, ln: null, ln_min: null,
+            doanh_so: 0, doanh_thu: null, chac: null, gia_von: null, phi: null, ads: 0, van_hanh: otherOpex, ln: null, ln_min: null,
         });
     }
     const t = data.tong;
-    const tien = (n: number | null) => (n == null ? DASH : formatMoney(n));
-    const cols: Column<DongNuoc>[] = [
+    const money = (n: number | null) => (n == null ? DASH : formatMoney(n));
+    const cols: Column<MarketRow>[] = [
         {
             key: "ten", label: "Thị trường", cellClassName: "font-medium text-foreground",
             render: (r) => <span className="flex flex-col">{r.ten}{r.ghi && <span className="text-[11px] font-normal text-amber-600 dark:text-amber-400">{r.ghi}</span>}</span>,
         },
-        { key: "ds", label: "Doanh số", align: "right", render: (r) => tien(r.doanh_so) },
+        { key: "ds", label: "Doanh số", align: "right", render: (r) => money(r.doanh_so) },
         {
             key: "dt", label: "Doanh thu dự kiến", align: "right",
             render: (r) => r.doanh_thu == null ? DASH : <span className="flex flex-col">{formatMoney(r.doanh_thu)}<span className="text-[11px] text-muted-foreground">chắc {formatMoney(r.chac || 0)}</span></span>,
         },
-        { key: "gv", label: "Giá vốn", align: "right", render: (r) => tien(r.gia_von) },
-        { key: "phi", label: "Chi phí 3PL", align: "right", render: (r) => tien(r.phi) },
-        { key: "ads", label: "Tiền ads", align: "right", render: (r) => tien(r.ads) },
+        { key: "gv", label: "Giá vốn", align: "right", render: (r) => money(r.gia_von) },
+        { key: "phi", label: "Chi phí 3PL", align: "right", render: (r) => money(r.phi) },
+        { key: "ads", label: "Tiền ads", align: "right", render: (r) => money(r.ads) },
         { key: "vh", label: "Vận hành", align: "right", render: (r) => (r.van_hanh ? formatMoney(r.van_hanh) : DASH) },
         {
             key: "ln", label: "Lợi nhuận", align: "right",
-            cellClassName: (r) => cn("font-semibold", laiClass(r.ln)),
+            cellClassName: (r) => cn("font-semibold", profitClass(r.ln)),
             render: (r) => r.ln == null ? DASH : <span className="flex flex-col">{signed(r.ln)}<span className="text-[11px] font-normal text-muted-foreground">tối thiểu {signed(r.ln_min ?? 0)}</span></span>,
         },
         { key: "bien", label: "Biên", align: "right", render: (r) => (r.ln == null || r.doanh_thu == null ? DASH : pct(r.ln, r.doanh_thu)) },
@@ -360,10 +360,10 @@ function BangNuoc({ data }: { data: Data }) {
             columns={cols} rows={rows} rowKey={(r) => r.key} minWidth={900}
             footer={
                 <tr className="border-t-2 border-amber-500/30 bg-amber-500/5 font-bold">
-                    {["TỔNG", formatMoney(t.doanh_so), formatMoney(t.du_kien.doanh_thu), formatMoney(t.du_kien.gia_von), formatMoney(tongPhi(t.du_kien.phi)),
+                    {["TỔNG", formatMoney(t.doanh_so), formatMoney(t.du_kien.doanh_thu), formatMoney(t.du_kien.gia_von), formatMoney(totalFees(t.du_kien.phi)),
                         formatMoney(t.ads), t.van_hanh ? formatMoney(t.van_hanh) : DASH, signed(t.loi_nhuan.du_kien), pct(t.loi_nhuan.du_kien, t.du_kien.doanh_thu)]
                         .map((c, i) => (
-                            <td key={i} className={cn("px-3 py-2 tabular-nums", i === 0 ? "text-left" : "text-right", i === 7 && laiClass(t.loi_nhuan.du_kien))}>{c}</td>
+                            <td key={i} className={cn("px-3 py-2 tabular-nums", i === 0 ? "text-left" : "text-right", i === 7 && profitClass(t.loi_nhuan.du_kien))}>{c}</td>
                         ))}
                 </tr>
             }
@@ -372,11 +372,11 @@ function BangNuoc({ data }: { data: Data }) {
 }
 
 // ═══ Kiện trong kỳ ═══
-function BangKien({ data }: { data: Data }) {
+function ParcelTable({ data }: { data: Data }) {
     const rows = data.nuoc.filter((n) => n.tk);
     if (!rows.length) return null;
-    const o = (d: Dem) => (d.n ? <span className="flex flex-col">{formatNumber(d.n)}<span className="text-[11px] text-muted-foreground">{formatVNDCompact(d.cod)}</span></span> : DASH);
-    const cols: Column<Nuoc>[] = [
+    const o = (d: Tally) => (d.n ? <span className="flex flex-col">{formatNumber(d.n)}<span className="text-[11px] text-muted-foreground">{formatVNDCompact(d.cod)}</span></span> : DASH);
+    const cols: Column<MarketResult>[] = [
         { key: "ten", label: "Thị trường", cellClassName: "font-medium text-foreground", render: (n) => n.ten },
         { key: "tong", label: "Kiện lên 3PL", align: "right", render: (n) => o(n.tk!.kien.tong) },
         { key: "giao", label: "Giao xong", align: "right", cellClassName: "text-emerald-700 dark:text-emerald-400", render: (n) => o(n.tk!.kien.giao) },
@@ -393,7 +393,7 @@ function BangKien({ data }: { data: Data }) {
             render: (n) => n.ty_le?.r == null ? <span className="text-amber-600">chưa đo được</span> : (
                 <span className="flex flex-col">
                     <span className={cn("font-semibold", n.ty_le.tam && "text-amber-600 dark:text-amber-400")}>{(n.ty_le.r * 100).toFixed(1)}%{n.ty_le.tam ? " (tạm)" : ""}</span>
-                    <span className="text-[11px] text-muted-foreground">{n.ty_le.giao} giao / {n.ty_le.hoan} hoàn{n.ty_le.tu && n.ty_le.den ? ` · lên đơn ${ngayVN(n.ty_le.tu).slice(0, 5)}–${ngayVN(n.ty_le.den).slice(0, 5)}` : ""}</span>
+                    <span className="text-[11px] text-muted-foreground">{n.ty_le.giao} giao / {n.ty_le.hoan} hoàn{n.ty_le.tu && n.ty_le.den ? ` · lên đơn ${formatDmy(n.ty_le.tu).slice(0, 5)}–${formatDmy(n.ty_le.den).slice(0, 5)}` : ""}</span>
                 </span>
             ),
         },
@@ -408,10 +408,10 @@ function BangKien({ data }: { data: Data }) {
 }
 
 // ═══ Chi phí 3PL chi tiết ═══
-function BangPhi({ data }: { data: Data }) {
+function FeeTable({ data }: { data: Data }) {
     const rows = data.nuoc.filter((n) => n.tk);
     if (!rows.length) return null;
-    const cols: Column<Nuoc>[] = [
+    const cols: Column<MarketResult>[] = [
         { key: "ten", label: "Thị trường", cellClassName: "font-medium text-foreground", render: (n) => n.ten },
         { key: "di", label: "Vận chuyển + thao tác", align: "right", title: "Mất dù giao hay hoàn", render: (n) => formatMoney(n.du_kien.phi.di) },
         { key: "giao", label: "Thu hộ · giao TC", align: "right", title: "Chỉ khi giao được: phí thu hộ COD, ship đơn thành công (UAE)", render: (n) => (n.du_kien.phi.giao ? formatMoney(n.du_kien.phi.giao) : DASH) },
@@ -424,13 +424,13 @@ function BangPhi({ data }: { data: Data }) {
                 return x > 0 ? formatMoney(x) : <span className="text-emerald-600 dark:text-emerald-400">lợi {formatMoney(-x)}</span>;
             },
         },
-        { key: "tong", label: "Tổng 3PL", align: "right", cellClassName: "font-semibold", render: (n) => formatMoney(tongPhi(n.du_kien.phi)) },
-        { key: "pct", label: "% doanh thu", align: "right", render: (n) => pct(tongPhi(n.du_kien.phi), n.du_kien.doanh_thu) },
+        { key: "tong", label: "Tổng 3PL", align: "right", cellClassName: "font-semibold", render: (n) => formatMoney(totalFees(n.du_kien.phi)) },
+        { key: "pct", label: "% doanh thu", align: "right", render: (n) => pct(totalFees(n.du_kien.phi), n.du_kien.doanh_thu) },
         {
             key: "nguon", label: "Phí thật / ước", align: "right",
             render: (n) => {
-                const tong = (n.tk!.kien.tong.n - n.tk!.kien.huy.n);
-                return `${formatNumber(Math.max(0, tong - n.tk!.phi_uoc))} / ${formatNumber(n.tk!.phi_uoc)}`;
+                const total = (n.tk!.kien.tong.n - n.tk!.kien.huy.n);
+                return `${formatNumber(Math.max(0, total - n.tk!.phi_uoc))} / ${formatNumber(n.tk!.phi_uoc)}`;
             },
         },
     ];
@@ -446,21 +446,21 @@ function BangPhi({ data }: { data: Data }) {
 // ═══ Chi phí vận hành ═══
 type Form = { id?: string; nhom: string; ten: string; so_tien: string; tu_thang: string; den_thang: string; thuoc: string; ghi_chu: string };
 
-function VanHanh({ data, taiLai }: { data: Data; taiLai: () => void }) {
-    const vh = data.van_hanh;
-    const thangNay = data.hom_nay.slice(0, 7);
-    const rong = useMemo<Form>(() => ({ nhom: data.cfg.nhom_van_hanh[0] || "Lương", ten: "", so_tien: "", tu_thang: thangNay, den_thang: "", thuoc: "CHUNG", ghi_chu: "" }), [data.cfg.nhom_van_hanh, thangNay]);
+function OpexSection({ data, taiLai: reload }: { data: Data; taiLai: () => void }) {
+    const opex = data.van_hanh;
+    const thisMonth = data.hom_nay.slice(0, 7);
+    const emptyForm = useMemo<Form>(() => ({ nhom: data.cfg.nhom_van_hanh[0] || "Lương", ten: "", so_tien: "", tu_thang: thisMonth, den_thang: "", thuoc: "CHUNG", ghi_chu: "" }), [data.cfg.nhom_van_hanh, thisMonth]);
     const [form, setForm] = useState<Form | null>(null);
-    const [dang, setDang] = useState(false);
-    const [loi, setLoi] = useState<string | null>(null);
-    const trongKy = new Map(vh.trong_ky.map((k) => [k.id, k.trong_ky_vnd || 0]));
-    const tenNuoc = (c: string) => (c === "CHUNG" ? "Chung cả công ty" : data.nuoc_ban.find((n) => n.code === c)?.ten || c);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const periodAmounts = new Map(opex.trong_ky.map((k) => [k.id, k.trong_ky_vnd || 0]));
+    const marketLabel = (c: string) => (c === "CHUNG" ? "Chung cả công ty" : data.nuoc_ban.find((n) => n.code === c)?.ten || c);
 
-    const luu = async () => {
+    const save = async () => {
         if (!form) return;
-        setDang(true); setLoi(null);
+        setSaving(true); setError(null);
         try {
-            await layJson("/api/talpha/lai-lo/van-hanh", {
+            await fetchJson("/api/talpha/lai-lo/van-hanh", {
                 method: "POST", headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     id: form.id, nhom: form.nhom, ten: form.ten, thuoc: form.thuoc, ghi_chu: form.ghi_chu,
@@ -468,17 +468,17 @@ function VanHanh({ data, taiLai }: { data: Data; taiLai: () => void }) {
                     tu_thang: form.tu_thang, den_thang: form.den_thang || null,
                 }),
             });
-            setForm(null); taiLai();
-        } catch (e: any) { setLoi(String(e?.message || e)); } finally { setDang(false); }
+            setForm(null); reload();
+        } catch (e: any) { setError(String(e?.message || e)); } finally { setSaving(false); }
     };
-    const xoa = async (k: KhoanVH) => {
+    const remove = async (k: OpexItem) => {
         if (!window.confirm(`Xoá khoản "${k.ten}" (${formatMoney(k.so_tien_thang_vnd)}đ/tháng)? Mọi kỳ đã tính sẽ không còn khoản này.`)) return;
-        setDang(true); setLoi(null);
-        try { await layJson(`/api/talpha/lai-lo/van-hanh?id=${encodeURIComponent(k.id)}`, { method: "DELETE" }); taiLai(); }
-        catch (e: any) { setLoi(String(e?.message || e)); } finally { setDang(false); }
+        setSaving(true); setError(null);
+        try { await fetchJson(`/api/talpha/lai-lo/van-hanh?id=${encodeURIComponent(k.id)}`, { method: "DELETE" }); reload(); }
+        catch (e: any) { setError(String(e?.message || e)); } finally { setSaving(false); }
     };
 
-    if (!vh.ghi_duoc) {
+    if (!opex.ghi_duoc) {
         return (
             <section className="rounded-xl border border-border bg-card p-5 text-sm shadow-sm">
                 <h3 className="section-header mb-1">🏢 Chi phí vận hành</h3>
@@ -503,7 +503,7 @@ function VanHanh({ data, taiLai }: { data: Data; taiLai: () => void }) {
                         khoản của riêng một team (lương leader) thì chọn đúng nước. Leader và sale chỉ thấy tổng, không thấy từng khoản.
                     </p>
                 </div>
-                {!form && <button onClick={() => { setForm(rong); setLoi(null); }} className="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600">+ Thêm khoản chi</button>}
+                {!form && <button onClick={() => { setForm(emptyForm); setError(null); }} className="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600">+ Thêm khoản chi</button>}
             </div>
 
             {form && (
@@ -536,15 +536,15 @@ function VanHanh({ data, taiLai }: { data: Data; taiLai: () => void }) {
                         <input className={o} value={form.ghi_chu} onChange={(e) => setForm({ ...form, ghi_chu: e.target.value })} />
                     </label>
                     <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-4">
-                        <button disabled={dang} onClick={luu} className="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">{dang ? "Đang lưu…" : form.id ? "Lưu thay đổi" : "Thêm"}</button>
-                        <button disabled={dang} onClick={() => { setForm(null); setLoi(null); }} className="rounded-lg border border-border px-3 py-1.5 text-sm">Huỷ</button>
-                        {loi && <span className="text-sm text-rose-600">{loi}</span>}
+                        <button disabled={saving} onClick={save} className="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">{saving ? "Đang lưu…" : form.id ? "Lưu thay đổi" : "Thêm"}</button>
+                        <button disabled={saving} onClick={() => { setForm(null); setError(null); }} className="rounded-lg border border-border px-3 py-1.5 text-sm">Huỷ</button>
+                        {error && <span className="text-sm text-rose-600">{error}</span>}
                     </div>
                 </div>
             )}
-            {!form && loi && <p className="mb-2 text-sm text-rose-600">{loi}</p>}
+            {!form && error && <p className="mb-2 text-sm text-rose-600">{error}</p>}
 
-            {vh.items.length === 0 ? (
+            {opex.items.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
                     Chưa có khoản nào — lợi nhuận đang <strong>chưa trừ</strong> lương, mặt bằng, phần mềm. Bấm &ldquo;Thêm khoản chi&rdquo; để nhập.
                 </p>
@@ -559,18 +559,18 @@ function VanHanh({ data, taiLai }: { data: Data; taiLai: () => void }) {
                             </tr>
                         </thead>
                         <tbody>
-                            {[...vh.items].sort((a, b) => a.nhom.localeCompare(b.nhom) || a.ten.localeCompare(b.ten)).map((k) => (
+                            {[...opex.items].sort((a, b) => a.nhom.localeCompare(b.nhom) || a.ten.localeCompare(b.ten)).map((k) => (
                                 <tr key={k.id} className="border-b border-border/40">
                                     <td className="px-3 py-2">{k.nhom}</td>
                                     <td className="px-3 py-2">{k.ten}{k.ghi_chu && <span className="block text-[11px] text-muted-foreground">{k.ghi_chu}</span>}</td>
                                     <td className="px-3 py-2 text-right tabular-nums">{formatMoney(k.so_tien_thang_vnd)}</td>
-                                    <td className="px-3 py-2 text-xs">{thangVN(k.tu_thang)} → {thangVN(k.den_thang)}</td>
-                                    <td className="px-3 py-2 text-xs">{tenNuoc(k.thuoc)}</td>
-                                    <td className="px-3 py-2 text-right tabular-nums">{trongKy.get(k.id) ? formatMoney(trongKy.get(k.id)!) : DASH}</td>
+                                    <td className="px-3 py-2 text-xs">{formatMonth(k.tu_thang)} → {formatMonth(k.den_thang)}</td>
+                                    <td className="px-3 py-2 text-xs">{marketLabel(k.thuoc)}</td>
+                                    <td className="px-3 py-2 text-right tabular-nums">{periodAmounts.get(k.id) ? formatMoney(periodAmounts.get(k.id)!) : DASH}</td>
                                     <td className="whitespace-nowrap px-3 py-2 text-right text-xs">
-                                        <button disabled={dang} className="text-orange-600 hover:underline" onClick={() => { setLoi(null); setForm({ id: k.id, nhom: k.nhom, ten: k.ten, so_tien: k.so_tien_thang_vnd.toLocaleString("vi-VN"), tu_thang: k.tu_thang, den_thang: k.den_thang || "", thuoc: k.thuoc, ghi_chu: k.ghi_chu || "" }); }}>Sửa</button>
+                                        <button disabled={saving} className="text-orange-600 hover:underline" onClick={() => { setError(null); setForm({ id: k.id, nhom: k.nhom, ten: k.ten, so_tien: k.so_tien_thang_vnd.toLocaleString("vi-VN"), tu_thang: k.tu_thang, den_thang: k.den_thang || "", thuoc: k.thuoc, ghi_chu: k.ghi_chu || "" }); }}>Sửa</button>
                                         <span className="mx-1 text-muted-foreground">·</span>
-                                        <button disabled={dang} className="text-rose-600 hover:underline" onClick={() => xoa(k)}>Xoá</button>
+                                        <button disabled={saving} className="text-rose-600 hover:underline" onClick={() => remove(k)}>Xoá</button>
                                     </td>
                                 </tr>
                             ))}
@@ -578,7 +578,7 @@ function VanHanh({ data, taiLai }: { data: Data; taiLai: () => void }) {
                         <tfoot>
                             <tr className="border-t-2 border-border font-semibold">
                                 <td className="px-3 py-2" colSpan={2}>Tổng</td>
-                                <td className="px-3 py-2 text-right tabular-nums">{formatMoney(vh.items.filter((k) => k.tu_thang <= thangNay && (!k.den_thang || k.den_thang >= thangNay)).reduce((s, k) => s + k.so_tien_thang_vnd, 0))}<span className="block text-[11px] font-normal text-muted-foreground">tháng này</span></td>
+                                <td className="px-3 py-2 text-right tabular-nums">{formatMoney(opex.items.filter((k) => k.tu_thang <= thisMonth && (!k.den_thang || k.den_thang >= thisMonth)).reduce((s, k) => s + k.so_tien_thang_vnd, 0))}<span className="block text-[11px] font-normal text-muted-foreground">tháng này</span></td>
                                 <td colSpan={2} />
                                 <td className="px-3 py-2 text-right tabular-nums">{formatMoney(data.tong.van_hanh)}</td>
                                 <td />

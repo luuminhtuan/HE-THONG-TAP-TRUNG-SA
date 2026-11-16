@@ -11,26 +11,26 @@ const t = (name, fn) => { fn(); pass++; console.log("  ✓", name); };
 
 console.log("── Dò cột ──");
 t("tiếng Anh: AWB · Order Ref · COD Amount · COD Fee · Delivered Date", () => {
-    const c = S.timCotSaoKe(["AWB No.", "Order Ref", "COD Amount", "COD Fee", "Delivered Date"]);
+    const c = S.detectStatementColumns(["AWB No.", "Order Ref", "COD Amount", "COD Fee", "Delivered Date"]);
     assert.deepStrictEqual(c, { tracking: 0, order_id: 1, amount: 2, fee: 3, paid_date: 4 });
 });
 t("tiếng Việt có dấu: Mã vận đơn · Mã đơn · Số tiền thu hộ", () => {
-    const c = S.timCotSaoKe(["STT", "Mã vận đơn", "Mã đơn", "Số tiền thu hộ", "Phí"]);
+    const c = S.detectStatementColumns(["STT", "Mã vận đơn", "Mã đơn", "Số tiền thu hộ", "Phí"]);
     assert.strictEqual(c.tracking, 1); assert.strictEqual(c.order_id, 2);
     assert.strictEqual(c.amount, 3); assert.strictEqual(c.fee, 4);
 });
 t("NAZA hai thứ tiếng trong một ô: 转单号 Mã vận đơn · COD金额", () => {
-    const c = S.timCotSaoKe(["收货日期 Ngày xuất kho", "原单号 Mã đơn hệ thống", "转单号 Mã vận đơn", "COD金额"]);
+    const c = S.detectStatementColumns(["收货日期 Ngày xuất kho", "原单号 Mã đơn hệ thống", "转单号 Mã vận đơn", "COD金额"]);
     assert.strictEqual(c.tracking, 2); assert.strictEqual(c.order_id, 1); assert.strictEqual(c.amount, 3);
 });
 t("cột 'COD Fee' đứng trước KHÔNG bị nhận là tiền COD", () => {
-    const c = S.timCotSaoKe(["Tracking", "COD Fee", "Collected (SGD)"]);
+    const c = S.detectStatementColumns(["Tracking", "COD Fee", "Collected (SGD)"]);
     assert.strictEqual(c.amount, 2); assert.strictEqual(c.fee, 1);
 });
 
 console.log("── Đọc bảng ──");
 t("tiêu đề nằm dưới dòng tên công ty, bỏ dòng Tổng, ngày về ISO", () => {
-    const d = S.docBangSaoKe([
+    const d = S.parseStatementTable([
         ["D&T Fulfillment — COD remittance"], [],
         ["AWB", "Order No", "COD Amount"],
         ["AE001", "A1", "120.50"],
@@ -41,21 +41,21 @@ t("tiêu đề nằm dưới dòng tên công ty, bỏ dòng Tổng, ngày về 
     assert.strictEqual(d.rows[1].amount, 1099);
 });
 t("CSV chấm phẩy kiểu châu Âu", () => {
-    const d = S.docCsvSaoKe("Tracking;COD\nJT1;45,90\nJT2;12\n");
+    const d = S.parseStatementCsv("Tracking;COD\nJT1;45,90\nJT2;12\n");
     assert.deepStrictEqual(d.rows.map((r) => r.amount), [45.9, 12]);
 });
 t("số tiền: phẩy thập phân '45,90' · ngăn nghìn '1,399' · kiểu Anh '1,234.50' · ngoặc âm", () => {
-    assert.strictEqual(S.soTienSaoKe("45,90"), 45.9);
-    assert.strictEqual(S.soTienSaoKe("SGD 7,5"), 7.5);
-    assert.strictEqual(S.soTienSaoKe("1,399"), 1399);
-    assert.strictEqual(S.soTienSaoKe("1,234.50"), 1234.5);
-    assert.strictEqual(S.soTienSaoKe("(12,50)"), -12.5);
+    assert.strictEqual(S.parseStatementAmount("45,90"), 45.9);
+    assert.strictEqual(S.parseStatementAmount("SGD 7,5"), 7.5);
+    assert.strictEqual(S.parseStatementAmount("1,399"), 1399);
+    assert.strictEqual(S.parseStatementAmount("1,234.50"), 1234.5);
+    assert.strictEqual(S.parseStatementAmount("(12,50)"), -12.5);
 });
 t("không có cột tiền → không nhận bảng", () => {
-    assert.strictEqual(S.docBangSaoKe([["Tracking", "Name"], ["JT1", "A"]]), null);
+    assert.strictEqual(S.parseStatementTable([["Tracking", "Name"], ["JT1", "A"]]), null);
 });
 t("nhiều sheet → lấy sheet nhiều dòng nhất", () => {
-    const b = S.chonSheetSaoKe([
+    const b = S.pickStatementSheet([
         { name: "Summary", rows: [["Tracking", "COD"], ["Total", "100"]] },
         { name: "Detail", rows: [["Tracking", "COD"], ["JT1", "60"], ["JT2", "40"]] },
     ]);
@@ -71,26 +71,26 @@ const naza = (lines, summary = {}) => ({
     sheets: { summary: "TỔNG", cod: "COD", fee: null },
 });
 t("màn Sing: file Sing riêng → lấy hết, kèm số phải nhận", () => {
-    const r = S.chonDongNaza(naza([["JT1", "SG", "S新加坡CODJT专线", 50]], { cod_twd: 50, payable_vnd: 900000 }), "SG", "新加坡COD对账单 2026.10.05.xlsx");
+    const r = S.pickNazaRows(naza([["JT1", "SG", "S新加坡CODJT专线", 50]], { cod_twd: 50, payable_vnd: 900000 }), "SG", "新加坡COD对账单 2026.10.05.xlsx");
     assert.strictEqual(r.rows.length, 1); assert.strictEqual(r.tong.phai_nhan_vnd, 900000);
 });
 t("màn Sing: file gộp → chỉ dòng Sing, KHÔNG lấy số phải nhận của cả file", () => {
-    const r = S.chonDongNaza(naza([["JT1", "SG", "S新加坡CODJT专线", 50], ["1870", "TW", "STWCOD专线-711", 1399]],
+    const r = S.pickNazaRows(naza([["JT1", "SG", "S新加坡CODJT专线", 50], ["1870", "TW", "STWCOD专线-711", 1399]],
         { payable_vnd: 28000000 }), "SG", "ĐỐI SOÁT COD 2026.09.24.xlsx");
     assert.strictEqual(r.rows.length, 1); assert.strictEqual(r.bo_qua, 1);
     assert.strictEqual(r.tong.phai_nhan_vnd, null);
 });
 t("màn Sing: file Đài → báo bấm nút Đài Loan", () => {
-    const r = S.chonDongNaza(naza([["1870", "TW", "STWCOD专线-711", 1399]]), "SG", "台湾COD对账单 2026.10.05.xlsx");
+    const r = S.pickNazaRows(naza([["1870", "TW", "STWCOD专线-711", 1399]]), "SG", "台湾COD对账单 2026.10.05.xlsx");
     assert.ok(/ĐÀI LOAN/.test(r.loi));
 });
 t("màn Sing: file tên SING mà dòng không ghi nước → tin tên file", () => {
-    const r = S.chonDongNaza(naza([["JT1", "TW", "", 50]]), "SG", "ĐỐI SOÁT COD SING 2026.10.05.xlsx");
+    const r = S.pickNazaRows(naza([["JT1", "TW", "", 50]]), "SG", "ĐỐI SOÁT COD SING 2026.10.05.xlsx");
     assert.strictEqual(r.rows.length, 1);
 });
 t("màn UAE: file Sing / file Đài đều bị chặn", () => {
-    assert.ok(/SINGAPORE/.test(S.chonDongNaza(naza([["JT1", "SG", "S新加坡CODJT专线", 50]]), "AE", "x.xlsx").loi));
-    assert.ok(/ĐÀI LOAN/.test(S.chonDongNaza(naza([["1870", "TW", "STWCOD专线-711", 1399]]), "AE", "x.xlsx").loi));
+    assert.ok(/SINGAPORE/.test(S.pickNazaRows(naza([["JT1", "SG", "S新加坡CODJT专线", 50]]), "AE", "x.xlsx").loi));
+    assert.ok(/ĐÀI LOAN/.test(S.pickNazaRows(naza([["1870", "TW", "STWCOD专线-711", 1399]]), "AE", "x.xlsx").loi));
 });
 
 // Kỳ Sing CHƯA thu COD (thật: "ĐỐI SOÁT COD SINGAPORE 2026.09.24") — chỉ có sheet TỔNG + PHÍ.
@@ -98,7 +98,7 @@ const phiSg = (n) => Array.from({ length: n }, (_, i) => ({ market: "SG", channe
     order_id: "O" + i, ship_fee: 28, op_fee: 3, first_leg_fee: 7 }));
 t("màn Sing: kỳ chỉ có phí → nhận, phải nhận âm, đếm đơn bị tính phí", () => {
     const n = { ...naza([], { cod_twd: 0, rate_twd_rmb: 0.2021, payable_vnd: -3600206, purchase_sg_vnd: 1840046 }), fee_lines: phiSg(12) };
-    const r = S.chonDongNaza(n, "SG", "ĐỐI SOÁT COD SINGAPORE 2026.09.24.xlsx");
+    const r = S.pickNazaRows(n, "SG", "ĐỐI SOÁT COD SINGAPORE 2026.09.24.xlsx");
     assert.strictEqual(r.rows.length, 0);
     assert.strictEqual(r.tong.phai_nhan_vnd, -3600206);
     assert.strictEqual(r.tong.don_phi, 12); assert.strictEqual(r.tong.phi_rmb, 456);
@@ -107,21 +107,21 @@ t("màn Sing: kỳ chỉ có phí → nhận, phải nhận âm, đếm đơn b�
 });
 t("màn UAE: kỳ Sing chỉ có phí cũng bị chặn", () => {
     const n = { ...naza([]), fee_lines: phiSg(2) };
-    assert.ok(/SINGAPORE/.test(S.chonDongNaza(n, "AE", "x.xlsx").loi));
+    assert.ok(/SINGAPORE/.test(S.pickNazaRows(n, "AE", "x.xlsx").loi));
 });
 // Mẫu Sing thật kỳ 05/10/2026: sheet TỔNG ghi 本期回款金额 bằng TỆ sau phí thu hộ, không phải SGD.
 t("mẫu Sing: so tiền về (tệ) từng đơn với sheet TỔNG — khớp thì KHÔNG báo lệch", () => {
     const n = naza([["JT1", "SG", "", 69], ["JT2", "SG", "", 99]], { cod_twd: 849.85, payable_vnd: 5448788 });
     n.cod_lines[0].ve_rmb = 349.05; n.cod_lines[0].ty_gia_rmb = 5.2151;
     n.cod_lines[1].ve_rmb = 500.80; n.cod_lines[1].ty_gia_rmb = 5.2151;
-    const r = S.chonDongNaza(n, "SG", "新加坡COD对账单 2026.10.05.xlsx");
+    const r = S.pickNazaRows(n, "SG", "新加坡COD对账单 2026.10.05.xlsx");
     assert.deepStrictEqual(r.canh_bao, []);
     assert.strictEqual(r.tong.cod_local, 168); assert.strictEqual(r.tong.ty_gia_rmb, 5.2151);
 });
 t("mẫu Sing: tiền về lệch sheet TỔNG → cảnh báo bằng tệ", () => {
     const n = naza([["JT1", "SG", "", 69]], { cod_twd: 400 });
     n.cod_lines[0].ve_rmb = 349.05;
-    assert.ok(/349,05¥.*400¥/.test(S.chonDongNaza(n, "SG", "新加坡COD对账单.xlsx").canh_bao[0]));
+    assert.ok(/349,05¥.*400¥/.test(S.pickNazaRows(n, "SG", "新加坡COD对账单.xlsx").canh_bao[0]));
 });
 
 console.log("── Thay kỳ cũ ──");
@@ -130,30 +130,30 @@ const ky = (id, filename, trks) => ({
     rows: trks.map((x) => ({ tracking: x, order_id: "", amount: 10, fee: 0, paid_date: "", status: "" })),
 });
 t("cùng tên file (khác dạng Unicode NFC/NFD) → thay", () => {
-    const r = S.thayKyCu([ky("a", "SOÁT 05.10.xlsx".normalize("NFD"), ["JT1"])], ky("b", "SOÁT 05.10.xlsx", ["JT9"]));
+    const r = S.replaceSamePeriod([ky("a", "SOÁT 05.10.xlsx".normalize("NFD"), ["JT1"])], ky("b", "SOÁT 05.10.xlsx", ["JT9"]));
     assert.deepStrictEqual(r.list.map((x) => x.id), ["b"]); assert.strictEqual(r.thay.length, 1);
 });
 t("đổi tên nhưng trùng ≥ nửa số đơn → bản sửa, thay", () => {
-    const r = S.thayKyCu([ky("a", "k1.xlsx", ["JT1", "JT2", "JT3"])], ky("b", "k1 sua.xlsx", ["JT1", "JT2", "JT4"]));
+    const r = S.replaceSamePeriod([ky("a", "k1.xlsx", ["JT1", "JT2", "JT3"])], ky("b", "k1 sua.xlsx", ["JT1", "JT2", "JT4"]));
     assert.deepStrictEqual(r.list.map((x) => x.id), ["b"]);
 });
 t("kỳ khác (không trùng đơn) → giữ cả hai", () => {
-    const r = S.thayKyCu([ky("a", "k1.xlsx", ["JT1", "JT2"])], ky("b", "k2.xlsx", ["JT3", "JT4"]));
+    const r = S.replaceSamePeriod([ky("a", "k1.xlsx", ["JT1", "JT2"])], ky("b", "k2.xlsx", ["JT3", "JT4"]));
     assert.deepStrictEqual(r.list.map((x) => x.id), ["a", "b"]); assert.strictEqual(r.thay.length, 0);
 });
 t("hai file NAZA cùng ngày → cùng kỳ (kỳ chỉ có phí không có đơn để so trùng)", () => {
     const a = { ...ky("a", "ĐỐI SOÁT COD SINGAPORE 2026.09.24.xlsx", []), kieu: "naza", ngay: "2026-09-24" };
     const b = { ...ky("b", "SINGAPORE 2026.09.24 (sửa).xlsx", []), kieu: "naza", ngay: "2026-09-24" };
     const c = { ...ky("c", "新加坡COD对账单 2026.10.05.xlsx", ["JT1"]), kieu: "naza", ngay: "2026-10-05" };
-    assert.deepStrictEqual(S.thayKyCu([a, c], b).list.map((x) => x.id), ["c", "b"]);
+    assert.deepStrictEqual(S.replaceSamePeriod([a, c], b).list.map((x) => x.id), ["c", "b"]);
     // Bảng đối tác khác cùng ngày thì GIỮ cả hai — chưa biết họ gửi mấy file một ngày.
     const d = { ...ky("d", "cod 1.csv", ["X1"]), ngay: "2026-10-05" }, e = { ...ky("e", "cod 2.csv", ["X2"]), ngay: "2026-10-05" };
-    assert.deepStrictEqual(S.thayKyCu([d], e).list.map((x) => x.id), ["d", "e"]);
+    assert.deepStrictEqual(S.replaceSamePeriod([d], e).list.map((x) => x.id), ["d", "e"]);
 });
 t("ngày kỳ: theo tên file, không có thì ngày trả muộn nhất", () => {
     const ten = (f) => (/(\d{4})\.(\d{2})\.(\d{2})/.exec(f) || []).slice(1).join("-") || null;
-    assert.strictEqual(S.ngayKy("COD 2026.10.05.xlsx", [], ten), "2026-10-05");
-    assert.strictEqual(S.ngayKy("cod.csv", [{ paid_date: "2026-10-01" }, { paid_date: "2026-10-03" }, { paid_date: "x" }], ten), "2026-10-03");
+    assert.strictEqual(S.periodDate("COD 2026.10.05.xlsx", [], ten), "2026-10-05");
+    assert.strictEqual(S.periodDate("cod.csv", [{ paid_date: "2026-10-01" }, { paid_date: "2026-10-03" }, { paid_date: "x" }], ten), "2026-10-03");
 });
 
 console.log("── Khớp với đơn ──");
@@ -164,7 +164,7 @@ const KHO = [
     { ...ky("k1", "k1.xlsx", []), rows: [dong("JT1", 50), dong("JT3", 20), dong("JT9", 15)] },
     { ...ky("k2", "k2.xlsx", []), rows: [dong("JT2", 25), dong("JT1", 50)] },
 ];
-const K = S.khopSaoKeNuoc(DON, KHO, 20000);
+const K = S.matchMarketStatements(DON, KHO, 20000);
 t("đơn có trên sao kê → đã trả; đơn chưa thấy → còn phải gửi", () => {
     assert.strictEqual(K.da_tra.so_don, 3);
     assert.deepStrictEqual(K.don.filter((d) => d.nhom === "da_giao" && !d.da_tra).map((d) => d.order_id), ["E"]);
@@ -183,23 +183,23 @@ t("đã gửi về: không có số phải nhận → ước theo tỷ giá, đ�
     assert.strictEqual(K.da_gui_ve.co_uoc, true);
 });
 t("kỳ có số phải nhận (NAZA) → dùng đúng số đó, không ước", () => {
-    const k = S.khopSaoKeNuoc(DON, [{ ...KHO[0], naza: { phai_nhan_vnd: 1234567 } }], 20000);
+    const k = S.matchMarketStatements(DON, [{ ...KHO[0], naza: { phai_nhan_vnd: 1234567 } }], 20000);
     assert.strictEqual(k.da_gui_ve.vnd, 1234567); assert.strictEqual(k.da_gui_ve.co_uoc, false);
 });
 t("kỳ âm KHÔNG cộng vào đã gửi về; gộp vào kỳ Đài cùng ngày thì ghi rõ", () => {
     const am = { ...ky("am", "SING 24.09.xlsx", []), kieu: "naza", ngay: "2026-09-24", naza: { phai_nhan_vnd: -3600206, don_phi: 12, phi_rmb: 456 } };
     const duong = { ...KHO[0], kieu: "naza", ngay: "2026-10-05", naza: { phai_nhan_vnd: 5448788 } };
-    const k = S.khopSaoKeNuoc(DON, [am, duong], 20000, ["2026-09-24"]);
+    const k = S.matchMarketStatements(DON, [am, duong], 20000, ["2026-09-24"]);
     assert.strictEqual(k.da_gui_ve.vnd, 5448788);
     assert.strictEqual(k.da_gui_ve.ky_am, 1); assert.strictEqual(k.da_gui_ve.am_vnd, -3600206);
     const kyAm = k.ky.find((x) => x.id === "am");
     assert.strictEqual(kyAm.tinh_vao_da_gui, false); assert.strictEqual(kyAm.tru_vao_dai, "2026-09-24");
     assert.strictEqual(kyAm.uoc_vnd, null);
-    assert.strictEqual(S.khopSaoKeNuoc(DON, [am], 20000).ky[0].tru_vao_dai, null);
+    assert.strictEqual(S.matchMarketStatements(DON, [am], 20000).ky[0].tru_vao_dai, null);
 });
 t("tên kho riêng từng nước", () => {
-    assert.strictEqual(S.tenKhoSaoKe("SG"), "cod_statements_sg");
-    assert.strictEqual(S.tenKhoSaoKe("AE"), "cod_statements_ae");
+    assert.strictEqual(S.statementStoreName("SG"), "cod_statements_sg");
+    assert.strictEqual(S.statementStoreName("AE"), "cod_statements_ae");
 });
 
 console.log("── Sổ một nước, giống màn Đài (số thật Sing 24/09 + 05/10/2026) ──");
@@ -242,27 +242,27 @@ const ky24 = {
     },
 };
 t("luồng tiền kỳ 05/10: S$ → ¥ (− thu hộ − ship − hàng hoàn) → đ (− tiền hàng) = phải nhận", () => {
-    const l = N.luongKy(ky05);
+    const l = N.periodCashFlow(ky05);
     assert.deepStrictEqual(l.tru_rmb.map((x) => [x.nhan, x.so]), [["Phí thu hộ COD", 98.72], ["Phí vận chuyển", 1317.6], ["Phí hàng hoàn về kho lên kệ", 9]]);
     assert.strictEqual(l.rmb_rong, 1865.406257);
     assert.deepStrictEqual(l.tru_vnd.map((x) => x.so), [1751680]);
     assert.strictEqual(l.chenh_vnd, 0);
 });
 t("luồng tiền kỳ chỉ có phí 24/09: không lấy tỷ giá 0,2021 làm khoản trừ, ra đúng âm 3.600.206đ", () => {
-    const l = N.luongKy(ky24);
+    const l = N.periodCashFlow(ky24);
     assert.deepStrictEqual(l.tru_rmb.map((x) => x.so), [456]);
     assert.strictEqual(Math.round(l.vnd - l.tru_vnd[0].so), -3600206);
 });
 const B = { last_leg: { first_2kg: 28, extra_per_kg: 6 }, first_leg_per_100g: { thuong: 2.8, dac_thu: 3.5 }, single_parcel_fee: 3, cod_fee: { pct: 0.04, min: 8 } };
 t("phí đúng bảng giá Sing: 0,2 kg = 28 + 2×2,8 + 3 = 36,6¥", () => {
-    assert.strictEqual(N.soatPhiDong({ tracking: "a", order_id: "a", kg: 0.2, ship: 28, first_leg: 5.6, op: 3 }, B), null);
+    assert.strictEqual(N.auditFeeLine({ tracking: "a", order_id: "a", kg: 0.2, ship: 28, first_leg: 5.6, op: 3 }, B), null);
 });
 t("chặng đầu 7¥ cho 0,2 kg (kỳ 24/09) → sai bảng, dư 1,4¥, ghi rõ bằng giá hàng đặc thù", () => {
-    const f = N.soatPhiDong({ tracking: "a", order_id: "a", kg: 0.2, ship: 28, first_leg: 7, op: 3 }, B);
+    const f = N.auditFeeLine({ tracking: "a", order_id: "a", kg: 0.2, ship: 28, first_leg: 7, op: 3 }, B);
     assert.strictEqual(f.chenh, 1.4); assert.ok(/đặc thù/.test(f.ly_do));
 });
 t("chặng cuối quá 2 kg tính thêm theo kg", () => {
-    assert.strictEqual(N.soatPhiDong({ tracking: "a", order_id: "a", kg: 2.3, ship: 34, first_leg: 64.4, op: 3 }, B), null);
+    assert.strictEqual(N.auditFeeLine({ tracking: "a", order_id: "a", kg: 2.3, ship: 34, first_leg: 64.4, op: 3 }, B), null);
 });
 const S2 = require("../.test-build/cod-statement-market.js");
 const DON2 = [
@@ -270,8 +270,8 @@ const DON2 = [
     { order_id: "O9", tracking: "JT9", order_date: "2026-09-20", trang_thai: "", nhom: "da_giao", cod_local: 69, khach: "" },
 ];
 const so = (actions = { bank: {}, done: {} }, asOf = "2026-10-08") => {
-    const k = S2.khopSaoKeNuoc(DON2, [ky05, ky24], 20000, ["2026-09-24"]);
-    return N.soCodNuoc({ code: "SG", currency: "SGD", symbol: "S$", rateVnd: 20000, don: DON2, kho: [ky05, ky24], k, actions, asOf });
+    const k = S2.matchMarketStatements(DON2, [ky05, ky24], 20000, ["2026-09-24"]);
+    return N.buildCodMarketLedger({ code: "SG", currency: "SGD", symbol: "S$", rateVnd: 20000, don: DON2, kho: [ky05, ky24], k, actions, asOf });
 };
 t("bảng các kỳ: 05/10 chờ nhập tiền về; 24/09 âm, đã trừ vào kỳ Đài", () => {
     const x = so();

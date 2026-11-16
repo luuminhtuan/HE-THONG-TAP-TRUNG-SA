@@ -9,18 +9,18 @@ const t = (ten, fn) => { try { fn(); ok++; console.log("  ✓", ten); } catch (e
 
 console.log("── Khoá kết nối: soát khoá dán vào, che khoá ──");
 t("khoá dán vào: từ chối trống, khoảng trắng, xuống dòng, ký tự lạ", () => {
-    assert.ok(K.loiGiaTri(""));
-    assert.ok(K.loiGiaTri("EAA abc"));
-    assert.ok(K.loiGiaTri("abc\ndef"));
-    for (const c of ['"', "'", "#", "\\", "$", "`"]) assert.ok(K.loiGiaTri(`abc${c}def`), c);
-    assert.ok(K.loiGiaTri("a".repeat(4097)));
-    assert.strictEqual(K.loiGiaTri("EAAGm0PX4ZCpsBAL9xyz"), null);
-    assert.strictEqual(K.loiGiaTri("eyJhbGciOi.eyJleHAiOjE.sig-_x"), null);   // JWT Pancake
+    assert.ok(K.credentialValueError(""));
+    assert.ok(K.credentialValueError("EAA abc"));
+    assert.ok(K.credentialValueError("abc\ndef"));
+    for (const c of ['"', "'", "#", "\\", "$", "`"]) assert.ok(K.credentialValueError(`abc${c}def`), c);
+    assert.ok(K.credentialValueError("a".repeat(4097)));
+    assert.strictEqual(K.credentialValueError("EAAGm0PX4ZCpsBAL9xyz"), null);
+    assert.strictEqual(K.credentialValueError("eyJhbGciOi.eyJleHAiOjE.sig-_x"), null);   // JWT Pancake
 });
 t("che khoá: chỉ lộ 4 ký tự cuối, khoá ngắn che hết", () => {
-    assert.strictEqual(K.cheKhoa("EAAGm0PX4ZCpsBAL9xyz"), "••••9xyz");
-    assert.strictEqual(K.cheKhoa("abc12345"), "••••");
-    assert.strictEqual(K.cheKhoa(""), "");
+    assert.strictEqual(K.maskCredential("EAAGm0PX4ZCpsBAL9xyz"), "••••9xyz");
+    assert.strictEqual(K.maskCredential("abc12345"), "••••");
+    assert.strictEqual(K.maskCredential(""), "");
 });
 
 console.log(`${ok} phép thử khoá kết nối qua.`);

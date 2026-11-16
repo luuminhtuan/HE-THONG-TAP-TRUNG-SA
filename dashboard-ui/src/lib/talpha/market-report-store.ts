@@ -3,13 +3,13 @@
 // Phần thuần (cacThang, gomMess, kiểu BanNuoc) ở ./ban-nuoc.ts.
 // ═══════════════════════════════════════════════════════════════════
 import { query } from "@/lib/db";
-import { cacThang, gomMess, type BanNuoc } from "./ban-nuoc";
+import { monthsInRange, sumMessByPerson, type MarketMonthlyReport } from "./ban-nuoc";
 import { MESS_PANCAKE } from "./rules";
 
 /** Bản số của một tháng "YYYY-MM", hoặc null nếu vòng ghi Sheet chưa ghi tháng đó. */
-export async function docBan(thang: string): Promise<BanNuoc | null> {
+export async function readMonthlyReport(month: string): Promise<MarketMonthlyReport | null> {
     try {
-        const rows = await query<{ content: BanNuoc }>("SELECT content FROM market_monthly_reports WHERE month = @thang", { thang });
+        const rows = await query<{ content: MarketMonthlyReport }>("SELECT content FROM market_monthly_reports WHERE month = @thang", { thang: month });
         return rows[0]?.content ?? null;
     } catch (e) {
         console.error("ban-nuoc: không đọc được market_monthly_reports:", e);
@@ -22,20 +22,20 @@ export async function docBan(thang: string): Promise<BanNuoc | null> {
  * khoảng [tu, den]. `thieu_thang`: tháng không có bản (vòng ghi Sheet chưa chạy) — số tháng đó
  * không có trong tổng, màn hình phải nói ra.
  */
-export async function messPancakeTuBan(tu: string, den: string, choXem: (key: string) => boolean = () => true): Promise<{
+export async function pancakeMessFromReports(from: string, to: string, canView: (key: string) => boolean = () => true): Promise<{
     tong: number; theoNguoi: Record<string, number>; nuoc: string[]; ghi_luc: string | null; thieu_thang: string[];
 }> {
-    const keys = MESS_PANCAKE.filter(choXem);
-    const bans: BanNuoc[] = [];
-    const thieu: string[] = [];
-    let ghiLuc: string | null = null;
+    const keys = MESS_PANCAKE.filter(canView);
+    const bans: MarketMonthlyReport[] = [];
+    const missingMonths: string[] = [];
+    let writtenAt: string | null = null;
     if (keys.length) {
-        for (const t of cacThang(tu, den)) {
-            const b = await docBan(t);
-            if (!b) { thieu.push(t); continue; }
+        for (const t of monthsInRange(from, to)) {
+            const b = await readMonthlyReport(t);
+            if (!b) { missingMonths.push(t); continue; }
             bans.push(b);
-            if (b.ghi_luc && (!ghiLuc || b.ghi_luc < ghiLuc)) ghiLuc = b.ghi_luc;
+            if (b.ghi_luc && (!writtenAt || b.ghi_luc < writtenAt)) writtenAt = b.ghi_luc;
         }
     }
-    return { ...gomMess(bans, tu, den, keys), nuoc: keys, ghi_luc: ghiLuc, thieu_thang: thieu };
+    return { ...sumMessByPerson(bans, from, to, keys), nuoc: keys, ghi_luc: writtenAt, thieu_thang: missingMonths };
 }

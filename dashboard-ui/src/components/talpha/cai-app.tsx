@@ -16,71 +16,71 @@ import { Download, Share, X } from "lucide-react";
  * trình duyệt mới cho đăng ký.
  */
 
-type SuKienCai = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
+type InstallPromptEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> };
 
-function dangLaApp(): boolean {
+function isStandalone(): boolean {
     if (typeof window === "undefined") return false;
     return window.matchMedia("(display-mode: standalone)").matches
         || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 }
 
-function laIphone(): boolean {
+function isIphone(): boolean {
     if (typeof navigator === "undefined") return false;
     const ua = navigator.userAgent;
     // iPadOS 13+ tự xưng là Mac — nhận bằng màn cảm ứng.
     return /iPhone|iPad|iPod/i.test(ua) || (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
 }
 
-export default function NutCaiApp() {
-    const [suKien, setSuKien] = useState<SuKienCai | null>(null);
+export default function PwaInstallPrompt() {
+    const [promptEvent, setPromptEvent] = useState<InstallPromptEvent | null>(null);
     const [iphone, setIphone] = useState(false);
-    const [daLaApp, setDaLaApp] = useState(true);   // mặc định ẩn tới khi biết chắc
-    const [moHuongDan, setMoHuongDan] = useState(false);
+    const [installed, setInstalled] = useState(true);   // mặc định ẩn tới khi biết chắc
+    const [showGuide, setShowGuide] = useState(false);
 
     useEffect(() => {
         if ("serviceWorker" in navigator && window.isSecureContext) {
             navigator.serviceWorker.register("/sw.js").catch(() => { /* không đăng ký được thì vẫn dùng web bình thường */ });
         }
-        const nhan = (e: Event) => { e.preventDefault(); setSuKien(e as SuKienCai); };
-        const xong = () => { setSuKien(null); setDaLaApp(true); };
-        window.addEventListener("beforeinstallprompt", nhan);
-        window.addEventListener("appinstalled", xong);
+        const onBeforeInstall = (e: Event) => { e.preventDefault(); setPromptEvent(e as InstallPromptEvent); };
+        const onInstalled = () => { setPromptEvent(null); setInstalled(true); };
+        window.addEventListener("beforeinstallprompt", onBeforeInstall);
+        window.addEventListener("appinstalled", onInstalled);
         // Đọc môi trường sau khi gắn vào trang (tránh lệch giữa bản dựng máy chủ và trình duyệt).
-        const t = setTimeout(() => { setDaLaApp(dangLaApp()); setIphone(laIphone()); }, 0);
+        const t = setTimeout(() => { setInstalled(isStandalone()); setIphone(isIphone()); }, 0);
         return () => {
             clearTimeout(t);
-            window.removeEventListener("beforeinstallprompt", nhan);
-            window.removeEventListener("appinstalled", xong);
+            window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+            window.removeEventListener("appinstalled", onInstalled);
         };
     }, []);
 
-    if (daLaApp || (!suKien && !iphone)) return null;
+    if (installed || (!promptEvent && !iphone)) return null;
 
-    const bam = async () => {
-        if (suKien) {
-            await suKien.prompt();
-            const kq = await suKien.userChoice;
-            if (kq.outcome === "accepted") setSuKien(null);
+    const handleClick = async () => {
+        if (promptEvent) {
+            await promptEvent.prompt();
+            const choice = await promptEvent.userChoice;
+            if (choice.outcome === "accepted") setPromptEvent(null);
         } else {
-            setMoHuongDan(true);
+            setShowGuide(true);
         }
     };
 
     return (
         <>
             <button
-                onClick={bam}
+                onClick={handleClick}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:from-orange-600 hover:to-red-600"
             >
                 <Download className="h-4 w-4" /> Cài app vào máy
             </button>
 
-            {moHuongDan && (
-                <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center" onClick={() => setMoHuongDan(false)}>
+            {showGuide && (
+                <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-3 sm:items-center" onClick={() => setShowGuide(false)}>
                     <div className="w-full max-w-sm rounded-2xl bg-card p-5 text-sm text-foreground shadow-2xl" onClick={(e) => e.stopPropagation()}>
                         <div className="mb-3 flex items-center justify-between">
                             <p className="text-base font-semibold">Cài app trên iPhone</p>
-                            <button onClick={() => setMoHuongDan(false)} className="rounded-md p-1 text-muted-foreground hover:bg-muted" aria-label="Đóng">
+                            <button onClick={() => setShowGuide(false)} className="rounded-md p-1 text-muted-foreground hover:bg-muted" aria-label="Đóng">
                                 <X className="h-4 w-4" />
                             </button>
                         </div>

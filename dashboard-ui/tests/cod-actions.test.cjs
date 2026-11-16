@@ -112,9 +112,9 @@ t("bỏ qua thì KHÔNG nổi lại — người ta đã chủ động chấp nh
 });
 
 t("câu mô tả nói rõ ba trạng thái khác nhau", () => {
-    assert.strictEqual(A.doiLabel(undefined, 0), "chưa đòi lần nào");
-    assert.strictEqual(A.doiLabel({ viec: "da_doi", ngay: "2026-09-01", lan: 1 }, 0), "đã đòi 2026-09-01");
-    assert.strictEqual(A.doiLabel({ viec: "da_doi", ngay: "2026-08-12", lan: 3 }, 2),
+    assert.strictEqual(A.chaseLabel(undefined, 0), "chưa đòi lần nào");
+    assert.strictEqual(A.chaseLabel({ viec: "da_doi", ngay: "2026-09-01", lan: 1 }, 0), "đã đòi 2026-09-01");
+    assert.strictEqual(A.chaseLabel({ viec: "da_doi", ngay: "2026-08-12", lan: 3 }, 2),
         "đã đòi 2026-08-12 (3 lần) — 2 kỳ rồi vẫn im");
 });
 

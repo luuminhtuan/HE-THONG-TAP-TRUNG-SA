@@ -77,7 +77,7 @@ t("không có luật nước → không dựng", () => {
 
 console.log("── Tin xác nhận đơn soạn sẵn ──");
 t("đủ hàng, tiền, địa chỉ; gọi khách bằng tên đầu", () => {
-    const x = W.tinXacNhan({ customer: "Raquel Dimaano Arellano", product: "Gold Bracelet 001", quantity: 2,
+    const x = W.orderConfirmationMessage({ customer: "Raquel Dimaano Arellano", product: "Gold Bracelet 001", quantity: 2,
         cod: 119, currency: "AED", address: "Villa 3, 33A Street,  Al Mamourah" });
     assert.ok(x.startsWith("Hi Raquel, thank you for your order!"), x);
     assert.ok(x.includes("- Item: Gold Bracelet 001 x2"), x);
@@ -86,12 +86,12 @@ t("đủ hàng, tiền, địa chỉ; gọi khách bằng tên đầu", () => {
     assert.ok(x.includes("reply YES to confirm"), x);
 });
 t("thiếu ô nào bỏ dòng đó — không bao giờ in 'undefined'", () => {
-    const x = W.tinXacNhan({ customer: "", cod: 0 });
+    const x = W.orderConfirmationMessage({ customer: "", cod: 0 });
     assert.ok(x.startsWith("Hi there,"), x);
     assert.ok(!/undefined|null|Item|Total|Address/.test(x), x);
 });
 t("hàng đã ghi ×2 thì không thêm số lượng lần nữa", () => {
-    const x = W.tinXacNhan({ product: "Oralhoe Dental 002 ×2", quantity: 2 });
+    const x = W.orderConfirmationMessage({ product: "Oralhoe Dental 002 ×2", quantity: 2 });
     assert.ok(x.includes("- Item: Oralhoe Dental 002 ×2\n"), x);
 });
 t("link kèm tin: mã hoá URL, mở đúng số", () => {

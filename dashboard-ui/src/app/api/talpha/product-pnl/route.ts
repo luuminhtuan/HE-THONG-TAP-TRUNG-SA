@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { RULES, REPORT_START_DATE, campaignMarket, parseCampaign, parseProductCode } from "@/lib/talpha/rules";
-import { tinhChiPhiDon } from "@/lib/talpha/order-costs";
+import { computeOrderCosts } from "@/lib/talpha/order-costs";
 import { getAccess } from "@/lib/talpha/access";
 import { canMarket, seesAllMarkets } from "@/lib/talpha/access-rules";
 
@@ -25,15 +25,15 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 type Products = Record<string, { name?: string; _nhan_bang_gia?: string } | string>;
 const PRODUCTS = ((RULES as unknown as { products?: Products }).products || {}) as Products;
 
-function tenSanPham(sp: string, tenTho: string): string {
-    if (sp.startsWith("?:")) return tenTho || sp.slice(2);
-    if (sp.includes(":")) return tenTho;                       // hàng tra giá theo tên (UAE)
+function productName(sp: string, rawName: string): string {
+    if (sp.startsWith("?:")) return rawName || sp.slice(2);
+    if (sp.includes(":")) return rawName;                       // hàng tra giá theo tên (UAE)
     const p = PRODUCTS[sp];
     if (p && typeof p === "object") return p._nhan_bang_gia || p.name || sp;
     return sp;
 }
 
-type Dong = {
+type ProductRow = {
     sp: string; ten: string; shops: Set<string>; don: Set<string>;
     units: number; doanh_so: number; ship: number; cogs: number; ads: number; mess: number;
     gia_vnd: number | null;
@@ -50,12 +50,12 @@ export async function GET(req: NextRequest) {
     // Phân quyền theo team: đơn theo shop, tiền ads theo nước ở tên campaign — cùng luật
     // tách chi tiêu theo nước của Sheet (campaignMarket).
     const a = await getAccess(req);
-    const hep = !a || !seesAllMarkets(a);
-    const duocXem = (m: string | null | undefined) => !!a && !!m && canMarket(a, m);
+    const restricted = !a || !seesAllMarkets(a);
+    const canSee = (m: string | null | undefined) => !!a && !!m && canMarket(a, m);
 
     try {
-        const [{ don, thieu, ship_basis }, campRows] = await Promise.all([
-            tinhChiPhiDon(from, to, hep ? (shop) => duocXem(shop) : undefined),
+        const [{ don: orders, thieu: missingCosts, ship_basis }, campRows] = await Promise.all([
+            computeOrderCosts(from, to, restricted ? (shop) => canSee(shop) : undefined),
             query(
                 `SELECT campaign_name, SUM(spend) AS spend, SUM(messages) AS messages
                  FROM vw_fb_ads_std
@@ -65,42 +65,42 @@ export async function GET(req: NextRequest) {
             ),
         ]);
 
-        const map = new Map<string, Dong>();
-        const lay = (sp: string, ten: string) => {
+        const map = new Map<string, ProductRow>();
+        const rowFor = (sp: string, name: string) => {
             let d = map.get(sp);
             if (!d) {
-                d = { sp, ten: tenSanPham(sp, ten), shops: new Set(), don: new Set(), units: 0, doanh_so: 0, ship: 0, cogs: 0, ads: 0, mess: 0, gia_vnd: null };
+                d = { sp, ten: productName(sp, name), shops: new Set(), don: new Set(), units: 0, doanh_so: 0, ship: 0, cogs: 0, ads: 0, mess: 0, gia_vnd: null };
                 map.set(sp, d);
             }
             return d;
         };
 
-        for (const o of don) {
-            const dong = o.dong.length ? o.dong : [{ sp: "?:(đơn không có dòng hàng)", ten: "(đơn không có dòng hàng)", qty: 1, gia_vnd: null }];
-            const tongSl = dong.reduce((s, x) => s + (x.qty || 0), 0);
-            for (const x of dong) {
+        for (const o of orders) {
+            const lines = o.dong.length ? o.dong : [{ sp: "?:(đơn không có dòng hàng)", ten: "(đơn không có dòng hàng)", qty: 1, gia_vnd: null }];
+            const totalQty = lines.reduce((s, x) => s + (x.qty || 0), 0);
+            for (const x of lines) {
                 // Chia theo số lượng; đơn mà mọi dòng đều SL 0 thì chia đều.
-                const phan = tongSl > 0 ? (x.qty || 0) / tongSl : 1 / dong.length;
-                const d = lay(x.sp, x.ten);
+                const share = totalQty > 0 ? (x.qty || 0) / totalQty : 1 / lines.length;
+                const d = rowFor(x.sp, x.ten);
                 d.shops.add(o.shop);
                 d.don.add(o.key);
                 d.units += x.qty || 0;
-                d.doanh_so += o.vnd * phan;
-                d.ship += (o.ship || 0) * phan;
+                d.doanh_so += o.vnd * share;
+                d.ship += (o.ship || 0) * share;
                 if (x.gia_vnd !== null) { d.cogs += x.gia_vnd * (x.qty || 0); d.gia_vnd = x.gia_vnd; }
             }
         }
 
         // Tiền ads theo mã sản phẩm trong tên campaign — chỉ campaign của người trong team.
-        let adsKhongMa = 0, adsNgoaiTeam = 0;
+        let adsWithoutCode = 0, adsOutsideTeam = 0;
         for (const r of campRows as any[]) {
             const cn = String(r.campaign_name || "");
-            if (hep && !duocXem(campaignMarket(cn).market)) continue;
+            if (restricted && !canSee(campaignMarket(cn).market)) continue;
             const spend = Number(r.spend || 0);
-            if (!parseCampaign(cn)[1]) { adsNgoaiTeam += spend; continue; }
-            const ma = parseProductCode(cn);
-            if (!ma) { adsKhongMa += spend; continue; }
-            const d = lay(ma, ma);
+            if (!parseCampaign(cn)[1]) { adsOutsideTeam += spend; continue; }
+            const productCode = parseProductCode(cn);
+            if (!productCode) { adsWithoutCode += spend; continue; }
+            const d = rowFor(productCode, productCode);
             d.ads += spend;
             d.mess += Number(r.messages || 0);
         }
@@ -122,16 +122,16 @@ export async function GET(req: NextRequest) {
             lai: d.doanh_so - d.ads - d.ship - d.cogs,
         })).sort((a, b) => b.doanh_so - a.doanh_so || b.ads - a.ads);
 
-        const tong = rows.reduce((s, r) => ({
+        const total = rows.reduce((s, r) => ({
             orders: s.orders, units: s.units + r.units, doanh_so: s.doanh_so + r.doanh_so, ads: s.ads + r.ads,
             ship: s.ship + r.ship, cogs: s.cogs + r.cogs,
-        }), { orders: don.length, units: 0, doanh_so: 0, ads: 0, ship: 0, cogs: 0 });
+        }), { orders: orders.length, units: 0, doanh_so: 0, ads: 0, ship: 0, cogs: 0 });
 
         return NextResponse.json({
             from, to, rows,
-            total: { ...tong, ads_khong_ma: adsKhongMa, ads_ngoai_team: adsNgoaiTeam,
-                lai: tong.doanh_so - tong.ads - adsKhongMa - tong.ship - tong.cogs },
-            missing_costs: thieu,
+            total: { ...total, ads_khong_ma: adsWithoutCode, ads_ngoai_team: adsOutsideTeam,
+                lai: total.doanh_so - total.ads - adsWithoutCode - total.ship - total.cogs },
+            missing_costs: missingCosts,
             ship_basis,
         });
     } catch (e: any) {

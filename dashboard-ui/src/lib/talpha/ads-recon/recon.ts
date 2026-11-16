@@ -189,18 +189,18 @@ export function reconcileRows(
     const bankDates = bank.rows.map((r) => r.date).filter(Boolean).sort();
     const dates = [...bankDates, ...fb.rows.map((r) => r.date).filter(Boolean)].sort();
     const anchor = bankDates[0] || dates[0];
-    const ky = anchor ? isoWeek(anchor) : isoWeek(new Date().toISOString().slice(0, 10));
+    const period = anchor ? isoWeek(anchor) : isoWeek(new Date().toISOString().slice(0, 10));
 
     // Chỉ so với kỳ CŨ hơn: chạy lại một kỳ cũ mà lấy kỳ mới hơn làm "kỳ trước"
     // thì kết luận tăng/giảm sẽ ngược chiều.
     const earlier = (history || [])
-        .filter((h) => h.ky && h.ky < ky)
+        .filter((h) => h.ky && h.ky < period)
         .sort((x, y) => ((x.ky ?? "") < (y.ky ?? "") ? -1 : 1));
 
     const { alerts, summary } = buildAlerts({ fb, bank, match, cfg, roster, history: earlier });
 
     return {
-        ky,
+        ky: period,
         chay_luc: new Date().toISOString(),
         files: { fb: fb.meta.files, bank: bank.meta.files },
         summary,

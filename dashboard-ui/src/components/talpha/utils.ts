@@ -16,8 +16,8 @@ export type MarketPublic = {
 };
 let MARKETS: MarketPublic[] = [];
 export function setMarkets(list: MarketPublic[]) { MARKETS = list; }
-const timNuoc = (code?: string) => MARKETS.find((m) => m.code === code || m.key === code);
-function rateVnd(code?: string): number { return timNuoc(code)?.rate_vnd || 0; }
+const findMarket = (code?: string) => MARKETS.find((m) => m.code === code || m.key === code);
+function rateVnd(code?: string): number { return findMarket(code)?.rate_vnd || 0; }
 
 // Số chia tiền POS (X13) nay chỉ khai một chỗ: config/talpha_rules.json →
 // markets.*.pos_money_divisor, đọc qua `posMoneyDivisor()` trong lib/talpha/rules.ts.
@@ -28,7 +28,7 @@ function rateVnd(code?: string): number { return timNuoc(code)?.rate_vnd || 0; }
 /** Tên thị trường hiển thị từ shop_label. */
 export function marketName(code?: string): string {
     if (!code) return "Unknown";
-    return timNuoc(code)?.display || code;
+    return findMarket(code)?.display || code;
 }
 
 // ═══ Formatting ═══

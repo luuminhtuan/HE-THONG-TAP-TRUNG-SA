@@ -24,18 +24,18 @@ const PY = [process.env.TALPHA_PYTHON, path.join(RT, ".venv", "bin", "python"), 
 const SCRIPT = path.join(DIR, "format_all.py");
 const LOCK = path.join(DIR, ".lock");
 
-function pidSong(pid: number): boolean {
+function isPidAlive(pid: number): boolean {
     try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
 /** Giữ khoá chung với daily_guarded.sh. Khoá của tiến trình đã chết thì dọn, như script kia. */
-function layKhoa(): string | null {
+function acquireLock(): string | null {
     if (fs.existsSync(LOCK)) {
         let pid = 0;
         try { pid = parseInt(fs.readFileSync(path.join(LOCK, "pid"), "utf8").trim(), 10) || 0; } catch { /* chưa ghi pid */ }
-        if (pid && pidSong(pid)) return "Vòng ghi Sheet mỗi giờ đang chạy — đợi nó xong rồi bấm lại.";
-        const tuoiPhut = (Date.now() - fs.statSync(LOCK).mtimeMs) / 60000;
-        if (!pid && tuoiPhut < 45) return "Vòng ghi Sheet mỗi giờ đang khởi động — thử lại sau ít phút.";
+        if (pid && isPidAlive(pid)) return "Vòng ghi Sheet mỗi giờ đang chạy — đợi nó xong rồi bấm lại.";
+        const lockAgeMinutes = (Date.now() - fs.statSync(LOCK).mtimeMs) / 60000;
+        if (!pid && lockAgeMinutes < 45) return "Vòng ghi Sheet mỗi giờ đang khởi động — thử lại sau ít phút.";
         fs.rmSync(LOCK, { recursive: true, force: true });
     }
     try { fs.mkdirSync(LOCK); } catch { return "Vòng ghi Sheet mỗi giờ vừa bắt đầu — thử lại sau ít phút."; }
@@ -69,11 +69,11 @@ function pushLog(chunk: string) {
 function startLocalSpawn(): { started: boolean; error?: string; busy?: boolean } {
     const s = state();
     if (!fs.existsSync(SCRIPT)) return { started: false, error: `Không thấy script: ${SCRIPT}` };
-    const khoa = layKhoa();
-    if (khoa) return { started: false, error: khoa, busy: true };
+    const lockError = acquireLock();
+    if (lockError) return { started: false, error: lockError, busy: true };
     Object.assign(s, { running: true, startedAt: new Date().toISOString(), finishedAt: null,
         ok: null, exitCode: null, filesDone: 0, totalFiles: TOTAL_FILES, log: [], error: null });
-    const traKhoa = () => fs.rmSync(LOCK, { recursive: true, force: true });
+    const releaseLock = () => fs.rmSync(LOCK, { recursive: true, force: true });
     // TALPHA_REPO: bản chép runtime tìm repo qua biến này để phủ thị trường nhập ở /admin (04/11/2026)
     // — thiếu thì Sheet xuất bằng nút này thiếu nước thêm trên trang, khác Sheet của vòng :20.
     const proc = spawn(PY, ["-u", SCRIPT], {
@@ -82,8 +82,8 @@ function startLocalSpawn(): { started: boolean; error?: string; busy?: boolean }
     if (proc.pid) fs.writeFileSync(path.join(LOCK, "pid"), String(proc.pid));
     proc.stdout.on("data", (d) => pushLog(String(d)));
     proc.stderr.on("data", (d) => pushLog(String(d)));
-    proc.on("error", (e: any) => { traKhoa(); s.running = false; s.ok = false; s.error = e.message; s.finishedAt = new Date().toISOString(); });
-    proc.on("close", (code) => { traKhoa(); s.running = false; s.exitCode = code; s.ok = code === 0; s.finishedAt = new Date().toISOString(); });
+    proc.on("error", (e: any) => { releaseLock(); s.running = false; s.ok = false; s.error = e.message; s.finishedAt = new Date().toISOString(); });
+    proc.on("close", (code) => { releaseLock(); s.running = false; s.exitCode = code; s.ok = code === 0; s.finishedAt = new Date().toISOString(); });
     return { started: true };
 }
 

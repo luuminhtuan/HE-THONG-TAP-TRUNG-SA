@@ -35,22 +35,22 @@ export type WeshipPage = {
     pieces: string | null;
 };
 
-const THANG: Record<string, number> = {
+const MONTHS: Record<string, number> = {
     jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
 };
 
-const chu = (html: string) => html
+const stripHtml = (html: string) => html
     .replace(/<[^>]*>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&")
     .replace(/&#0?39;|&apos;/gi, "'").replace(/&quot;/gi, '"')
     .replace(/\s+/g, " ").trim();
 
-function lechPhut(tz: string): number {
+function offsetMinutes(tz: string): number {
     const m = /^([+-])(\d{2}):(\d{2})$/.exec(tz);
     if (!m) return 0;
     return (m[1] === "-" ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3]));
 }
 
-function gio(h: number, ap?: string): number {
+function hour24(h: number, ap?: string): number {
     const x = (ap || "").toUpperCase();
     if (x === "PM" && h < 12) return h + 12;
     if (x === "AM" && h === 12) return 0;
@@ -66,44 +66,44 @@ export function weshipTime(s: string | null | undefined, tz: string): string | n
     let y: number, mo: number, d: number, h: number, mi: number;
     let m = /(\d{1,2})\s+([A-Za-z]{3})[A-Za-z]*\s+(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i.exec(t);
     if (m) {
-        const thang = THANG[m[2].toLowerCase()];
-        if (thang === undefined) return null;
-        [y, mo, d] = [Number(m[3]), thang, Number(m[1])];
-        [h, mi] = [gio(Number(m[4]), m[6]), Number(m[5])];
+        const monthIdx = MONTHS[m[2].toLowerCase()];
+        if (monthIdx === undefined) return null;
+        [y, mo, d] = [Number(m[3]), monthIdx, Number(m[1])];
+        [h, mi] = [hour24(Number(m[4]), m[6]), Number(m[5])];
     } else {
         m = /(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)?/i.exec(t);
         if (!m) return null;
         [y, mo, d] = [Number(m[3]), Number(m[2]) - 1, Number(m[1])];
-        [h, mi] = [gio(Number(m[4]), m[6]), Number(m[5])];
+        [h, mi] = [hour24(Number(m[4]), m[6]), Number(m[5])];
     }
-    const ms = Date.UTC(y, mo, d, h, mi) - lechPhut(tz) * 60_000;
+    const ms = Date.UTC(y, mo, d, h, mi) - offsetMinutes(tz) * 60_000;
     return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 
 /** Đọc trang kết quả. Trang báo "Awb not found" → found=false. Trang lạ → NÉM lỗi. */
 export function parseWeshipPage(html: string, awb: string, tz: string): WeshipPage {
-    const rong: WeshipPage = { found: false, awb, ref: null, status_text: null, to_city: null, events: [], weight: null, pieces: null };
-    const coSo = /Tracking Number:/i.test(html);
-    if (!coSo) {
-        if (/Awb not found/i.test(html)) return rong;
+    const emptyPage: WeshipPage = { found: false, awb, ref: null, status_text: null, to_city: null, events: [], weight: null, pieces: null };
+    const hasTrackingNumber = /Tracking Number:/i.test(html);
+    if (!hasTrackingNumber) {
+        if (/Awb not found/i.test(html)) return emptyPage;
         throw new Error("trang WeShip không có kết quả lẫn thông báo 'Awb not found' — có thể trang đã đổi cấu trúc");
     }
     const ref = /\(Ref\s*:\s*([^)<]*)\)/i.exec(html)?.[1]?.trim() || null;
 
     const tbody = /<tbody>([\s\S]*?)<\/tbody>/i.exec(html)?.[1] || "";
     const o = [...tbody.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((x) => x[1]);
-    const status = o[2] ? chu(o[2]) || null : null;
-    const toCity = o[1] ? chu(/class="from-location">([\s\S]*?)<\/div>/i.exec(o[1])?.[1] || "") || null : null;
+    const status = o[2] ? stripHtml(o[2]) || null : null;
+    const toCity = o[1] ? stripHtml(/class="from-location">([\s\S]*?)<\/div>/i.exec(o[1])?.[1] || "") || null : null;
 
-    const bang = /class="status-table"[^>]*>([\s\S]*?)<\/table>/i.exec(html)?.[1] || "";
+    const historyTable = /class="status-table"[^>]*>([\s\S]*?)<\/table>/i.exec(html)?.[1] || "";
     const events: WeshipEvent[] = [];
-    for (const tr of bang.matchAll(/<tr>([\s\S]*?)<\/tr>/gi)) {
-        const td = [...tr[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((x) => chu(x[1]));
+    for (const tr of historyTable.matchAll(/<tr>([\s\S]*?)<\/tr>/gi)) {
+        const td = [...tr[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((x) => stripHtml(x[1]));
         if (td.length < 3) continue;       // dòng tiêu đề (th)
         events.push({ at: weshipTime(td[0], tz), location: td[1], activity: td[2] });
     }
 
-    const ct = [...html.matchAll(/class="shipment-details">([\s\S]*?)<\/div>/gi)].map((x) => chu(x[1]));
+    const ct = [...html.matchAll(/class="shipment-details">([\s\S]*?)<\/div>/gi)].map((x) => stripHtml(x[1]));
     if (!status && !events.length) throw new Error("trang WeShip có mã nhưng không đọc được trạng thái — có thể trang đã đổi cấu trúc");
     return { found: true, awb, ref, status_text: status, to_city: toCity, events, weight: ct[1] || null, pieces: ct[2] || null };
 }
@@ -137,9 +137,9 @@ export type WeshipTrack = {
  *     khi bảng History có mốc.
  */
 export function weshipTrack(page: WeshipPage, rules: StatusRule[]): WeshipTrack {
-    const moi = page.events[0];
-    const luat = mapWeshipStatus(page.status_text, rules) || mapWeshipStatus(moi?.activity, rules);
-    const status = luat?.status ?? null;
+    const latest = page.events[0];
+    const rule = mapWeshipStatus(page.status_text, rules) || mapWeshipStatus(latest?.activity, rules);
+    const status = rule?.status ?? null;
     let since: string | null = null;
     if (status) {
         for (const e of page.events) {
@@ -148,15 +148,15 @@ export function weshipTrack(page: WeshipPage, rules: StatusRule[]): WeshipTrack 
         }
     }
     const fail = page.events.filter((e) => mapWeshipStatus(e.activity, rules)?.status === "DeliveryFailure").length;
-    const lanThu = status === "DeliveryFailure" && fail > 1 ? ` (lần ${fail})` : "";
-    const goc = moi?.activity || page.status_text || "";
+    const attemptSuffix = status === "DeliveryFailure" && fail > 1 ? ` (lần ${fail})` : "";
+    const original = latest?.activity || page.status_text || "";
     return {
         status,
-        sub_status: luat?.sub_status ?? null,
-        status_time: since ?? moi?.at ?? null,
-        last_event_time: moi?.at ?? null,
-        last_event: luat ? `${luat.vi}${lanThu}${goc ? ` · “${goc}”` : ""}` : (goc || null),
-        raw_status: page.status_text || moi?.activity || null,
+        sub_status: rule?.sub_status ?? null,
+        status_time: since ?? latest?.at ?? null,
+        last_event_time: latest?.at ?? null,
+        last_event: rule ? `${rule.vi}${attemptSuffix}${original ? ` · “${original}”` : ""}` : (original || null),
+        raw_status: page.status_text || latest?.activity || null,
         fail_count: fail,
     };
 }
@@ -188,7 +188,7 @@ export type WeshipSaved = {
     raw_status?: string | null; fail_count?: number | null;
 };
 
-const isoNgay = (d?: string | null) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? `${d.slice(0, 10)}T00:00:00Z` : null);
+const toIsoMidnight = (d?: string | null) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? `${d.slice(0, 10)}T00:00:00Z` : null);
 
 /**
  * Đơn POS + trạng thái WeShip đã lưu → Shipment (khuôn chung của màn Theo dõi vận đơn).
@@ -202,12 +202,12 @@ const isoNgay = (d?: string | null) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? `${d
 export function posWeshipShipment(row: PosOrderRow, saved: WeshipSaved | undefined, marketer: string | null = null): Shipment {
     const awb = awbFromPartner(row.partner);
     const co = !!awb && !!saved && saved.source === "weship";
-    const ngayDon = row.order_date ? String(row.order_date).slice(0, 10) : null;
+    const orderDate = row.order_date ? String(row.order_date).slice(0, 10) : null;
     // POS ghi giờ UTC không kèm "Z" ("2026-09-28T08:00:37") — thêm vào, kẻo máy đọc thành giờ máy.
     const g = String(row.time_send_partner || "").trim();
-    const guiMs = g ? Date.parse(/Z$|[+-]\d{2}:?\d{2}$/.test(g) ? g : `${g}Z`) : NaN;
-    const guiLuc = Number.isFinite(guiMs) ? new Date(guiMs).toISOString() : null;
-    const moc = awb ? (guiLuc || isoNgay(ngayDon)) : isoNgay(ngayDon);
+    const sentMs = g ? Date.parse(/Z$|[+-]\d{2}:?\d{2}$/.test(g) ? g : `${g}Z`) : NaN;
+    const sentAt = Number.isFinite(sentMs) ? new Date(sentMs).toISOString() : null;
+    const anchor = awb ? (sentAt || toIsoMidnight(orderDate)) : toIsoMidnight(orderDate);
     const noi = [...new Set([row.district, row.province].map((x) => String(x || "").trim()).filter(Boolean))].join(", ");
     return {
         tracking: awb || `DON-${row.order_id ?? "?"}`,
@@ -215,7 +215,7 @@ export function posWeshipShipment(row: PosOrderRow, saved: WeshipSaved | undefin
         track17_code: awb,
         order_uid: null,
         order_id: String(row.order_id ?? ""),
-        order_date: ngayDon,
+        order_date: orderDate,
         customer: String(row.customer || ""),
         phone: String(row.phone || ""),
         store_name: "", store_code: "", ship_method: "",
@@ -224,15 +224,15 @@ export function posWeshipShipment(row: PosOrderRow, saved: WeshipSaved | undefin
         cod_local: Number(row.cod) || 0,
         status: co ? saved!.status : "InfoReceived",
         sub_status: co ? (saved!.sub_status ?? null) : null,
-        status_since: co ? (saved!.status_since ?? null) : moc,
-        last_event_time: co ? (saved!.last_event_time ?? null) : moc,
+        status_since: co ? (saved!.status_since ?? null) : anchor,
+        last_event_time: co ? (saved!.last_event_time ?? null) : anchor,
         last_event: co ? (saved!.last_event ?? null)
             : awb ? "Có mã AWB, chưa tra WeShip lần nào"
                 : `Chưa có mã vận đơn — POS: ${String(row.status_name || row.status_category || "?")}`,
         registered: co,
         source: co ? "weship" : null,
         raw_status: co ? (saved!.raw_status ?? null) : null,
-        ship_date: guiLuc ? guiLuc.slice(0, 10) : null,
+        ship_date: sentAt ? sentAt.slice(0, 10) : null,
         note: String(row.note || "").trim() || null,
         city: noi || null,
         address: String(row.address || "").replace(/\s+/g, " ").trim() || null,
@@ -259,12 +259,12 @@ export async function fetchWeship(
 export async function mapPool<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
     const out: R[] = new Array(items.length);
     let i = 0;
-    const tho = async () => {
+    const worker = async () => {
         while (i < items.length) {
             const k = i++;
             out[k] = await fn(items[k]);
         }
     };
-    await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, tho));
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, worker));
     return out;
 }

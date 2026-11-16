@@ -42,11 +42,11 @@ export async function getAccess(req: Request, session?: SessionLike): Promise<Ac
     return publicMode() ? fullAccess("public", "Chế độ mở") : null;
 }
 
-export const chuaDangNhap = () => NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
-export const khongDuQuyen = (error = "Tài khoản không có quyền xem mục này") => NextResponse.json({ error }, { status: 403 });
+export const unauthorized = () => NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
+export const forbidden = (error = "Tài khoản không có quyền xem mục này") => NextResponse.json({ error }, { status: 403 });
 
 /** Cho route: quyền của lượt gọi, hoặc phản hồi 401 trả thẳng. */
 export async function requireAccess(req: Request): Promise<{ a: Access; res: null } | { a: null; res: NextResponse }> {
     const a = await getAccess(req);
-    return a ? { a, res: null } : { a: null, res: chuaDangNhap() };
+    return a ? { a, res: null } : { a: null, res: unauthorized() };
 }

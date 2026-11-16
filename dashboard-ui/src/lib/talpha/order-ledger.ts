@@ -60,12 +60,12 @@ const CFG = (RULES as unknown as {
 export const OVERDUE_DAYS = Number(CFG.pending_alert_days ?? 30);
 export const TOLERANCE_TWD = Number(CFG.amount_tolerance_local ?? 1);
 /** NAZA gửi sao kê đều đặn mỗi 7 ngày (đo trên 8 kỳ: 24/07 → 11/09/2026). */
-export const CHU_KY_SAO_KE_NGAY = Number(CFG.statement_cycle_days ?? 7);
+export const STATEMENT_CYCLE_DAYS = Number(CFG.statement_cycle_days ?? 7);
 
-const NGAY = 86_400_000;
-const LA_NGAY = (s?: string | null): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
-const themNgay = (ngay: string, n: number) => new Date(Date.parse(`${ngay}T00:00:00Z`) + n * NGAY).toISOString().slice(0, 10);
-const cachNgay = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / NGAY);
+const DAY_MS = 86_400_000;
+const IS_ISO_DATE = (s?: string | null): s is string => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+const addDays = (date: string, n: number) => new Date(Date.parse(`${date}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
+const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / DAY_MS);
 
 /**
  * Tới kỳ sao kê mới mà chưa thấy file — sao kê là thứ DUY NHẤT phải tải lên bằng tay
@@ -75,20 +75,20 @@ const cachNgay = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00
  * `an` = số ngày ân hạn: NAZA gửi trễ một ngày là chuyện thường, kêu ngay thì nhàm.
  * Chưa có kỳ nào (mới dựng) → không kêu: không biết chu kỳ bắt đầu từ đâu.
  */
-export function saoKeTreHan(
-    ngayCacKy: (string | null | undefined)[],
+export function statementOverdue(
+    periodEndDates: (string | null | undefined)[],
     homNay: string,
     opts: { chuKy?: number; an?: number } = {},
 ): { tre: boolean; tre_ngay: number; ky_gan_nhat: string | null; du_kien: string | null } {
-    const chuKy = opts.chuKy ?? CHU_KY_SAO_KE_NGAY;
-    const an = opts.an ?? 1;
-    const ngay = ngayCacKy.filter(LA_NGAY).sort();
-    const ganNhat = ngay.length ? ngay[ngay.length - 1] : null;
-    if (!ganNhat || !LA_NGAY(homNay)) return { tre: false, tre_ngay: 0, ky_gan_nhat: ganNhat, du_kien: null };
+    const cycleDays = opts.chuKy ?? STATEMENT_CYCLE_DAYS;
+    const graceDays = opts.an ?? 1;
+    const sortedDates = periodEndDates.filter(IS_ISO_DATE).sort();
+    const latest = sortedDates.length ? sortedDates[sortedDates.length - 1] : null;
+    if (!latest || !IS_ISO_DATE(homNay)) return { tre: false, tre_ngay: 0, ky_gan_nhat: latest, du_kien: null };
 
-    const duKien = themNgay(ganNhat, chuKy);
-    const treNgay = cachNgay(homNay, duKien);
-    return { tre: treNgay > an, tre_ngay: Math.max(treNgay, 0), ky_gan_nhat: ganNhat, du_kien: duKien };
+    const expected = addDays(latest, cycleDays);
+    const daysLate = dayDiff(homNay, expected);
+    return { tre: daysLate > graceDays, tre_ngay: Math.max(daysLate, 0), ky_gan_nhat: latest, du_kien: expected };
 }
 
 /**
@@ -100,11 +100,11 @@ export function saoKeTreHan(
  * chưa ghi ngày) thì coi như lên đơn `homNay` — đơn mới nhất, không được rơi khỏi khoảng có hôm nay.
  * `tu` / `den` rỗng hoặc sai dạng = không chặn phía đó.
  */
-export function locTheoNgayLenDon<T extends { order_date?: string | null; ship_date?: string | null }>(
-    rows: T[], tu: string | null | undefined, den: string | null | undefined, homNay: string,
+export function filterByOrderDate<T extends { order_date?: string | null; ship_date?: string | null }>(
+    rows: T[], fromDate: string | null | undefined, toDate: string | null | undefined, homNay: string,
 ): T[] {
-    const a = LA_NGAY(tu) ? tu : null;
-    const b = LA_NGAY(den) ? den : null;
+    const a = IS_ISO_DATE(fromDate) ? fromDate : null;
+    const b = IS_ISO_DATE(toDate) ? toDate : null;
     if (!a && !b) return rows;
     return rows.filter((r) => {
         const d = String(r.order_date || r.ship_date || homNay).slice(0, 10);
@@ -128,9 +128,9 @@ export const FALLBACK_RMB_VND = Number((RULES as unknown as { cost_rate_rmb_vnd?
  * thì ngày gửi hãng, cùng ngày thì mã đơn lớn trước (T1467 trên T1465). Đơn không có ngày xuống cuối.
  * Trả MẢNG MỚI, không sửa mảng truyền vào.
  */
-export function xepMoiTruoc<T extends { order_date?: string | null; ship_date?: string | null; order_no?: string | null }>(ds: T[]): T[] {
-    const ngay = (x: T) => String(x.order_date || x.ship_date || "");
-    return [...ds].sort((a, b) => ngay(b).localeCompare(ngay(a))
+export function sortNewestFirst<T extends { order_date?: string | null; ship_date?: string | null; order_no?: string | null }>(ds: T[]): T[] {
+    const date = (x: T) => String(x.order_date || x.ship_date || "");
+    return [...ds].sort((a, b) => date(b).localeCompare(date(a))
         || String(b.order_no || "").localeCompare(String(a.order_no || ""), "vi", { numeric: true }));
 }
 
@@ -156,13 +156,13 @@ export function orderKey(v?: string | null): string {
  * Mã vận đơn Sheet ghi cho loại đơn này thì không tin được: cả ba đơn giao lại
  * của kỳ 9.11 đều ghi sai, T1467 còn chép nhầm mã của T1465.
  */
-export function maGocGiaoLai(orderNo?: string | null): string {
+export function redeliveryOrigin(orderNo?: string | null): string {
     const m = String(orderNo ?? "").match(/\(\s*([0-9A-Z]+)\s*-\s*Z\s*\)/i);
     return m ? trackKey(m[1]) : "";
 }
 
 /** Phía NAZA của cùng loại đơn: "7564042426-Z" → "7564042426". */
-export function maGocNaza(orderNo?: string | null): string {
+export function nazaRedeliveryOrigin(orderNo?: string | null): string {
     const m = String(orderNo ?? "").trim().replace(/^TAIWAN[-\s]*/i, "").match(/^([0-9A-Z]+)\s*-\s*Z$/i);
     return m ? trackKey(m[1]) : "";
 }
@@ -326,34 +326,34 @@ export function buildLedger(
 
     const paidByTrack = new Map<string, PaidLine>();
     const paidByOrder = new Map<string, PaidLine>();
-    const paidByMaGoc = new Map<string, PaidLine>();
+    const paidByOrigin = new Map<string, PaidLine>();
     for (const p of paid) {
         const t = trackKey(p.tracking);
         if (t && !paidByTrack.has(t)) paidByTrack.set(t, p);
         const o = orderKey(p.order_no);
         if (o && !paidByOrder.has(o)) paidByOrder.set(o, p);
-        const g = maGocNaza(p.order_no);
-        if (g && !paidByMaGoc.has(g)) paidByMaGoc.set(g, p);
+        const g = nazaRedeliveryOrigin(p.order_no);
+        if (g && !paidByOrigin.has(g)) paidByOrigin.set(g, p);
     }
     const feeByTrack = new Map<string, FeeLine>();
     const feeByOrder = new Map<string, FeeLine>();
-    const feeByMaGoc = new Map<string, FeeLine>();
+    const feeByOrigin = new Map<string, FeeLine>();
     for (const f of fees) {
         const t = trackKey(f.tracking);
         if (t && !feeByTrack.has(t)) feeByTrack.set(t, f);
         const o = orderKey(f.order_no);
         if (o && !feeByOrder.has(o)) feeByOrder.set(o, f);
-        const g = maGocNaza(f.order_no);
-        if (g && !feeByMaGoc.has(g)) feeByMaGoc.set(g, f);
+        const g = nazaRedeliveryOrigin(f.order_no);
+        if (g && !feeByOrigin.has(g)) feeByOrigin.set(g, f);
     }
 
     const tks = orders.map((o) => trackKey(o.tracking));
     const oks = orders.map((o) => orderKey(o.order_no));
     // Mã vận đơn mà nhiều đơn trong sổ cùng mang — Sheet gõ nhầm mã của đơn bên
     // cạnh. Với những mã này, mã vận đơn một mình không nói được tiền của đơn nào.
-    const soDonMang = new Map<string, number>();
-    for (const t of tks) if (t) soDonMang.set(t, (soDonMang.get(t) || 0) + 1);
-    const maChung = (t: string) => (soDonMang.get(t) || 0) > 1;
+    const ordersPerTracking = new Map<string, number>();
+    for (const t of tks) if (t) ordersPerTracking.set(t, (ordersPerTracking.get(t) || 0) + 1);
+    const isSharedTracking = (t: string) => (ordersPerTracking.get(t) || 0) > 1;
 
     // GHÉP BA LƯỢT, không phải một vòng lặp.
     //
@@ -372,8 +372,8 @@ export function buildLedger(
     const matched = new Map<number, { line: PaidLine; how: LedgerRow["matched_by"] }>();
 
     orders.forEach((o, i) => {
-        const g = maGocGiaoLai(o.order_no);
-        const p = g ? paidByMaGoc.get(g) : undefined;
+        const g = redeliveryOrigin(o.order_no);
+        const p = g ? paidByOrigin.get(g) : undefined;
         if (p && !claimed.has(p)) { claimed.add(p); matched.set(i, { line: p, how: "order_id_giao_lai" }); }
     });
     orders.forEach((o, i) => {
@@ -383,10 +383,10 @@ export function buildLedger(
         // Mã nhiều đơn cùng mang thì mã đơn NAZA ghi chỉ ra đơn nào đúng. Không
         // đơn nào trùng mã đơn thì giữ lối cũ: đơn đứng trước nhận.
         let j = i;
-        if (maChung(tks[i])) {
+        if (isSharedTracking(tks[i])) {
             const k = orderKey(p.order_no);
-            const dung = orders.findIndex((_, x) => !matched.has(x) && tks[x] === tks[i] && oks[x] === k);
-            if (dung >= 0) j = dung;
+            const correctIdx = orders.findIndex((_, x) => !matched.has(x) && tks[x] === tks[i] && oks[x] === k);
+            if (correctIdx >= 0) j = correctIdx;
         }
         claimed.add(p); matched.set(j, { line: p, how: "tracking" });
     });
@@ -400,7 +400,7 @@ export function buildLedger(
     const rows: LedgerRow[] = [];
 
     orders.forEach((o, idx) => {
-        const tk = tks[idx];
+        const trackingKey = tks[idx];
         const ok = oks[idx];
 
         // ── tiền vào ───────────────────────────────────────────────────
@@ -412,10 +412,10 @@ export function buildLedger(
         // Cùng thứ tự như tiền vào: đơn giao lại tìm theo mã gốc trước. Mã vận
         // đơn nhiều đơn cùng mang thì dòng phí phải đúng mã đơn mới nhận — không
         // thì một khoản phí bị cộng cho cả hai đơn.
-        const g = maGocGiaoLai(o.order_no);
-        const feeTk = tk ? feeByTrack.get(tk) : undefined;
-        const fee = (g ? feeByMaGoc.get(g) : undefined)
-            || (feeTk && (!maChung(tk) || orderKey(feeTk.order_no) === ok) ? feeTk : undefined)
+        const g = redeliveryOrigin(o.order_no);
+        const trackingFee = trackingKey ? feeByTrack.get(trackingKey) : undefined;
+        const fee = (g ? feeByOrigin.get(g) : undefined)
+            || (trackingFee && (!isSharedTracking(trackingKey) || orderKey(trackingFee.order_no) === ok) ? trackingFee : undefined)
             || (ok ? feeByOrder.get(ok) : undefined);
 
         // ── quy đổi ────────────────────────────────────────────────────
@@ -459,8 +459,8 @@ export function buildLedger(
         // ── đèn ────────────────────────────────────────────────────────
         const age = daysBetween(o.order_date || o.ship_date, opts.asOf);
         // Bao nhiêu kỳ sao kê đã chốt SAU khi đơn này giao xong.
-        const dGiao = o.ship_date || o.order_date || "";
-        const kyDaQua = dGiao ? periodEnds.filter((d) => d > dGiao).length : 0;
+        const shipDate = o.ship_date || o.order_date || "";
+        const periodsPassed = shipDate ? periodEnds.filter((d) => d > shipDate).length : 0;
         const diff = hit ? hit.amount_twd - o.cod_twd : null;
         const delivered = o.status === "Delivered";
         // Ba đường chết: hoàn về kho, huỷ đơn, và hàng hoàn quá 30 ngày bị tiêu huỷ.
@@ -481,16 +481,16 @@ export function buildLedger(
             note = tick.tru_tien_hang
                 ? "Xong sạch — tiền đã về, đã trừ phí và giá vốn."
                 : "Tiền đã về và khớp. Chưa trừ được giá vốn vì thiếu khai giá.";
-        } else if (delivered && kyDaQua >= 2) {
+        } else if (delivered && periodsPassed >= 2) {
             light = "do";
-            note = `Đã qua ${kyDaQua} kỳ sao kê mà đơn này vẫn chưa được trả tiền — phải đòi.`;
+            note = `Đã qua ${periodsPassed} kỳ sao kê mà đơn này vẫn chưa được trả tiền — phải đòi.`;
         } else if (delivered && !periodEnds.length && age !== null && age > overdue) {
             // Chưa tải bản sao kê nào thì không đếm kỳ được — lùi về đếm ngày.
             light = "do";
             note = `Đã giao ${age} ngày mà tiền chưa về. (Chưa có sao kê nào để đếm kỳ.)`;
         } else if (delivered) {
             light = "vang";
-            note = kyDaQua === 1
+            note = periodsPassed === 1
                 ? "Đã qua 1 kỳ sao kê chưa thấy — theo dõi, kỳ sau chưa có thì đòi."
                 : "Đã giao, tiền chưa về — còn trong nhịp thanh toán bình thường.";
         }
@@ -503,7 +503,7 @@ export function buildLedger(
             order_date: o.order_date || "",
             ship_date: o.ship_date || "",
             age_days: age,
-            ky_da_qua: kyDaQua,
+            ky_da_qua: periodsPassed,
             ship_method: o.ship_method || "",
             sku: o.sku || "",
             product_codes: codes,

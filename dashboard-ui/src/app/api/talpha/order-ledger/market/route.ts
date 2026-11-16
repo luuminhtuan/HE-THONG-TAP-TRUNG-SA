@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { MARKETS_PUBLIC, PHONE_RULES } from "@/lib/talpha/rules";
 import { buildAlerts, trackMarket, TRACK_MARKETS } from "@/lib/talpha/tracking";
-import { loadMarketShipments, nhanNguonDoiTac } from "@/lib/talpha/tracking-market";
+import { loadMarketShipments, partnerSourceLabel } from "@/lib/talpha/tracking-market";
 import { buildMarketLedger, type ProductInfo } from "@/lib/talpha/market-ledger";
-import { homNayVN, locTheoNgayLenDon } from "@/lib/talpha/order-ledger";
+import { homNayVN, filterByOrderDate } from "@/lib/talpha/order-ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +27,7 @@ export const dynamic = "force-dynamic";
 type Empty = { registered: Record<string, never>; statuses: Record<string, unknown>; last_sync?: { at: string; ok: boolean } };
 
 /** Hàng của từng đơn. Đọc hỏng thì trả rỗng kèm lời báo — sổ vẫn hiện đơn, chỉ thiếu cột hàng. */
-async function docHang(code: string, partnerMarket: string | null): Promise<{ map: Map<string, ProductInfo>; loi: string | null }> {
+async function loadOrderProducts(code: string, partnerMarket: string | null): Promise<{ map: Map<string, ProductInfo>; loi: string | null }> {
     const map = new Map<string, ProductInfo>();
     try {
         if (partnerMarket) {
@@ -49,17 +49,17 @@ async function docHang(code: string, partnerMarket: string | null): Promise<{ ma
                  ORDER BY i.order_id, i.product_name`,
                 { m: code },
             );
-            const gop = new Map<string, { ten: string[]; sl: number }>();
+            const merged = new Map<string, { ten: string[]; sl: number }>();
             for (const r of rows) {
                 const k = String(r.order_id || "");
-                const g = gop.get(k) || { ten: [], sl: 0 };
-                const sl = Number(r.quantity) || 0;
-                const ten = [r.product_name, r.variation_name].filter(Boolean).join(" · ") || "(không tên)";
-                g.ten.push(sl > 1 ? `${ten} ×${sl}` : ten);
-                g.sl += sl;
-                gop.set(k, g);
+                const g = merged.get(k) || { ten: [], sl: 0 };
+                const qty = Number(r.quantity) || 0;
+                const label = [r.product_name, r.variation_name].filter(Boolean).join(" · ") || "(không tên)";
+                g.ten.push(qty > 1 ? `${label} ×${qty}` : label);
+                g.sl += qty;
+                merged.set(k, g);
             }
-            for (const [k, g] of gop) map.set(k, { sku: g.ten.join(", "), quantity: g.sl || null });
+            for (const [k, g] of merged) map.set(k, { sku: g.ten.join(", "), quantity: g.sl || null });
         }
         return { map, loi: null };
     } catch (e) {
@@ -80,22 +80,22 @@ export async function GET(req: NextRequest) {
     try {
         const { shipments, store, lastImport } = await loadMarketShipments(tm, (): Empty => ({ registered: {}, statuses: {} }));
         const alerts = buildAlerts(shipments, new Date(), { staleDays: tm.stale_days });
-        const hang = await docHang(code, tm.source === "partner" ? tm.partner_market : null);
+        const products = await loadOrderProducts(code, tm.source === "partner" ? tm.partner_market : null);
         const sp = req.nextUrl.searchParams;
-        const trongKhoang = locTheoNgayLenDon(shipments, sp.get("from"), sp.get("to"), homNayVN());
-        const rows = buildMarketLedger(trongKhoang, hang.map, alerts, {
+        const inRange = filterByOrderDate(shipments, sp.get("from"), sp.get("to"), homNayVN());
+        const rows = buildMarketLedger(inRange, products.map, alerts, {
             rateVnd: m.rate_vnd,
             phone: PHONE_RULES[code] ?? null,
             carrier: tm.provider === "weship" ? "WeShip" : undefined,
             currency: m.currency,
         });
-        const laPos = tm.source === "pos";
+        const isPos = tm.source === "pos";
         return NextResponse.json({
             market: { code: m.code, display: m.display, currency: m.currency, symbol: m.symbol, rate_vnd: m.rate_vnd },
-            nguon: laPos
+            nguon: isPos
                 ? { nhan: "Đơn POS + trạng thái tra ở WeShip", cap_nhat: store.last_sync?.ok ? store.last_sync.at : null, loai: "tra" }
-                : { nhan: nhanNguonDoiTac(shipments, store as { last_sync?: { register_rejected?: number } }), cap_nhat: lastImport, loai: "nap" },
-            canh_bao: hang.loi,
+                : { nhan: partnerSourceLabel(shipments, store as { last_sync?: { register_rejected?: number } }), cap_nhat: lastImport, loai: "nap" },
+            canh_bao: products.loi,
             rows,
         });
     } catch (e) {

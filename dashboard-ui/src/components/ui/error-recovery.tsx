@@ -22,8 +22,8 @@
 import { useEffect, useState } from "react";
 
 /** Khoá chống tải lại vô tận: chỉ cho phép một lần tự cứu trong 30 giây. */
-const KHOA = "talpha:tu-tai-lai-luc";
-const CACH_NHAU_MS = 30_000;
+const RELOAD_KEY = "talpha:tu-tai-lai-luc";
+const MIN_RELOAD_INTERVAL_MS = 30_000;
 
 /**
  * Lỗi do trang đang chạy bản build CŨ, sau khi máy chủ đã deploy bản mới.
@@ -34,7 +34,7 @@ const CACH_NHAU_MS = 30_000;
  *     Next.js ghi thêm "This request might be from an older or newer
  *     deployment"). Log máy chủ ngày 11–12/09 có 92 lượt đúng lỗi này.
  */
-function laBanCu(e: Error & { digest?: string }): boolean {
+function isStaleBuild(e: Error & { digest?: string }): boolean {
     const s = `${e?.name || ""} ${e?.message || ""}`;
     return /ChunkLoadError|Loading chunk|Loading CSS chunk|dynamically imported module|Importing a module script failed|Failed to find Server Action|older or newer deployment|unexpected response was received from the server/i.test(s);
 }
@@ -50,36 +50,36 @@ function laBanCu(e: Error & { digest?: string }): boolean {
  * nữa. Còn thấy lỗi này nghĩa là người dùng ĐÃ TỰ bật dịch cho trang — phải nói
  * ra, chứ tải lại trang bao nhiêu lần cũng vậy.
  */
-function laDoDichTrang(e: Error): boolean {
+function isPageTranslated(e: Error): boolean {
     const s = `${e?.name || ""} ${e?.message || ""}`;
     return /NotFoundError/i.test(s)
         && /removeChild|insertBefore|The node to be removed|không phải là con/i.test(s);
 }
 
-function docKhoa(): number {
-    try { return Number(sessionStorage.getItem(KHOA) || 0); } catch { return 0; }
+function readLastReload(): number {
+    try { return Number(sessionStorage.getItem(RELOAD_KEY) || 0); } catch { return 0; }
 }
-function ghiKhoa(t: number) {
-    try { sessionStorage.setItem(KHOA, String(t)); } catch { /* chế độ ẩn danh — bỏ qua */ }
+function writeLastReload(t: number) {
+    try { sessionStorage.setItem(RELOAD_KEY, String(t)); } catch { /* chế độ ẩn danh — bỏ qua */ }
 }
 
 export default function ErrorRecovery({ error, reset }: { error: Error & { digest?: string }; reset?: () => void }) {
     // "cuu" = đang tự tải lại, chỉ hiện dòng chờ thay vì màn báo lỗi đầy đủ.
-    const [dangCuu, setDangCuu] = useState(false);
+    const [reloading, setReloading] = useState(false);
 
     useEffect(() => {
         console.error("[TALPHA] lỗi phía máy khách:", error);
         // Lỗi do dịch trang thì KHÔNG tự tải lại: tiện ích sẽ dịch lại và lỗi
         // tiếp: quay vòng vô ích. Phải hiện hướng dẫn tắt dịch.
-        if (laDoDichTrang(error) || !laBanCu(error)) return;
+        if (isPageTranslated(error) || !isStaleBuild(error)) return;
         const now = Date.now();
-        if (now - docKhoa() < CACH_NHAU_MS) return;   // vừa thử rồi, đừng quay vòng
-        ghiKhoa(now);
-        setDangCuu(true);
+        if (now - readLastReload() < MIN_RELOAD_INTERVAL_MS) return;   // vừa thử rồi, đừng quay vòng
+        writeLastReload(now);
+        setReloading(true);
         window.location.reload();
     }, [error]);
 
-    if (dangCuu) {
+    if (reloading) {
         return (
             <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-8 text-center">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
@@ -88,24 +88,24 @@ export default function ErrorRecovery({ error, reset }: { error: Error & { diges
         );
     }
 
-    const banCu = laBanCu(error);
-    const doDich = laDoDichTrang(error);
+    const staleBuild = isStaleBuild(error);
+    const translated = isPageTranslated(error);
 
-    const tieuDe = doDich ? "Trang đang bị dịch tự động"
-        : banCu ? "Trang đang chạy bản cũ"
+    const title = translated ? "Trang đang bị dịch tự động"
+        : staleBuild ? "Trang đang chạy bản cũ"
         : "Màn hình này gặp lỗi";
 
-    const loiKhuyen = doDich
+    const advice = translated
         ? "Google Dịch (hoặc một tiện ích tương tự) đang sửa chữ trên trang, và việc đó làm màn hình sập. Bấm chuột phải trong trang → bỏ chọn Dịch sang tiếng Việt; hoặc bấm biểu tượng dịch trên thanh địa chỉ → Không bao giờ dịch trang này. Dashboard đã là tiếng Việt nên không cần dịch."
-        : banCu
+        : staleBuild
         ? "Dashboard đã được cập nhật trong lúc tab này đang mở. Tải lại trang là xong — dữ liệu không mất gì."
         : "Phần còn lại của dashboard vẫn dùng được. Thử lại màn hình này, hoặc tải lại trang.";
 
     return (
         <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-8">
             <div className="w-full max-w-xl rounded-xl border border-rose-300 bg-rose-50/60 p-5 dark:border-rose-500/30 dark:bg-rose-500/5">
-                <h2 className="mb-1 text-base font-semibold text-rose-700 dark:text-rose-400">{tieuDe}</h2>
-                <p className="mb-3 text-sm text-muted-foreground">{loiKhuyen}</p>
+                <h2 className="mb-1 text-base font-semibold text-rose-700 dark:text-rose-400">{title}</h2>
+                <p className="mb-3 text-sm text-muted-foreground">{advice}</p>
 
                 {/* Nội dung lỗi để dán vào tin nhắn báo lỗi — không bắt người dùng đi mở
                     bảng điều khiển trình duyệt mới biết chuyện gì xảy ra. */}

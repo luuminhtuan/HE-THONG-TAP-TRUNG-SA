@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { RefreshCw, AlertTriangle, Store, PackageX, Clock, Download, Upload, FileSpreadsheet, ShieldAlert, Copy, Phone, Truck } from "lucide-react";
 import TabSkeleton, { ErrorState } from "@/components/ui/tab-skeleton";
-import { useThamSoUrl } from "../url-state";
+import { useUrlParam } from "../url-state";
 import { formatNumber, cn } from "../utils";
 import WaLink from "@/components/talpha/wa-link";
 
@@ -35,16 +35,16 @@ type Alert = {
 
 /** Mã khách đọc cho nhân viên cửa hàng = mã TRACKING, không phải store_code (mã cửa
  *  hàng — sai tới 30/09/2026). Máy chủ tính sẵn pickup_code; thiếu thì tự tính y hệt. */
-const maLayHang = (s: Shipment) =>
+const getPickupCode = (s: Shipment) =>
     String(s.pickup_code || s.track17_code || s.tracking || "").trim().replace(/^73N/i, "");
 
 /** Tên cửa hàng cho người không đọc tiếng Trung: thêm chuỗi (7-ELEVEN / FamilyMart)
  *  theo kênh giao, trừ khi tên đã có sẵn ("全家新城康樂店"). */
-function tenCuaHang(s: Shipment): string {
-    const ten = String(s.store_name || "");
-    const kenh = String(s.ship_method || "");
-    const chuoi = /7.?ELEVEN|7-11|711/i.test(kenh) ? "7-ELEVEN" : /FAMILY|全家/i.test(kenh) ? "FamilyMart" : "";
-    return chuoi && !/全家|7-?11|ELEVEN|FAMILY/i.test(ten) ? `${chuoi} ${ten}` : ten;
+function storeDisplayName(s: Shipment): string {
+    const name = String(s.store_name || "");
+    const channel = String(s.ship_method || "");
+    const chain = /7.?ELEVEN|7-11|711/i.test(channel) ? "7-ELEVEN" : /FAMILY|全家/i.test(channel) ? "FamilyMart" : "";
+    return chain && !/全家|7-?11|ELEVEN|FAMILY/i.test(name) ? `${chain} ${name}` : name;
 }
 
 /**
@@ -64,41 +64,41 @@ function tenCuaHang(s: Shipment): string {
  *    thì nói thẳng. Bot biết chắc ai đã nhắn (sổ nhắc); ở đây không có sổ nên dùng
  *    đúng luật dự phòng của bot: hàng nằm từ 2 ngày trở lên = đã nhắn lúc mới tới.
  */
-function soanTin(s: Shipment, han: { ngay: number | null; conLai: number | null }, lang: "en" | "vi" = "en"): string | null {
+function buildPickupMessage(s: Shipment, timing: { ngay: number | null; conLai: number | null }, lang: "en" | "vi" = "en"): string | null {
     if (!s.store_name) return null;
     const vi = lang === "vi";
-    const ten = s.customer || (vi ? "bạn" : "there");
-    const ma = maLayHang(s);
-    const cho = `${tenCuaHang(s)}${ma ? (vi ? ` (mã lấy hàng ${ma})` : ` (pickup code ${ma})`) : ""}`;
-    const { ngay, conLai } = han;
-    const cuoi = conLai != null && conLai <= 0;
-    const soNgay = (n: number) => (vi ? `${n} ngày` : `${n} day${n === 1 ? "" : "s"}`);
-    if (ngay != null && ngay >= 2) {
+    const name = s.customer || (vi ? "bạn" : "there");
+    const pickupCode = getPickupCode(s);
+    const place = `${storeDisplayName(s)}${pickupCode ? (vi ? ` (mã lấy hàng ${pickupCode})` : ` (pickup code ${pickupCode})`) : ""}`;
+    const { ngay: days, conLai: daysLeft } = timing;
+    const isLastDay = daysLeft != null && daysLeft <= 0;
+    const daysText = (n: number) => (vi ? `${n} ngày` : `${n} day${n === 1 ? "" : "s"}`);
+    if (days != null && days >= 2) {
         if (vi) {
-            const lau = `hàng của bạn đã nằm ở cửa hàng ${cho} ${soNgay(ngay)} rồi mà vẫn chưa được lấy!`;
-            const hanChu = cuoi ? "Hôm nay là NGÀY CUỐI để lấy hàng — hôm nay không lấy là hàng bị trả về. Bạn nhớ ghé lấy ngay trong hôm nay nhé!"
-                : conLai === 1 ? "Mai là ngày cuối để lấy hàng, quá hạn hàng sẽ bị trả về. Bạn ghé lấy sớm nhất có thể nhé!"
+            const overdueText = `hàng của bạn đã nằm ở cửa hàng ${place} ${daysText(days)} rồi mà vẫn chưa được lấy!`;
+            const deadlineText = isLastDay ? "Hôm nay là NGÀY CUỐI để lấy hàng — hôm nay không lấy là hàng bị trả về. Bạn nhớ ghé lấy ngay trong hôm nay nhé!"
+                : daysLeft === 1 ? "Mai là ngày cuối để lấy hàng, quá hạn hàng sẽ bị trả về. Bạn ghé lấy sớm nhất có thể nhé!"
                     : "Cửa hàng chỉ giữ hàng thêm vài ngày nữa là trả về. Bạn ghé lấy sớm nhất có thể nhé!";
-            return `Chào ${ten}, nhắc bạn lần nữa: ${lau} ${hanChu} Có gì thắc mắc bạn cứ nhắn lại cho shop nhé. Cảm ơn bạn!`;
+            return `Chào ${name}, nhắc bạn lần nữa: ${overdueText} ${deadlineText} Có gì thắc mắc bạn cứ nhắn lại cho shop nhé. Cảm ơn bạn!`;
         }
-        const lau = `your parcel has been waiting at ${cho} for ${soNgay(ngay)} and hasn't been picked up yet!`;
-        const hanChu = cuoi ? "Today is the LAST DAY to pick it up — if it's not collected today, it will be returned. Please make sure to pick it up today!"
-            : conLai === 1 ? "Tomorrow is the last day to pick it up, after that it will be returned. Please pick it up as soon as possible!"
+        const overdueText = `your parcel has been waiting at ${place} for ${daysText(days)} and hasn't been picked up yet!`;
+        const deadlineText = isLastDay ? "Today is the LAST DAY to pick it up — if it's not collected today, it will be returned. Please make sure to pick it up today!"
+            : daysLeft === 1 ? "Tomorrow is the last day to pick it up, after that it will be returned. Please pick it up as soon as possible!"
                 : "The store will only keep it for a few more days before sending it back. Please pick it up as soon as possible!";
-        return `Hi ${ten}, this is another reminder: ${lau} ${hanChu} If you have any questions, just reply to this message. Thank you!`;
+        return `Hi ${name}, this is another reminder: ${overdueText} ${deadlineText} If you have any questions, just reply to this message. Thank you!`;
     }
     if (vi) {
-        const toi = ngay ? `hàng của bạn đã tới cửa hàng ${cho} được ${soNgay(ngay)} rồi`
-            : ngay === 0 ? `hàng của bạn đã tới cửa hàng ${cho} hôm nay` : `hàng của bạn đã tới cửa hàng ${cho}`;
-        const hanChu = cuoi ? "Hôm nay là ngày cuối để lấy hàng, phiền bạn ghé cửa hàng lấy trong hôm nay nhé, không thì hàng sẽ bị trả về."
+        const arrivedText = days ? `hàng của bạn đã tới cửa hàng ${place} được ${daysText(days)} rồi`
+            : days === 0 ? `hàng của bạn đã tới cửa hàng ${place} hôm nay` : `hàng của bạn đã tới cửa hàng ${place}`;
+        const deadlineText = isLastDay ? "Hôm nay là ngày cuối để lấy hàng, phiền bạn ghé cửa hàng lấy trong hôm nay nhé, không thì hàng sẽ bị trả về."
             : "Phiền bạn tranh thủ ghé cửa hàng lấy nhé, quá hạn hàng sẽ bị trả về.";
-        return `Chào ${ten}, ${toi}. ${hanChu} Cảm ơn bạn!`;
+        return `Chào ${name}, ${arrivedText}. ${deadlineText} Cảm ơn bạn!`;
     }
-    const toi = ngay ? `your parcel arrived at ${cho} ${soNgay(ngay)} ago`
-        : ngay === 0 ? `your parcel arrived at ${cho} today` : `your parcel has arrived at ${cho}`;
-    const hanChu = cuoi ? "Today is the last day to pick it up, so please drop by the store today — otherwise it will be returned."
+    const arrivedText = days ? `your parcel arrived at ${place} ${daysText(days)} ago`
+        : days === 0 ? `your parcel arrived at ${place} today` : `your parcel has arrived at ${place}`;
+    const deadlineText = isLastDay ? "Today is the last day to pick it up, so please drop by the store today — otherwise it will be returned."
         : "Please drop by the store to pick it up when you can — if it's not picked up in time, it will be returned.";
-    return `Hi ${ten}, ${toi}. ${hanChu} Thank you!`;
+    return `Hi ${name}, ${arrivedText}. ${deadlineText} Thank you!`;
 }
 
 const STATUS_VI: Record<string, string> = {
@@ -162,7 +162,7 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
     // từ chối, màn lỗi che mất nút đổi nước.
     const [market, setMarket] = useState("");
     // Nước đang xem nằm trên địa chỉ (?market=SG, 15/11/2026) — tải lại / gửi link là mở đúng nước.
-    const [marketUrl, datMarketUrl] = useThamSoUrl("market");
+    const [marketUrl, setMarketUrl] = useUrlParam("market");
     const [markets, setMarkets] = useState<{ code: string; label: string }[]>([]);
     const [currency, setCurrency] = useState("NT$");
     // Nguồn trạng thái: 17TRACK (Đài, Singapore) hay tra thẳng trang WeShip (UAE, 28/09/2026).
@@ -180,8 +180,8 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                 // Nước đầu tiên còn bán, theo thứ tự khai trong config — không ưu tiên cứng Đài,
                 // để tắt Đài (04/11/2026) thì tab mở ở nước kế tiếp.
                 const codes = (d.markets || []).filter((m) => (m.status || "dang_ban") === "dang_ban").map((m) => m.code);
-                const muon = (marketUrl || "").toUpperCase();
-                setMarket(codes.includes(muon) ? muon : codes[0] || "TW");
+                const requested = (marketUrl || "").toUpperCase();
+                setMarket(codes.includes(requested) ? requested : codes[0] || "TW");
             })
             .catch(() => setMarket("TW"));
         // Chỉ chọn nước lúc mở tab; đổi nước sau đó đi qua doiNuoc.
@@ -207,10 +207,10 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
         } finally { setLoading(false); }
     }, [from, to, market]);
 
-    const doiNuoc = (code: string) => {
+    const switchMarket = (code: string) => {
         if (code === market) return;
         setShipments([]); setAlerts([]); setSyncMsg(""); setImportMsg(""); setUnknownStatuses([]);
-        setPublicWarning(""); setTab("alerts"); setLv("all"); setMarket(code); datMarketUrl(code);
+        setPublicWarning(""); setTab("alerts"); setLv("all"); setMarket(code); setMarketUrl(code);
     };
 
     useEffect(() => { load(); }, [load]);
@@ -291,18 +291,18 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
 
     const urgent = alerts.filter((a) => a.level === "gap");
     const atStore = counts.AvailableForPickup || 0;
-    const laDai = market === "TW";
+    const isTw = market === "TW";
     // 17TRACK chạy được nhưng từ chối MỌI mã của nước này (Sagawa — Nhật, 13/10/2026): nói thẳng,
     // đừng để người xem tưởng "chưa đăng ký" là máy chưa chạy.
-    const tuChoiHet = provider !== "weship" && (lastSync?.register_rejected ?? 0) > 0 && totals.registered === 0;
-    const dangGiao = shipments.filter((s) => s.status === "OutForDelivery");
+    const allRejected = provider !== "weship" && (lastSync?.register_rejected ?? 0) > 0 && totals.registered === 0;
+    const outForDelivery = shipments.filter((s) => s.status === "OutForDelivery");
 
     return (
         <div className="space-y-5">
             {markets.length > 1 && (
                 <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1">
                     {markets.map((m) => (
-                        <button key={m.code} onClick={() => doiNuoc(m.code)}
+                        <button key={m.code} onClick={() => switchMarket(m.code)}
                             className={cn("rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
                                 market === m.code ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
                             {m.label}
@@ -325,7 +325,7 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
             )}
 
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {laDai ? (<>
+                {isTw ? (<>
                     <Stat icon={<Store className="h-4 w-4" />} label="Đang ở cửa hàng"
                         value={formatNumber(atStore)} sub={`${money(totals.at_store_value)} tiền hàng đang chờ khách lấy`}
                         tone={atStore > 0 ? "warn" : undefined} />
@@ -336,7 +336,7 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                     {/* Giao tận nhà: không có "nằm ở cửa hàng" — thay bằng đơn đang đi giao
                         (báo khách để máy) và đơn còn trên đường. */}
                     <Stat icon={<Truck className="h-4 w-4" />} label="Đang đi giao"
-                        value={formatNumber(dangGiao.length)} sub={`${money(dangGiao.reduce((n, s) => n + s.cod_local, 0))} tiền hàng — báo khách để máy`} />
+                        value={formatNumber(outForDelivery.length)} sub={`${money(outForDelivery.reduce((n, s) => n + s.cod_local, 0))} tiền hàng — báo khách để máy`} />
                     <Stat icon={<Clock className="h-4 w-4" />} label="Đang trên đường"
                         value={formatNumber((counts.InTransit || 0) + (counts.InfoReceived || 0))}
                         sub={`quá ${cfg.stale_days} ngày không nhúc nhích là báo đứng im`} />
@@ -347,7 +347,7 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                     value={formatNumber(totals.shipments)}
                     sub={provider === "weship"
                         ? (totals.pending_register > 0 ? `${totals.pending_register} mã AWB chưa tra WeShip` : "đã tra WeShip hết")
-                        : tuChoiHet
+                        : allRejected
                             ? "17TRACK chưa nhận hãng này — theo bảng đối tác"
                             : totals.pending_register > 0
                             ? `${totals.pending_register} mã chưa đăng ký theo dõi`
@@ -364,7 +364,7 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                         </button>
                     ))}
                 </div>
-                {laDai ? (<>
+                {isTw ? (<>
                     <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,text/csv" className="hidden"
                         onChange={(e) => { const f = e.target.files?.[0]; if (f) importPartner(f); }} />
                     <button onClick={() => importPartner()} disabled={importing}
@@ -397,7 +397,7 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                     <div className="font-medium text-amber-900 dark:text-amber-200">Có trạng thái chưa khai</div>
                     <p className="mt-0.5 text-amber-800/80 dark:text-amber-200/70">
                         Những đơn này không vào được cảnh báo nào. Khai thêm vào{" "}
-                        <span className="font-mono">talpha_rules.json → {laDai ? "tracking.partner_file.status_map" : `tracking.markets.${market}.${provider === "weship" ? "status_rules" : "status_map"}`}</span>:
+                        <span className="font-mono">talpha_rules.json → {isTw ? "tracking.partner_file.status_map" : `tracking.markets.${market}.${provider === "weship" ? "status_rules" : "status_map"}`}</span>:
                     </p>
                     <ul className="mt-1 space-y-0.5 font-mono text-xs text-amber-800/70 dark:text-amber-200/60">
                         {unknownStatuses.map((u) => <li key={u.value}>{u.count}× “{u.value}”</li>)}
@@ -432,7 +432,7 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                     {(lastSync.keys?.length ?? 0) > 1 ? ` (${lastSync.keys!.length} khoá)` : ""}
                     {lastSync.ok && lastSync.keys?.filter((k) => !k.ok).map((k) => ` · ${k.label} LỖI: ${k.error}`).join("")}
                     {lastSync.quota_out ? " · HẾT QUOTA — đơn mới không được theo dõi" : ""}
-                    {tuChoiHet ? ` · 17TRACK TỪ CHỐI đăng ký ${formatNumber(lastSync.register_rejected ?? 0)} mã (hãng tạm chưa hỗ trợ qua API) — trạng thái đang theo bảng đối tác, mỗi lượt máy tự thử lại` : ""}
+                    {allRejected ? ` · 17TRACK TỪ CHỐI đăng ký ${formatNumber(lastSync.register_rejected ?? 0)} mã (hãng tạm chưa hỗ trợ qua API) — trạng thái đang theo bảng đối tác, mỗi lượt máy tự thử lại` : ""}
                 </p>
             )}
             {syncMsg && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300">{syncMsg}</p>}
@@ -472,11 +472,11 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                                     const st = LEVEL_STYLE[a.level];
                                     const s = a.shipment;
                                     // Còn mấy ngày nữa bị trả về — hạn lưu ở cửa hàng là 7 ngày.
-                                    const conLai = a.code === "sap_bi_tra_ve" && a.days != null
+                                    const daysLeft = a.code === "sap_bi_tra_ve" && a.days != null
                                         ? cfg.pickup_expire_days - a.days : null;
-                                    const han = { ngay: a.days, conLai: a.days_left ?? conLai };
-                                    const tin = s.status === "AvailableForPickup" ? soanTin(s, han) : null;
-                                    const tinVi = tin ? soanTin(s, han, "vi") : null;
+                                    const timing = { ngay: a.days, conLai: a.days_left ?? daysLeft };
+                                    const message = s.status === "AvailableForPickup" ? buildPickupMessage(s, timing) : null;
+                                    const messageVi = message ? buildPickupMessage(s, timing, "vi") : null;
                                     const key = `${s.tracking}-${i}`;
                                     return (
                                         <div key={key} className="grid grid-cols-[4px_1fr] gap-3 p-3 sm:gap-4 sm:p-4">
@@ -489,11 +489,11 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                                                     {s.cod_local > 0 && (
                                                         <span className="font-mono text-xs font-bold tabular-nums">{money(s.cod_local)}</span>
                                                     )}
-                                                    {conLai != null && (
+                                                    {daysLeft != null && (
                                                         <span className={cn("rounded px-1.5 font-mono text-[10px] font-bold",
-                                                            conLai <= 0 ? "bg-rose-600 text-white"
+                                                            daysLeft <= 0 ? "bg-rose-600 text-white"
                                                                 : "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300")}>
-                                                            {conLai <= 0 ? "ĐÃ QUÁ HẠN" : `còn ${conLai} ngày`}
+                                                            {daysLeft <= 0 ? "ĐÃ QUÁ HẠN" : `còn ${daysLeft} ngày`}
                                                         </span>
                                                     )}
                                                 </div>
@@ -503,7 +503,7 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
                                                     <span className="font-mono text-violet-600/85 dark:text-violet-300/80">{s.phone || "(chưa có SĐT)"}</span>
                                                     <span className="font-mono text-indigo-600/70 dark:text-indigo-300/60">{s.tracking}</span>
                                                     {s.city && <span>{s.city}</span>}
-                                                    {s.store_name && <span className="text-amber-700 dark:text-amber-400">{s.store_name}{maLayHang(s) ? ` · mã lấy hàng ${maLayHang(s)}` : ""}</span>}
+                                                    {s.store_name && <span className="text-amber-700 dark:text-amber-400">{s.store_name}{getPickupCode(s) ? ` · mã lấy hàng ${getPickupCode(s)}` : ""}</span>}
                                                     {s.marketer && <span>mkt {s.marketer}</span>}
                                                 </div>
 
@@ -513,19 +513,19 @@ export default function TALPHATrackingTab({ dateRange }: Props) {
 
                                                 {/* Tin nhắn soạn sẵn — sale chỉ việc chép và dán. Điện thoại: tin trên,
                                                     nút dưới — đặt cạnh nhau thì tin bị ép thành cột hẹp dài cả màn. */}
-                                                {tin && (
+                                                {message && (
                                                     <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-start">
                                                         <div className="min-w-0 flex-1 rounded-lg border border-border bg-muted/40 px-3 py-2 text-[12.5px] leading-relaxed">
-                                                            <p>{tin}</p>
+                                                            <p>{message}</p>
                                                             {/* Bản dịch cho sale đọc hiểu — KHÔNG nằm trong nút Chép tin. */}
-                                                            {tinVi && (
+                                                            {messageVi && (
                                                                 <p className="mt-1.5 border-t border-border/60 pt-1.5 text-[12px] italic text-muted-foreground">
-                                                                    🇻🇳 Dịch: {tinVi}
+                                                                    🇻🇳 Dịch: {messageVi}
                                                                 </p>
                                                             )}
                                                         </div>
                                                         <div className="flex flex-none gap-2">
-                                                        <button onClick={() => { navigator.clipboard?.writeText(tin); setCopied(key); setTimeout(() => setCopied(""), 2000); }}
+                                                        <button onClick={() => { navigator.clipboard?.writeText(message); setCopied(key); setTimeout(() => setCopied(""), 2000); }}
                                                             className="flex-none rounded-lg border border-border px-2.5 py-1.5 text-[12px] hover:bg-muted">
                                                             <Copy className="mr-1 inline h-3 w-3" />{copied === key ? "Đã chép" : "Chép tin"}
                                                         </button>

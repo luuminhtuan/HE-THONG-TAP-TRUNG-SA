@@ -5,8 +5,8 @@ import { format } from "date-fns";
 import TabSkeleton, { ErrorState } from "@/components/ui/tab-skeleton";
 import WaLink from "@/components/talpha/wa-link";
 import { formatNumber, cn } from "../utils";
-import { VND, d6, STRIPE, PIN_TINT, rowCls, statusCls, mkCls, demTyLeGiao, type Light } from "./ledger-shared";
-import { DanhSachThe, KhoiViecCanSua, OLocDon, TheDon, ThanhCongCu, useManHep, type ViecSua } from "./so-don-ui";
+import { VND, d6, STRIPE, PIN_TINT, rowCls, statusCls, mkCls, countDeliveryOutcomes, type Light } from "./ledger-shared";
+import { CardList, FixTasksPanel, LightFilterBar, OrderCard, LedgerToolbar, useNarrowScreen, type FixTask } from "./so-don-ui";
 
 /**
  * Sổ đơn hàng Singapore / UAE (Sỹ Anh yêu cầu 29/09/2026). Đọc /api/talpha/order-ledger/market —
@@ -38,7 +38,7 @@ const C = {
 
 /** Giờ ngắn "HH:MM dd/mm". Mốc chỉ có NGÀY (bảng đối tác ghi ngày, không ghi giờ — lưu
  *  thành 00:00Z) thì chỉ hiện ngày, kẻo đọc thành "07:00" như thể có giờ thật. */
-const gioNgan = (iso?: string | null) => {
+const shortTime = (iso?: string | null) => {
     if (!iso) return "";
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
@@ -47,13 +47,13 @@ const gioNgan = (iso?: string | null) => {
     return `${p(d.getHours())}:${p(d.getMinutes())} ${p(d.getDate())}/${p(d.getMonth() + 1)}`;
 };
 
-export default function SoDonNuoc({ code, nutNuoc, dateRange }: { code: string; nutNuoc?: ReactNode; dateRange?: { from: Date; to: Date } }) {
+export default function MarketOrderLedger({ code, nutNuoc: marketSwitcher, dateRange }: { code: string; nutNuoc?: ReactNode; dateRange?: { from: Date; to: Date } }) {
     const [d, setD] = useState<Data | null>(null);
     const [err, setErr] = useState("");
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<Light | "all">("all");
     const [q, setQ] = useState("");
-    const hep = useManHep();
+    const narrow = useNarrowScreen();
     // Chỉ đơn LÊN ĐƠN trong khoảng đang chọn ở thanh trên (27/10/2026) — máy chủ lọc, nên ô đếm,
     // tỉ lệ giao/hoàn và CSV cùng một tập đơn.
     const from = dateRange?.from ? format(dateRange.from, "yyyy-MM-dd") : "";
@@ -81,18 +81,18 @@ export default function SoDonNuoc({ code, nutNuoc, dateRange }: { code: string; 
                 .some((v) => String(v || "").toLowerCase().includes(nd))));
     }, [rows, filter, q]);
 
-    if (loading && !d) return <div className="space-y-4">{nutNuoc}<TabSkeleton cards={0} rows={12} showChart={false} /></div>;
-    if (err || !d) return <div className="space-y-4">{nutNuoc}<ErrorState message={err || "Không dựng được sổ"} onRetry={load} /></div>;
+    if (loading && !d) return <div className="space-y-4">{marketSwitcher}<TabSkeleton cards={0} rows={12} showChart={false} /></div>;
+    if (err || !d) return <div className="space-y-4">{marketSwitcher}<ErrorState message={err || "Không dựng được sổ"} onRetry={load} /></div>;
 
     const m = d.market;
-    const tien = (n: number) => `${(Math.round(n * 100) / 100).toLocaleString("vi-VN")} ${m.symbol}`;
+    const formatAmount = (n: number) => `${(Math.round(n * 100) / 100).toLocaleString("vi-VN")} ${m.symbol}`;
     const count = (l: Light) => rows.filter((r) => r.light === l).length;
-    const capNhat = gioNgan(d.nguon.cap_nhat);
+    const updatedAt = shortTime(d.nguon.cap_nhat);
     // Nút WhatsApp chỉ có ở nước bật whatsapp (UAE — Sỹ Anh chốt 29/09/2026). Có thì thêm một cột
     // GHIM ngay sau số thứ tự: xác nhận đơn là việc làm hằng ngày, không bắt cuộn ngang mới thấy nút.
-    const coWa = rows.some((r) => r.wa);
+    const hasWa = rows.some((r) => r.wa);
     const WA_W = 116;
-    const leftMa = 34 + (coWa ? WA_W : 0);
+    const orderColLeft = 34 + (hasWa ? WA_W : 0);
 
     const exportCsv = () => {
         const head = ["Đèn", "Mã đơn", "Trạng thái", "Ngày lên đơn", "Ngày gửi", "Hãng", "Vận đơn",
@@ -109,43 +109,43 @@ export default function SoDonNuoc({ code, nutNuoc, dateRange }: { code: string; 
     };
 
     // Lỗi đọc hàng (route trả canh_bao) vào cùng khung "việc cần sửa" như sổ Đài.
-    const viec: ViecSua[] = d.canh_bao ? [{
+    const tasks: FixTask[] = d.canh_bao ? [{
         id: "loi-hang", level: "canh_bao", title: d.canh_bao,
         detail: "Bấm Tải lại; vẫn lỗi thì báo kỹ thuật — số đơn và tiền vẫn đúng, chỉ thiếu tên hàng.",
     }] : [];
 
     return (
         <div className="space-y-3 md:space-y-4">
-            <ThanhCongCu
-                nutNuoc={nutNuoc}
-                nguon={`Đơn ${m.display}: ${d.nguon.nhan}${capNhat ? ` · ${d.nguon.loai === "tra" ? "tra" : "nạp"} lúc ${capNhat}` : ""}`}
+            <LedgerToolbar
+                nutNuoc={marketSwitcher}
+                nguon={`Đơn ${m.display}: ${d.nguon.nhan}${updatedAt ? ` · ${d.nguon.loai === "tra" ? "tra" : "nạp"} lúc ${updatedAt}` : ""}`}
                 nguonGiaiThich={"Cùng nguồn với tab Theo dõi vận đơn. Chưa có sao kê của bên giao hàng nên sổ chưa có cột tiền về; "
                     + "xem tiền còn ở đâu ở Kế toán → Tiền COD về."}
                 q={q} setQ={setQ} placeholder="Tìm mã đơn, vận đơn, tên, SĐT, hàng…"
                 onTaiLai={load} dangTai={loading} onCsv={exportCsv}
             />
 
-            <OLocDon
+            <LightFilterBar
                 muc={[
                     { id: "do", label: "Phải xử", n: count("do") },
                     { id: "vang", label: "Đang chờ", n: count("vang") },
                     { id: "xam", label: "Không đòi", n: count("xam") },
                 ]}
                 tong={rows.length} chon={filter} onChon={setFilter}
-                tyLe={demTyLeGiao(rows, (r) => [r.status, r.status_vi])}
+                tyLe={countDeliveryOutcomes(rows, (r) => [r.status, r.status_vi])}
             />
 
-            <KhoiViecCanSua viec={viec} hep={hep} />
+            <FixTasksPanel viec={tasks} hep={narrow} />
 
-            {hep ? (
-                <DanhSachThe key={`${filter}|${q}`} ds={shown} tong={rows.length} khoa={(r) => r.key}
-                    ve={(r) => <TheDonNuoc r={r} tien={tien} />} />
+            {narrow ? (
+                <CardList key={`${filter}|${q}`} ds={shown} tong={rows.length} khoa={(r) => r.key}
+                    ve={(r) => <MarketOrderCard r={r} tien={formatAmount} />} />
             ) : (<>
             <div className="overflow-auto rounded-xl border border-border bg-card shadow-sm" style={{ maxHeight: "min(70vh, 760px)" }}>
                 <table className="border-separate border-spacing-0 whitespace-nowrap text-[11.5px]">
                     <thead>
                         <tr className="text-[9.5px] font-bold uppercase tracking-wide text-muted-foreground">
-                            {([["#", 0], ...(coWa ? [["Xác nhận khách", 34]] : []), ["Mã đơn · trạng thái", leftMa]] as [string, number][]).map(([h, left], i) => (
+                            {([["#", 0], ...(hasWa ? [["Xác nhận khách", 34]] : []), ["Mã đơn · trạng thái", orderColLeft]] as [string, number][]).map(([h, left], i) => (
                                 <th key={h} style={{ left, ...(i === 0 ? { width: 34, minWidth: 34 } : h === "Xác nhận khách" ? { width: WA_W, minWidth: WA_W } : {}) }}
                                     className={cn("sticky top-0 z-40 bg-muted px-1.5 py-[6px]", i === 0 ? "text-right" : "text-left")}>{h}</th>
                             ))}
@@ -160,12 +160,12 @@ export default function SoDonNuoc({ code, nutNuoc, dateRange }: { code: string; 
                         {shown.map((r, i) => (
                             <tr key={r.key} className={rowCls(r.light)}>
                                 <td className={cn("sticky left-0 z-20 w-[34px] min-w-[34px] border-b border-border bg-card px-1.5 py-[3px] text-right tabular-nums text-muted-foreground/60", PIN_TINT[r.light])}>{i + 1}</td>
-                                {coWa && (
+                                {hasWa && (
                                     <td style={{ left: 34, width: WA_W, minWidth: WA_W }} className={cn("sticky z-20 border-b border-border bg-card px-1.5 py-1", PIN_TINT[r.light])}>
                                         {r.wa ? <WaLink href={r.wa} /> : <span className={cn("text-[10.5px]", C.faint)} title="Số điện thoại không đúng dạng — sửa trên POS">số sai</span>}
                                     </td>
                                 )}
-                                <td style={{ left: leftMa }} className={cn("sticky z-20 border-b border-r border-border bg-card px-1.5 py-[3px]", PIN_TINT[r.light])}>
+                                <td style={{ left: orderColLeft }} className={cn("sticky z-20 border-b border-r border-border bg-card px-1.5 py-[3px]", PIN_TINT[r.light])}>
                                     <span className="flex items-center">
                                         <i title={r.light_note} className={cn("mr-1.5 inline-block h-[14px] w-[3px] flex-none rounded-sm", STRIPE[r.light])} />
                                         <b>{r.order_no || "·"}</b>
@@ -180,7 +180,7 @@ export default function SoDonNuoc({ code, nutNuoc, dateRange }: { code: string; 
                                 <td className={cn("border-b border-border px-1.5 py-[3px]", C.id)}>{r.tracking || <span className={C.faint}>chưa có</span>}</td>
                                 <td className="border-b border-border px-1.5 py-[3px] text-[10.5px] text-muted-foreground">
                                     <span className="inline-block max-w-[240px] truncate align-middle" title={r.last_event || undefined}>{r.last_event || "·"}</span>
-                                    {r.last_event && r.last_event_time && <span className={cn("ml-1.5", C.dt2)}>{gioNgan(r.last_event_time)}</span>}
+                                    {r.last_event && r.last_event_time && <span className={cn("ml-1.5", C.dt2)}>{shortTime(r.last_event_time)}</span>}
                                 </td>
                                 <td className="border-b border-l border-border px-1.5 py-[3px]">
                                     <span className="inline-block max-w-[220px] truncate align-middle" title={r.sku}>{r.sku || "·"}</span>
@@ -200,7 +200,7 @@ export default function SoDonNuoc({ code, nutNuoc, dateRange }: { code: string; 
                                 <td className="border-b border-border px-1.5 py-[3px]">{r.marketer
                                     ? <span className={cn("rounded-full px-1.5 py-px text-[10px] font-semibold", mkCls(r.marketer))}>{r.marketer}</span>
                                     : <span className={C.faint}>·</span>}</td>
-                                <td className="border-b border-l border-border px-1.5 py-[3px] text-right font-bold tabular-nums">{tien(r.cod_local)}</td>
+                                <td className="border-b border-l border-border px-1.5 py-[3px] text-right font-bold tabular-nums">{formatAmount(r.cod_local)}</td>
                                 <td className="border-b border-border px-1.5 py-[3px] text-right tabular-nums text-muted-foreground">{r.cod_vnd === null ? "·" : VND(r.cod_vnd)}</td>
                                 <td className="border-b border-l border-border px-1.5 py-[3px] text-[10.5px] text-muted-foreground">
                                     <span className="inline-block max-w-[260px] truncate align-middle" title={r.note}>{r.note || "·"}</span>
@@ -208,7 +208,7 @@ export default function SoDonNuoc({ code, nutNuoc, dateRange }: { code: string; 
                             </tr>
                         ))}
                         {!shown.length && (
-                            <tr><td colSpan={coWa ? 17 : 16} className="px-3 py-12 text-center text-muted-foreground">Không có đơn nào trong nhóm này.</td></tr>
+                            <tr><td colSpan={hasWa ? 17 : 16} className="px-3 py-12 text-center text-muted-foreground">Không có đơn nào trong nhóm này.</td></tr>
                         )}
                     </tbody>
                 </table>
@@ -219,7 +219,7 @@ export default function SoDonNuoc({ code, nutNuoc, dateRange }: { code: string; 
                 <span><i className="mr-1.5 inline-block h-3 w-[3px] rounded-sm bg-rose-500 align-[-2px]" />phải xử — giao hỏng, đứng im, chưa gửi hàng</span>
                 <span><i className="mr-1.5 inline-block h-3 w-[3px] rounded-sm bg-amber-400 align-[-2px]" />đang chờ — đang đi, hoặc đã giao chờ tiền về</span>
                 <span><i className="mr-1.5 inline-block h-3 w-[3px] rounded-sm bg-slate-300 align-[-2px] dark:bg-slate-600" />không đòi — hoàn, huỷ</span>
-                {coWa && <span><b className="text-emerald-700 dark:text-emerald-300">WhatsApp</b> = mở chat với khách kèm tin xác nhận đơn soạn sẵn (hàng, tiền, địa chỉ) — sửa được trước khi gửi</span>}
+                {hasWa && <span><b className="text-emerald-700 dark:text-emerald-300">WhatsApp</b> = mở chat với khách kèm tin xác nhận đơn soạn sẵn (hàng, tiền, địa chỉ) — sửa được trước khi gửi</span>}
                 <span className="ml-auto font-mono">{formatNumber(shown.length)} / {formatNumber(rows.length)} đơn — không phân trang</span>
             </div>
             </>)}
@@ -229,19 +229,19 @@ export default function SoDonNuoc({ code, nutNuoc, dateRange }: { code: string; 
 
 /** Thẻ một đơn Singapore / UAE cho điện thoại. Nút WhatsApp (UAE) luôn hiện — xác nhận đơn là
  *  việc hằng ngày, không bắt mở thẻ mới thấy. */
-function TheDonNuoc({ r, tien }: { r: Row; tien: (n: number) => string }) {
+function MarketOrderCard({ r, tien: formatAmount }: { r: Row; tien: (n: number) => string }) {
     return (
-        <TheDon
+        <OrderCard
             light={r.light} ma={r.order_no}
             trangThai={`${r.status_vi}${r.fail_count && r.fail_count > 1 ? ` · lần ${r.fail_count}` : ""}`}
             trangThaiCls={statusCls(r.status_vi)}
-            tien={tien(r.cod_local)}
+            tien={formatAmount(r.cod_local)}
             dong={<>{r.customer || "(chưa có tên)"}{r.city ? ` · ${r.city}` : ""} · lên đơn {d6(r.order_date)}</>}
             ghiChu={r.light_note}
             nhan={r.marketer ? <span className={cn("rounded-full px-1.5 py-px text-[10.5px] font-semibold", mkCls(r.marketer))}>{r.marketer}</span> : undefined}
             nut={r.wa ? <WaLink href={r.wa} /> : undefined}
             chiTiet={[
-                ["Sự kiện cuối", r.last_event ? `${r.last_event}${r.last_event_time ? ` · ${gioNgan(r.last_event_time)}` : ""}` : null],
+                ["Sự kiện cuối", r.last_event ? `${r.last_event}${r.last_event_time ? ` · ${shortTime(r.last_event_time)}` : ""}` : null],
                 ["Điện thoại", r.phone ? <a href={`tel:${r.phone}`} className="font-mono text-violet-600 dark:text-violet-300">{r.phone}</a> : null],
                 ["Vận đơn", r.tracking ? <span className="font-mono">{r.tracking}</span> : "chưa có"],
                 ["Hãng", r.carrier], ["Gửi hàng", d6(r.ship_date)],

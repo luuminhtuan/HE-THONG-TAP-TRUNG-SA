@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { docBan } from "@/lib/talpha/market-report-store";
+import { readMonthlyReport } from "@/lib/talpha/market-report-store";
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +10,9 @@ export const dynamic = "force-dynamic";
 //   GET ?month=YYYY-MM  → nội dung bản số, hoặc 404 nếu vòng ghi Sheet chưa ghi tháng đó
 
 export async function GET(req: NextRequest) {
-    const thang = req.nextUrl.searchParams.get("month") || "";
-    if (!/^\d{4}-\d{2}$/.test(thang)) return NextResponse.json({ error: "month phải dạng YYYY-MM" }, { status: 400 });
-    const ban = await docBan(thang);
-    if (!ban) return NextResponse.json({ error: `Chưa có bản số tháng ${thang}` }, { status: 404 });
-    return NextResponse.json(ban);
+    const month = req.nextUrl.searchParams.get("month") || "";
+    if (!/^\d{4}-\d{2}$/.test(month)) return NextResponse.json({ error: "month phải dạng YYYY-MM" }, { status: 400 });
+    const report = await readMonthlyReport(month);
+    if (!report) return NextResponse.json({ error: `Chưa có bản số tháng ${month}` }, { status: 404 });
+    return NextResponse.json(report);
 }

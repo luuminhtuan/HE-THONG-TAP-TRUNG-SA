@@ -31,19 +31,19 @@ export function internalToken(): string {
         const s = fs.readFileSync(FILE, "utf8").trim();
         if (s.length >= 32) return (cache = s);
     } catch { /* chưa có — sinh bên dưới */ }
-    const moi = crypto.randomBytes(32).toString("hex");
+    const newToken = crypto.randomBytes(32).toString("hex");
     try {
         fs.mkdirSync(path.dirname(FILE), { recursive: true });
         // "wx": hai tiến trình cùng sinh thì chỉ một bản thắng, bản kia đọc lại bản thắng.
-        fs.writeFileSync(FILE, moi + "\n", { mode: 0o600, flag: "wx" });
-        return (cache = moi);
+        fs.writeFileSync(FILE, newToken + "\n", { mode: 0o600, flag: "wx" });
+        return (cache = newToken);
     } catch {
         const s = fs.readFileSync(FILE, "utf8").trim();
         return (cache = s);
     }
 }
 
-function bang(a: string, b: string): boolean {
+function safeEqual(a: string, b: string): boolean {
     const x = Buffer.from(a), y = Buffer.from(b);
     return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
@@ -52,7 +52,7 @@ function bang(a: string, b: string): boolean {
 export function isInternalRequest(req: Request): boolean {
     const got = req.headers.get(INTERNAL_HEADER);
     if (!got) return false;
-    if (bang(got, internalToken())) return true;
-    const cu = process.env.TALPHA_SYNC_TOKEN;
-    return !!cu && bang(got, cu);
+    if (safeEqual(got, internalToken())) return true;
+    const legacyToken = process.env.TALPHA_SYNC_TOKEN;
+    return !!legacyToken && safeEqual(got, legacyToken);
 }

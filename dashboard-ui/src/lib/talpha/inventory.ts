@@ -118,14 +118,14 @@ export interface InventoryPayload {
  */
 export async function buildInventoryPayload(
     /** Phân quyền theo team (05/10/2026): khoá nước được xem ("Taiwan"…). Bỏ trống = mọi kho. */
-    chiNuoc?: string[],
+    onlyMarkets?: string[],
 ): Promise<InventoryPayload> {
     const pos = await fetchPosInventory();
     if (!pos.ok) throw new Error("POS không trả dữ liệu tồn — kiểm tra key/shop trong talpha.yaml");
-    const META = chiNuoc ? MARKETS_META.filter((m) => chiNuoc.includes(m.market)) : MARKETS_META;
+    const META = onlyMarkets ? MARKETS_META.filter((m) => onlyMarkets.includes(m.market)) : MARKETS_META;
     const KEYS = META.map((m) => m.key);
-    const shopCodes = chiNuoc
-        ? chiNuoc.map((k) => String((RULES.markets as Record<string, { shop_label?: string }>)[k]?.shop_label || "").toUpperCase()).filter(Boolean)
+    const shopCodes = onlyMarkets
+        ? onlyMarkets.map((k) => String((RULES.markets as Record<string, { shop_label?: string }>)[k]?.shop_label || "").toUpperCase()).filter(Boolean)
         : undefined;
     // cần map variation_id từ POS cho cả tốc độ bán lẫn marketer phụ trách
     const [sold, skuMkt] = await Promise.all([fetchSold30(pos.variationToCode), fetchSkuMarketers(pos.variationToCode, shopCodes)]);
@@ -184,7 +184,7 @@ export async function buildInventoryPayload(
         asOf: { label: `POS realtime · ${today}`, note: "Tồn kho trực tiếp từ POS Poscake · bán/ngày từ đơn thật 30 ngày" },
         marketOverview, statusSummary, skuMatrix,
         transfers: [], restocks: [], keyFindings: [],
-        sources: { pos: { ok: true, shops: chiNuoc ? META.length : pos.shops, skus: skuMatrix.length, field: "actual_remain_quantity" } },
+        sources: { pos: { ok: true, shops: onlyMarkets ? META.length : pos.shops, skus: skuMatrix.length, field: "actual_remain_quantity" } },
         fetchedAt: new Date().toISOString(),
     };
 }

@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { MARKETS_PUBLIC } from "@/lib/talpha/rules";
 import { getAccess } from "@/lib/talpha/access";
 import { updateStore } from "@/lib/talpha/store";
-import { loiKhoanVanHanh, type KhoanVanHanh } from "@/lib/talpha/lai-lo";
+import { opexItemError, type OpexItem } from "@/lib/talpha/lai-lo";
 
 export const dynamic = "force-dynamic";
 
@@ -11,10 +11,10 @@ export const dynamic = "force-dynamic";
 // CHỈ người xem hết (giám đốc) ghi được: lương từng người là số riêng của công ty. Cửa proxy.ts
 // đã cho mọi người có tab "lai-lo" gọi tới đây (luật /api/talpha/lai-lo phủ cả nhánh con),
 // nên route tự chặn ghi.
-type Kho = { items: KhoanVanHanh[] };
-const KHO = "chi_phi_van_hanh";
+type OpexStore = { items: OpexItem[] };
+const OPEX_STORE = "chi_phi_van_hanh";
 
-async function chiGiamDoc(req: NextRequest) {
+async function requireDirector(req: NextRequest) {
     const a = await getAccess(req);
     if (!a) return { a: null, res: NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 }) };
     if (!a.full) return { a, res: NextResponse.json({ error: "Chỉ giám đốc ghi được chi phí vận hành" }, { status: 403 }) };
@@ -23,11 +23,11 @@ async function chiGiamDoc(req: NextRequest) {
 
 /** Thêm mới (không có id) hoặc sửa (có id) một khoản. */
 export async function POST(req: NextRequest) {
-    const { a, res } = await chiGiamDoc(req);
+    const { a, res } = await requireDirector(req);
     if (res) return res;
-    let body: Partial<KhoanVanHanh>;
+    let body: Partial<OpexItem>;
     try { body = await req.json(); } catch { return NextResponse.json({ error: "Dữ liệu gửi lên không đọc được" }, { status: 400 }); }
-    const k: Partial<KhoanVanHanh> = {
+    const k: Partial<OpexItem> = {
         id: body.id ? String(body.id) : undefined,
         nhom: String(body.nhom || "").trim(),
         ten: String(body.ten || "").trim().slice(0, 120),
@@ -37,27 +37,27 @@ export async function POST(req: NextRequest) {
         thuoc: String(body.thuoc || "CHUNG").toUpperCase(),
         ghi_chu: String(body.ghi_chu || "").trim().slice(0, 300),
     };
-    const loi = loiKhoanVanHanh(k, MARKETS_PUBLIC.markets.map((m) => m.code));
-    if (loi) return NextResponse.json({ error: loi }, { status: 400 });
+    const validationError = opexItemError(k, MARKETS_PUBLIC.markets.map((m) => m.code));
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
 
-    let khongThay = false;
-    const kho = await updateStore<Kho>(KHO, { items: [] }, (cur) => {
+    let notFound = false;
+    const store = await updateStore<OpexStore>(OPEX_STORE, { items: [] }, (cur) => {
         const items = [...(cur.items || [])];
-        const moi: KhoanVanHanh = { ...(k as KhoanVanHanh), id: k.id || randomUUID(), sua_luc: new Date().toISOString(), sua_boi: a!.name };
+        const item: OpexItem = { ...(k as OpexItem), id: k.id || randomUUID(), sua_luc: new Date().toISOString(), sua_boi: a!.name };
         const i = k.id ? items.findIndex((x) => x.id === k.id) : -1;
-        if (k.id && i < 0) { khongThay = true; return cur; }
-        if (i >= 0) items[i] = moi; else items.push(moi);
+        if (k.id && i < 0) { notFound = true; return cur; }
+        if (i >= 0) items[i] = item; else items.push(item);
         return { ...cur, items };
     });
-    if (khongThay) return NextResponse.json({ error: "Không thấy khoản cần sửa — có thể đã bị xoá" }, { status: 404 });
-    return NextResponse.json({ ok: true, items: kho.items });
+    if (notFound) return NextResponse.json({ error: "Không thấy khoản cần sửa — có thể đã bị xoá" }, { status: 404 });
+    return NextResponse.json({ ok: true, items: store.items });
 }
 
 export async function DELETE(req: NextRequest) {
-    const { res } = await chiGiamDoc(req);
+    const { res } = await requireDirector(req);
     if (res) return res;
     const id = req.nextUrl.searchParams.get("id") || "";
     if (!id) return NextResponse.json({ error: "Thiếu id" }, { status: 400 });
-    const kho = await updateStore<Kho>(KHO, { items: [] }, (cur) => ({ ...cur, items: (cur.items || []).filter((x) => x.id !== id) }));
-    return NextResponse.json({ ok: true, items: kho.items });
+    const store = await updateStore<OpexStore>(OPEX_STORE, { items: [] }, (cur) => ({ ...cur, items: (cur.items || []).filter((x) => x.id !== id) }));
+    return NextResponse.json({ ok: true, items: store.items });
 }

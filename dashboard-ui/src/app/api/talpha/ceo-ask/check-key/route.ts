@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { layModelGemini, thuTuModel } from "@/lib/talpha/gemini-models";
-import { GEMINI_KEY_HEADER, laKhoaGeminiHopLe } from "@/lib/talpha/gemini-key";
+import { listGeminiModels, modelFallbackOrder } from "@/lib/talpha/gemini-models";
+import { GEMINI_KEY_HEADER, isValidGeminiKey } from "@/lib/talpha/gemini-key";
 
 export const dynamic = "force-dynamic";
 
@@ -12,14 +12,14 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
     const key = (req.headers.get(GEMINI_KEY_HEADER) || "").trim();
-    if (!laKhoaGeminiHopLe(key)) {
+    if (!isValidGeminiKey(key)) {
         return NextResponse.json({ error: "Khoá không đúng dạng — khoá Gemini thường bắt đầu bằng AIza…, lấy ở aistudio.google.com/apikey." }, { status: 400 });
     }
     try {
-        const ds = await layModelGemini(key);
-        if (!ds.length) return NextResponse.json({ error: "Khoá này không gọi được model trả lời chữ nào của Gemini." }, { status: 400 });
-        const thuTu = await thuTuModel(key);
-        return NextResponse.json({ ok: true, so_model: ds.length, model: thuTu[0] ?? null });
+        const models = await listGeminiModels(key);
+        if (!models.length) return NextResponse.json({ error: "Khoá này không gọi được model trả lời chữ nào của Gemini." }, { status: 400 });
+        const modelOrder = await modelFallbackOrder(key);
+        return NextResponse.json({ ok: true, so_model: models.length, model: modelOrder[0] ?? null });
     } catch (e) {
         return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 400 });
     }

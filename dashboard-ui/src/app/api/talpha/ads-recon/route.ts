@@ -31,17 +31,17 @@ export const runtime = "nodejs";           // engine đọc .xlsx bằng node:zl
 // ═══════════════════════════════════════════════════════════════════
 
 const STORE = "ads_recon";
-const KHO = "ads_recon_kho";        // kho dòng giao dịch tích luỹ
-const GIU_TOI_DA = 52;                     // một năm; kỳ cũ hơn tự rụng khỏi kho
-const TOI_DA_FILE = 12;                    // đủ cho nhiều thẻ + nhiều TKQC trong một kỳ
+const ROW_STORE = "ads_recon_kho";        // kho dòng giao dịch tích luỹ
+const MAX_PERIODS_KEPT = 52;                     // một năm; kỳ cũ hơn tự rụng khỏi kho
+const MAX_FILES = 12;                    // đủ cho nhiều thẻ + nhiều TKQC trong một kỳ
 
 type Period = { ky: string; chay_luc: string; summary?: Record<string, unknown> } & Record<string, unknown>;
 type Store = { periods: Period[] };
 const EMPTY: Store = { periods: [] };
 
 /** Kho dòng giao dịch — cất lại để lần sau bổ sung file là đối soát tiếp được. */
-type Kho = { fb: FbRow[]; bank: BankRow[] };
-const KHO_RONG: Kho = { fb: [], bank: [] };
+type RowStore = { fb: FbRow[]; bank: BankRow[] };
+const EMPTY_ROW_STORE: RowStore = { fb: [], bank: [] };
 
 /** Khối luật ads_settlement trong talpha_rules.json. */
 function cfg(): AdsSettlementConfig {
@@ -63,49 +63,49 @@ async function roster(): Promise<Roster | null> {
 }
 
 /** act_xxx → tên người đọc được, lấy từ roster. */
-function tenTkqc(rosterJson: unknown) {
-    const ra: Record<string, string> = {};
+function adAccountNames(rosterJson: unknown) {
+    const names: Record<string, string> = {};
     const projects = (rosterJson as { projects?: Record<string, { accounts?: { id?: string; name?: string }[] }> })?.projects || {};
     for (const p of Object.values(projects)) {
-        for (const a of p.accounts || []) if (a.id) ra[String(a.id).replace(/^act_/i, "")] = a.name || a.id;
+        for (const a of p.accounts || []) if (a.id) names[String(a.id).replace(/^act_/i, "")] = a.name || a.id;
     }
-    return ra;
+    return names;
 }
 
-const sortKy = (a: Period, b: Period) => (a.ky < b.ky ? 1 : a.ky > b.ky ? -1 : 0);   // mới → cũ
+const sortByPeriod = (a: Period, b: Period) => (a.ky < b.ky ? 1 : a.ky > b.ky ? -1 : 0);   // mới → cũ
 
 // ─────────────────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
     try {
-        const ky = req.nextUrl.searchParams.get("ky");
+        const period = req.nextUrl.searchParams.get("ky");
         const store = await readStoreFresh<Store>(STORE, EMPTY);
 
         if (req.nextUrl.searchParams.get("kho") === "1") {
-            const kho = await readStoreFresh<Kho>(KHO, KHO_RONG);
+            const rowStore = await readStoreFresh<RowStore>(ROW_STORE, EMPTY_ROW_STORE);
             return NextResponse.json({
-                kho: { fb: kho.fb.length, bank: kho.bank.length },
-                nguon: [...summarizeSources(kho.fb, "fb"), ...summarizeSources(kho.bank, "bank")],
-                tkqc_ten: tenTkqc(await roster()),
+                kho: { fb: rowStore.fb.length, bank: rowStore.bank.length },
+                nguon: [...summarizeSources(rowStore.fb, "fb"), ...summarizeSources(rowStore.bank, "bank")],
+                tkqc_ten: adAccountNames(await roster()),
             });
         }
 
-        if (!ky) {
+        if (!period) {
             // Danh sách gọn cho ô chọn kỳ — không kéo cả nghìn dòng chi tiết về
-            const periods = [...store.periods].sort(sortKy).map((p) => ({
+            const periods = [...store.periods].sort(sortByPeriod).map((p) => ({
                 ky: p.ky, chay_luc: p.chay_luc, summary: p.summary,
                 files: (p as { files?: unknown }).files,
             }));
             return NextResponse.json({ periods });
         }
 
-        const found = store.periods.find((p) => p.ky === ky);
-        if (!found) return NextResponse.json({ error: `Chưa có kỳ ${ky}` }, { status: 404 });
+        const found = store.periods.find((p) => p.ky === period);
+        if (!found) return NextResponse.json({ error: `Chưa có kỳ ${period}` }, { status: 404 });
 
         if (req.nextUrl.searchParams.get("csv") === "1") {
             return new NextResponse(toCsv(found as unknown as ReconResult), {
                 headers: {
                     "content-type": "text/csv; charset=utf-8",
-                    "content-disposition": `attachment; filename="doi-soat-ads-${ky}.csv"`,
+                    "content-disposition": `attachment; filename="doi-soat-ads-${period}.csv"`,
                 },
             });
         }
@@ -123,10 +123,10 @@ export async function POST(req: NextRequest) {
 
         // ── Bắn cảnh báo của một kỳ đã có ────────────────────────────────
         if (req.nextUrl.searchParams.get("action") === "notify") {
-            const ky = req.nextUrl.searchParams.get("ky") || "";
+            const period = req.nextUrl.searchParams.get("ky") || "";
             const store = await readStoreFresh<Store>(STORE, EMPTY);
-            const found = store.periods.find((p) => p.ky === ky);
-            if (!found) return NextResponse.json({ error: `Chưa có kỳ ${ky}` }, { status: 404 });
+            const found = store.periods.find((p) => p.ky === period);
+            if (!found) return NextResponse.json({ error: `Chưa có kỳ ${period}` }, { status: 404 });
             const out = await sendAlerts(found as unknown as ReconResult, c, { force: true });
             return NextResponse.json(out);
         }
@@ -140,9 +140,9 @@ export async function POST(req: NextRequest) {
         if (!files.length) {
             return NextResponse.json({ error: "Chưa chọn file nào." }, { status: 400 });
         }
-        if (files.length > TOI_DA_FILE) {
+        if (files.length > MAX_FILES) {
             return NextResponse.json({
-                error: `Nhiều nhất ${TOI_DA_FILE} file một lượt — quá số đó thì nhiều khả năng đang gộp nhầm nhiều kỳ vào một.`,
+                error: `Nhiều nhất ${MAX_FILES} file một lượt — quá số đó thì nhiều khả năng đang gộp nhầm nhiều kỳ vào một.`,
             }, { status: 400 });
         }
         for (const f of files) {
@@ -151,15 +151,15 @@ export async function POST(req: NextRequest) {
 
         // Mật khẩu chỉ dùng cho đúng lượt đọc này — không ghi vào kho, không
         // vào log, không nằm trong kết quả trả về.
-        const matKhau = String(form.get("matkhau") || "").trim();
+        const password = String(form.get("matkhau") || "").trim();
         // Mặc định CỘNG DỒN vào kho. Muốn làm lại từ đầu thì gửi lam_moi=1.
-        const lamMoi = String(form.get("lam_moi") || "") === "1";
+        const startOver = String(form.get("lam_moi") || "") === "1";
 
         const doc: SourceDoc[] = [];
         for (const f of files) {
             const buf = Buffer.from(await f.arrayBuffer());
             try {
-                const sheets = await readAnySheets(f.name, buf, matKhau ? { password: matKhau } : {});
+                const sheets = await readAnySheets(f.name, buf, password ? { password: password } : {});
                 doc.push({ sheets, kind: detectKind(sheets, c), name: f.name });
             } catch (e) {
                 const err = e as Partial<PdfPasswordError> & Error;
@@ -183,44 +183,44 @@ export async function POST(req: NextRequest) {
         }
 
         // ── 2. Nạp vào kho, bỏ dòng đã có ────────────────────────────────
-        const nap = { fb: { them: 0, trung: 0 }, bank: { them: 0, trung: 0 } };
-        const khoMoi = await updateStore<Kho>(KHO, KHO_RONG, (cur) => {
-            const goc = lamMoi ? KHO_RONG : cur;
-            const a = addRowsToStore(goc.fb, "fb", doc2.fb.rows);
-            const b = addRowsToStore(goc.bank, "bank", doc2.bank.rows);
-            nap.fb = { them: a.added.length, trung: a.duplicates.length };
-            nap.bank = { them: b.added.length, trung: b.duplicates.length };
+        const importStats = { fb: { them: 0, trung: 0 }, bank: { them: 0, trung: 0 } };
+        const updatedRowStore = await updateStore<RowStore>(ROW_STORE, EMPTY_ROW_STORE, (cur) => {
+            const base = startOver ? EMPTY_ROW_STORE : cur;
+            const a = addRowsToStore(base.fb, "fb", doc2.fb.rows);
+            const b = addRowsToStore(base.bank, "bank", doc2.bank.rows);
+            importStats.fb = { them: a.added.length, trung: a.duplicates.length };
+            importStats.bank = { them: b.added.length, trung: b.duplicates.length };
             return { fb: a.rows, bank: b.rows };
         });
 
         // ── 3. Đối soát trên TOÀN BỘ kho ─────────────────────────────────
-        const nguon = [...summarizeSources(khoMoi.fb, "fb"), ...summarizeSources(khoMoi.bank, "bank")];
-        if (!khoMoi.fb.length || !khoMoi.bank.length) {
+        const sources = [...summarizeSources(updatedRowStore.fb, "fb"), ...summarizeSources(updatedRowStore.bank, "bank")];
+        if (!updatedRowStore.fb.length || !updatedRowStore.bank.length) {
             // Mới có một phía thì chưa đối soát được, nhưng dữ liệu ĐÃ CẤT rồi —
             // bổ sung phía kia lúc nào cũng chạy tiếp được.
             return NextResponse.json({
-                chua_du: true, nap, nguon,
-                kho: { fb: khoMoi.fb.length, bank: khoMoi.bank.length },
-                thieu: !khoMoi.fb.length ? "chi phí TKQC" : "sao kê thẻ",
-                tkqc_ten: tenTkqc(await roster()),
+                chua_du: true, nap: importStats, nguon: sources,
+                kho: { fb: updatedRowStore.fb.length, bank: updatedRowStore.bank.length },
+                thieu: !updatedRowStore.fb.length ? "chi phí TKQC" : "sao kê thẻ",
+                tkqc_ten: adAccountNames(await roster()),
             });
         }
 
-        const truoc = await readStoreFresh<Store>(STORE, EMPTY);
-        const chay = reconcileRows(
-            { ...doc2.fb, rows: khoMoi.fb },
-            { ...doc2.bank, rows: khoMoi.bank },
-            c, { roster: await roster(), history: truoc.periods as HistoryEntry[] });
+        const previousStore = await readStoreFresh<Store>(STORE, EMPTY);
+        const reconRun = reconcileRows(
+            { ...doc2.fb, rows: updatedRowStore.fb },
+            { ...doc2.bank, rows: updatedRowStore.bank },
+            c, { roster: await roster(), history: previousStore.periods as HistoryEntry[] });
 
         const result: Period = {
-            ...chay, nap, nguon,
-            kho: { fb: khoMoi.fb.length, bank: khoMoi.bank.length },
-            tkqc_ten: tenTkqc(await roster()),
+            ...reconRun, nap: importStats, nguon: sources,
+            kho: { fb: updatedRowStore.fb.length, bank: updatedRowStore.bank.length },
+            tkqc_ten: adAccountNames(await roster()),
         };
 
         await updateStore<Store>(STORE, EMPTY, (cur) => {
             const rest = (cur.periods || []).filter((p) => p.ky !== result.ky);   // chạy lại thì đè kỳ cũ
-            return { periods: [...rest, result].sort(sortKy).slice(0, GIU_TOI_DA) };
+            return { periods: [...rest, result].sort(sortByPeriod).slice(0, MAX_PERIODS_KEPT) };
         });
 
         return NextResponse.json(result);
@@ -234,18 +234,18 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
     try {
         // Bỏ một file khỏi kho — tải nhầm thì rút ra, không phải xoá sạch làm lại.
-        const nguon = req.nextUrl.searchParams.get("nguon");
-        if (nguon) {
-            const kho = await updateStore<Kho>(KHO, KHO_RONG, (cur) => ({
-                fb: removeSourceFile(cur.fb, nguon), bank: removeSourceFile(cur.bank, nguon),
+        const sources = req.nextUrl.searchParams.get("nguon");
+        if (sources) {
+            const rowStore = await updateStore<RowStore>(ROW_STORE, EMPTY_ROW_STORE, (cur) => ({
+                fb: removeSourceFile(cur.fb, sources), bank: removeSourceFile(cur.bank, sources),
             }));
-            return NextResponse.json({ ok: true, kho: { fb: kho.fb.length, bank: kho.bank.length } });
+            return NextResponse.json({ ok: true, kho: { fb: rowStore.fb.length, bank: rowStore.bank.length } });
         }
 
-        const ky = req.nextUrl.searchParams.get("ky");
-        if (!ky) return NextResponse.json({ error: "Thiếu tham số ky hoặc nguon" }, { status: 400 });
+        const period = req.nextUrl.searchParams.get("ky");
+        if (!period) return NextResponse.json({ error: "Thiếu tham số ky hoặc nguon" }, { status: 400 });
         const next = await updateStore<Store>(STORE, EMPTY, (cur) => ({
-            periods: (cur.periods || []).filter((p) => p.ky !== ky),
+            periods: (cur.periods || []).filter((p) => p.ky !== period),
         }));
         return NextResponse.json({ ok: true, con_lai: next.periods.length });
     } catch (e) {

@@ -1,12 +1,12 @@
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Type } from "@google/genai";
-import { queryChiDoc } from "@/lib/db";
+import { queryReadOnly } from "@/lib/db";
 import { buildSystemPrompt } from "@/lib/talpha/ceo-ask-prompt";
 import { checkSql, cleanSql } from "@/lib/talpha/ceo-ask-sql";
-import { docKhoa } from "@/lib/talpha/khoa";
-import { thuTuModel } from "@/lib/talpha/gemini-models";
-import { GEMINI_KEY_HEADER, laKhoaGeminiHopLe, type NguonKhoaGemini } from "@/lib/talpha/gemini-key";
+import { getCredential } from "@/lib/talpha/khoa";
+import { modelFallbackOrder } from "@/lib/talpha/gemini-models";
+import { GEMINI_KEY_HEADER, isValidGeminiKey, type GeminiKeySource } from "@/lib/talpha/gemini-key";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -20,22 +20,22 @@ export const maxDuration = 60;
 // không lưu, không ghi log — xem lib/talpha/gemini-key.ts.
 
 /** Chỗ người hỏi đổi khoá, theo khoá đang dùng — để câu báo lỗi chỉ đúng nút. */
-const CHO_DOI_KHOA: Record<NguonKhoaGemini, string> = {
+const CHANGE_KEY_HINT: Record<GeminiKeySource, string> = {
     trinh_duyet: "bấm “Khoá AI” ở đầu trang Hỏi AI để dán khoá khác (hoặc xoá để quay về khoá mặc định)",
     mac_dinh: "dán khoá Gemini riêng ở nút “Khoá AI” đầu trang Hỏi AI (chỉ lưu trên trình duyệt của bạn), " +
         "hoặc giám đốc đổi khoá mặc định ở Quản trị → Khoá kết nối → tab Gemini",
 };
-const TEN_KHOA: Record<NguonKhoaGemini, string> = { trinh_duyet: "Khoá Gemini riêng trên trình duyệt này", mac_dinh: "Khoá Gemini mặc định của hệ thống" };
+const KEY_LABEL: Record<GeminiKeySource, string> = { trinh_duyet: "Khoá Gemini riêng trên trình duyệt này", mac_dinh: "Khoá Gemini mặc định của hệ thống" };
 
 /** Google từ chối chính cái khoá (sai, hết hạn, bị thu hồi, project chưa bật Gemini API). */
-const laKhoaSai = (e: any) =>
+const isInvalidKey = (e: any) =>
     /API key not valid|API_KEY_INVALID|API key expired|PERMISSION_DENIED|has not been used in project|SERVICE_DISABLED/i
         .test(String(e?.message || e));
 
 /** Model này không dùng được lúc này — bị gỡ (404 "no longer available to new users"), không hỗ trợ, hoặc
  *  TREO không trả lời (15/11/2026: gemini-3.8-flash treo quá 60 giây trong khi 3.5-flash trả lời 1,6 giây).
  *  Sang model kế, không phải lỗi thật. */
-function laModelKhongCo(e: any): boolean {
+function isModelUnavailable(e: any): boolean {
     return /\b404\b|NOT_FOUND|no longer available|not found for API version|is not supported|HET_GIO_MODEL|DEADLINE_EXCEEDED/i
         .test(String(e?.message || e));
 }
@@ -45,41 +45,41 @@ function laModelKhongCo(e: any): boolean {
  * trả phí đọc tưởng code sai. Google ghi rõ: "Quota exceeded for metric: …generate_content_free_tier_requests,
  * limit: 20, model: gemini-3.6-flash … Please retry in 17h30m9s".
  */
-function loiHanMuc(m: string, nguon: NguonKhoaGemini): string {
-    if (!laHetQuota(m)) return "Gemini đang quá tải, thử hỏi lại sau vài giây.";
+function quotaErrorMessage(m: string, keySource: GeminiKeySource): string {
+    if (!isQuotaExhausted(m)) return "Gemini đang quá tải, thử hỏi lại sau vài giây.";
     const metric = /Quota exceeded for metric:\s*([\w./-]+)/i.exec(m)?.[1] || "";
-    const gioiHan = /limit:\s*(\d+)/i.exec(m)?.[1];
+    const quotaLimit = /limit:\s*(\d+)/i.exec(m)?.[1];
     const model = /model:\s*([\w.-]+)/i.exec(m)?.[1];
-    const cho = /retry in\s*(?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?/i.exec(m);
-    const choChu = cho && (cho[1] || cho[2])
-        ? ` Mở lại sau khoảng ${cho[1] ? `${cho[1]} giờ ` : ""}${cho[2] ? `${cho[2]} phút` : ""}.`.replace(" .", ".") : "";
-    const theoNgay = /per.?day|PerDay|requests per day/i.test(m);
-    const moTa = `${theoNgay ? "hết hạn mức trong ngày" : "vượt hạn mức số lượt"}${gioiHan ? ` (${gioiHan} lượt${theoNgay ? "/ngày" : ""}${model ? ` cho ${model}` : ""})` : ""}`;
+    const retryMatch = /retry in\s*(?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?/i.exec(m);
+    const retryHint = retryMatch && (retryMatch[1] || retryMatch[2])
+        ? ` Mở lại sau khoảng ${retryMatch[1] ? `${retryMatch[1]} giờ ` : ""}${retryMatch[2] ? `${retryMatch[2]} phút` : ""}.`.replace(" .", ".") : "";
+    const isPerDay = /per.?day|PerDay|requests per day/i.test(m);
+    const quotaSummary = `${isPerDay ? "hết hạn mức trong ngày" : "vượt hạn mức số lượt"}${quotaLimit ? ` (${quotaLimit} lượt${isPerDay ? "/ngày" : ""}${model ? ` cho ${model}` : ""})` : ""}`;
     // Hạn mức Google tính theo PROJECT: khoá mới tạo trong cùng project vẫn hết lượt.
     if (/free_tier/i.test(metric) || /Free Tier/i.test(m)) {
-        return `${TEN_KHOA[nguon]} đang ở mức MIỄN PHÍ (free tier) và đã ${moTa}.${choChu} ` +
+        return `${KEY_LABEL[keySource]} đang ở mức MIỄN PHÍ (free tier) và đã ${quotaSummary}.${retryHint} ` +
             "Gói trả phí của ứng dụng Gemini (Google AI Pro / Ultra) không áp dụng cho API — phải bật thanh toán (billing) " +
             "cho đúng project chứa khoá ở aistudio.google.com → API keys, hoặc dùng khoá của project khác. " +
-            `Muốn hỏi tiếp ngay: ${CHO_DOI_KHOA[nguon]}.`;
+            `Muốn hỏi tiếp ngay: ${CHANGE_KEY_HINT[keySource]}.`;
     }
-    return `${TEN_KHOA[nguon]} đã ${moTa}${metric ? ` — hạn mức ${metric}` : ""}.${choChu} ` +
-        `Xem mức đang dùng ở ai.dev/rate-limit. Muốn hỏi tiếp ngay: ${CHO_DOI_KHOA[nguon]}.`;
+    return `${KEY_LABEL[keySource]} đã ${quotaSummary}${metric ? ` — hạn mức ${metric}` : ""}.${retryHint} ` +
+        `Xem mức đang dùng ở ai.dev/rate-limit. Muốn hỏi tiếp ngay: ${CHANGE_KEY_HINT[keySource]}.`;
 }
 
 /** Một lượt gọi model tối đa chừng này — quá là coi model đang treo, sang model kế. */
-const HET_GIO_MOT_LUOT = 30_000;
+const CALL_TIMEOUT_MS = 30_000;
 /** Cả câu hỏi tối đa chừng này (mọi lượt gọi, mọi model). */
-const HET_GIO_CA_CAU = 100_000;
+const QUESTION_TIMEOUT_MS = 100_000;
 /** Model vừa treo / vừa bị gỡ / hết quota: bỏ qua 30 phút để câu hỏi sau khỏi chờ lại (nhớ trong tiến
  *  trình). Khoá "<vân tay khoá>|<model>": hạn mức là của từng khoá — khoá riêng của một người hết lượt
  *  không được làm người khác (khoá mặc định) bỏ model đó, và ngược lại. */
-const modelTamBo = new Map<string, number>();
-const vanTayKhoa = (k: string) => createHash("sha256").update(k).digest("hex").slice(0, 12);
-const TAM_BO_MS = 30 * 60_000;
+const modelCooldowns = new Map<string, number>();
+const keyFingerprint = (k: string) => createHash("sha256").update(k).digest("hex").slice(0, 12);
+const COOLDOWN_MS = 30 * 60_000;
 /** Hết quota của khoá (429 / RESOURCE_EXHAUSTED) — thử lại trong vài giây cũng vậy. */
-const laHetQuota = (e: any) => /\b429\b|RESOURCE_EXHAUSTED|exceeded your current quota/i.test(String(e?.message || e));
+const isQuotaExhausted = (e: any) => /\b429\b|RESOURCE_EXHAUSTED|exceeded your current quota/i.test(String(e?.message || e));
 /** Tạm bỏ model bao lâu theo kiểu lỗi: quá tải là chuyện vài phút, hết quota / bị gỡ / treo thì lâu hơn. */
-const tamBoBaoLau = (e: any) => (laHetQuota(e) || laModelKhongCo(e) ? TAM_BO_MS : 5 * 60_000);
+const cooldownFor = (e: any) => (isQuotaExhausted(e) || isModelUnavailable(e) ? COOLDOWN_MS : 5 * 60_000);
 const MAX_SQL_CALLS = 4;
 const ROW_CAP = 200;
 
@@ -97,7 +97,7 @@ async function runSql(rawSql: string): Promise<{ rows?: any[]; error?: string }>
     // Bound result size if the model forgot a LIMIT.
     const limited = /\blimit\b/i.test(sql) ? sql : `${sql.trim()}\nLIMIT ${ROW_CAP}`;
     try {
-        const rows = await queryChiDoc(limited, "talpha_doc");
+        const rows = await queryReadOnly(limited, "talpha_doc");
         return { rows: rows.slice(0, ROW_CAP) };
     } catch (e: any) {
         return { error: e?.message || String(e) };
@@ -122,24 +122,24 @@ async function genWithRetry(ai: GoogleGenAI, params: any, tries = 2): Promise<an
     let lastErr: any;
     for (let attempt = 0; attempt < tries; attempt++) {
         const ac = new AbortController();
-        let hen: ReturnType<typeof setTimeout> | undefined;
+        let timer: ReturnType<typeof setTimeout> | undefined;
         try {
             return await Promise.race([
                 ai.models.generateContent({ ...params, config: { ...(params.config || {}), abortSignal: ac.signal } }),
-                new Promise((_, tuChoi) => {
-                    hen = setTimeout(() => {
+                new Promise((_, reject) => {
+                    timer = setTimeout(() => {
                         ac.abort();
-                        tuChoi(new Error(`HET_GIO_MODEL: ${params.model} không trả lời sau ${HET_GIO_MOT_LUOT / 1000} giây`));
-                    }, HET_GIO_MOT_LUOT);
+                        reject(new Error(`HET_GIO_MODEL: ${params.model} không trả lời sau ${CALL_TIMEOUT_MS / 1000} giây`));
+                    }, CALL_TIMEOUT_MS);
                 }),
             ]);
         } catch (e: any) {
             lastErr = e;
             // Model treo / bị gỡ thì thử lại cũng vậy — ném ra để đổi model.
-            if (laModelKhongCo(e) || laHetQuota(e) || !isTransient(e) || attempt === tries - 1) throw e;
+            if (isModelUnavailable(e) || isQuotaExhausted(e) || !isTransient(e) || attempt === tries - 1) throw e;
             await new Promise((r) => setTimeout(r, 600 * Math.pow(2, attempt))); // 0.6s, 1.2s, 2.4s
         } finally {
-            if (hen) clearTimeout(hen);
+            if (timer) clearTimeout(timer);
         }
     }
     throw lastErr;
@@ -234,20 +234,20 @@ async function runAgent(ai: GoogleGenAI, model: string, question: string, from: 
 export async function POST(request: Request) {
     // Khoá riêng của trình duyệt (header) thắng khoá mặc định. Khoá mặc định nhập ở Quản trị → Khoá kết
     // nối → tab Gemini (bảng api_credentials, 15/11/2026); docKhoa còn đọc GEMINI_API_KEY trong .env.local.
-    const khoaRieng = (request.headers.get(GEMINI_KEY_HEADER) || "").trim();
-    if (khoaRieng && !laKhoaGeminiHopLe(khoaRieng)) {
-        return NextResponse.json({ error: `Khoá Gemini riêng trên trình duyệt này không đúng dạng — ${CHO_DOI_KHOA.trinh_duyet}.` }, { status: 400 });
+    const browserKey = (request.headers.get(GEMINI_KEY_HEADER) || "").trim();
+    if (browserKey && !isValidGeminiKey(browserKey)) {
+        return NextResponse.json({ error: `Khoá Gemini riêng trên trình duyệt này không đúng dạng — ${CHANGE_KEY_HINT.trinh_duyet}.` }, { status: 400 });
     }
-    const nguon: NguonKhoaGemini = khoaRieng ? "trinh_duyet" : "mac_dinh";
+    const keySource: GeminiKeySource = browserKey ? "trinh_duyet" : "mac_dinh";
     try {
-        const apiKey = khoaRieng || docKhoa("GEMINI_API_KEY") || docKhoa("GOOGLE_API_KEY");
+        const apiKey = browserKey || getCredential("GEMINI_API_KEY") || getCredential("GOOGLE_API_KEY");
         if (!apiKey) {
             return NextResponse.json(
                 { error: "Chưa có khoá Gemini mặc định — giám đốc nhập ở Quản trị → Khoá kết nối → tab Gemini, hoặc dán khoá riêng ở nút “Khoá AI” đầu trang Hỏi AI. Lấy khoá ở aistudio.google.com/apikey." },
                 { status: 400 }
             );
         }
-        const tamBoKhoa = (m: string) => `${vanTayKhoa(apiKey)}|${m}`;
+        const cooldownKey = (m: string) => `${keyFingerprint(apiKey)}|${m}`;
         const { question, from, to } = await request.json();
         if (!question || !String(question).trim()) {
             return NextResponse.json({ error: "Thiếu câu hỏi" }, { status: 400 });
@@ -257,9 +257,9 @@ export async function POST(request: Request) {
         const q = String(question).trim();
 
         const ai = new GoogleGenAI({ apiKey });
-        const MODELS = await thuTuModel(apiKey);
+        const MODELS = await modelFallbackOrder(apiKey);
         if (!MODELS.length) {
-            return NextResponse.json({ error: `Không lấy được danh sách model của ${TEN_KHOA[nguon].charAt(0).toLowerCase() + TEN_KHOA[nguon].slice(1)} — khoá có thể sai hoặc đã bị thu hồi; ${CHO_DOI_KHOA[nguon]}.` }, { status: 400 });
+            return NextResponse.json({ error: `Không lấy được danh sách model của ${KEY_LABEL[keySource].charAt(0).toLowerCase() + KEY_LABEL[keySource].slice(1)} — khoá có thể sai hoặc đã bị thu hồi; ${CHANGE_KEY_HINT[keySource]}.` }, { status: 400 });
         }
 
         // Fallback chain: thử lần lượt từng model; hết quota/quá tải (transient) thì
@@ -267,36 +267,36 @@ export async function POST(request: Request) {
         let result: { answer: string; queries: string[] } | null = null;
         let usedModel = MODELS[0];
         let lastErr: any;
-        const batDau = Date.now();
+        const startedAt = Date.now();
         // Model đang bị tạm bỏ xếp xuống cuối (vẫn thử nếu mọi model khác hỏng).
-        const conHan = (m: string) => (modelTamBo.get(tamBoKhoa(m)) ?? 0) > Date.now();
-        const thuTu = [...MODELS.filter((m) => !conHan(m)), ...MODELS.filter(conHan)];
-        for (const model of thuTu) {
-            if (Date.now() - batDau > HET_GIO_CA_CAU) break;
+        const isCoolingDown = (m: string) => (modelCooldowns.get(cooldownKey(m)) ?? 0) > Date.now();
+        const modelOrder = [...MODELS.filter((m) => !isCoolingDown(m)), ...MODELS.filter(isCoolingDown)];
+        for (const model of modelOrder) {
+            if (Date.now() - startedAt > QUESTION_TIMEOUT_MS) break;
             try {
                 result = await runAgent(ai, model, q, fromDate, toDate);
                 usedModel = model;
                 break;
             } catch (e: any) {
                 lastErr = e;
-                if (!isTransient(e) && !laModelKhongCo(e)) throw e;
-                modelTamBo.set(tamBoKhoa(model), Date.now() + tamBoBaoLau(e));
-                console.warn(`ceo-ask (${nguon === "trinh_duyet" ? "khoá trình duyệt" : "khoá mặc định"}): ${model} — ${String(e?.message || e).slice(0, 200)}`);
-                console.warn(`ceo-ask: model ${model} ${laModelKhongCo(e) ? "không còn dùng được" : "hết quota/quá tải"}, thử model kế tiếp`);
+                if (!isTransient(e) && !isModelUnavailable(e)) throw e;
+                modelCooldowns.set(cooldownKey(model), Date.now() + cooldownFor(e));
+                console.warn(`ceo-ask (${keySource === "trinh_duyet" ? "khoá trình duyệt" : "khoá mặc định"}): ${model} — ${String(e?.message || e).slice(0, 200)}`);
+                console.warn(`ceo-ask: model ${model} ${isModelUnavailable(e) ? "không còn dùng được" : "hết quota/quá tải"}, thử model kế tiếp`);
             }
         }
         if (!result) throw lastErr || new Error("Không model nào khả dụng");
 
         const answer = result.answer || "Xin lỗi, tôi chưa lấy được câu trả lời. Thử hỏi lại cụ thể hơn nhé.";
-        return NextResponse.json({ answer, queries: result.queries, model: usedModel, key_source: nguon });
+        return NextResponse.json({ answer, queries: result.queries, model: usedModel, key_source: keySource });
     } catch (e: any) {
-        console.error(`ceo-ask error (${nguon === "trinh_duyet" ? "khoá trình duyệt" : "khoá mặc định"}):`, String(e?.message || e).slice(0, 500));
-        if (laKhoaSai(e)) {
+        console.error(`ceo-ask error (${keySource === "trinh_duyet" ? "khoá trình duyệt" : "khoá mặc định"}):`, String(e?.message || e).slice(0, 500));
+        if (isInvalidKey(e)) {
             return NextResponse.json({
-                error: `${TEN_KHOA[nguon]} bị Google từ chối (sai, hết hạn hoặc project chưa bật Gemini API) — ${CHO_DOI_KHOA[nguon]}.`,
+                error: `${KEY_LABEL[keySource]} bị Google từ chối (sai, hết hạn hoặc project chưa bật Gemini API) — ${CHANGE_KEY_HINT[keySource]}.`,
             }, { status: 400 });
         }
-        if (laModelKhongCo(e)) {
+        if (isModelUnavailable(e)) {
             return NextResponse.json({
                 error: /HET_GIO_MODEL|DEADLINE/i.test(String(e?.message || e))
                     ? "Gemini không trả lời kịp — thử lại, hoặc chọn model khác (vd gemini-3.5-flash) ở Quản trị → Khoá kết nối → tab Gemini."
@@ -304,7 +304,7 @@ export async function POST(request: Request) {
             }, { status: 503 });
         }
         if (isTransient(e)) {
-            return NextResponse.json({ error: loiHanMuc(String(e?.message || e), nguon) }, { status: 503 });
+            return NextResponse.json({ error: quotaErrorMessage(String(e?.message || e), keySource) }, { status: 503 });
         }
         return NextResponse.json({ error: e?.message || "Internal error" }, { status: 500 });
     }

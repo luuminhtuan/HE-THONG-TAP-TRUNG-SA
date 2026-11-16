@@ -22,22 +22,22 @@ import { CAMP_MARKETS, normCampMarketer } from "./rules";
 
 export const PANCAKE_API = "https://pages.fm/api/v1";
 
-export type HoiThoai = {
+export type Conversation = {
     id: string; type?: string | null; inserted_at?: string | null; updated_at?: string | null;
     has_phone?: boolean | null;
 };
-export type DemNgay = { inbox_moi: number; comment_moi: number; co_sdt: number };
+export type ConversationCounts = { inbox_moi: number; comment_moi: number; co_sdt: number };
 
 /** Tên page để SO KHỚP — cùng luật chuan_ten_page (ops/talpha_reports/talpha_rules.py): bỏ kiểu
  *  chữ trang trí (𝑱𝒂𝒑𝒂𝒏 → japan), hoa thường, dấu câu, khoảng trắng thừa. */
-export function chuanTenPage(s?: string | null): string {
+export function normalizePageName(s?: string | null): string {
     return String(s || "").normalize("NFKC").toLowerCase()
         .replace(/[^\p{L}\p{N}_]+/gu, " ").trim().replace(/\s+/g, " ");
 }
 
 /** Ô TÊN PAGE trong tên campaign chuẩn NƯỚC/MARKETER/TỆP/SẢNPHẨM/TRANG/NGÀY — ô thứ 4 sau ô nước.
  *  Không có ô nước (tên cũ) thì đếm từ ô marketer như camp_san_pham. Không thấy → null. */
-export function trangCuaCamp(cn?: string | null): string | null {
+export function pageOfCampaign(cn?: string | null): string | null {
     const p = String(cn || "").split("/").map((x) => x.trim());
     const mi = p.findIndex((s) => s.toUpperCase() in CAMP_MARKETS);
     const k = mi >= 0 ? mi + 1 : p.slice(0, 2).findIndex((s) => normCampMarketer(s));
@@ -47,7 +47,7 @@ export function trangCuaCamp(cn?: string | null): string | null {
 }
 
 /** "2026-10-08T22:39:09.188" (UTC không múi) → ngày VN "2026-10-09". Hỏng → null. */
-export function ngayVN(iso?: string | null): string | null {
+export function toVnDate(iso?: string | null): string | null {
     const s = String(iso || "").trim();
     if (!s) return null;
     const t = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : s + "Z");
@@ -55,15 +55,15 @@ export function ngayVN(iso?: string | null): string | null {
 }
 
 /** 00:00 ngày VN `ngay` tính bằng epoch ms. */
-export const dauNgayVN = (ngay: string) => Date.parse(`${ngay}T00:00:00+07:00`);
+export const vnDayStartMs = (date: string) => Date.parse(`${date}T00:00:00+07:00`);
 
 /** Hội thoại MỚI trong ngày VN: INBOX = tin nhắn mới (cùng nghĩa "cuộc trò chuyện mới" của Meta),
  *  COMMENT = bình luận mới; co_sdt = số tin nhắn mới đã có số điện thoại. Trùng id chỉ đếm một lần. */
-export function demTrongNgay(hts: HoiThoai[], ngay: string): DemNgay {
-    const out: DemNgay = { inbox_moi: 0, comment_moi: 0, co_sdt: 0 };
+export function countForDay(hts: Conversation[], date: string): ConversationCounts {
+    const out: ConversationCounts = { inbox_moi: 0, comment_moi: 0, co_sdt: 0 };
     const da = new Set<string>();
     for (const h of hts) {
-        if (!h || da.has(h.id) || ngayVN(h.inserted_at) !== ngay) continue;
+        if (!h || da.has(h.id) || toVnDate(h.inserted_at) !== date) continue;
         da.add(h.id);
         if (String(h.type || "").toUpperCase() === "COMMENT") out.comment_moi++;
         else { out.inbox_moi++; if (h.has_phone) out.co_sdt++; }
@@ -72,12 +72,12 @@ export function demTrongNgay(hts: HoiThoai[], ngay: string): DemNgay {
 }
 
 /** Như demTrongNgay nhưng cho KHOẢNG ngày VN [tu, den] (Ads Command Center chọn nhiều ngày). */
-export function demTrongKhoang(hts: HoiThoai[], tu: string, den: string): DemNgay {
-    const out: DemNgay = { inbox_moi: 0, comment_moi: 0, co_sdt: 0 };
+export function countForRange(hts: Conversation[], from: string, to: string): ConversationCounts {
+    const out: ConversationCounts = { inbox_moi: 0, comment_moi: 0, co_sdt: 0 };
     const da = new Set<string>();
     for (const h of hts) {
-        const d = h ? ngayVN(h.inserted_at) : null;
-        if (!h || da.has(h.id) || !d || d < tu || d > den) continue;
+        const d = h ? toVnDate(h.inserted_at) : null;
+        if (!h || da.has(h.id) || !d || d < from || d > to) continue;
         da.add(h.id);
         if (String(h.type || "").toUpperCase() === "COMMENT") out.comment_moi++;
         else { out.inbox_moi++; if (h.has_phone) out.co_sdt++; }
@@ -88,27 +88,27 @@ export function demTrongKhoang(hts: HoiThoai[], tu: string, den: string): DemNga
 /** Mess của MỘT page chia cho các camp chạy page đó — CÙNG luật bot Zalo (tin_gio.chiaMessTheoCamp):
  *  theo click Messenger, không camp nào có click thì theo tiền. Phần dư làm tròn trao cho camp có
  *  phần lẻ lớn nhất — tổng luôn đúng bằng mess của page. */
-export function chiaMessTheoCamp(tongMess: number, cs: { link_clicks?: number | null; spend_vnd?: number | null }[]): number[] {
-    if (cs.length <= 1) return cs.map(() => tongMess);
+export function splitMessByCampaign(totalMess: number, cs: { link_clicks?: number | null; spend_vnd?: number | null }[]): number[] {
+    if (cs.length <= 1) return cs.map(() => totalMess);
     let w = cs.map((c) => Number(c.link_clicks || 0));
     if (!w.some((v) => v > 0)) w = cs.map((c) => Number(c.spend_vnd || 0));
     const S = w.reduce((a, b) => a + b, 0) || 1;
-    const raw = w.map((v) => (tongMess * v) / S);
+    const raw = w.map((v) => (totalMess * v) / S);
     const out = raw.map(Math.floor);
-    const le = raw.map((v, i) => [v - Math.floor(v), i] as [number, number]).sort((a, b) => b[0] - a[0]);
-    for (let j = 0, du = tongMess - out.reduce((a, b) => a + b, 0); j < du; j++) out[le[j % le.length][1]]++;
+    const remainders = raw.map((v, i) => [v - Math.floor(v), i] as [number, number]).sort((a, b) => b[0] - a[0]);
+    for (let j = 0, leftover = totalMess - out.reduce((a, b) => a + b, 0); j < leftover; j++) out[remainders[j % remainders.length][1]]++;
     return out;
 }
 
 /** Lật tiếp hay thôi: lô xếp theo updated_at giảm dần, nên khi CẢ lô đã cập nhật trước 00:00 ngày
  *  `ngay` thì không còn hội thoại nào TẠO trong ngày đó ở các lô sau (tạo ≤ cập nhật). */
-export function hetLoTrongNgay(lo: HoiThoai[], ngay: string): boolean {
-    if (!lo.length) return true;
-    const dau = dauNgayVN(ngay);
-    return lo.every((h) => {
+export function batchDoneForDay(batch: Conversation[], date: string): boolean {
+    if (!batch.length) return true;
+    const dayStart = vnDayStartMs(date);
+    return batch.every((h) => {
         const s = String(h.updated_at || h.inserted_at || "");
         const t = Date.parse(/[zZ]|[+-]\d\d:?\d\d$/.test(s) ? s : s + "Z");
-        return !Number.isNaN(t) && t < dau;
+        return !Number.isNaN(t) && t < dayStart;
     });
 }
 
@@ -126,8 +126,8 @@ export function hanToken(jwt?: string | null): number | null {
  *  cách khớp chính (tên page trong tên camp), để page mới chưa chạy camp vẫn được đếm. CHỈ từ cuối:
  *  "Japan Prime Leather" là page ĐÀI (camp TW/…) — khớp cả tên là đếm nhầm tin nhắn Đài sang Nhật.
  *  Route chỉ truyền MÃ SHOP (JP): đuôi "Japan" còn là tên hàng ("Prime Leather Japan" bán ở Đài). */
-export function laTrangCuaNuoc(ten: string | null | undefined, tokens: string[]): boolean {
-    const tu = chuanTenPage(ten).toUpperCase().split(" ");
-    const cuoi = tu[tu.length - 1];
-    return !!cuoi && tokens.some((t) => chuanTenPage(t).toUpperCase() === cuoi);
+export function isMarketPage(name: string | null | undefined, tokens: string[]): boolean {
+    const words = normalizePageName(name).toUpperCase().split(" ");
+    const lastWord = words[words.length - 1];
+    return !!lastWord && tokens.some((t) => normalizePageName(t).toUpperCase() === lastWord);
 }

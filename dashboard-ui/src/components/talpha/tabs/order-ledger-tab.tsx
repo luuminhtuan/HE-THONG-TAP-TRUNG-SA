@@ -4,22 +4,22 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { format } from "date-fns";
 import { Check, ChevronDown, Copy, HandCoins } from "lucide-react";
 import TabSkeleton, { ErrorState } from "@/components/ui/tab-skeleton";
-import { useThamSoUrl } from "../url-state";
+import { useUrlParam } from "../url-state";
 import { formatNumber, cn } from "../utils";
 import {
-    TWD, VND, RMB, d6, STRIPE, PIN_TINT, rowCls, statusCls, mkCls, tinDoiTien, demTyLeGiao,
-    type Light, type LedgerRowUI, type DonChoTien,
+    TWD, VND, RMB, d6, STRIPE, PIN_TINT, rowCls, statusCls, mkCls, paymentChaseMessage, countDeliveryOutcomes,
+    type Light, type LedgerRowUI, type UnpaidOrder,
 } from "./ledger-shared";
-import ThanhNhapBangDon, { bangDaCu, nhanNapGon, type NhapBangDon } from "@/components/talpha/nhap-bang-don";
-import SoDonNuoc from "./order-ledger-market";
-import { DanhSachThe, KhoiViecCanSua, OLocDon, TheDon, ThanhCongCu, useManHep, type ViecSua } from "./so-don-ui";
+import PartnerSheetImporter, { isSheetStale, shortImportLabel, type PartnerSheetImport } from "@/components/talpha/nhap-bang-don";
+import MarketOrderLedger from "./order-ledger-market";
+import { CardList, FixTasksPanel, LightFilterBar, OrderCard, LedgerToolbar, useNarrowScreen, type FixTask } from "./so-don-ui";
 
 interface Props { dateRange?: { from: Date; to: Date }; projectId?: string }
 
 /** Cảnh báo mang theo BẢNG chi tiết — nói "thiếu 6 mã" rồi bảo đi mở file JSON
  *  thì người đọc vẫn phải tự tra mã nào là hàng gì, dính bao nhiêu đơn. Hiện trong khung
  *  "việc cần sửa dữ liệu" (so-don-ui.tsx), mặc định gập. */
-type Note = ViecSua;
+type Note = FixTask;
 
 /* Màu chữ theo LOẠI dữ liệu, không tô cho vui: mã định danh một tông, ngày một
    tông, tiền một tông — mắt phân vùng được ngay mà không phải đọc tiêu đề. */
@@ -54,20 +54,20 @@ function Tick({ on, title }: { on: boolean; title: string }) {
  * UAE mở tab là đụng ngay sổ Đài, máy chủ từ chối, màn lỗi che mất nút đổi nước.
  */
 export default function TALPHAOrderLedgerTab(props: Props) {
-    const [nuocUrl, datNuocUrl] = useThamSoUrl("market");
+    const [marketParam, setMarketParam] = useUrlParam("market");
     const [ds, setDs] = useState<{ code: string; display: string }[] | null>(null);
     // Nước của team đang bán nhưng chưa có sổ (chưa khai hãng vận chuyển — Nhật 09/10/2026).
-    const [chuaCoSo, setChuaCoSo] = useState<string[]>([]);
+    const [marketsWithoutLedger, setMarketsWithoutLedger] = useState<string[]>([]);
     useEffect(() => {
         fetch("/api/talpha/markets").then((r) => r.json())
             .then((d: { markets?: { code: string; display: string; status?: string; co_van_don?: boolean }[] }) => {
                 // Chỉ nước đang bán: nước sắp chạy chưa có đơn, nước đã tắt (04/11/2026) không còn sổ
                 // để làm việc — đơn cũ chờ thu tiền xem ở Kế toán → Tiền COD về.
-                const dangBan = (d.markets || []).filter((m) => (m.status || "dang_ban") === "dang_ban");
+                const activeMarkets = (d.markets || []).filter((m) => (m.status || "dang_ban") === "dang_ban");
                 // Sổ đơn đọc đơn + trạng thái giao qua hãng vận chuyển: nước chưa khai tracking.markets
                 // (Nhật Bản lúc mới mở) gọi sổ là máy chủ trả 400 — ẩn nút thay vì hiện màn lỗi.
-                const list = dangBan.filter((m) => m.co_van_don !== false).map((m) => ({ code: m.code, display: m.display }));
-                setChuaCoSo(dangBan.filter((m) => m.co_van_don === false).map((m) => m.display));
+                const list = activeMarkets.filter((m) => m.co_van_don !== false).map((m) => ({ code: m.code, display: m.display }));
+                setMarketsWithoutLedger(activeMarkets.filter((m) => m.co_van_don === false).map((m) => m.display));
                 setDs(list);
             })
             .catch(() => setDs([]));   // không lấy được danh sách nước thì vẫn hiện sổ Đài như cũ
@@ -75,43 +75,43 @@ export default function TALPHAOrderLedgerTab(props: Props) {
     if (ds === null) return <TabSkeleton />;
     // Nước đang xem nằm trên địa chỉ (?market=SG, 15/11/2026) — tải lại / gửi link là mở đúng nước.
     // Mã lạ hoặc nước ngoài team → nước đầu tiên được xem.
-    const nuoc = nuocUrl && ds.some((m) => m.code === nuocUrl.toUpperCase()) ? nuocUrl.toUpperCase() : (ds[0]?.code ?? "TW");
+    const market = marketParam && ds.some((m) => m.code === marketParam.toUpperCase()) ? marketParam.toUpperCase() : (ds[0]?.code ?? "TW");
     // Team chỉ có nước chưa có sổ: nói thẳng, đừng mở sổ Đài (máy chủ sẽ từ chối, màn lỗi khó hiểu).
-    if (!ds.length && chuaCoSo.length) {
+    if (!ds.length && marketsWithoutLedger.length) {
         return (
             <div className="rounded-xl border border-border bg-card px-5 py-6 text-sm text-muted-foreground">
-                Sổ đơn {chuaCoSo.join(", ")} chưa mở được: chưa khai hãng vận chuyển (chưa có mã vận đơn để theo dõi giao hàng).
+                Sổ đơn {marketsWithoutLedger.join(", ")} chưa mở được: chưa khai hãng vận chuyển (chưa có mã vận đơn để theo dõi giao hàng).
                 Đơn của nước này xem tạm ở Kế toán → Tiền COD về.
             </div>
         );
     }
     // Nút chọn nước nằm CÙNG hàng với thanh công cụ của sổ (07/10/2026) — truyền xuống để sổ tự xếp.
-    const nutNuoc = ds.length > 1 ? (
+    const marketSwitcher = ds.length > 1 ? (
         <div className="inline-flex rounded-lg border border-border bg-muted/40 p-1">
             {ds.map((m) => (
-                <button key={m.code} onClick={() => datNuocUrl(m.code)}
+                <button key={m.code} onClick={() => setMarketParam(m.code)}
                     className={cn("rounded-md px-3.5 py-1 text-sm font-medium transition-colors",
-                        nuoc === m.code ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                        market === m.code ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
                     {m.display}
                 </button>
             ))}
         </div>
     ) : null;
-    return nuoc === "TW"
-        ? <SoDonDai {...props} nutNuoc={nutNuoc} />
-        : <SoDonNuoc key={nuoc} code={nuoc} nutNuoc={nutNuoc} dateRange={props.dateRange} />;
+    return market === "TW"
+        ? <TwOrderLedger {...props} nutNuoc={marketSwitcher} />
+        : <MarketOrderLedger key={market} code={market} nutNuoc={marketSwitcher} dateRange={props.dateRange} />;
 }
 
-function SoDonDai({ dateRange, nutNuoc }: Props & { nutNuoc?: ReactNode }) {
+function TwOrderLedger({ dateRange, nutNuoc: marketSwitcher }: Props & { nutNuoc?: ReactNode }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [rows, setRows] = useState<LedgerRowUI[]>([]);
     const [notes, setNotes] = useState<Note[]>([]);
-    const [nhapBangDon, setNhapBangDon] = useState<NhapBangDon | null>(null);
-    const [choTien, setChoTien] = useState<DonChoTien[]>([]);
-    const [viecDoi, setViecDoi] = useState<{ chi_tiet: string } | null>(null);
+    const [partnerImport, setPartnerImport] = useState<PartnerSheetImport | null>(null);
+    const [unpaidOrders, setUnpaidOrders] = useState<UnpaidOrder[]>([]);
+    const [chaseTask, setChaseTask] = useState<{ chi_tiet: string } | null>(null);
     const [filter, setFilter] = useState<Light | "all">("all");
-    const hep = useManHep();
+    const narrow = useNarrowScreen();
     const [q, setQ] = useState("");
 
     // Sổ chỉ giữ đơn LÊN ĐƠN trong khoảng đang chọn (27/10/2026). Không có `from` thì máy chủ
@@ -127,9 +127,9 @@ function SoDonDai({ dateRange, nutNuoc }: Props & { nutNuoc?: ReactNode }) {
             if (!res.ok) throw new Error(d.error || "Không dựng được sổ");
             setRows(d.rows || []);
             setNotes(d.warnings || []);
-            setNhapBangDon(d.nhap_bang_don || null);
-            setChoTien(d.chua_ve_tien || []);
-            setViecDoi((d.viec || []).find((v: { id: string }) => v.id === "doi-naza") || null);
+            setPartnerImport(d.nhap_bang_don || null);
+            setUnpaidOrders(d.chua_ve_tien || []);
+            setChaseTask((d.viec || []).find((v: { id: string }) => v.id === "doi-naza") || null);
         } catch (e) {
             setError(e instanceof Error ? e.message : "Lỗi không rõ");
         } finally { setLoading(false); }
@@ -165,17 +165,17 @@ function SoDonDai({ dateRange, nutNuoc }: Props & { nutNuoc?: ReactNode }) {
         URL.revokeObjectURL(a.href);
     };
 
-    if (loading && !rows.length) return <div className="space-y-4">{nutNuoc}<TabSkeleton cards={0} rows={12} showChart={false} /></div>;
-    if (error) return <div className="space-y-4">{nutNuoc}<ErrorState message={error} onRetry={load} /></div>;
+    if (loading && !rows.length) return <div className="space-y-4">{marketSwitcher}<TabSkeleton cards={0} rows={12} showChart={false} /></div>;
+    if (error) return <div className="space-y-4">{marketSwitcher}<ErrorState message={error} onRetry={load} /></div>;
 
     const count = (l: Light) => rows.filter((r) => r.light === l).length;
-    const cu = bangDaCu(nhapBangDon);
+    const sheetStale = isSheetStale(partnerImport);
 
     return (
         <div className="space-y-3 md:space-y-4">
-            <ThanhCongCu
-                nutNuoc={nutNuoc}
-                nguon={cu ? null : nhanNapGon(nhapBangDon)}
+            <LedgerToolbar
+                nutNuoc={marketSwitcher}
+                nguon={sheetStale ? null : shortImportLabel(partnerImport)}
                 nguonGiaiThich={"Sổ đơn = mọi đơn, mọi cột của bảng đơn đối tác ghép với sao kê NAZA. Máy tự nạp lúc 6h sáng; "
                     + "cần ngay thì bấm “Đọc bảng đối tác” ở tab Theo dõi vận đơn. Đơn quá hạn thì đòi ở khung “Đòi tiền NAZA”; "
                     + "tiền về từng kỳ sao kê xem ở Kế toán → Tiền COD về."}
@@ -183,9 +183,9 @@ function SoDonDai({ dateRange, nutNuoc }: Props & { nutNuoc?: ReactNode }) {
                 onTaiLai={load} dangTai={loading} onCsv={exportCsv}
             />
             {/* Bảng đối tác đã cũ → vẫn khung đỏ to như trước: số trên màn KHÔNG phải của hôm nay. */}
-            {cu && <ThanhNhapBangDon n={nhapBangDon} anMaTrung />}
+            {sheetStale && <PartnerSheetImporter n={partnerImport} anMaTrung />}
 
-            <OLocDon
+            <LightFilterBar
                 muc={[
                     { id: "do", label: "Phải xử", n: count("do") },
                     { id: "vang", label: "Đang chờ", n: count("vang") },
@@ -193,16 +193,16 @@ function SoDonDai({ dateRange, nutNuoc }: Props & { nutNuoc?: ReactNode }) {
                     { id: "xam", label: "Không đòi", n: count("xam") },
                 ]}
                 tong={rows.length} chon={filter} onChon={setFilter}
-                tyLe={demTyLeGiao(rows, (r) => [r.status, r.status_raw])}
+                tyLe={countDeliveryOutcomes(rows, (r) => [r.status, r.status_raw])}
             />
 
-            <KhoiDoiNaza ds={choTien.filter((p) => p.qua_han)} canNhan={!!viecDoi} chiTiet={viecDoi?.chi_tiet || ""} onXong={load} />
+            <NazaChasePanel ds={unpaidOrders.filter((p) => p.qua_han)} canNhan={!!chaseTask} chiTiet={chaseTask?.chi_tiet || ""} onXong={load} />
 
-            <KhoiViecCanSua viec={notes} hep={hep} />
+            <FixTasksPanel viec={notes} hep={narrow} />
 
-            {hep ? (
-                <DanhSachThe key={`${filter}|${q}`} ds={shown} tong={rows.length}
-                    khoa={(r) => r.tracking + r.order_no} ve={(r) => <TheDonDai r={r} />} />
+            {narrow ? (
+                <CardList key={`${filter}|${q}`} ds={shown} tong={rows.length}
+                    khoa={(r) => r.tracking + r.order_no} ve={(r) => <TwOrderCard r={r} />} />
             ) : (<>
             {/* Cuộn CẢ HAI chiều, dựng HẾT mọi dòng — không phân trang.
                 Tiêu đề ghim trên, cột mã đơn ghim trái: cuộn kiểu gì cũng biết
@@ -238,7 +238,7 @@ function SoDonDai({ dateRange, nutNuoc }: Props & { nutNuoc?: ReactNode }) {
                         {shown.map((r, i) => {
                             /* "Kỳ chờ" chỉ có nghĩa với đơn ĐÃ GIAO mà TIỀN CHƯA VỀ. Đơn đã
                                nhận tiền thì con số này là nhiễu — để trống. */
-                            const cho = r.paid_twd === null && /thành công/i.test(r.status_raw || "");
+                            const awaitingPayment = r.paid_twd === null && /thành công/i.test(r.status_raw || "");
                             const skuM = (r.sku || "").match(/^(\d{3})(.*)$/);
                             return (
                                 <tr key={r.tracking + r.order_no} className={cn("group", rowCls(r.light))}>
@@ -261,7 +261,7 @@ function SoDonDai({ dateRange, nutNuoc }: Props & { nutNuoc?: ReactNode }) {
                                     <Td grp className={C.dt}>{d6(r.order_date)}</Td>
                                     <Td className={C.dt2}>{d6(r.ship_date)}</Td>
                                     <Td num>
-                                        {!cho ? <span className={C.faint}>·</span> : (
+                                        {!awaitingPayment ? <span className={C.faint}>·</span> : (
                                             <span title={`Đã qua ${r.ky_da_qua} kỳ sao kê kể từ khi giao mà tiền chưa về${r.ky_da_qua >= 2 ? " — phải đòi" : ""}`}
                                                 className={cn("rounded-[3px] px-1.5 font-mono text-[10px] font-bold",
                                                     r.ky_da_qua >= 2 ? "bg-rose-600 text-white"
@@ -351,23 +351,23 @@ function SoDonDai({ dateRange, nutNuoc }: Props & { nutNuoc?: ReactNode }) {
  * mấy lần (/api/talpha/cod-actions, việc "da_doi"); sang kỳ sau tiền vẫn chưa về thì việc tự nổi
  * lại (`canNhan` = máy còn xếp "Nhắn NAZA đòi tiền" vào việc hôm nay).
  */
-function KhoiDoiNaza({ ds, canNhan, chiTiet, onXong }: {
-    ds: DonChoTien[]; canNhan: boolean; chiTiet: string; onXong: () => Promise<void> | void;
+function NazaChasePanel({ ds, canNhan: chaseDue, chiTiet: details, onXong: onDone }: {
+    ds: UnpaidOrder[]; canNhan: boolean; chiTiet: string; onXong: () => Promise<void> | void;
 }) {
-    const [mo, setMo] = useState(false);
-    const [daChep, setDaChep] = useState("");
-    const [ban, setBan] = useState(false);
-    const [loi, setLoi] = useState("");
+    const [open, setOpen] = useState(false);
+    const [copiedLang, setCopiedLang] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [saveError, setSaveError] = useState("");
     if (!ds.length) return null;
 
-    const tong = ds.reduce((a, x) => a + x.cod_twd, 0);
-    const chep = (lang: "vi" | "zh") => {
-        navigator.clipboard?.writeText(tinDoiTien(ds, lang));
-        setDaChep(lang); setTimeout(() => setDaChep(""), 2200);
+    const total = ds.reduce((a, x) => a + x.cod_twd, 0);
+    const copyMessage = (lang: "vi" | "zh") => {
+        navigator.clipboard?.writeText(paymentChaseMessage(ds, lang));
+        setCopiedLang(lang); setTimeout(() => setCopiedLang(""), 2200);
     };
     /** Đòi thì đòi cả danh sách trong một tin — đóng cả mẻ, không đóng lẻ từng đơn. */
-    const daNhan = async () => {
-        setBan(true); setLoi("");
+    const markMessaged = async () => {
+        setBusy(true); setSaveError("");
         try {
             for (const p of ds) {
                 const r = await fetch("/api/talpha/cod-actions", {
@@ -376,52 +376,52 @@ function KhoiDoiNaza({ ds, canNhan, chiTiet, onXong }: {
                 });
                 if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Không ghi được");
             }
-            await onXong();
+            await onDone();
         } catch (e) {
-            setLoi(e instanceof Error ? e.message : "Không ghi được");
-        } finally { setBan(false); }
+            setSaveError(e instanceof Error ? e.message : "Không ghi được");
+        } finally { setBusy(false); }
     };
-    const nut = "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[12.5px] font-medium transition-colors disabled:opacity-60";
+    const buttonClass = "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[12.5px] font-medium transition-colors disabled:opacity-60";
 
     return (
         <div className={cn("overflow-hidden rounded-xl border bg-card",
-            canNhan ? "border-rose-300 dark:border-rose-500/40" : "border-border")}>
+            chaseDue ? "border-rose-300 dark:border-rose-500/40" : "border-border")}>
             <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 md:px-4",
-                canNhan ? "bg-rose-50 dark:bg-rose-500/10" : "bg-muted/30")}>
-                <button onClick={() => setMo(!mo)} aria-expanded={mo}
+                chaseDue ? "bg-rose-50 dark:bg-rose-500/10" : "bg-muted/30")}>
+                <button onClick={() => setOpen(!open)} aria-expanded={open}
                     className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-left">
-                    <HandCoins className={cn("h-4 w-4 flex-none", canNhan ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground")} />
-                    <span className={cn("text-sm font-semibold", canNhan ? "text-rose-900 dark:text-rose-200" : "text-foreground")}>
+                    <HandCoins className={cn("h-4 w-4 flex-none", chaseDue ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground")} />
+                    <span className={cn("text-sm font-semibold", chaseDue ? "text-rose-900 dark:text-rose-200" : "text-foreground")}>
                         Đòi tiền NAZA
                     </span>
                     <span className={cn("rounded-full px-2 py-0.5 text-[11.5px] font-bold tabular-nums",
-                        canNhan ? "bg-rose-600 text-white" : "bg-muted text-foreground/75")}>
-                        {ds.length} đơn quá hạn · {TWD(tong)}
+                        chaseDue ? "bg-rose-600 text-white" : "bg-muted text-foreground/75")}>
+                        {ds.length} đơn quá hạn · {TWD(total)}
                     </span>
-                    {!canNhan && <span className="text-[12px] text-muted-foreground">đã nhắn — chờ kỳ sao kê sau</span>}
-                    <ChevronDown className={cn("h-4 w-4 flex-none opacity-60 transition-transform", mo && "rotate-180")} />
+                    {!chaseDue && <span className="text-[12px] text-muted-foreground">đã nhắn — chờ kỳ sao kê sau</span>}
+                    <ChevronDown className={cn("h-4 w-4 flex-none opacity-60 transition-transform", open && "rotate-180")} />
                 </button>
                 <div className="flex flex-wrap items-center gap-1.5">
-                    <button onClick={() => chep("vi")}
-                        className={cn(nut, "border-transparent bg-orange-500 text-white hover:bg-orange-600")}>
-                        <Copy className="h-3.5 w-3.5" />{daChep === "vi" ? "Đã chép" : "Chép tin (Việt)"}
+                    <button onClick={() => copyMessage("vi")}
+                        className={cn(buttonClass, "border-transparent bg-orange-500 text-white hover:bg-orange-600")}>
+                        <Copy className="h-3.5 w-3.5" />{copiedLang === "vi" ? "Đã chép" : "Chép tin (Việt)"}
                     </button>
-                    <button onClick={() => chep("zh")} className={cn(nut, "border-border bg-card text-foreground hover:bg-muted")}>
-                        {daChep === "zh" ? "Đã chép" : "中文"}
+                    <button onClick={() => copyMessage("zh")} className={cn(buttonClass, "border-border bg-card text-foreground hover:bg-muted")}>
+                        {copiedLang === "zh" ? "Đã chép" : "中文"}
                     </button>
-                    {canNhan && (
-                        <button onClick={daNhan} disabled={ban}
-                            className={cn(nut, "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300")}>
-                            <Check className="h-3.5 w-3.5" />{ban ? "Đang ghi…" : "Đã nhắn"}
+                    {chaseDue && (
+                        <button onClick={markMessaged} disabled={busy}
+                            className={cn(buttonClass, "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300")}>
+                            <Check className="h-3.5 w-3.5" />{busy ? "Đang ghi…" : "Đã nhắn"}
                         </button>
                     )}
                 </div>
             </div>
-            {loi && <p className="border-t border-rose-200 px-4 py-2 text-[12.5px] font-medium text-rose-700 dark:border-rose-500/30 dark:text-rose-300">{loi}</p>}
-            {mo && (
+            {saveError && <p className="border-t border-rose-200 px-4 py-2 text-[12.5px] font-medium text-rose-700 dark:border-rose-500/30 dark:text-rose-300">{saveError}</p>}
+            {open && (
                 <>
                     <p className="border-t border-border/70 px-3.5 py-2 text-[12.5px] leading-relaxed text-muted-foreground md:px-4">
-                        {chiTiet || "Đã giao thành công, đã qua từ 2 kỳ sao kê mà vẫn chưa được trả đồng nào."}{" "}
+                        {details || "Đã giao thành công, đã qua từ 2 kỳ sao kê mà vẫn chưa được trả đồng nào."}{" "}
                         Chép tin gửi NAZA, gửi xong bấm “Đã nhắn” — máy nhớ ngày; sang kỳ sau tiền vẫn chưa về thì tự nhắc lại.
                     </p>
                     <ul className="divide-y divide-border/60 border-t border-border/70">
@@ -456,30 +456,30 @@ function KhoiDoiNaza({ ds, canNhan, chiTiet, onXong }: {
     );
 }
 
-function TheDonDai({ r }: { r: LedgerRowUI }) {
+function TwOrderCard({ r }: { r: LedgerRowUI }) {
     // "Kỳ chờ" chỉ có nghĩa với đơn ĐÃ GIAO mà TIỀN CHƯA VỀ — cùng luật với cột trong bảng.
-    const cho = r.paid_twd === null && /thành công/i.test(r.status_raw || "");
-    const nhan: ReactNode[] = [];
-    if (cho) nhan.push(
+    const awaitingPayment = r.paid_twd === null && /thành công/i.test(r.status_raw || "");
+    const badges: ReactNode[] = [];
+    if (awaitingPayment) badges.push(
         <span key="ky" className={cn("rounded px-1.5 font-mono text-[10.5px] font-bold",
             r.ky_da_qua >= 2 ? "bg-rose-600 text-white" : "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300")}>
             chờ tiền {r.ky_da_qua} kỳ
         </span>);
-    if (r.cogs_missing.length) nhan.push(
+    if (r.cogs_missing.length) badges.push(
         <span key="gv" className="rounded bg-amber-100 px-1.5 text-[10.5px] font-semibold text-amber-800 dark:bg-amber-500/15 dark:text-amber-300">
             chưa khai giá {r.cogs_missing.join(",")}
         </span>);
-    if (r.marketer) nhan.push(
+    if (r.marketer) badges.push(
         <span key="mk" className={cn("rounded-full px-1.5 py-px text-[10.5px] font-semibold", mkCls(r.marketer))}>{r.marketer}</span>);
     const ticks = [r.tick.doi_soat && "đã đối soát", r.tick.tru_van_chuyen && "đã trừ ship", r.tick.tru_tien_hang && "đã trừ giá vốn"]
         .filter(Boolean).join(" · ");
     return (
-        <TheDon
+        <OrderCard
             light={r.light} ma={r.order_no} trangThai={r.status_raw} trangThaiCls={statusCls(r.status_raw)}
             tien={TWD(r.cod_twd)}
             dong={<>{r.contact_name || "(chưa có tên)"} · lên đơn {d6(r.order_date)}</>}
             ghiChu={r.light_note}
-            nhan={nhan.length ? <>{nhan}</> : undefined}
+            nhan={badges.length ? <>{badges}</> : undefined}
             chiTiet={[
                 ["Còn lại", r.net_vnd === null ? null : (
                     <span className={cn("font-semibold", r.net_vnd < 0 ? "text-rose-600 dark:text-rose-400"
@@ -526,12 +526,12 @@ function Td({ children, grp, num, pin, pinAfter, stt, light, className }: {
     children?: React.ReactNode; grp?: boolean; num?: boolean;
     pin?: boolean; pinAfter?: boolean; stt?: boolean; light?: Light; className?: string;
 }) {
-    const ghim = pin || pinAfter || stt;
+    const pinned = pin || pinAfter || stt;
     return (
         <td style={stt ? { width: STT_W, minWidth: STT_W } : pinAfter ? { left: STT_W } : undefined}
             className={cn("border-b border-border px-1.5 py-[3px]",
                 num && "text-right tabular-nums", grp && "border-l border-border",
-                ghim && cn("sticky z-20 bg-card", light && PIN_TINT[light]),
+                pinned && cn("sticky z-20 bg-card", light && PIN_TINT[light]),
                 stt && "left-0",
                 pinAfter && "border-r border-border",
                 className)}>{children}</td>

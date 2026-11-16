@@ -16,13 +16,13 @@ export const dynamic = "force-dynamic";
 // `co_van_don` (09/10/2026, mở Nhật Bản): nước đã khai tracking.markets (hoặc Đài) mới có Sổ đơn —
 // sổ đọc đơn + trạng thái giao qua hãng vận chuyển. Nhật đang bán nhưng chưa biết hãng giao, chưa
 // có mã vận đơn → Sổ đơn ẩn nút Nhật; Tiền COD về vẫn hiện (lùi về trạng thái đơn trên POS).
-const coVanDon = (code: string) => code === "TW" || trackMarket(code).code === code;
+const hasShipments = (code: string) => code === "TW" || trackMarket(code).code === code;
 
 export async function GET(req: Request) {
     const { a, res } = await requireAccess(req);
     if (res) return res;
     const markets = MARKETS_PUBLIC.markets
         .filter((m) => a.full || canMarket(a, m.key))
-        .map((m) => ({ ...m, co_van_don: coVanDon(m.code) }));
+        .map((m) => ({ ...m, co_van_don: hasShipments(m.code) }));
     return NextResponse.json({ ...MARKETS_PUBLIC, markets });
 }

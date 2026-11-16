@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { format } from "date-fns";
 import { formatVNDCompact, formatMoney, formatNumber, marketName, cn } from "../utils";
 import { useMarkets } from "../markets-context";
-import { tenPhamVi, useAccess } from "../access-context";
+import { scopeLabel, useAccess } from "../access-context";
 import TabSkeleton from "@/components/ui/tab-skeleton";
 import CeoSmartInsights from "./ceo-smart-insights";
 import {
@@ -28,44 +28,44 @@ import {
 
 interface Props { dateRange?: { from: Date; to: Date }; projectId?: string }
 
-interface So { ads: number; mess: number; don: number; doanh_so: number; ds_giao_tc: number }
-type MarketerRow = So & { tab: string; display: string; ngoaiTong?: boolean };
-type MarketRow = So & { tab: string; code: string | null };
-type DayRow = So & { date: string };
+interface Metrics { ads: number; mess: number; don: number; doanh_so: number; ds_giao_tc: number }
+type MarketerRow = Metrics & { tab: string; display: string; ngoaiTong?: boolean };
+type MarketRow = Metrics & { tab: string; code: string | null };
+type DayRow = Metrics & { date: string };
 interface Report {
     from: string; to: string; start_date: string | null;
     sheets: Record<string, string>;
     missing_months: string[];
-    team: So;
+    team: Metrics;
     /** true = số đã cắt theo team của người xem (cộng các tab nước), không có bảng nhân viên. */
     scoped?: boolean;
-    marketers: (So & { tab: string; display: string })[];
-    unassigned: So | null;
+    marketers: (Metrics & { tab: string; display: string })[];
+    unassigned: Metrics | null;
     markets: MarketRow[];
     days: DayRow[];
-    months: (So & { month: string })[];
+    months: (Metrics & { month: string })[];
 }
 
 // Số dẫn xuất — cùng công thức cột Sheet (drow/vrow trong format_all.py).
 const pct = (a: number, b: number) => (b > 0 ? (a / b) * 100 : null);
-const adsPct = (s: So) => pct(s.ads, s.doanh_so);            // "% Ads/DT"
-const adsPctGiao = (s: So) => pct(s.ads, s.ds_giao_tc);      // "% Ads/DT giao"
-const tyLeChot = (s: So) => pct(s.don, s.mess);              // "Tỷ lệ chốt"
+const adsPct = (s: Metrics) => pct(s.ads, s.doanh_so);            // "% Ads/DT"
+const adsPctOfDelivered = (s: Metrics) => pct(s.ads, s.ds_giao_tc);      // "% Ads/DT giao"
+const closeRate = (s: Metrics) => pct(s.don, s.mess);              // "Tỷ lệ chốt"
 const pctText = (v: number | null, digits = 1) => (v === null ? DASH : `${v.toFixed(digits)}%`);
-const ngayVN = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+const formatDmy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
 export default function TALPHACeoOverviewTab({ dateRange }: Props) {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<Report | null>(null);
-    const [loi, setLoi] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
     // Giá vốn + phí ship ước tính — CÙNG route với tab P&L để hai tab ra một con số lãi.
-    const [chiPhi, setChiPhi] = useState<{ cogs_vnd: number; ship_vnd: number; orders: number; orders_cogs_full: number; orders_no_ship: number } | null>(null);
+    const [costs, setCosts] = useState<{ cogs_vnd: number; ship_vnd: number; orders: number; orders_cogs_full: number; orders_no_ship: number } | null>(null);
     // KPI doanh số/tháng (VND) từ talpha_rules.json — tháng nào không khai thì không có khoá.
     const [targets, setTargets] = useState<Record<string, number>>({});
     const { loaded: marketsLoaded } = useMarkets();
     // Leader chỉ thấy số team mình (phân quyền 05/10/2026) — tiêu đề ghi rõ phạm vi.
     const me = useAccess();
-    const phamVi = tenPhamVi(me);
+    const scope = scopeLabel(me);
 
     useEffect(() => {
         fetch("/api/talpha/targets")
@@ -75,38 +75,38 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
     }, []);
 
     useEffect(() => {
-        let dung = false;
+        let cancelled = false;
         const from = format(dateRange?.from ?? new Date(), "yyyy-MM-dd");
         const to = format(dateRange?.to ?? new Date(), "yyyy-MM-dd");
         setLoading(true);
-        setLoi(null);
-        const layJson = async (url: string) => {
+        setError(null);
+        const fetchJson = async (url: string) => {
             const r = await fetch(url);
             const d = await r.json();
             if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
             return d;
         };
         Promise.allSettled([
-            layJson(`/api/talpha/sheet-report?from=${from}&to=${to}`),
-            layJson(`/api/talpha/pnl-costs?from=${from}&to=${to}`),
+            fetchJson(`/api/talpha/sheet-report?from=${from}&to=${to}`),
+            fetchJson(`/api/talpha/pnl-costs?from=${from}&to=${to}`),
         ]).then(([s, c]) => {
-            if (dung) return;
+            if (cancelled) return;
             if (s.status === "fulfilled") setData(s.value as Report);
-            else { setData(null); setLoi(String(s.reason?.message || s.reason)); }
+            else { setData(null); setError(String(s.reason?.message || s.reason)); }
             // Chi phí hỏng thì vẫn hiện số Sheet — ô lãi ghi rõ là thiếu, không coi là 0.
-            setChiPhi(c.status === "fulfilled" ? c.value.total : null);
-        }).finally(() => { if (!dung) setLoading(false); });
-        return () => { dung = true; };
+            setCosts(c.status === "fulfilled" ? c.value.total : null);
+        }).finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
     }, [dateRange]);
 
     // Chờ danh sách nước để đổi mã "SG" ra tên và tính phí ship theo bảng 3PL.
     if (loading || !marketsLoaded) return <TabSkeleton cards={6} showChart={true} rows={5} />;
 
-    if (loi || !data) {
+    if (error || !data) {
         return (
             <div className="rounded-xl border border-rose-300 bg-rose-50 p-5 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
                 <p className="font-semibold">Không đọc được file TỔNG TEAM.</p>
-                <p className="mt-1">{loi}</p>
+                <p className="mt-1">{error}</p>
                 <p className="mt-2 text-xs opacity-80">
                     Số trên tab này lấy thẳng từ Sheet. Không đọc được thì không hiện số tự tính khác đi,
                     để khỏi có hai bộ số lệch nhau.
@@ -116,20 +116,20 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
     }
 
     const t = data.team;
-    const period = `${ngayVN(data.from)} → ${ngayVN(data.to)}`;
+    const period = `${formatDmy(data.from)} → ${formatDmy(data.to)}`;
     const today = format(new Date(), "yyyy-MM-dd");
     const runningMonth = today.slice(0, 7);
 
     // Phí ship + giá vốn: /api/talpha/pnl-costs, cùng số với tab P&L (Sỹ Anh chốt 25/09/2026:
     // "Tổng quan khớp P&L"). Đài = trung bình sao kê NAZA, Singapore = bảng giá 3PL.
-    const ship = chiPhi?.ship_vnd ?? 0;
-    const cogs = chiPhi?.cogs_vnd ?? 0;
-    const lai = t.doanh_so - t.ads - ship - cogs;
-    const bien = pct(lai, t.doanh_so);
+    const ship = costs?.ship_vnd ?? 0;
+    const cogs = costs?.cogs_vnd ?? 0;
+    const profit = t.doanh_so - t.ads - ship - cogs;
+    const margin = pct(profit, t.doanh_so);
     const roas = t.ads > 0 ? t.doanh_so / t.ads : 0;
     const pAds = adsPct(t);
-    const pAdsGiao = adsPctGiao(t);
-    const chot = tyLeChot(t);
+    const pAdsDelivered = adsPctOfDelivered(t);
+    const pClose = closeRate(t);
 
     // Thanh KPI chỉ nói về THÁNG ĐANG CHẠY — KPI trong rules file là KPI tháng.
     const runningRow = data.months.find(m => m.month === runningMonth);
@@ -148,21 +148,21 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
         ...data.marketers,
         ...(data.unassigned ? [{ ...data.unassigned, tab: "(không gán)", display: "(không gán)", ngoaiTong: true }] : []),
     ];
-    const tenNuoc = (m: MarketRow) => (m.code ? marketName(m.code) : m.tab);
+    const marketLabel = (m: MarketRow) => (m.code ? marketName(m.code) : m.tab);
 
     return (
         <div className="space-y-6">
             {/* ═══ 1. Hero — kỳ báo cáo + xuất xứ số ═══ */}
             <ReportHero
                 emoji="📊"
-                title={`Báo cáo ${phamVi ? `team ${phamVi}` : "ANTALO"} — ${period}`}
+                title={`Báo cáo ${scope ? `team ${scope}` : "ANTALO"} — ${period}`}
                 subtitle={
                     <>
                         Số lấy thẳng từ file <strong>TỔNG TEAM</strong> — cùng file CEO xem, cập nhật mỗi giờ.
-                        {data.scoped && <> Chỉ số của team: cộng các tab nước <strong>{data.markets.map(tenNuoc).join(", ") || "của team"}</strong> trong file.</>}
+                        {data.scoped && <> Chỉ số của team: cộng các tab nước <strong>{data.markets.map(marketLabel).join(", ") || "của team"}</strong> trong file.</>}
                         Chỉ tính người trong team · doanh số là đơn đã chốt (trừ huỷ, nháp, đơn trống), quy VND theo tỷ giá
                         từng nước · tiền ads là số thật từ Meta
-                        {data.start_date && <> · tính từ <strong>{ngayVN(data.start_date)}</strong>, trước đó dữ liệu chưa đủ</>}.
+                        {data.start_date && <> · tính từ <strong>{formatDmy(data.start_date)}</strong>, trước đó dữ liệu chưa đủ</>}.
                     </>
                 }
                 progress={monthProgress}
@@ -170,7 +170,7 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
                 {monthProgress && (
                     <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground/80">
                         KPI và thanh này cùng đo doanh số bán được (đơn đã chốt)
-                        {data.start_date && data.start_date.slice(0, 7) === runningMonth && <> từ {ngayVN(data.start_date)}</>}.
+                        {data.start_date && data.start_date.slice(0, 7) === runningMonth && <> từ {formatDmy(data.start_date)}</>}.
                     </p>
                 )}
             </ReportHero>
@@ -210,7 +210,7 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
                 <KpiTile
                     emoji="🎯"
                     label="Tỷ lệ chốt"
-                    value={pctText(chot, 2)}
+                    value={pctText(pClose, 2)}
                     sub={`CPO ${t.don > 0 ? formatVNDCompact(t.ads / t.don) : DASH}`}
                     tooltip="Số đơn ÷ số tin nhắn. CPO = tiền ads ÷ số đơn."
                 />
@@ -218,14 +218,14 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
                     emoji="📦"
                     label="DS giao TC"
                     value={formatVNDCompact(t.ds_giao_tc)}
-                    sub={t.ds_giao_tc > 0 ? `% Ads/DT giao ${pctText(pAdsGiao)}` : "chưa có đơn giao xong"}
+                    sub={t.ds_giao_tc > 0 ? `% Ads/DT giao ${pctText(pAdsDelivered)}` : "chưa có đơn giao xong"}
                     tooltip="Doanh số của riêng đơn đã giao thành công. Đơn COD mất vài ngày tới vài tuần mới giao xong nên số này luôn đi sau doanh số."
                 />
                 <KpiTile
                     emoji="🌍"
                     label="Thị trường"
                     value={formatNumber(data.markets.length || (t.don || t.ads ? 1 : 0))}
-                    sub={data.markets.map(tenNuoc).join(" · ") || DASH}
+                    sub={data.markets.map(marketLabel).join(" · ") || DASH}
                 />
             </KpiRow>
 
@@ -234,14 +234,14 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
                 emoji="📊"
                 title="Lãi gộp (tạm tính)"
                 note="Doanh số − tiền ads − phí ship ước tính − giá vốn, cùng số với tab P&L. Giả định mọi đơn đã chốt đều giao thành công — đơn hoàn sau này sẽ kéo số này xuống. Chưa trừ chi phí vận hành."
-                value={signed(lai)}
-                caption={bien === null ? "chưa có doanh số" : `biên ${bien.toFixed(1)}% trên doanh số`}
-                tone={lai >= 0 ? "good" : "bad"}
+                value={signed(profit)}
+                caption={margin === null ? "chưa có doanh số" : `biên ${margin.toFixed(1)}% trên doanh số`}
+                tone={profit >= 0 ? "good" : "bad"}
                 segments={[
                     { color: "bg-rose-400", value: t.ads, label: "Tiền ads" },
                     { color: "bg-amber-400", value: ship, label: "Phí ship" },
                     { color: "bg-sky-400", value: cogs, label: "Giá vốn" },
-                    { color: "bg-emerald-500", value: Math.max(0, lai), label: "Lãi gộp" },
+                    { color: "bg-emerald-500", value: Math.max(0, profit), label: "Lãi gộp" },
                 ]}
                 subStats={[
                     { label: "ROAS", value: `${roas.toFixed(2)}×`, hint: "doanh số ÷ tiền ads" },
@@ -257,20 +257,20 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
                     rows={[
                         { label: "Doanh số (đơn đã chốt)", value: formatMoney(t.doanh_so), kind: "base" },
                         { label: "Tiền ads", value: formatMoney(t.ads), kind: "minus" },
-                        chiPhi && chiPhi.orders_no_ship < chiPhi.orders
-                            ? { label: "Phí ship", hint: chiPhi.orders_no_ship ? `ước tính · ${chiPhi.orders_no_ship} đơn chưa có bảng giá` : "ước tính — xem tab P&L", value: formatMoney(ship), kind: "minus" }
-                            : { label: "Phí ship", hint: chiPhi ? "chưa có bảng giá 3PL" : "không đọc được", value: DASH, kind: "minus", missing: true },
-                        chiPhi
-                            ? { label: "Giá vốn", hint: chiPhi.orders_cogs_full < chiPhi.orders ? `thiếu giá ${chiPhi.orders - chiPhi.orders_cogs_full} đơn` : "bảng Giá tới Taiwan", value: formatMoney(cogs), kind: "minus" }
+                        costs && costs.orders_no_ship < costs.orders
+                            ? { label: "Phí ship", hint: costs.orders_no_ship ? `ước tính · ${costs.orders_no_ship} đơn chưa có bảng giá` : "ước tính — xem tab P&L", value: formatMoney(ship), kind: "minus" }
+                            : { label: "Phí ship", hint: costs ? "chưa có bảng giá 3PL" : "không đọc được", value: DASH, kind: "minus", missing: true },
+                        costs
+                            ? { label: "Giá vốn", hint: costs.orders_cogs_full < costs.orders ? `thiếu giá ${costs.orders - costs.orders_cogs_full} đơn` : "bảng Giá tới Taiwan", value: formatMoney(cogs), kind: "minus" }
                             : { label: "Giá vốn", hint: "không đọc được", value: DASH, kind: "minus", missing: true },
                         { label: "Chi phí vận hành", hint: "chưa tính", value: DASH, kind: "minus", missing: true },
-                        { label: "Lãi gộp (tạm tính)", value: signed(lai), kind: "total" },
+                        { label: "Lãi gộp (tạm tính)", value: signed(profit), kind: "total" },
                     ]}
                 />
             </ResultCard>
 
             {/* ═══ 4. Cảnh báo & trợ lý — giữ nguyên module cũ ═══ */}
-            <CeoSmartInsights roas={roas} margin={bien ?? 0} net={lai} revenue={t.doanh_so} />
+            <CeoSmartInsights roas={roas} margin={margin ?? 0} net={profit} revenue={t.doanh_so} />
             {/* Hỏi AI đã thành trang riêng /talpha/ask-ai (menu 🤖 Hỏi AI, 15/11/2026). */}
 
             {/* ═══ 5. Xu hướng theo ngày ═══ */}
@@ -283,7 +283,7 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
                         top: d.doanh_so,
                         bottom: d.doanh_so - d.ads,
                         inProgress: d.date === today,
-                        title: `${ngayVN(d.date)} · ads ${formatMoney(d.ads)} · ${formatNumber(d.don)} đơn · DS ${formatMoney(d.doanh_so)}`,
+                        title: `${formatDmy(d.date)} · ads ${formatMoney(d.ads)} · ${formatNumber(d.don)} đơn · DS ${formatMoney(d.doanh_so)}`,
                     }))}
                     legend={[
                         { color: "bg-emerald-500/70", label: "doanh số" },
@@ -303,8 +303,8 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
                 rows={marketerRows}
                 rowKey={m => m.tab}
                 empty="Kỳ này chưa có số của ai"
-                footer={<TongRow cells={[
-                    "TỔNG TEAM", money(t.ads), formatNumber(t.mess), formatNumber(t.don), pctText(chot, 2),
+                footer={<TotalRow cells={[
+                    "TỔNG TEAM", money(t.ads), formatNumber(t.mess), formatNumber(t.don), pctText(pClose, 2),
                     money(t.doanh_so), pctText(pAds), money(t.ds_giao_tc), adsLight(t),
                 ]} />}
             />}
@@ -314,7 +314,7 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
                 emoji="🌍"
                 title="Theo thị trường"
                 note="Tab từng nước của file TỔNG TEAM. Tiền ads chia theo mã nước ở ô đầu tên campaign (TW · SG · AE); đơn theo shop POS của nước đó."
-                columns={MARKET_COLUMNS(tenNuoc)}
+                columns={MARKET_COLUMNS(marketLabel)}
                 rows={data.markets}
                 rowKey={m => m.tab}
                 empty="Kỳ này chỉ một nước có số — Sheet không tách tab theo nước"
@@ -331,9 +331,9 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
                 rows={[...data.days].reverse()}
                 rowKey={d => d.date}
                 empty="Chưa có ngày nào có số trong khoảng này"
-                footer={<TongRow cells={[
+                footer={<TotalRow cells={[
                     "TỔNG", money(t.ads), formatNumber(t.mess), t.mess > 0 ? money(t.ads / t.mess) : DASH,
-                    formatNumber(t.don), pctText(chot, 2), money(t.doanh_so), money(t.ds_giao_tc), pctText(pAds),
+                    formatNumber(t.don), pctText(pClose, 2), money(t.doanh_so), money(t.ds_giao_tc), pctText(pAds),
                 ]} />}
             />
 
@@ -360,11 +360,11 @@ export default function TALPHACeoOverviewTab({ dateRange }: Props) {
 
 const money = (n: number) => formatMoney(n);
 // Người không tiêu đồng nào và không có đơn: không có gì để chấm, hiện gạch chứ không đèn đỏ.
-const adsLight = (s: So) =>
+const adsLight = (s: Metrics) =>
     (s.ads === 0 && s.doanh_so === 0 ? DASH : <LightEmoji light={lightForAdsPct(adsPct(s) ?? undefined)} />);
 
 /** Dòng TỔNG ghim cuối bảng — ô đầu căn trái, ô đèn (nếu là phần tử) căn giữa, còn lại căn phải. */
-function TongRow({ cells }: { cells: ReactNode[] }) {
+function TotalRow({ cells }: { cells: ReactNode[] }) {
     return (
         <tr className="border-t-2 border-amber-500/30 bg-amber-500/5 font-bold">
             {cells.map((c, i) => (
@@ -388,15 +388,15 @@ const MARKETER_COLUMNS: Column<MarketerRow>[] = [
     { key: "ads", label: "Tiền ads", align: "right", render: m => (m.ads > 0 ? money(m.ads) : DASH) },
     { key: "mess", label: "Tin nhắn", align: "right", render: m => formatNumber(m.mess) },
     { key: "don", label: "Đơn", align: "right", render: m => formatNumber(m.don) },
-    { key: "chot", label: "Chốt", align: "right", title: "Số đơn ÷ tin nhắn", render: m => pctText(tyLeChot(m), 2) },
+    { key: "chot", label: "Chốt", align: "right", title: "Số đơn ÷ tin nhắn", render: m => pctText(closeRate(m), 2) },
     { key: "doanh_so", label: "Doanh số", align: "right", render: m => money(m.doanh_so) },
     { key: "ads_pct", label: "% Ads/DT", align: "right", title: "Tiền ads ÷ doanh số của riêng người đó", render: m => pctText(adsPct(m)) },
     { key: "gtc", label: "DS giao TC", align: "right", render: m => (m.ds_giao_tc > 0 ? money(m.ds_giao_tc) : DASH) },
     { key: "light", label: "Đèn", align: "center", render: m => adsLight(m) },
 ];
 
-const MARKET_COLUMNS = (tenNuoc: (m: MarketRow) => string): Column<MarketRow>[] => [
-    { key: "tab", label: "Thị trường", cellClassName: "font-medium text-foreground", render: m => tenNuoc(m) },
+const MARKET_COLUMNS = (marketLabel: (m: MarketRow) => string): Column<MarketRow>[] => [
+    { key: "tab", label: "Thị trường", cellClassName: "font-medium text-foreground", render: m => marketLabel(m) },
     { key: "ads", label: "Tiền ads", align: "right", render: m => money(m.ads) },
     { key: "mess", label: "Tin nhắn", align: "right", render: m => formatNumber(m.mess) },
     { key: "don", label: "Đơn", align: "right", render: m => formatNumber(m.don) },
@@ -407,12 +407,12 @@ const MARKET_COLUMNS = (tenNuoc: (m: MarketRow) => string): Column<MarketRow>[] 
 ];
 
 const DAY_COLUMNS: Column<DayRow>[] = [
-    { key: "date", label: "Ngày", cellClassName: "font-medium text-foreground", render: d => ngayVN(d.date) },
+    { key: "date", label: "Ngày", cellClassName: "font-medium text-foreground", render: d => formatDmy(d.date) },
     { key: "ads", label: "Tiền ads", align: "right", render: d => money(d.ads) },
     { key: "mess", label: "Tin nhắn", align: "right", render: d => formatNumber(d.mess) },
     { key: "gia_tn", label: "Giá/tin", align: "right", render: d => (d.mess > 0 ? money(d.ads / d.mess) : DASH) },
     { key: "don", label: "Đơn", align: "right", render: d => formatNumber(d.don) },
-    { key: "chot", label: "Chốt", align: "right", render: d => pctText(tyLeChot(d), 2) },
+    { key: "chot", label: "Chốt", align: "right", render: d => pctText(closeRate(d), 2) },
     { key: "doanh_so", label: "Doanh số", align: "right", render: d => money(d.doanh_so) },
     { key: "gtc", label: "DS giao TC", align: "right", render: d => (d.ds_giao_tc > 0 ? money(d.ds_giao_tc) : DASH) },
     { key: "ads_pct", label: "% Ads/DT", align: "right", render: d => pctText(adsPct(d)) },

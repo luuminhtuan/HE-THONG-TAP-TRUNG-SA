@@ -10,8 +10,8 @@ export const maxDuration = 90;
 // Danh sách TKQC Meta + shop POS: config/projects/talpha.yaml ở gốc repo.
 // Đường dẫn do config-path.ts giữ — MỘT chỗ duy nhất biết cấu hình nằm ở đâu.
 import { TALPHA_YAML } from "@/lib/talpha/config-path";
-import { docKhoa } from "@/lib/talpha/khoa";
-import { tkqcBaoCao } from "@/lib/talpha/tkqc";
+import { getCredential } from "@/lib/talpha/khoa";
+import { reportingAdAccounts } from "@/lib/talpha/tkqc";
 const YAML_PATH = TALPHA_YAML();
 
 // ═══ RULE CHUNG: import từ src/lib/talpha/rules.ts (data = config/talpha_rules.json).
@@ -21,8 +21,8 @@ import {
     normCampMarketer, normPosMarketer, isDelivered, campaignMarket, MESS_PANCAKE, MARKETS_PUBLIC,
 } from "@/lib/talpha/rules";
 import { loadShops } from "@/lib/talpha/pos-images";
-import { messPancakeChoCamp } from "@/lib/talpha/pancake-api";
-import { chiaMessTheoCamp } from "@/lib/talpha/pancake";
+import { pancakeMessByCampaign } from "@/lib/talpha/pancake-api";
+import { splitMessByCampaign } from "@/lib/talpha/pancake";
 import { getAccess } from "@/lib/talpha/access";
 import { canMarket, seesAllMarkets } from "@/lib/talpha/access-rules";
 
@@ -35,23 +35,23 @@ function normalizeMarket(label?: string | null): string {
 function parseCampaign(campaignName?: string | null): { mkt: string | null; nv: string | null; pageId: string | null } {
     const parts = String(campaignName || "").split("/").map((x) => x.trim());
     let mkt: string | null = null;
-    let nv: string | null = null;
+    let marketerKey: string | null = null;
     const mi = parts.findIndex((s) => CAMP_MARKETS[s.toUpperCase()]);
     if (mi >= 0) {
         mkt = CAMP_MARKETS[parts[mi].toUpperCase()];
-        nv = mi + 1 < parts.length ? normCampMarketer(parts[mi + 1]) : null;
+        marketerKey = mi + 1 < parts.length ? normCampMarketer(parts[mi + 1]) : null;
     }
     let pageId: string | null = null;
     for (let i = 0; i < parts.length; i++) {
         const seg = parts[i].replace(/ /g, "");
         if (PAGE_ID_RE.test(seg) && i + 1 < parts.length && parts[i + 1].trim()) { pageId = seg; break; }
     }
-    return { mkt, nv, pageId };
+    return { mkt, nv: marketerKey, pageId };
 }
 // khoá nối đơn↔campaign: marketer||market||page_id (cả 3 phải có)
-function fallbackKey(nv?: string | null, mkt?: string | null, pageId?: string | null): string | null {
-    if (!nv || !mkt || !pageId) return null;
-    return `${nv}||${mkt}||${pageId}`;
+function fallbackKey(marketerKey?: string | null, mkt?: string | null, pageId?: string | null): string | null {
+    if (!marketerKey || !mkt || !pageId) return null;
+    return `${marketerKey}||${mkt}||${pageId}`;
 }
 
 // Timezone handling:
@@ -83,11 +83,11 @@ function addDaysStr(date: string, n: number): string {
 // account_id → IANA timezone name (Meta reports insights in the account's own tz).
 // Cached across requests — an account's timezone is effectively static.
 const accountTzCache: Record<string, string> = {};
-async function fetchAccountTimezones(tokenCua: (accId: string) => string, accountIds: string[]): Promise<Record<string, string>> {
+async function fetchAccountTimezones(tokenFor: (accId: string) => string, accountIds: string[]): Promise<Record<string, string>> {
     await Promise.all(accountIds.map(async (accId) => {
         if (accountTzCache[accId]) return;
         try {
-            const url = `https://graph.facebook.com/v21.0/${accId}?fields=timezone_name&access_token=${tokenCua(accId)}`;
+            const url = `https://graph.facebook.com/v21.0/${accId}?fields=timezone_name&access_token=${tokenFor(accId)}`;
             const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
             if (!res.ok) { console.error(`Meta tz ${accId}: ${res.status}`); return; }
             const j = await res.json();
@@ -111,7 +111,7 @@ interface YamlConfig {
 // of the YAML. docKhoa: khoá nhập ở /admin → Khoá kết nối trước, rồi .env.local.
 function resolveEnvPlaceholders(raw: string): string {
     return raw.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name) => {
-        const val = docKhoa(name);
+        const val = getCredential(name);
         if (val === undefined || val === "") {
             console.warn(`talpha.yaml: env var ${name} is not set`);
             return "";
@@ -126,7 +126,7 @@ function loadConfig(): YamlConfig {
 }
 
 // ═══ META API: Fetch insights per ad for date range (with pagination) ═══
-async function fetchMetaAds(tokenCua: (accId: string) => string, accountIds: string[], accountNames: Record<string, string>, activeOnly: boolean, fromDate: string, toDate: string, warnings: string[]) {
+async function fetchMetaAds(tokenFor: (accId: string) => string, accountIds: string[], accountNames: Record<string, string>, activeOnly: boolean, fromDate: string, toDate: string, warnings: string[]) {
     // inline_link_clicks = lượt bấm vào Messenger của camp tin nhắn. Ở Nhật Meta không báo số mess
     // nên tin Zalo mỗi giờ dùng nó để so camp với nhau (Sỹ Anh yêu cầu 12/10/2026).
     const fields = "campaign_name,campaign_id,adset_name,ad_name,ad_id,spend,impressions,inline_link_clicks,cpm,cpc,ctr,actions";
@@ -142,7 +142,7 @@ async function fetchMetaAds(tokenCua: (accId: string) => string, accountIds: str
         const accName = accountNames[accId] || accId;
         let realError = "";   // lỗi gọi Meta — khác HẲN "chạm cap phân trang"
         try {
-            let url: string | null = `https://graph.facebook.com/v21.0/${accId}/insights?fields=${fields}&level=ad${timeRange}&limit=500${filtering}&access_token=${tokenCua(accId)}`;
+            let url: string | null = `https://graph.facebook.com/v21.0/${accId}/insights?fields=${fields}&level=ad${timeRange}&limit=500${filtering}&access_token=${tokenFor(accId)}`;
             let pageCount = 0;
             const MAX_PAGES = 10; // safety limit: 10 pages × 500 = 5000 ads max per account
 
@@ -224,7 +224,7 @@ async function fetchMetaAds(tokenCua: (accId: string) => string, accountIds: str
 
 // Fetch historical orders from the kho số (synced data — accurate).
 // inserted_at là chuỗi giờ UTC → 10 ký tự đầu là ngày UTC của đơn.
-async function fetchPOSFromKho(fromDate: string, toDate: string) {
+async function fetchPOSFromDb(fromDate: string, toDate: string) {
     const allOrders: any[] = [];
     try {
         const rows = await query(`
@@ -359,8 +359,8 @@ async function fetchPOSHybrid(shops: YamlConfig["poscake"]["shops"], fetchFrom: 
 
     // Kho số for the older part of the window (fetchFrom → min(fetchTo, twoDaysAgo))
     if (fetchFrom <= twoDaysAgo) {
-        const khoEnd = fetchTo <= twoDaysAgo ? fetchTo : twoDaysAgo;
-        tasks.push(fetchPOSFromKho(fetchFrom, khoEnd));
+        const dbEnd = fetchTo <= twoDaysAgo ? fetchTo : twoDaysAgo;
+        tasks.push(fetchPOSFromDb(fetchFrom, dbEnd));
     }
 
     // Direct API for the recent part (yesterday → fetchTo), if any overlap
@@ -399,11 +399,11 @@ export async function GET(request: Request) {
         // TKQC: danh bạ tự động (lib/talpha/tkqc.ts, 04/11/2026) — TK thuộc loại vào báo cáo mà token còn
         // thấy, tên lấy từ Meta. Trước đó đọc talpha.yaml (ad_account_ids + ad_account_names gõ tay).
         // Nhiều token Meta: mỗi TK gọi bằng token đã đọc được nó (tkqc.bien_token), thiếu thì token chính.
-        const tkqc = await tkqcBaoCao();
-        const accountIds = tkqc.map((t) => `act_${t.id}`);
-        const accountNames: Record<string, string> = Object.fromEntries(tkqc.map((t) => [`act_${t.id}`, t.ten || `act_${t.id}`]));
-        const bienCua = Object.fromEntries(tkqc.map((t) => [`act_${t.id}`, t.bien_token]));
-        const tokenCua = (accId: string) => (bienCua[accId] && docKhoa(bienCua[accId]!)) || cfg.meta_ads.access_token;
+        const adAccounts = await reportingAdAccounts();
+        const accountIds = adAccounts.map((t) => `act_${t.id}`);
+        const accountNames: Record<string, string> = Object.fromEntries(adAccounts.map((t) => [`act_${t.id}`, t.ten || `act_${t.id}`]));
+        const tokenVarByAccount = Object.fromEntries(adAccounts.map((t) => [`act_${t.id}`, t.bien_token]));
+        const tokenFor = (accId: string) => (tokenVarByAccount[accId] && getCredential(tokenVarByAccount[accId]!)) || cfg.meta_ads.access_token;
         // Shop POS từ talpha_rules.json → markets (cùng nguồn với Kho, 04/11/2026), bỏ nước đã tắt:
         // không gọi POS sống. Đơn cũ của nó vẫn có ở phần đọc kho số (không lọc shop).
         const shops = loadShops();
@@ -413,20 +413,20 @@ export async function GET(request: Request) {
 
         // Fetch in parallel (account timezones resolve alongside the main fetches)
         const [adsAll, ordersAll, accountTz] = await Promise.all([
-            fetchMetaAds(tokenCua, accountIds, accountNames, activeOnly, fromDate, toDate, warnings),
+            fetchMetaAds(tokenFor, accountIds, accountNames, activeOnly, fromDate, toDate, warnings),
             fetchPOSHybrid(shops, fetchFrom, fetchTo, todayUtc, warnings),
-            fetchAccountTimezones(tokenCua, accountIds),
+            fetchAccountTimezones(tokenFor, accountIds),
         ]);
 
         // Phân quyền theo team (05/10/2026): người xem một phần nước chỉ giữ quảng cáo của
         // campaign mang nước team mình ở tên (campaignMarket — cùng luật Sheet tách chi tiêu)
         // và đơn của shop nước đó. Lọc TRƯỚC khi ghép đơn↔quảng cáo để mọi tổng, ROAS, đơn
         // chưa map phía dưới tự là số của team. Bot (chìa nội bộ) xem hết như cũ.
-        const nguoiXem = await getAccess(request);
-        const hep = !nguoiXem || !seesAllMarkets(nguoiXem);
-        const duocXem = (m: string | null | undefined) => !!nguoiXem && !!m && canMarket(nguoiXem, m);
-        const ads = hep ? adsAll.filter((ad) => duocXem(campaignMarket(ad.campaign_name).market)) : adsAll;
-        const orders = hep ? ordersAll.filter((o: any) => duocXem(o.shop_name)) : ordersAll;
+        const viewer = await getAccess(request);
+        const restricted = !viewer || !seesAllMarkets(viewer);
+        const canSee = (m: string | null | undefined) => !!viewer && !!m && canMarket(viewer, m);
+        const ads = restricted ? adsAll.filter((ad) => canSee(campaignMarket(ad.campaign_name).market)) : adsAll;
+        const orders = restricted ? ordersAll.filter((o: any) => canSee(o.shop_name)) : ordersAll;
 
         // Build ad_id → ad index map for O(1) lookup
         const adIdMap = new Map<string, number>();
@@ -514,15 +514,15 @@ export async function GET(request: Request) {
         const campByKey = new Map<string, any>();
         const ambiguousKeys = new Set<string>();
         for (const c of campaignMap.values()) {
-            const { mkt, nv, pageId } = parseCampaign(c.campaign_name);
-            const k = fallbackKey(nv, mkt, pageId);
+            const { mkt, nv: marketerKey, pageId } = parseCampaign(c.campaign_name);
+            const k = fallbackKey(marketerKey, mkt, pageId);
             if (!k) continue;
             if (campByKey.has(k)) ambiguousKeys.add(k); // đã có campaign khác cùng khoá → nhập nhằng
             else campByKey.set(k, c);
         }
         for (const order of pendingOrders) {
-            const nv = normPosMarketer(order.marketer);
-            const k = fallbackKey(nv, order.shop_name, order.page_id);
+            const marketerKey = normPosMarketer(order.marketer);
+            const k = fallbackKey(marketerKey, order.shop_name, order.page_id);
             const camp = (k && !ambiguousKeys.has(k)) ? campByKey.get(k) : null;
             if (camp) {
                 camp.orders += 1;
@@ -533,7 +533,7 @@ export async function GET(request: Request) {
                 // Không nối chắc chắn → báo cáo là "chưa map" kèm lý do (không đoán)
                 let reason: string;
                 if (k && ambiguousKeys.has(k)) { reason = 'trung_nhieu_campaign'; fallbackAmbiguousCount += 1; }
-                else if (!nv) reason = 'marketer_ngoai_team';
+                else if (!marketerKey) reason = 'marketer_ngoai_team';
                 else if (!order.page_id) reason = 'thieu_page_id';
                 else if (!order.shop_name || order.shop_name === 'Unknown') reason = 'thieu_thi_truong';
                 else reason = 'khong_co_campaign_khop';
@@ -550,20 +550,20 @@ export async function GET(request: Request) {
         let messPancake: { nuoc: string[]; tong: number; ok: boolean } | null = null;
         const campPk = [...campaignMap.values()].filter((c) => MESS_PANCAKE.includes(campaignMarket(c.campaign_name).market || ""));
         if (campPk.length) {
-            const tenNuoc = MESS_PANCAKE.map((k) => MARKETS_PUBLIC.markets.find((m) => m.key === k)?.display || k).join(", ");
-            const pk = await messPancakeChoCamp(campPk, fromDate, toDate, startTime + 40_000);
+            const marketNames = MESS_PANCAKE.map((k) => MARKETS_PUBLIC.markets.find((m) => m.key === k)?.display || k).join(", ");
+            const pk = await pancakeMessByCampaign(campPk, fromDate, toDate, startTime + 40_000);
             messPancake = { nuoc: MESS_PANCAKE, tong: pk.tong, ok: pk.ok };
-            if (!pk.ok) warnings.push(`Tin nhắn ${tenNuoc}: Pancake lỗi (${pk.loi}) — mess camp ${tenNuoc} đang là số Meta (Meta không báo, luôn 0).`);
+            if (!pk.ok) warnings.push(`Tin nhắn ${marketNames}: Pancake lỗi (${pk.loi}) — mess camp ${marketNames} đang là số Meta (Meta không báo, luôn 0).`);
             else {
                 for (const c of campPk) {
                     const n = pk.theoCamp.get(c) ?? 0;
                     c.messages = n;
                     c.mess_nguon = "pancake";
-                    const chia = chiaMessTheoCamp(n, c.ads);
-                    c.ads.forEach((a: any, i: number) => { a.messages = chia[i]; });
+                    const perAd = splitMessByCampaign(n, c.ads);
+                    c.ads.forEach((a: any, i: number) => { a.messages = perAd[i]; });
                 }
-                if (pk.thieu.length) warnings.push(`Tin nhắn ${tenNuoc}: đếm chưa hết ở ${pk.thieu.join(", ")} (khoảng ngày dài / hết giờ) — số mess đang THIẾU.`);
-                if (pk.khong_thay.length) warnings.push(`Tin nhắn ${tenNuoc}: tài khoản Pancake không thấy page ${pk.khong_thay.join(", ")} (page đổi tên?) — camp của page đó 0 mess.`);
+                if (pk.thieu.length) warnings.push(`Tin nhắn ${marketNames}: đếm chưa hết ở ${pk.thieu.join(", ")} (khoảng ngày dài / hết giờ) — số mess đang THIẾU.`);
+                if (pk.khong_thay.length) warnings.push(`Tin nhắn ${marketNames}: tài khoản Pancake không thấy page ${pk.khong_thay.join(", ")} (page đổi tên?) — camp của page đó 0 mess.`);
             }
         }
 
@@ -623,9 +623,9 @@ export async function GET(request: Request) {
         const deliveredRoas = totalSpendVnd > 0 ? Math.round((deliveredRevenueVnd / totalSpendVnd) * 100) / 100 : 0;
 
         // Determine POS source label
-        const hasKho = orders.some((o: any) => o.source === 'kho');
+        const hasDb = orders.some((o: any) => o.source === 'kho');
         const hasDirect = orders.some((o: any) => o.source === 'direct_api');
-        const posSource = hasKho && hasDirect ? 'Kho+API' : hasKho ? 'Kho' : 'Direct API';
+        const posSource = hasDb && hasDirect ? 'Kho+API' : hasDb ? 'Kho' : 'Direct API';
 
         return NextResponse.json({
             source: `META:Direct|POS:${posSource}`,

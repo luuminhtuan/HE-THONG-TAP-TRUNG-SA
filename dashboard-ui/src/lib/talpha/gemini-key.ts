@@ -17,11 +17,11 @@ export const GEMINI_KEY_HEADER = "x-gemini-key";
 export const GEMINI_KEY_STORAGE = "talpha-gemini-key";
 
 /** Khoá đi từ trình duyệt: dùng khoá riêng hay khoá mặc định của hệ thống. */
-export type NguonKhoaGemini = "trinh_duyet" | "mac_dinh";
+export type GeminiKeySource = "trinh_duyet" | "mac_dinh";
 
 /** Dạng khoá chấp nhận — khoá Gemini hiện là "AIza…" 39 ký tự; nới rộng để khỏi chặn nhầm dạng mới. */
-export const laKhoaGeminiHopLe = (k: string | null | undefined): k is string =>
+export const isValidGeminiKey = (k: string | null | undefined): k is string =>
     /^[A-Za-z0-9_-]{20,200}$/.test(String(k || ""));
 
 /** Che khoá để hiện trên màn hình: "AIza…wxyz". */
-export const cheKhoa = (k: string) => (k.length > 10 ? `${k.slice(0, 4)}…${k.slice(-4)}` : "••••");
+export const maskKey = (k: string) => (k.length > 10 ? `${k.slice(0, 4)}…${k.slice(-4)}` : "••••");

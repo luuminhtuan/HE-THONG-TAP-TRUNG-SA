@@ -9,7 +9,7 @@
  *
  * Mọi nơi khác trong hệ thống chỉ thấy đúng các hàm readStoreFresh / updateStore.
  */
-import { giaoDich, query } from "@/lib/db";
+import { withTransaction, query } from "@/lib/db";
 
 function assertName(name: string) {
     if (!/^[a-z0-9_-]+$/i.test(name)) throw new Error(`Tên kho không hợp lệ: ${name}`);
@@ -32,7 +32,7 @@ export async function updateStore<T>(
     mutate: (current: T) => T,
 ): Promise<T> {
     assertName(name);
-    return giaoDich(async (q) => {
+    return withTransaction(async (q) => {
         // Kho chưa có thì tạo dòng mặc định trước, để có dòng mà khoá.
         await q("INSERT INTO app_documents (name, content) VALUES (@name, @content::jsonb) ON CONFLICT (name) DO NOTHING",
             { name, content: JSON.stringify(fallback) });

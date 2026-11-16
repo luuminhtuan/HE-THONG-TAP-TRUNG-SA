@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { query, queryChiDoc } from "@/lib/db";
+import { query, queryReadOnly } from "@/lib/db";
 import { getAccess } from "@/lib/talpha/access";
 import { scopeQuery, seesAllMarkets } from "@/lib/talpha/access-rules";
 
@@ -8,14 +8,14 @@ export const dynamic = "force-dynamic";
 
 // Tên mọi bảng / view trong database — câu của người xem một phần nước không được nhắc tới cái nào
 // ngoài 5 bảng lọc được (scopeQuery). Hỏi Postgres 10 phút một lần.
-let bangCache: { at: number; ds: string[] } | null = null;
-async function cacBang(): Promise<string[]> {
-    if (bangCache && Date.now() - bangCache.at < 600_000) return bangCache.ds;
+let tableCache: { at: number; ds: string[] } | null = null;
+async function listTables(): Promise<string[]> {
+    if (tableCache && Date.now() - tableCache.at < 600_000) return tableCache.ds;
     const rows = await query<{ ten: string }>(
         "SELECT c.relname AS ten FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace " +
         "WHERE n.nspname = current_schema() AND c.relkind IN ('r', 'v', 'm', 'p', 'f')");
-    bangCache = { at: Date.now(), ds: rows.map((r) => r.ten) };
-    return bangCache.ds;
+    tableCache = { at: Date.now(), ds: rows.map((r) => r.ten) };
+    return tableCache.ds;
 }
 
 // ═══ SECURITY: API Key Authentication ═══
@@ -73,16 +73,16 @@ export async function POST(request: Request) {
             }
         }
 
-        const { query: cau, params } = await request.json();
+        const { query: sqlText, params } = await request.json();
 
-        if (!cau) {
+        if (!sqlText) {
             return NextResponse.json({ error: "Query is required" }, { status: 400 });
         }
 
         // ═══ SQL SAFETY CHECK ═══
-        const safety = isQuerySafe(cau);
+        const safety = isQuerySafe(sqlText);
         if (!safety.safe) {
-            console.warn(`🔒 Blocked unsafe query: ${safety.reason} — "${cau.substring(0, 100)}..."`);
+            console.warn(`🔒 Blocked unsafe query: ${safety.reason} — "${sqlText.substring(0, 100)}..."`);
             return NextResponse.json(
                 { error: `Query blocked: ${safety.reason}` },
                 { status: 403 }
@@ -95,18 +95,18 @@ export async function POST(request: Request) {
         // bằng vai talpha_doc_nuoc — database chỉ cho vai này đọc đúng các bảng lọc được.
         const a = await getAccess(request);
         if (!a) return NextResponse.json({ error: "Chưa đăng nhập" }, { status: 401 });
-        let sql: string = cau;
-        const tatCa = seesAllMarkets(a);
-        if (!tatCa) {
-            const kq = scopeQuery(cau, a, await cacBang());
-            if (!kq.ok) {
-                console.warn(`🔒 query bị chặn (${a.email || a.name}): ${kq.error}`);
-                return NextResponse.json({ error: kq.error }, { status: 403 });
+        let sql: string = sqlText;
+        const seesAll = seesAllMarkets(a);
+        if (!seesAll) {
+            const scoped = scopeQuery(sqlText, a, await listTables());
+            if (!scoped.ok) {
+                console.warn(`🔒 query bị chặn (${a.email || a.name}): ${scoped.error}`);
+                return NextResponse.json({ error: scoped.error }, { status: 403 });
             }
-            sql = kq.sql;
+            sql = scoped.sql;
         }
 
-        const rows = await queryChiDoc(sql, tatCa ? "talpha_doc" : "talpha_doc_nuoc", params || undefined);
+        const rows = await queryReadOnly(sql, seesAll ? "talpha_doc" : "talpha_doc_nuoc", params || undefined);
         return NextResponse.json({ data: rows });
     } catch (error: any) {
         console.error("API Error:", error);

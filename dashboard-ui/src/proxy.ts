@@ -70,9 +70,9 @@ export default auth(async (req) => {
         loginUrl.searchParams.set("callbackUrl", pathname + req.nextUrl.search);
         return NextResponse.redirect(loginUrl);
     }
-    const veTrangChinh = () => NextResponse.redirect(new URL("/talpha", req.url));
-    if (pathname.startsWith("/admin") && !a.full) return veTrangChinh();
-    if (pathname.startsWith("/talpha/ads-command-center") && !canTab(a, "ads-command")) return veTrangChinh();
+    const redirectHome = () => NextResponse.redirect(new URL("/talpha", req.url));
+    if (pathname.startsWith("/admin") && !a.full) return redirectHome();
+    if (pathname.startsWith("/talpha/ads-command-center") && !canTab(a, "ads-command")) return redirectHome();
     return NextResponse.next();
 });
 

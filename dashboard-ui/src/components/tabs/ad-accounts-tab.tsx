@@ -8,15 +8,15 @@ import { cn } from "@/lib/utils";
 // Không còn thêm / xoá TKQC bằng tay. Mỗi TK một LOẠI; chỉ loại "vào báo cáo" mới cộng vào số các tab,
 // báo cáo tháng và bot. Đổi loại có tác dụng ngay. Luật: talpha_rules.json → tkqc_loai, lib/talpha/tkqc.ts.
 
-type Loai = { ma: string; ten: string; vao_bao_cao: boolean };
-type Dong = {
+type AccountType = { ma: string; ten: string; vao_bao_cao: boolean };
+type AccountRow = {
     account_id: string; ten: string | null; trang_thai: number | null; tien_te: string | null; mui_gio: string | null;
     bien_token: string | null; loai: string; da_xac_nhan: boolean; thay_lan_dau: string; thay_lan_cuoi: string; ghi_chu: string | null;
     chi_7_ngay: number; chi_30_ngay: number; chi_lan_cuoi: string | null;
 };
 
 // account_status của Meta.
-const TRANG_THAI: Record<number, { chu: string; mau: string }> = {
+const ACCOUNT_STATUS: Record<number, { chu: string; mau: string }> = {
     1: { chu: "Đang chạy", mau: "bg-emerald-500/15 text-emerald-500" },
     2: { chu: "Vô hiệu hoá", mau: "bg-rose-500/15 text-rose-500" },
     3: { chu: "Nợ tiền", mau: "bg-amber-500/15 text-amber-500" },
@@ -27,25 +27,25 @@ const TRANG_THAI: Record<number, { chu: string; mau: string }> = {
 
 const vnd = (n: number) => `${Math.round(n).toLocaleString("vi-VN")}đ`;
 // TALPHA_META_ACCESS_TOKEN → "token 1", …_2 → "token 2" (Khoá kết nối).
-const soToken = (bien: string | null) => (bien ? `token ${bien.match(/_(\d)$/)?.[1] || "1"}` : "");
-const ngay = (iso: string) => new Date(iso).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+const tokenLabel = (varName: string | null) => (varName ? `token ${varName.match(/_(\d)$/)?.[1] || "1"}` : "");
+const formatDate = (iso: string) => new Date(iso).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
 export default function AdAccountsTab() {
-    const [loai, setLoai] = useState<Loai[]>([]);
-    const [ds, setDs] = useState<Dong[]>([]);
+    const [accountTypes, setAccountTypes] = useState<AccountType[]>([]);
+    const [accounts, setAccounts] = useState<AccountRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-    const [dangQuet, setDangQuet] = useState(false);
-    const [thongBao, setThongBao] = useState("");
-    const [dangLuu, setDangLuu] = useState<string | null>(null);
+    const [scanning, setScanning] = useState(false);
+    const [notice, setNotice] = useState("");
+    const [savingId, setSavingId] = useState<string | null>(null);
 
-    const tai = useCallback(async () => {
+    const load = useCallback(async () => {
         try {
             const r = await fetch("/api/talpha/tkqc", { cache: "no-store" });
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-            setLoai(j.loai);
-            setDs(j.tkqc);
+            setAccountTypes(j.loai);
+            setAccounts(j.tkqc);
             setError("");
         } catch (e) {
             setError((e as Error).message);
@@ -54,40 +54,40 @@ export default function AdAccountsTab() {
         }
     }, []);
 
-    useEffect(() => { tai(); }, [tai]);
+    useEffect(() => { load(); }, [load]);
 
-    const quet = async () => {
-        setDangQuet(true);
-        setThongBao("");
+    const scan = async () => {
+        setScanning(true);
+        setNotice("");
         try {
             const r = await fetch("/api/talpha/tkqc", {
                 method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "quet" }),
             });
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-            const theo = Object.entries(j.theo_token || {}).map(([b, v]) => `${soToken(b)}: ${typeof v === "number" ? `${v} TK` : `lỗi — ${v}`}`).join(" · ");
-            setThongBao(`Đọc được ${j.thay} TKQC (${theo})${j.moi.length ? ` — ${j.moi.length} TK mới: ${j.moi.map((m: { ten: string }) => m.ten).join(", ")}` : ", không có TK mới"}.`);
-            await tai();
+            const byToken = Object.entries(j.theo_token || {}).map(([b, v]) => `${tokenLabel(b)}: ${typeof v === "number" ? `${v} TK` : `lỗi — ${v}`}`).join(" · ");
+            setNotice(`Đọc được ${j.thay} TKQC (${byToken})${j.moi.length ? ` — ${j.moi.length} TK mới: ${j.moi.map((m: { ten: string }) => m.ten).join(", ")}` : ", không có TK mới"}.`);
+            await load();
         } catch (e) {
             setError((e as Error).message);
         } finally {
-            setDangQuet(false);
+            setScanning(false);
         }
     };
 
-    const doiLoai = async (d: Dong, ma: string) => {
-        setDangLuu(d.account_id);
+    const changeType = async (d: AccountRow, typeCode: string) => {
+        setSavingId(d.account_id);
         try {
             const r = await fetch("/api/talpha/tkqc", {
-                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: d.account_id, loai: ma }),
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ account_id: d.account_id, loai: typeCode }),
             });
             const j = await r.json();
             if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-            await tai();
+            await load();
         } catch (e) {
             setError((e as Error).message);
         } finally {
-            setDangLuu(null);
+            setSavingId(null);
         }
     };
 
@@ -99,13 +99,13 @@ export default function AdAccountsTab() {
         );
     }
 
-    const loaiCua = (ma: string) => loai.find((l) => l.ma === ma);
-    const tong = loai.map((l) => ({
+    const findType = (typeCode: string) => accountTypes.find((l) => l.ma === typeCode);
+    const typeTotals = accountTypes.map((l) => ({
         ...l,
-        so_tk: ds.filter((d) => d.loai === l.ma).length,
-        chi_30: ds.filter((d) => d.loai === l.ma).reduce((s, d) => s + Number(d.chi_30_ngay || 0), 0),
+        so_tk: accounts.filter((d) => d.loai === l.ma).length,
+        chi_30: accounts.filter((d) => d.loai === l.ma).reduce((s, d) => s + Number(d.chi_30_ngay || 0), 0),
     }));
-    const chuaXem = ds.filter((d) => !d.da_xac_nhan).length;
+    const unreviewedCount = accounts.filter((d) => !d.da_xac_nhan).length;
 
     return (
         <div className="space-y-6">
@@ -121,12 +121,12 @@ export default function AdAccountsTab() {
                     </p>
                 </div>
                 <button
-                    onClick={quet}
-                    disabled={dangQuet}
+                    onClick={scan}
+                    disabled={scanning}
                     className="flex items-center gap-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:opacity-60 px-4 py-2.5 text-sm font-semibold text-white transition-colors shadow-lg shadow-indigo-500/25"
                 >
-                    {dangQuet ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    {dangQuet ? "Đang hỏi Meta…" : "Quét TKQC ngay"}
+                    {scanning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    {scanning ? "Đang hỏi Meta…" : "Quét TKQC ngay"}
                 </button>
             </div>
 
@@ -136,15 +136,15 @@ export default function AdAccountsTab() {
                     {error}
                 </div>
             )}
-            {thongBao && (
+            {notice && (
                 <div className="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
                     <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    {thongBao}
+                    {notice}
                 </div>
             )}
 
             <div className="grid gap-3 sm:grid-cols-3">
-                {tong.map((l) => (
+                {typeTotals.map((l) => (
                     <div key={l.ma} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
                         <p className="text-xs text-slate-500">{l.vao_bao_cao ? "Vào báo cáo" : "Không tính vào báo cáo"}</p>
                         <p className="mt-0.5 font-semibold text-foreground">{l.ten}</p>
@@ -153,15 +153,15 @@ export default function AdAccountsTab() {
                 ))}
             </div>
 
-            {chuaXem > 0 && (
+            {unreviewedCount > 0 && (
                 <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-500">
                     <Sparkles className="h-4 w-4 shrink-0" />
-                    {chuaXem} TKQC chưa ai xem loại — máy tự gán theo luật (TK tiền khác VND không vào báo cáo). Chọn loại
+                    {unreviewedCount} TKQC chưa ai xem loại — máy tự gán theo luật (TK tiền khác VND không vào báo cáo). Chọn loại
                     đúng cho từng TK là xong.
                 </div>
             )}
 
-            {ds.length === 0 ? (
+            {accounts.length === 0 ? (
                 <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-8 text-center text-sm text-slate-400">
                     Chưa có TKQC nào. Nhập token Meta ở Khoá kết nối rồi bấm “Quét TKQC ngay”.
                 </div>
@@ -179,10 +179,10 @@ export default function AdAccountsTab() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/[0.05]">
-                            {ds.map((d) => {
-                                const st = d.trang_thai != null ? TRANG_THAI[d.trang_thai] : undefined;
-                                const l = loaiCua(d.loai);
-                                const mat = Date.now() - Date.parse(d.thay_lan_cuoi) > 2 * 86_400_000;
+                            {accounts.map((d) => {
+                                const st = d.trang_thai != null ? ACCOUNT_STATUS[d.trang_thai] : undefined;
+                                const l = findType(d.loai);
+                                const stale = Date.now() - Date.parse(d.thay_lan_cuoi) > 2 * 86_400_000;
                                 return (
                                     <tr key={d.account_id} className={cn(!l?.vao_bao_cao && "opacity-70")}>
                                         <td className="px-3 py-2.5">
@@ -192,26 +192,26 @@ export default function AdAccountsTab() {
                                                 {!d.da_xac_nhan && <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-500">MỚI</span>}
                                             </p>
                                             <p className="mt-0.5 font-mono text-[11px] text-slate-500">
-                                                act_{d.account_id}{d.bien_token ? ` · ${soToken(d.bien_token)}` : ""}{d.tien_te && d.tien_te !== "VND" ? ` · ${d.tien_te}` : ""}{d.mui_gio && d.mui_gio !== "Asia/Ho_Chi_Minh" ? ` · ${d.mui_gio}` : ""}
+                                                act_{d.account_id}{d.bien_token ? ` · ${tokenLabel(d.bien_token)}` : ""}{d.tien_te && d.tien_te !== "VND" ? ` · ${d.tien_te}` : ""}{d.mui_gio && d.mui_gio !== "Asia/Ho_Chi_Minh" ? ` · ${d.mui_gio}` : ""}
                                             </p>
                                         </td>
                                         <td className="px-3 py-2.5">
                                             <span className={cn("rounded px-2 py-0.5 text-[11px] font-semibold", st?.mau || "bg-white/[0.06] text-slate-400")}>
                                                 {st?.chu || `Mã ${d.trang_thai ?? "?"}`}
                                             </span>
-                                            {mat && <p className="mt-1 text-[11px] text-rose-400">Token không còn thấy từ {ngay(d.thay_lan_cuoi)}</p>}
+                                            {stale && <p className="mt-1 text-[11px] text-rose-400">Token không còn thấy từ {formatDate(d.thay_lan_cuoi)}</p>}
                                         </td>
                                         <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{vnd(Number(d.chi_7_ngay))}</td>
                                         <td className="px-3 py-2.5 text-right tabular-nums text-slate-300">{vnd(Number(d.chi_30_ngay))}</td>
-                                        <td className="px-3 py-2.5 text-slate-400">{d.chi_lan_cuoi ? ngay(d.chi_lan_cuoi) : "—"}</td>
+                                        <td className="px-3 py-2.5 text-slate-400">{d.chi_lan_cuoi ? formatDate(d.chi_lan_cuoi) : "—"}</td>
                                         <td className="px-3 py-2.5">
                                             <select
                                                 value={d.loai}
-                                                disabled={dangLuu === d.account_id}
-                                                onChange={(e) => doiLoai(d, e.target.value)}
+                                                disabled={savingId === d.account_id}
+                                                onChange={(e) => changeType(d, e.target.value)}
                                                 className="rounded-lg border border-white/[0.1] bg-white/[0.04] px-2 py-1.5 text-xs text-foreground"
                                             >
-                                                {loai.map((x) => <option key={x.ma} value={x.ma}>{x.ten}</option>)}
+                                                {accountTypes.map((x) => <option key={x.ma} value={x.ma}>{x.ten}</option>)}
                                             </select>
                                         </td>
                                     </tr>

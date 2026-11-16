@@ -9,37 +9,37 @@
 // ═══════════════════════════════════════════════════════════════════
 import { RULES } from "./rules";
 
-export type BangGiaNhat = {
+export type JpFeeSchedule = {
     first_half_kg?: { thuong?: number; dac_thu?: number };
     extra_half_kg?: { thuong?: number; dac_thu?: number };
     cod_fee_jpy_tiers?: { max_cod_jpy: number; fee: number }[];
 };
 
-export const BANG_GIA_NHAT: BangGiaNhat | null =
-    ((RULES as unknown as { shipping_fees?: Record<string, unknown> }).shipping_fees?.JP as BangGiaNhat | undefined) || null;
+export const JP_FEE_SCHEDULE: JpFeeSchedule | null =
+    ((RULES as unknown as { shipping_fees?: Record<string, unknown> }).shipping_fees?.JP as JpFeeSchedule | undefined) || null;
 
 /** Phí thu hộ (yên) theo bậc tiền COD. Đơn vượt bậc cuối → null: không đoán. */
-export function phiThuHoNhat(codJpy: number, b: BangGiaNhat | null = BANG_GIA_NHAT): number | null {
+export function jpCodFee(codJpy: number, b: JpFeeSchedule | null = JP_FEE_SCHEDULE): number | null {
     const bac = [...(b?.cod_fee_jpy_tiers || [])].sort((x, y) => x.max_cod_jpy - y.max_cod_jpy);
     const hit = bac.find((x) => codJpy <= x.max_cod_jpy);
     return hit ? hit.fee : null;
 }
 
 /** Cước NAZA (tệ) cho một kiện có `bac` bậc 0,5 kg (≥ 1), hàng thường. Thiếu bảng giá → null. */
-export function cuocNhatRmb(bac: number, b: BangGiaNhat | null = BANG_GIA_NHAT): number | null {
-    const dau = b?.first_half_kg?.thuong;
-    if (!dau) return null;
-    return dau + Math.max(0, bac - 1) * Number(b?.extra_half_kg?.thuong || 0);
+export function jpFreightRmb(bac: number, b: JpFeeSchedule | null = JP_FEE_SCHEDULE): number | null {
+    const firstHalfKg = b?.first_half_kg?.thuong;
+    if (!firstHalfKg) return null;
+    return firstHalfKg + Math.max(0, bac - 1) * Number(b?.extra_half_kg?.thuong || 0);
 }
 
 /**
  * Phí ship một đơn Nhật quy VND. `bacTb` = số bậc 0,5 kg trung bình một kiện (cân các kiện NAZA
  * Đài, làm tròn lên từng kiện); `tyGiaJpy` đồng/yên; `tyGiaRmb` đồng/tệ. null = thiếu số để tính.
  */
-export function phiShipNhatVnd(codJpy: number, bacTb: number | null, tyGiaJpy: number, tyGiaRmb: number,
-    b: BangGiaNhat | null = BANG_GIA_NHAT): number | null {
-    if (bacTb === null || !(tyGiaJpy > 0) || !(tyGiaRmb > 0)) return null;
-    const cuoc = cuocNhatRmb(bacTb, b), thuHo = phiThuHoNhat(codJpy, b);
-    if (cuoc === null || thuHo === null) return null;
-    return cuoc * tyGiaRmb + thuHo * tyGiaJpy;
+export function jpShippingFeeVnd(codJpy: number, bacTb: number | null, jpyRate: number, rmbRate: number,
+    b: JpFeeSchedule | null = JP_FEE_SCHEDULE): number | null {
+    if (bacTb === null || !(jpyRate > 0) || !(rmbRate > 0)) return null;
+    const cuoc = jpFreightRmb(bacTb, b), codFee = jpCodFee(codJpy, b);
+    if (cuoc === null || codFee === null) return null;
+    return cuoc * rmbRate + codFee * jpyRate;
 }

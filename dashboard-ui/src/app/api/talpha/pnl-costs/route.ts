@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { COST_RATE_RMB_VND, REPORT_START_DATE } from "@/lib/talpha/rules";
-import { tinhChiPhiDon, type DonChiPhi } from "@/lib/talpha/order-costs";
+import { computeOrderCosts, type OrderCost } from "@/lib/talpha/order-costs";
 import { getAccess } from "@/lib/talpha/access";
 import { canMarket, seesAllMarkets } from "@/lib/talpha/access-rules";
 
@@ -23,38 +23,38 @@ export async function GET(req: NextRequest) {
 
     // Phân quyền theo team: chỉ đơn của nước người xem được (proxy.ts đã chặn người chưa đăng nhập).
     const a = await getAccess(req);
-    const hep = !a || !seesAllMarkets(a);
+    const restricted = !a || !seesAllMarkets(a);
 
     try {
-        const { don, thieu, ship_basis } = await tinhChiPhiDon(from, to, hep ? (shop) => !!a && canMarket(a, shop) : undefined);
+        const { don: orders, thieu: missingCosts, ship_basis } = await computeOrderCosts(from, to, restricted ? (shop) => !!a && canMarket(a, shop) : undefined);
 
         type Bucket = { orders: number; cogs_vnd: number; orders_cogs_full: number; ship_vnd: number; orders_no_ship: number };
-        const rong = (): Bucket => ({ orders: 0, cogs_vnd: 0, orders_cogs_full: 0, ship_vnd: 0, orders_no_ship: 0 });
-        const cong = (b: Bucket, o: DonChiPhi) => {
+        const emptyBucket = (): Bucket => ({ orders: 0, cogs_vnd: 0, orders_cogs_full: 0, ship_vnd: 0, orders_no_ship: 0 });
+        const addOrder = (b: Bucket, o: OrderCost) => {
             b.orders += 1;
             b.cogs_vnd += o.cogs;
             if (o.du) b.orders_cogs_full += 1;
             if (o.ship === null) b.orders_no_ship += 1; else b.ship_vnd += o.ship;
         };
-        const tong = rong();
-        const ngay = new Map<string, Bucket>();
-        const nuoc = new Map<string, Bucket>();
-        for (const o of don) {
-            cong(tong, o);
-            const n = ngay.get(o.d) || rong(); cong(n, o); ngay.set(o.d, n);
-            const m = nuoc.get(o.shop) || rong(); cong(m, o); nuoc.set(o.shop, m);
+        const total = emptyBucket();
+        const byDay = new Map<string, Bucket>();
+        const byMarket = new Map<string, Bucket>();
+        for (const o of orders) {
+            addOrder(total, o);
+            const n = byDay.get(o.d) || emptyBucket(); addOrder(n, o); byDay.set(o.d, n);
+            const m = byMarket.get(o.shop) || emptyBucket(); addOrder(m, o); byMarket.set(o.shop, m);
         }
 
         return NextResponse.json({
             from, to,
-            total: tong,
-            days: [...ngay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, b]) => ({ date, ...b })),
-            markets: [...nuoc.entries()].map(([code, b]) => ({
+            total: total,
+            days: [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, b]) => ({ date, ...b })),
+            markets: [...byMarket.entries()].map(([code, b]) => ({
                 code, ...b,
                 ship_per_order_vnd: b.orders > b.orders_no_ship ? b.ship_vnd / (b.orders - b.orders_no_ship) : null,
             })),
             ship_basis,
-            missing_costs: thieu,
+            missing_costs: missingCosts,
             cost_rate_rmb_vnd: COST_RATE_RMB_VND,
         });
     } catch (e: any) {

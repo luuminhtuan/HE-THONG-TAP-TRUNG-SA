@@ -214,19 +214,19 @@ const FEE_OK = [
     // là phí thao tác nên bỏ qua cả 83 dòng phí, mục soát giá chạy 0/0 mà vẫn xanh.
     await t("file mới (9.11): 操作费 + 快递运费 → 快递运费 là phí SHIP", () => {
         const cols = ["序号", "出货日期", "原单号", "转单号", "运输方式", "计费重", "操作费", "快递运费"];
-        const { iFee, iOp } = N.cotPhi(cols);
+        const { iFee, iOp } = N.feeColumns(cols);
         assert.strictEqual(cols[iFee], "快递运费");
         assert.strictEqual(cols[iOp], "操作费");
     });
     await t("file cũ ghi nhầm: 速递运费 + 快递运费 (không có 操作费) → 快递运费 là phí THAO TÁC", () => {
         const cols = ["原单号", "转单号", "速递运费", "快递运费"];
-        const { iFee, iOp } = N.cotPhi(cols);
+        const { iFee, iOp } = N.feeColumns(cols);
         assert.strictEqual(cols[iFee], "速递运费");
         assert.strictEqual(cols[iOp], "快递运费");
     });
     await t("file chuẩn: 速递运费 + 操作费", () => {
         const cols = ["原单号", "转单号", "操作费", "速递运费"];
-        const { iFee, iOp } = N.cotPhi(cols);
+        const { iFee, iOp } = N.feeColumns(cols);
         assert.strictEqual(cols[iFee], "速递运费");
         assert.strictEqual(cols[iOp], "操作费");
     });
@@ -236,14 +236,14 @@ const FEE_OK = [
     // 打包费 (phí thao tác). Bộ đọc cũ lấy nhầm cột chặng đầu làm phí thao tác.
     await t("打包费 là phí THAO TÁC, 头程运费 KHÔNG phải", () => {
         const cols = ["序号", "原单号", "转单号", "计费重", "速递运费 phí vận chuyển", "头程运费 chặng đầu", "打包费 phí thao tác", "总金额"];
-        const { iFee, iOp, iFirstLeg } = N.cotPhi(cols);
+        const { iFee, iOp, iFirstLeg } = N.feeColumns(cols);
         assert.ok(cols[iFee].startsWith("速递运费"));
         assert.ok(cols[iOp].startsWith("打包费"));
         assert.ok(cols[iFirstLeg].startsWith("头程运费"));
     });
     await t("không có cột thao tác thì KHÔNG lấy cột chặng đầu thay vào", () => {
         const cols = ["原单号", "转单号", "速递运费", "头程运费", "总金额"];
-        assert.strictEqual(N.cotPhi(cols).iOp, -1);
+        assert.strictEqual(N.feeColumns(cols).iOp, -1);
     });
     await t("file kiểu 24/09: chi tiết (ship + chặng đầu + thao tác) khớp dòng phí duy nhất ở TỔNG", async () => {
         const wb = new ExcelJS.Workbook();
@@ -356,7 +356,7 @@ const FEE_OK = [
     });
     await t("câu cảnh báo kỳ gộp nói đủ phí, tiền hàng, tổng và phải nhận", async () => {
         const st = await fileGop();
-        const c = N.canhBaoGopSing(st.sg_gop, st.summary.payable_vnd);
+        const c = N.sgMergeWarning(st.sg_gop, st.summary.payable_vnd);
         assert.ok(c.includes("2 đơn Sing 76¥"), c);
         assert.ok(c.includes("1.840.046đ"), c);
         assert.ok(c.includes("tách file Sing riêng"), c);
@@ -365,17 +365,17 @@ const FEE_OK = [
     console.log("── Kỳ sau: file Sing RIÊNG không được vào sổ COD Đài ──");
     // Cùng ngày với file Đài → luật "cùng ngày là cùng kỳ" sẽ cho nó đè mất kỳ Đài.
     await t("nhận file Sing bằng nội dung hoặc tên file", () => {
-        assert.strictEqual(N.laFileSing("ĐỐI SOÁT COD 2026.10.01.xlsx", "SG"), true, "nội dung toàn đơn Sing");
-        assert.strictEqual(N.laFileSing("ĐỐI SOÁT COD SINGAPORE 2026.10.01.xlsx", "TW"), true);
-        assert.strictEqual(N.laFileSing("ĐỐI SOÁT COD SING 2026.10.01.xlsx", null), true);
-        assert.strictEqual(N.laFileSing("ĐỐI SOÁT COD SIG 1.10.2026.csv", null), true);
-        assert.strictEqual(N.laFileSing("SG_COD_2026.10.01.xlsx", null), true);
+        assert.strictEqual(N.isSgFile("ĐỐI SOÁT COD 2026.10.01.xlsx", "SG"), true, "nội dung toàn đơn Sing");
+        assert.strictEqual(N.isSgFile("ĐỐI SOÁT COD SINGAPORE 2026.10.01.xlsx", "TW"), true);
+        assert.strictEqual(N.isSgFile("ĐỐI SOÁT COD SING 2026.10.01.xlsx", null), true);
+        assert.strictEqual(N.isSgFile("ĐỐI SOÁT COD SIG 1.10.2026.csv", null), true);
+        assert.strictEqual(N.isSgFile("SG_COD_2026.10.01.xlsx", null), true);
     });
     await t("file Đài và bản gộp 24/09 KHÔNG bị chặn", () => {
-        assert.strictEqual(N.laFileSing("ĐỐI SOÁT COD 2026.09.24 (1).xlsx", "TW"), false, "bản gộp");
-        assert.strictEqual(N.laFileSing("ĐỐI SOÁT COD TAIWAN 2026.10.01.xlsx", "TW"), false);
-        assert.strictEqual(N.laFileSing("ĐỐI SOÁT COD 18.09.2026.xlsx", "TW"), false);
-        assert.strictEqual(N.laFileSing("A.THÁI COD TAIWAN 2026-7-24.xlsx", "TW"), false, "chữ THÁI/SIGN không dính");
+        assert.strictEqual(N.isSgFile("ĐỐI SOÁT COD 2026.09.24 (1).xlsx", "TW"), false, "bản gộp");
+        assert.strictEqual(N.isSgFile("ĐỐI SOÁT COD TAIWAN 2026.10.01.xlsx", "TW"), false);
+        assert.strictEqual(N.isSgFile("ĐỐI SOÁT COD 18.09.2026.xlsx", "TW"), false);
+        assert.strictEqual(N.isSgFile("A.THÁI COD TAIWAN 2026-7-24.xlsx", "TW"), false, "chữ THÁI/SIGN không dính");
     });
     await t("file Sing riêng: không dòng COD Đài → market SG", async () => {
         const wb = new ExcelJS.Workbook();
@@ -490,7 +490,7 @@ const FEE_OK = [
         assert.deepStrictEqual(st.cod_lines.map((l) => l.tracking), ["18066218", "18077221"]);
     });
     await t("kho đã lưu: dòng COD kỳ sau tra mã trên phí của kỳ TRƯỚC", () => {
-        const kho = N.dienMaVanDonKho([
+        const kho = N.fillTrackingInStatements([
             { filename: "ky1", rows: [], naza: { fee_lines: [{ order_id: "20261008-843327461-717", tracking: "18095240" }] } },
             { filename: "ky2", rows: [{ order_id: "20261008-843327461-717", tracking: "", amount: 1049 }], naza: { fee_lines: [] } },
         ]);
@@ -499,23 +499,23 @@ const FEE_OK = [
         assert.strictEqual(kho[1].filename, "ky2");
     });
     await t("BẪY: mã đơn mang HAI mã vận đơn ở sheet PHÍ thì không đoán", () => {
-        const [d] = N.dienMaVanDonTuPhi([{ order_id: "T1586", tracking: "" }], [
+        const [d] = N.fillTrackingFromFees([{ order_id: "T1586", tracking: "" }], [
             { order_id: "T1586", tracking: "18028219" }, { order_id: "T1586", tracking: "18073983" },
         ]);
         assert.strictEqual(d.tracking, "");
     });
     await t("BẪY: '17990334-Z' (giao lại) không ăn mã của đơn gốc '17990334'", () => {
-        const [d] = N.dienMaVanDonTuPhi([{ order_id: "17990334-Z", tracking: "" }],
+        const [d] = N.fillTrackingFromFees([{ order_id: "17990334-Z", tracking: "" }],
             [{ order_id: "17990334", tracking: "17990334" }]);
         assert.strictEqual(d.tracking, "");
     });
     await t("dòng ĐÃ có mã vận đơn thì giữ nguyên, không bị sheet PHÍ đè", () => {
-        const [d] = N.dienMaVanDonTuPhi([{ order_id: "T1586", tracking: "18073983" }],
+        const [d] = N.fillTrackingFromFees([{ order_id: "T1586", tracking: "18073983" }],
             [{ order_id: "T1586", tracking: "18028219" }]);
         assert.strictEqual(d.tracking, "18073983");
     });
     await t("mã '06722488751' và '6722488751' ở sheet PHÍ là MỘT mã — vẫn điền", () => {
-        const [d] = N.dienMaVanDonTuPhi([{ order_id: "18009019-Z", tracking: "" }], [
+        const [d] = N.fillTrackingFromFees([{ order_id: "18009019-Z", tracking: "" }], [
             { order_id: "18009019-Z", tracking: "06722488751" }, { order_id: "18009019-Z", tracking: "6722488751" },
         ]);
         assert.strictEqual(N.normTracking(d.tracking), "6722488751");

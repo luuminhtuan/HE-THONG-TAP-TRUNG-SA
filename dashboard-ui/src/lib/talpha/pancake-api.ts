@@ -9,19 +9,19 @@
 // hỏi cùng page cùng mốc trong 3 phút thì dùng chung một lần gọi (NHO_HT).
 // ═══════════════════════════════════════════════════════════════════
 import { campaignMarket, MESS_PANCAKE } from "./rules";
-import { docKhoa } from "./khoa";
+import { getCredential } from "./khoa";
 import {
-    PANCAKE_API, chuanTenPage, chiaMessTheoCamp, demTrongKhoang, hanToken, hetLoTrongNgay, trangCuaCamp,
-    type HoiThoai,
+    PANCAKE_API, normalizePageName, splitMessByCampaign, countForRange, hanToken, batchDoneForDay, pageOfCampaign,
+    type Conversation,
 } from "./pancake";
 
 export const GIAN_MS = 400;
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function goiPancake(url: string): Promise<any> {
-    for (let lan = 0; lan < 4; lan++) {
+    for (let attempt = 0; attempt < 4; attempt++) {
         const r = await fetch(url, { cache: "no-store" });
-        if (r.status === 429) { await sleep(5000 * 2 ** lan); continue; }
+        if (r.status === 429) { await sleep(5000 * 2 ** attempt); continue; }
         const j = await r.json().catch(() => null);
         if (!r.ok || !j) throw new Error(`Pancake HTTP ${r.status}`);
         if (j.success === false) throw new Error(`Pancake: ${j.message || "lỗi"}${j.error_code ? ` (mã ${j.error_code})` : ""}`);
@@ -32,11 +32,11 @@ export async function goiPancake(url: string): Promise<any> {
 
 /** Token tài khoản Pancake + lỗi nếu thiếu / hết hạn. */
 export function tokenPancake(): { tok: string; het_han: string | null; loi: string } {
-    const tok = docKhoa("TALPHA_PANCAKE_API_TOKEN");
-    const het = hanToken(tok);
+    const tok = getCredential("TALPHA_PANCAKE_API_TOKEN");
+    const expiry = hanToken(tok);
     const loi = !tok ? "chưa có token Pancake (Quản trị → Khoá kết nối)"
-        : het && het < Date.now() ? `token Pancake đã hết hạn ${new Date(het).toISOString().slice(0, 10)}` : "";
-    return { tok, het_han: het ? new Date(het).toISOString() : null, loi };
+        : expiry && expiry < Date.now() ? `token Pancake đã hết hạn ${new Date(expiry).toISOString().slice(0, 10)}` : "";
+    return { tok, het_han: expiry ? new Date(expiry).toISOString() : null, loi };
 }
 
 // Danh sách page của tài khoản — 10 phút mới hỏi lại.
@@ -51,8 +51,8 @@ export async function cacPage(tok: string): Promise<{ id: string; name: string }
     return pages;
 }
 
-const MAX_LO = 25;
-const NHO_HT = new Map<string, { at: number; v: { hts: HoiThoai[]; du: boolean } }>();
+const MAX_BATCHES = 25;
+const CONVERSATION_CACHE = new Map<string, { at: number; v: { hts: Conversation[]; du: boolean } }>();
 
 /**
  * Mọi hội thoại có thể TẠO từ ngày VN `tu` tới nay của một page — lật bằng current_count (lô xếp
@@ -60,25 +60,25 @@ const NHO_HT = new Map<string, { at: number; v: { hts: HoiThoai[]; du: boolean }
  * lô. `du` = false khi chạm trần mà chưa lật hết (khoảng dài, page đông) hoặc quá `hetLuc`
  * (epoch ms — route có hạn chạy) — số đếm được là THIẾU. Chỉ nhớ kết quả lật HẾT.
  */
-export async function hoiThoaiTu(tok: string, pageId: string, tu: string, hetLuc?: number): Promise<{ hts: HoiThoai[]; du: boolean }> {
-    const khoa = `${pageId}|${tu}`;
-    const hit = NHO_HT.get(khoa);
+export async function conversationsSince(tok: string, pageId: string, from: string, deadline?: number): Promise<{ hts: Conversation[]; du: boolean }> {
+    const cacheKey = `${pageId}|${from}`;
+    const hit = CONVERSATION_CACHE.get(cacheKey);
     if (hit && Date.now() - hit.at < 180_000) return hit.v;
-    const hts: HoiThoai[] = [];
-    let cc = 0, du = false;
-    for (let lo = 0; lo < MAX_LO; lo++) {
-        if (hetLuc && lo > 0 && Date.now() > hetLuc) break;
+    const hts: Conversation[] = [];
+    let cc = 0, complete = false;
+    for (let batch = 0; batch < MAX_BATCHES; batch++) {
+        if (deadline && batch > 0 && Date.now() > deadline) break;
         const j = await goiPancake(`${PANCAKE_API}/pages/${pageId}/conversations?access_token=${encodeURIComponent(tok)}&current_count=${cc}`);
-        const ds: HoiThoai[] = (j.conversations || []).map((h: any) => ({
+        const ds: Conversation[] = (j.conversations || []).map((h: any) => ({
             id: String(h.id), type: h.type, inserted_at: h.inserted_at, updated_at: h.updated_at, has_phone: !!h.has_phone,
         }));
         hts.push(...ds);
-        if (hetLoTrongNgay(ds, tu)) { du = true; break; }
+        if (batchDoneForDay(ds, from)) { complete = true; break; }
         cc += ds.length;
         await sleep(GIAN_MS);
     }
-    const v = { hts, du };
-    if (du) NHO_HT.set(khoa, { at: Date.now(), v });
+    const v = { hts, du: complete };
+    if (complete) CONVERSATION_CACHE.set(cacheKey, { at: Date.now(), v });
     return v;
 }
 
@@ -91,32 +91,32 @@ type CampMess = { campaign_name: string; spend_vnd: number; link_clicks?: number
  * Hỏng (token, mạng) thì ok=false kèm lý do — route giữ số Meta và báo cảnh báo, không im lặng.
  * `hetLuc`: quá giờ này thì page còn lại đếm dở (vào `thieu`) — route có hạn chạy.
  */
-export async function messPancakeChoCamp<C extends CampMess>(camps: C[], tu: string, den: string, hetLuc?: number): Promise<{
+export async function pancakeMessByCampaign<C extends CampMess>(camps: C[], from: string, to: string, deadline?: number): Promise<{
     ok: boolean; loi: string; theoCamp: Map<C, number>; tong: number; thieu: string[]; khong_thay: string[];
 }> {
-    const theoCamp = new Map<C, number>();
-    const kq = { ok: false, loi: "", theoCamp, tong: 0, thieu: [] as string[], khong_thay: [] as string[] };
-    const nhom = new Map<string, { ten: string; cs: C[] }>();
+    const byCampaign = new Map<C, number>();
+    const kq = { ok: false, loi: "", theoCamp: byCampaign, tong: 0, thieu: [] as string[], khong_thay: [] as string[] };
+    const byPage = new Map<string, { ten: string; cs: C[] }>();
     for (const c of camps) {
         if (!(c.spend_vnd > 0) || !MESS_PANCAKE.includes(campaignMarket(c.campaign_name).market || "")) continue;
-        const t = trangCuaCamp(c.campaign_name);
+        const t = pageOfCampaign(c.campaign_name);
         if (!t) continue;
-        const k = chuanTenPage(t);
-        if (!nhom.has(k)) nhom.set(k, { ten: t, cs: [] });
-        nhom.get(k)!.cs.push(c);
+        const k = normalizePageName(t);
+        if (!byPage.has(k)) byPage.set(k, { ten: t, cs: [] });
+        byPage.get(k)!.cs.push(c);
     }
-    if (!nhom.size) { kq.ok = true; return kq; }
+    if (!byPage.size) { kq.ok = true; return kq; }
     const { tok, loi } = tokenPancake();
     if (loi) { kq.loi = loi; return kq; }
     try {
-        const tatCa = await cacPage(tok);
-        for (const [k, g] of nhom) {
-            const p = tatCa.find((x) => chuanTenPage(x.name) === k);
+        const allPages = await cacPage(tok);
+        for (const [k, g] of byPage) {
+            const p = allPages.find((x) => normalizePageName(x.name) === k);
             if (!p) { kq.khong_thay.push(g.ten); continue; }
-            const { hts, du } = await hoiThoaiTu(tok, p.id, tu, hetLuc);
-            if (!du) kq.thieu.push(p.name);
-            const n = demTrongKhoang(hts, tu, den).inbox_moi;
-            chiaMessTheoCamp(n, g.cs).forEach((v, i) => theoCamp.set(g.cs[i], v));
+            const { hts, du: complete } = await conversationsSince(tok, p.id, from, deadline);
+            if (!complete) kq.thieu.push(p.name);
+            const n = countForRange(hts, from, to).inbox_moi;
+            splitMessByCampaign(n, g.cs).forEach((v, i) => byCampaign.set(g.cs[i], v));
             kq.tong += n;
             await sleep(GIAN_MS);
         }

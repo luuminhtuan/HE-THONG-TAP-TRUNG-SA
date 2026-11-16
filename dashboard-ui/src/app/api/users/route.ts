@@ -13,38 +13,38 @@ import { ROLES, TEAMS } from "@/lib/talpha/access-rules";
 // vai trò ghi trong cookie — người vừa bị hạ quyền không còn sửa được ai. Chế độ mở (DASHBOARD_PUBLIC,
 // máy chưa bật đăng nhập) cũng được (15/11/2026): bảng users còn trống thì phải tạo được tài khoản đầu
 // tiên TRƯỚC khi bật đăng nhập, không thì không ai vào được. Chìa nội bộ (bot) thì không.
-async function quyenQuanLy(req: Request) {
+async function checkManagePermission(req: Request) {
     const session = await auth();
     const a = await getAccess(req, session);
     return { session, ok: !!a?.full && a.kind !== "internal" };
 }
 
 /** Vai trò phải là vai khai ở access.roles; team phải là team khai ở access.teams (hoặc "*"). */
-function kiemVaiTeam(role: unknown, teams: unknown): { loi: string } | { role?: UserRole; teams?: string[] } {
+function validateRoleTeams(role: unknown, teams: unknown): { loi: string } | { role?: UserRole; teams?: string[] } {
     if (role !== undefined && role !== null && role !== "" && !ROLES[String(role)]) {
         return { loi: `Vai trò "${role}" chưa khai ở talpha_rules.json → access.roles` };
     }
     if (teams === undefined || teams === null) return { role: (role || undefined) as UserRole | undefined };
     if (!Array.isArray(teams)) return { loi: "teams phải là danh sách" };
-    const ds = [...new Set(teams.map(String))];
-    const la = ds.filter((t) => t !== "*" && !TEAMS[t]);
-    if (la.length) return { loi: `Team không có: ${la.join(", ")}` };
-    return { role: (role || undefined) as UserRole | undefined, teams: ds.includes("*") ? ["*"] : ds };
+    const uniqueTeams = [...new Set(teams.map(String))];
+    const unknownTeams = uniqueTeams.filter((t) => t !== "*" && !TEAMS[t]);
+    if (unknownTeams.length) return { loi: `Team không có: ${unknownTeams.join(", ")}` };
+    return { role: (role || undefined) as UserRole | undefined, teams: uniqueTeams.includes("*") ? ["*"] : uniqueTeams };
 }
 
 /** Chặn chung cho mọi thao tác GHI: phải có quyền. */
 async function guardWrite(req: Request) {
-    const { session, ok } = await quyenQuanLy(req);
+    const { session, ok } = await checkManagePermission(req);
     if (!ok) return { session: null, res: NextResponse.json({ error: "Unauthorized" }, { status: 403 }) };
     return { session, res: null };
 }
 
 // ─── GET: danh sách người dùng (ẩn mật khẩu) ───
 export async function GET(req: Request) {
-    if (!(await quyenQuanLy(req)).ok) {
+    if (!(await checkManagePermission(req)).ok) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
-    return NextResponse.json((await loadUsers()).map(({ password: _bo, ...rest }) => rest));
+    return NextResponse.json((await loadUsers()).map(({ password: _password, ...rest }) => rest));
 }
 
 // ─── POST: thêm người dùng ───
@@ -59,27 +59,27 @@ export async function POST(req: Request) {
     if (!email || !name || !password || !role) {
         return NextResponse.json({ error: "Thiếu trường bắt buộc" }, { status: 400 });
     }
-    const vt = kiemVaiTeam(role, teams ?? []);
-    if ("loi" in vt) return NextResponse.json({ error: vt.loi }, { status: 400 });
+    const validated = validateRoleTeams(role, teams ?? []);
+    if ("loi" in validated) return NextResponse.json({ error: validated.loi }, { status: 400 });
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser: UserRecord = {
         id: String(Date.now()),
         email, name, password: hashedPassword, role,
         projects: projects || [],
-        teams: vt.teams || [],
+        teams: validated.teams || [],
     };
 
     // Kiểm trùng email NẰM TRONG khoá — kiểm ngoài khoá thì hai lần thêm cùng lúc
     // đều thấy "chưa trùng" rồi cùng ghi.
-    let trung = false;
+    let duplicate = false;
     await withUsersLock((users) => {
-        if (users.some((u) => u.email.toLowerCase() === email)) { trung = true; return users; }
+        if (users.some((u) => u.email.toLowerCase() === email)) { duplicate = true; return users; }
         return [...users, newUser];
     });
-    if (trung) return NextResponse.json({ error: "Email đã tồn tại" }, { status: 409 });
+    if (duplicate) return NextResponse.json({ error: "Email đã tồn tại" }, { status: 409 });
 
-    const { password: _bo, ...userWithoutPassword } = newUser;
+    const { password: _password, ...userWithoutPassword } = newUser;
     return NextResponse.json(userWithoutPassword, { status: 201 });
 }
 
@@ -92,8 +92,8 @@ export async function PUT(req: Request) {
     const { id, name, password, role, projects, teams } = body;
     const email = body.email ? String(body.email).trim().toLowerCase() : "";
     if (!id) return NextResponse.json({ error: "Thiếu ID người dùng" }, { status: 400 });
-    const vt = kiemVaiTeam(role, teams);
-    if ("loi" in vt) return NextResponse.json({ error: vt.loi }, { status: 400 });
+    const validated = validateRoleTeams(role, teams);
+    if ("loi" in validated) return NextResponse.json({ error: validated.loi }, { status: 400 });
     // Tự hạ quyền mình là tự khoá cửa /admin — không còn ai sửa lại được.
     if ((session?.user as { id?: string } | undefined)?.id === id && role && !ROLES[String(role)]?.full) {
         return NextResponse.json({ error: "Không tự hạ quyền giám đốc của chính mình" }, { status: 400 });
@@ -103,25 +103,25 @@ export async function PUT(req: Request) {
 
     // Kết quả lấy ra khỏi callback qua một hộp — TypeScript không theo dõi được
     // biến bị gán bên trong closure nên gán thẳng vào `let` sẽ bị thu hẹp về never.
-    const ket: { loi?: { error: string; status: number }; daSua?: UserRecord } = {};
+    const outcome: { loi?: { error: string; status: number }; daSua?: UserRecord } = {};
     await withUsersLock((users) => {
         const idx = users.findIndex((u) => u.id === id);
-        if (idx === -1) { ket.loi = { error: "Không tìm thấy người dùng", status: 404 }; return users; }
+        if (idx === -1) { outcome.loi = { error: "Không tìm thấy người dùng", status: 404 }; return users; }
         if (email && email !== users[idx].email.toLowerCase() && users.some((u) => u.email.toLowerCase() === email)) {
-            ket.loi = { error: "Email đã tồn tại", status: 409 }; return users;
+            outcome.loi = { error: "Email đã tồn tại", status: 409 }; return users;
         }
         if (email) users[idx].email = email;
         if (name) users[idx].name = name;
         if (role) users[idx].role = role;
         if (projects) users[idx].projects = projects;
-        if (vt.teams) users[idx].teams = vt.teams;
+        if (validated.teams) users[idx].teams = validated.teams;
         if (hashedPassword) users[idx].password = hashedPassword;
-        ket.daSua = users[idx];
+        outcome.daSua = users[idx];
         return users;
     });
-    if (ket.loi) return NextResponse.json({ error: ket.loi.error }, { status: ket.loi.status });
+    if (outcome.loi) return NextResponse.json({ error: outcome.loi.error }, { status: outcome.loi.status });
 
-    const { password: _bo, ...userWithoutPassword } = ket.daSua!;
+    const { password: _password, ...userWithoutPassword } = outcome.daSua!;
     return NextResponse.json(userWithoutPassword);
 }
 
@@ -136,13 +136,13 @@ export async function DELETE(req: Request) {
         return NextResponse.json({ error: "Không thể tự xoá chính mình" }, { status: 400 });
     }
 
-    let thay = false;
+    let removed = false;
     await withUsersLock((users) => {
-        const con = users.filter((u) => u.id !== id);
-        thay = con.length !== users.length;
-        return thay ? con : users;
+        const remaining = users.filter((u) => u.id !== id);
+        removed = remaining.length !== users.length;
+        return removed ? remaining : users;
     });
-    if (!thay) return NextResponse.json({ error: "Không tìm thấy người dùng" }, { status: 404 });
+    if (!removed) return NextResponse.json({ error: "Không tìm thấy người dùng" }, { status: 404 });
 
     return NextResponse.json({ success: true });
 }

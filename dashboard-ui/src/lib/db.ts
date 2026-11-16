@@ -21,7 +21,7 @@ types.setTypeParser(1114, (v) => v.replace(" ", "T"));          // timestamp
 
 let pool: Pool | null = null;
 
-function layPool(): Pool {
+function getPool(): Pool {
     if (pool) return pool;
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("chưa đặt DATABASE_URL — xem docs/POSTGRES.md");
@@ -33,32 +33,32 @@ function layPool(): Pool {
 }
 
 /** `@ten` → `$n` (bỏ qua chữ @ nằm trong chuỗi '…'). Trả câu mới + mảng giá trị theo thứ tự. */
-export function doiThamSo(sql: string, params?: Record<string, unknown>): { text: string; values: unknown[] } {
+export function bindNamedParams(sql: string, params?: Record<string, unknown>): { text: string; values: unknown[] } {
     if (!params) return { text: sql, values: [] };
     const values: unknown[] = [];
-    const so = new Map<string, number>();
+    const paramIndex = new Map<string, number>();
     let out = "";
-    let trongChuoi = false;
+    let inString = false;
     for (let i = 0; i < sql.length; i++) {
         const c = sql[i];
-        if (!trongChuoi && c === "-" && sql[i + 1] === "-") {      // chú thích -- … hết dòng
-            const het = sql.indexOf("\n", i);
-            const den = het < 0 ? sql.length : het;
-            out += sql.slice(i, den);
-            i = den - 1;
+        if (!inString && c === "-" && sql[i + 1] === "-") {      // chú thích -- … hết dòng
+            const newlineAt = sql.indexOf("\n", i);
+            const commentEnd = newlineAt < 0 ? sql.length : newlineAt;
+            out += sql.slice(i, commentEnd);
+            i = commentEnd - 1;
             continue;
         }
-        if (c === "'") trongChuoi = !trongChuoi;
-        if (!trongChuoi && c === "@" && /[A-Za-z_]/.test(sql[i + 1] || "")) {
+        if (c === "'") inString = !inString;
+        if (!inString && c === "@" && /[A-Za-z_]/.test(sql[i + 1] || "")) {
             let j = i + 1;
             while (j < sql.length && /[A-Za-z0-9_]/.test(sql[j])) j++;
-            const ten = sql.slice(i + 1, j);
-            if (!(ten in params)) throw new Error(`thiếu tham số @${ten}`);
-            if (!so.has(ten)) {
-                values.push(params[ten]);
-                so.set(ten, values.length);
+            const paramName = sql.slice(i + 1, j);
+            if (!(paramName in params)) throw new Error(`thiếu tham số @${paramName}`);
+            if (!paramIndex.has(paramName)) {
+                values.push(params[paramName]);
+                paramIndex.set(paramName, values.length);
             }
-            out += `$${so.get(ten)}`;
+            out += `$${paramIndex.get(paramName)}`;
             i = j - 1;
             continue;
         }
@@ -69,9 +69,9 @@ export function doiThamSo(sql: string, params?: Record<string, unknown>): { text
 
 /** Chạy một câu SELECT / ghi, trả mảng dòng. */
 export async function query<T = any>(sql: string, params?: Record<string, unknown>): Promise<T[]> {
-    const { text, values } = doiThamSo(sql, params);
+    const { text, values } = bindNamedParams(sql, params);
     try {
-        const r = await layPool().query(text, values);
+        const r = await getPool().query(text, values);
         return r.rows as T[];
     } catch (e: any) {
         console.error("Postgres:", e?.message || e, "\nSQL:", text.slice(0, 400));
@@ -82,28 +82,28 @@ export async function query<T = any>(sql: string, params?: Record<string, unknow
 // ─── Câu SQL dựng ở trình duyệt (/api/query) ───────────────────────────────────────────
 // Đăng nhập bằng vai CHỈ ĐỌC riêng (migration 0003), KHÔNG dùng tài khoản chủ rồi SET ROLE: phiên
 // của tài khoản quản trị thì câu SQL tự đổi vai ngược lại được bằng set_config('role', …).
-export type VaiDoc = "talpha_doc" | "talpha_doc_nuoc";
-const poolDoc = new Map<VaiDoc, Pool>();
+export type ReadOnlyRole = "talpha_doc" | "talpha_doc_nuoc";
+const readOnlyPools = new Map<ReadOnlyRole, Pool>();
 
-function layPoolDoc(vai: VaiDoc): Pool {
-    const p = poolDoc.get(vai);
+function getReadOnlyPool(role: ReadOnlyRole): Pool {
+    const p = readOnlyPools.get(role);
     if (p) return p;
     const mk = process.env.TALPHA_DOC_PASSWORD;
-    const goc = process.env.DATABASE_URL;
-    if (!mk || !goc) throw new Error("chưa cấu hình vai chỉ đọc (TALPHA_DOC_PASSWORD) — xem docs/POSTGRES.md");
-    const u = new URL(goc);
-    u.username = vai;
+    const baseUrl = process.env.DATABASE_URL;
+    if (!mk || !baseUrl) throw new Error("chưa cấu hình vai chỉ đọc (TALPHA_DOC_PASSWORD) — xem docs/POSTGRES.md");
+    const u = new URL(baseUrl);
+    u.username = role;
     u.password = mk;
-    const moi = new Pool({ connectionString: u.toString(), max: 5, options: "-c TimeZone=UTC" });
-    moi.on("error", (e) => console.error(`Postgres ${vai}:`, e.message));
-    poolDoc.set(vai, moi);
-    return moi;
+    const newPool = new Pool({ connectionString: u.toString(), max: 5, options: "-c TimeZone=UTC" });
+    newPool.on("error", (e) => console.error(`Postgres ${role}:`, e.message));
+    readOnlyPools.set(role, newPool);
+    return newPool;
 }
 
 /** Một câu SELECT bằng vai chỉ đọc, trong transaction READ ONLY, tối đa 30 giây. */
-export async function queryChiDoc<T = any>(sql: string, vai: VaiDoc, params?: Record<string, unknown>): Promise<T[]> {
-    const { text, values } = doiThamSo(sql, params);
-    const client = await layPoolDoc(vai).connect();
+export async function queryReadOnly<T = any>(sql: string, role: ReadOnlyRole, params?: Record<string, unknown>): Promise<T[]> {
+    const { text, values } = bindNamedParams(sql, params);
+    const client = await getReadOnlyPool(role).connect();
     try {
         await client.query("BEGIN READ ONLY");
         await client.query("SET LOCAL statement_timeout = 30000");
@@ -119,15 +119,15 @@ export async function queryChiDoc<T = any>(sql: string, vai: VaiDoc, params?: Re
 }
 
 /** Nhiều câu ghi trong MỘT transaction — lỗi giữa chừng là quay về như cũ. */
-export async function giaoDich<T>(lam: (q: typeof query) => Promise<T>): Promise<T> {
-    const client = await layPool().connect();
+export async function withTransaction<T>(work: (q: typeof query) => Promise<T>): Promise<T> {
+    const client = await getPool().connect();
     try {
         await client.query("BEGIN");
         const q = async (sql: string, params?: Record<string, unknown>) => {
-            const { text, values } = doiThamSo(sql, params);
+            const { text, values } = bindNamedParams(sql, params);
             return (await client.query(text, values)).rows;
         };
-        const kq = await lam(q as typeof query);
+        const kq = await work(q as typeof query);
         await client.query("COMMIT");
         return kq;
     } catch (e) {

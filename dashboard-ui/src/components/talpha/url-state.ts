@@ -10,11 +10,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 /** Đổi vài tham số trên địa chỉ trang (null = bỏ), giữ nguyên đường dẫn và các tham số khác.
  *  replace (không thêm bước lịch sử): đổi nước / đổi ngày không làm nút Back phải bấm nhiều lần. */
-export function useDoiThamSo(): (doi: Record<string, string | null>) => void {
+export function useUpdateUrlParams(): (patch: Record<string, string | null>) => void {
     const router = useRouter();
-    return useCallback((doi) => {
+    return useCallback((patch) => {
         const q = new URLSearchParams(window.location.search);
-        for (const [k, v] of Object.entries(doi)) {
+        for (const [k, v] of Object.entries(patch)) {
             if (v) q.set(k, v);
             else q.delete(k);
         }
@@ -24,9 +24,9 @@ export function useDoiThamSo(): (doi: Record<string, string | null>) => void {
 }
 
 /** Một tham số trên địa chỉ trang (vd "market"): [giá trị hiện tại, hàm đặt]. */
-export function useThamSoUrl(ten: string): [string | null, (giaTri: string | null) => void] {
+export function useUrlParam(name: string): [string | null, (value: string | null) => void] {
     const sp = useSearchParams();
-    const doi = useDoiThamSo();
-    const dat = useCallback((v: string | null) => doi({ [ten]: v }), [doi, ten]);
-    return [sp.get(ten), dat];
+    const patch = useUpdateUrlParams();
+    const setValue = useCallback((v: string | null) => patch({ [name]: v }), [patch, name]);
+    return [sp.get(name), setValue];
 }

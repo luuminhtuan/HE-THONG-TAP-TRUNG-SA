@@ -13,27 +13,27 @@
  */
 import { statusLabel } from "./tracking";
 
-export type NhomDon = "da_giao" | "chua_giao" | "khong_tinh";
-export type LyDoKhongTinh = "hoan" | "huy" | "tieu_huy";
+export type OrderGroup = "da_giao" | "chua_giao" | "khong_tinh";
+export type ExclusionReason = "hoan" | "huy" | "tieu_huy";
 
-export type DonCod = {
+export type CodOrder = {
     order_id: string;
     tracking: string;
     order_date: string | null;
     trang_thai: string;
-    nhom: NhomDon;
-    ly_do?: LyDoKhongTinh;
+    nhom: OrderGroup;
+    ly_do?: ExclusionReason;
     cod_local: number;
     khach: string;
 };
 
-type Phan = { nhom: NhomDon; ly_do?: LyDoKhongTinh };
+type Classification = { nhom: OrderGroup; ly_do?: ExclusionReason };
 
 /**
  * Theo trạng thái vận đơn chuẩn (bảng đối tác + 17TRACK). Hàng ĐANG hoàn (17TRACK báo
  * Exception_Returning) cũng không tính: tiền không về nữa, đếm vào "chưa giao" là hứa hão.
  */
-export function nhomTheoVanDon(status?: string | null, sub?: string | null): Phan {
+export function classifyByShipment(status?: string | null, sub?: string | null): Classification {
     if (status === "Delivered") return { nhom: "da_giao" };
     if (status === "Returned" || status === "Expired") return { nhom: "khong_tinh", ly_do: "hoan" };
     if (status === "Exception" && /Return/.test(String(sub || ""))) return { nhom: "khong_tinh", ly_do: "hoan" };
@@ -46,7 +46,7 @@ export function nhomTheoVanDon(status?: string | null, sub?: string | null): Pha
  * Theo nhóm trạng thái POS (vw_orders_std.status_category) — cho nước chưa có bảng đối tác.
  * Đơn thô (DON_THO) chưa phải đơn thật, chưa đi đâu cả → trả null, bỏ khỏi danh sách.
  */
-export function nhomTheoPos(category?: string | null): Phan | null {
+export function classifyByPos(category?: string | null): Classification | null {
     const c = String(category || "").toUpperCase();
     if (c === "DON_THO") return null;
     if (c === "GIAO_THANH_CONG") return { nhom: "da_giao" };
@@ -69,49 +69,49 @@ const POS_VI: Record<string, string> = {
 };
 
 /** Chữ trạng thái POS: tên đã dịch, chưa dịch thì chữ gốc, không có thì nhóm trạng thái. */
-export function nhanTrangThaiPos(name?: string | null, category?: string | null): string {
+export function posStatusText(name?: string | null, category?: string | null): string {
     const n = String(name || "").trim();
     return POS_VI[n.toLowerCase()] || n || String(category || "") || "Chưa rõ";
 }
 
 /** Chữ trạng thái hiển thị: nhãn chuẩn, không có thì chữ gốc của nguồn. */
-export function nhanTrangThai(status?: string | null, raw?: string | null): string {
+export function statusText(status?: string | null, raw?: string | null): string {
     return status ? statusLabel(status) : (String(raw || "").trim() || "Chưa rõ");
 }
 
 export type Khoan = { so_don: number; cod_local: number; vnd_uoc: number | null };
-export type TongHopCod = {
+export type CodSummary = {
     da_giao: Khoan;
     chua_giao: Khoan & { theo_trang_thai: { trang_thai: string; so_don: number; cod_local: number }[] };
     khong_tinh: Khoan & { hoan: number; huy: number; tieu_huy: number };
 };
 
 /** Cộng từng nhóm. rateVnd ≤ 0 (chưa khai tỷ giá) → vnd_uoc null, KHÔNG nhân bừa. */
-export function tongHopCod(don: DonCod[], rateVnd: number): TongHopCod {
+export function summarizeCod(orders: CodOrder[], rateVnd: number): CodSummary {
     const vnd = (x: number) => (rateVnd > 0 ? Math.round(x * rateVnd) : null);
-    const cong = (xs: DonCod[]): Khoan => {
+    const sumGroup = (xs: CodOrder[]): Khoan => {
         const cod = xs.reduce((n, d) => n + (Number(d.cod_local) || 0), 0);
         return { so_don: xs.length, cod_local: Math.round(cod * 100) / 100, vnd_uoc: vnd(cod) };
     };
-    const daGiao = don.filter((d) => d.nhom === "da_giao");
-    const chuaGiao = don.filter((d) => d.nhom === "chua_giao");
-    const khongTinh = don.filter((d) => d.nhom === "khong_tinh");
+    const delivered = orders.filter((d) => d.nhom === "da_giao");
+    const undelivered = orders.filter((d) => d.nhom === "chua_giao");
+    const excluded = orders.filter((d) => d.nhom === "khong_tinh");
 
-    const theo = new Map<string, { trang_thai: string; so_don: number; cod_local: number }>();
-    for (const d of chuaGiao) {
-        const x = theo.get(d.trang_thai) || { trang_thai: d.trang_thai, so_don: 0, cod_local: 0 };
+    const byStatus = new Map<string, { trang_thai: string; so_don: number; cod_local: number }>();
+    for (const d of undelivered) {
+        const x = byStatus.get(d.trang_thai) || { trang_thai: d.trang_thai, so_don: 0, cod_local: 0 };
         x.so_don++;
         x.cod_local += Number(d.cod_local) || 0;
-        theo.set(d.trang_thai, x);
+        byStatus.set(d.trang_thai, x);
     }
     return {
-        da_giao: cong(daGiao),
-        chua_giao: { ...cong(chuaGiao), theo_trang_thai: [...theo.values()].sort((a, b) => b.so_don - a.so_don) },
+        da_giao: sumGroup(delivered),
+        chua_giao: { ...sumGroup(undelivered), theo_trang_thai: [...byStatus.values()].sort((a, b) => b.so_don - a.so_don) },
         khong_tinh: {
-            ...cong(khongTinh),
-            hoan: khongTinh.filter((d) => d.ly_do === "hoan").length,
-            huy: khongTinh.filter((d) => d.ly_do === "huy").length,
-            tieu_huy: khongTinh.filter((d) => d.ly_do === "tieu_huy").length,
+            ...sumGroup(excluded),
+            hoan: excluded.filter((d) => d.ly_do === "hoan").length,
+            huy: excluded.filter((d) => d.ly_do === "huy").length,
+            tieu_huy: excluded.filter((d) => d.ly_do === "tieu_huy").length,
         },
     };
 }

@@ -10,10 +10,10 @@ import DateRangePicker from "@/components/ui/date-range-picker";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import Link from "next/link";
 import { AccessProvider, type Me } from "./access-context";
-import NutCaiApp from "./cai-app";
-import { useDoiThamSo } from "./url-state";
-import TrangThaiCapNhatNut from "./refresh-status";
-import { NAV_GROUPS, TAB_INFO, TAB_THEO_SLUG, type NavGroup } from "./nav-config";
+import PwaInstallPrompt from "./cai-app";
+import { useUpdateUrlParams } from "./url-state";
+import RefreshStatusButton from "./refresh-status";
+import { NAV_GROUPS, TAB_INFO, TAB_BY_SLUG, type NavGroup } from "./nav-config";
 
 import TALPHACeoOverviewTab from "./tabs/ceo-overview-tab";
 import TALPHAAdsCommandTab from "./tabs/ads-command-tab";
@@ -30,11 +30,11 @@ import { MarketsProvider, useMarkets } from "./markets-context";
 import TALPHAOrderLedgerTab from "./tabs/order-ledger-tab";
 import TALPHATrackingTab from "./tabs/tracking-tab";
 import TALPHAAdsReconTab from "./tabs/ads-recon-tab";
-import TALPHALaiLoTab from "./tabs/lai-lo-tab";
+import IncomeStatementTab from "./tabs/lai-lo-tab";
 import AskAiTab from "./tabs/ask-ai-tab";
 
 /** Tham số mang theo khi chuyển tab: khoảng ngày đang chọn (from, to), nước đang chọn (market). */
-const THAM_SO_GIU = ["from", "to", "market"];
+const CARRIED_PARAMS = ["from", "to", "market"];
 
 /** Hai tab này đọc cửa sổ thời gian cố định trong view — hiện bộ chọn ngày chỉ gây hiểu nhầm là lọc được. */
 const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon"]);
@@ -47,15 +47,15 @@ const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon"]);
 const FLOOR_TABS = new Set(["overview", "pnl", "product-pnl", "lai-lo", "marketing", "ad-spend"]);
 
 /** Các mục menu còn lại sau khi bỏ tab người này không được xem (phân quyền theo team). */
-function nhomDuocXem(me: Me): NavGroup[] {
-    const thay = new Set(me.tabs);
+function visibleNavGroups(me: Me): NavGroup[] {
+    const visibleTabs = new Set(me.tabs);
     return NAV_GROUPS
-        .map(g => ({ ...g, tabs: g.tabs.filter(t => thay.has(t.id)) }))
+        .map(g => ({ ...g, tabs: g.tabs.filter(t => visibleTabs.has(t.id)) }))
         .filter(g => g.tabs.length > 0);
 }
 
 /** "2026-09-15" → 0h ngày đó theo giờ máy (new Date("2026-09-15") là 0h UTC, lệch 7 tiếng). */
-function ngayDiaPhuong(s: string): Date | null {
+function parseLocalDate(s: string): Date | null {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
     return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
 }
@@ -66,20 +66,20 @@ export default function TALPHADashboardShell() {
     const pathname = usePathname();
     const sp = useSearchParams();
     const router = useRouter();
-    const doiThamSo = useDoiThamSo();
-    const tabUrl = TAB_THEO_SLUG[pathname.split("/")[2] || ""] || null;
+    const updateUrlParams = useUpdateUrlParams();
+    const tabUrl = TAB_BY_SLUG[pathname.split("/")[2] || ""] || null;
     // Người đang xem — tab nào hiện, nút nước nào có (phân quyền theo team, 05/10/2026).
     const [me, setMe] = useState<Me | null>(null);
-    const [meLoi, setMeLoi] = useState<string | null>(null);
+    const [meError, setMeError] = useState<string | null>(null);
     // Điện thoại (Sỹ Anh yêu cầu 05/10/2026): menu trái thành ngăn kéo, mở bằng nút ☰.
-    const [menuMo, setMenuMo] = useState(false);
+    const [menuOpen, setMenuOpen] = useState(false);
     // Mốc gốc báo cáo. Chờ nạp xong mới dựng tab, để tab không truy vấn hai lần (một lần
     // với 60 ngày mặc định, một lần sau khi kéo về mốc).
     const [reportStart, setReportStart] = useState<Date | null>(null);
     const [configLoaded, setConfigLoaded] = useState(false);
 
     useEffect(() => {
-        let dung = false;
+        let cancelled = false;
         fetch("/api/talpha/me")
             .then(async r => {
                 if (r.status === 401) {
@@ -91,26 +91,26 @@ export default function TALPHADashboardShell() {
                 return d as Me;
             })
             .then(d => {
-                if (dung || !d) return;
+                if (cancelled || !d) return;
                 setMe(d);
             })
-            .catch(e => { if (!dung) setMeLoi(String(e?.message || e)); });
-        return () => { dung = true; };
+            .catch(e => { if (!cancelled) setMeError(String(e?.message || e)); });
+        return () => { cancelled = true; };
     }, []);
 
     // Menu chỉ còn mục có ít nhất một tab người này được xem.
-    const groups = useMemo(() => (me ? nhomDuocXem(me) : []), [me]);
+    const groups = useMemo(() => (me ? visibleNavGroups(me) : []), [me]);
 
     // Tab trên đường dẫn mà người này không được xem (hoặc vào /talpha trần) → tab ĐẦU TIÊN họ thấy
     // (sale không có Tổng quan), và sửa luôn địa chỉ cho khớp.
-    const tabDau = groups[0]?.tabs[0]?.id ?? "overview";
-    const activeTab = tabUrl && (!me || me.tabs.includes(tabUrl)) ? tabUrl : tabDau;
+    const firstTab = groups[0]?.tabs[0]?.id ?? "overview";
+    const activeTab = tabUrl && (!me || me.tabs.includes(tabUrl)) ? tabUrl : firstTab;
     const activeGroup = TAB_INFO[activeTab]?.nhom ?? "bao-cao";
 
     /** Đường dẫn của một tab, mang theo khoảng ngày + nước đang chọn. */
     const hrefTab = useCallback((id: string) => {
         const q = new URLSearchParams();
-        for (const k of THAM_SO_GIU) { const v = sp.get(k); if (v) q.set(k, v); }
+        for (const k of CARRIED_PARAMS) { const v = sp.get(k); if (v) q.set(k, v); }
         const s = q.toString();
         return `/talpha/${TAB_INFO[id]?.slug ?? ""}${s ? `?${s}` : ""}`;
     }, [sp]);
@@ -121,35 +121,35 @@ export default function TALPHADashboardShell() {
 
 
     useEffect(() => {
-        let dung = false;
+        let cancelled = false;
         fetch("/api/talpha/report-config")
             .then(r => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
             .then((d: { report_start_date?: string | null }) => {
-                if (dung) return;
-                const moc = d.report_start_date ? ngayDiaPhuong(d.report_start_date) : null;
-                setReportStart(moc);
+                if (cancelled) return;
+                const cutoff = d.report_start_date ? parseLocalDate(d.report_start_date) : null;
+                setReportStart(cutoff);
             })
             .catch(() => {})
-            .finally(() => { if (!dung) setConfigLoaded(true); });
-        return () => { dung = true; };
+            .finally(() => { if (!cancelled) setConfigLoaded(true); });
+        return () => { cancelled = true; };
     }, []);
 
     // Khoảng ngày: ?from=&to= trên địa chỉ nếu có (người chọn / link gửi kèm) — áp cho mọi tab. Không có
     // thì THÁNG NÀY (ngày 1 → hôm nay) cho MỌI tab, kể cả Sổ đơn / Vận đơn / Tiền COD về (Sỹ Anh chốt
     // 15/11/2026: danh sách dài là trang nặng), không trước mốc gốc báo cáo. Việc cần làm của tháng trước
     // không mất: cảnh báo vận đơn soát mọi kiện đã nạp, Đòi tiền NAZA / kỳ sao kê tính mọi đơn.
-    const tuUrl = sp.get("from");
-    const denUrl = sp.get("to");
+    const fromParam = sp.get("from");
+    const toParam = sp.get("to");
     const dateRange = useMemo(() => {
-        const tu = tuUrl ? ngayDiaPhuong(tuUrl) : null;
-        const den = denUrl ? ngayDiaPhuong(denUrl) : null;
-        if (tu && den && tu <= den) return { from: tu, to: den };
-        const homNay = new Date();
-        const tuMacDinh = startOfMonth(homNay);
-        return { from: reportStart && tuMacDinh < reportStart ? reportStart : tuMacDinh, to: homNay };
-    }, [tuUrl, denUrl, reportStart]);
+        const fromDate = fromParam ? parseLocalDate(fromParam) : null;
+        const toDate = toParam ? parseLocalDate(toParam) : null;
+        if (fromDate && toDate && fromDate <= toDate) return { from: fromDate, to: toDate };
+        const today = new Date();
+        const defaultFrom = startOfMonth(today);
+        return { from: reportStart && defaultFrom < reportStart ? reportStart : defaultFrom, to: today };
+    }, [fromParam, toParam, reportStart]);
     const setDateRange = (r: { from: Date; to: Date }) =>
-        doiThamSo({ from: format(r.from, "yyyy-MM-dd"), to: format(r.to, "yyyy-MM-dd") });
+        updateUrlParams({ from: format(r.from, "yyyy-MM-dd"), to: format(r.to, "yyyy-MM-dd") });
 
     const onFloorTab = FLOOR_TABS.has(activeTab);
     // Khoảng ngày thật đưa cho tab: tab báo cáo luôn bị kéo về mốc, kể cả khi người dùng
@@ -163,10 +163,10 @@ export default function TALPHADashboardShell() {
         () => groups.find(g => g.id === activeGroup) ?? groups[0] ?? NAV_GROUPS[0],
         [groups, activeGroup],
     );
-    const duocXem = (tab: string) => !!me && me.tabs.includes(tab) && activeTab === tab;
+    const isTabShown = (tab: string) => !!me && me.tabs.includes(tab) && activeTab === tab;
 
     // Ruột thanh trái — dùng chung cho cột cố định (máy tính) và ngăn kéo (điện thoại).
-    const noiDungMenu = (
+    const menuContent = (
         <>
                 <div className="flex flex-col border-b border-border p-4">
                     <div className="mb-2 flex items-center justify-between">
@@ -174,7 +174,7 @@ export default function TALPHADashboardShell() {
                             <ArrowLeft className="h-3 w-3" /> Trang chủ
                         </Link>
                         <button
-                            onClick={() => setMenuMo(false)}
+                            onClick={() => setMenuOpen(false)}
                             className="rounded-md p-1 text-muted-foreground hover:bg-muted md:hidden"
                             aria-label="Đóng menu"
                         >
@@ -186,7 +186,7 @@ export default function TALPHADashboardShell() {
                     <div className="brand-logo-box p-2.5">
                         <img src="/antalo-logo.png" alt="ANTALO Mini Market" className="h-9 w-full object-contain" />
                     </div>
-                    <NhanThiTruong me={me} />
+                    <MarketLabel me={me} />
                 </div>
 
                 <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-3">
@@ -194,7 +194,7 @@ export default function TALPHADashboardShell() {
                         <Link
                             key={g.id}
                             href={hrefTab(g.tabs[0].id)}
-                            onClick={() => setMenuMo(false)}
+                            onClick={() => setMenuOpen(false)}
                             className={cn(
                                 "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
                                 activeGroup === g.id
@@ -210,7 +210,7 @@ export default function TALPHADashboardShell() {
 
                 <div className="space-y-2 border-t border-border p-3">
                     {/* Cài dashboard thành app trên điện thoại / máy tính (06/10/2026). */}
-                    <NutCaiApp />
+                    <PwaInstallPrompt />
                     {me && me.kind === "user" && (
                         <div className="rounded-lg bg-muted/40 px-3 py-2">
                             <p className="truncate text-sm font-semibold text-foreground" title={me.email || undefined}>{me.name}</p>
@@ -248,15 +248,15 @@ export default function TALPHADashboardShell() {
         <div className="flex h-dvh overflow-hidden bg-background">
             {/* ═══ Sidebar — máy tính: cột cố định ═══ */}
             <aside className="hidden w-64 shrink-0 flex-col border-r border-border bg-white shadow-sm backdrop-blur-xl dark:bg-[#131210] dark:shadow-none md:flex">
-                {noiDungMenu}
+                {menuContent}
             </aside>
 
             {/* ═══ Sidebar — điện thoại: ngăn kéo phủ lên nội dung ═══ */}
-            {menuMo && (
+            {menuOpen && (
                 <div className="fixed inset-0 z-40 md:hidden">
-                    <div className="absolute inset-0 bg-black/40" onClick={() => setMenuMo(false)} aria-hidden />
+                    <div className="absolute inset-0 bg-black/40" onClick={() => setMenuOpen(false)} aria-hidden />
                     <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-white shadow-2xl dark:bg-[#131210]">
-                        {noiDungMenu}
+                        {menuContent}
                     </aside>
                 </div>
             )}
@@ -266,7 +266,7 @@ export default function TALPHADashboardShell() {
                 <header className="sticky top-0 z-10 flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border bg-white/80 px-3 py-2 shadow-sm backdrop-blur-xl dark:bg-[#131210]/80 dark:shadow-none md:h-16 md:flex-nowrap md:px-6 md:py-0">
                     <div className="flex min-w-0 items-center gap-2">
                         <button
-                            onClick={() => setMenuMo(true)}
+                            onClick={() => setMenuOpen(true)}
                             className="-ml-1 rounded-lg p-2 text-foreground hover:bg-muted md:hidden"
                             aria-label="Mở menu"
                         >
@@ -286,7 +286,7 @@ export default function TALPHADashboardShell() {
                             </span>
                         )}
                         {/* Số cập nhật lúc nào / đang cập nhật / lỗi + nút "Cập nhật ngay" (15/11/2026). */}
-                        {me && <TrangThaiCapNhatNut />}
+                        {me && <RefreshStatusButton />}
                         {!IGNORES_DATE_RANGE.has(activeTab) && (
                             <DateRangePicker
                                 value={onFloorTab ? tabRange : dateRange}
@@ -320,9 +320,9 @@ export default function TALPHADashboardShell() {
                         </div>
                     )}
 
-                    {meLoi && (
+                    {meError && (
                         <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
-                            Không đọc được quyền của tài khoản: {meLoi}. Tải lại trang, hoặc đăng xuất rồi đăng nhập lại.
+                            Không đọc được quyền của tài khoản: {meError}. Tải lại trang, hoặc đăng xuất rồi đăng nhập lại.
                         </div>
                     )}
                     {me && me.tabs.length === 0 && (
@@ -333,22 +333,22 @@ export default function TALPHADashboardShell() {
                     )}
 
                     {!configLoaded || !me ? null : <>
-                    {duocXem("overview") && <TALPHACeoOverviewTab dateRange={tabRange} projectId="TALPHA" />}
-                    {duocXem("pnl") && <TALPHAPnLTab dateRange={tabRange} projectId="TALPHA" />}
-                    {duocXem("product-pnl") && <TALPHAProductPnLTab dateRange={tabRange} projectId="TALPHA" />}
-                    {duocXem("tracking") && <TALPHATrackingTab dateRange={dateRange} projectId="TALPHA" />}
-                    {duocXem("order-ledger") && <TALPHAOrderLedgerTab dateRange={dateRange} projectId="TALPHA" />}
-                    {duocXem("lai-lo") && <TALPHALaiLoTab dateRange={tabRange} />}
-                    {duocXem("cod-recon") && <TALPHACodReconTab dateRange={dateRange} projectId="TALPHA" />}
-                    {duocXem("products") && <TALPHAProductsTab dateRange={dateRange} projectId="TALPHA" />}
-                    {duocXem("marketing") && <TALPHAMarketingTab dateRange={tabRange} projectId="TALPHA" />}
-                    {duocXem("ad-spend") && <TALPHAAdSpendTab dateRange={tabRange} projectId="TALPHA" />}
-                    {duocXem("ads-command") && <TALPHAAdsCommandTab />}
-                    {duocXem("ad-health") && <TALPHAAdHealthTab />}
-                    {duocXem("ads-recon") && <TALPHAAdsReconTab />}
-                    {duocXem("customers") && <TALPHACustomerTab dateRange={dateRange} projectId="TALPHA" />}
-                    {duocXem("market-intel") && <TALPHAMarketIntelTab dateRange={dateRange} projectId="TALPHA" />}
-                    {duocXem("ask-ai") && <AskAiTab dateRange={dateRange} />}
+                    {isTabShown("overview") && <TALPHACeoOverviewTab dateRange={tabRange} projectId="TALPHA" />}
+                    {isTabShown("pnl") && <TALPHAPnLTab dateRange={tabRange} projectId="TALPHA" />}
+                    {isTabShown("product-pnl") && <TALPHAProductPnLTab dateRange={tabRange} projectId="TALPHA" />}
+                    {isTabShown("tracking") && <TALPHATrackingTab dateRange={dateRange} projectId="TALPHA" />}
+                    {isTabShown("order-ledger") && <TALPHAOrderLedgerTab dateRange={dateRange} projectId="TALPHA" />}
+                    {isTabShown("lai-lo") && <IncomeStatementTab dateRange={tabRange} />}
+                    {isTabShown("cod-recon") && <TALPHACodReconTab dateRange={dateRange} projectId="TALPHA" />}
+                    {isTabShown("products") && <TALPHAProductsTab dateRange={dateRange} projectId="TALPHA" />}
+                    {isTabShown("marketing") && <TALPHAMarketingTab dateRange={tabRange} projectId="TALPHA" />}
+                    {isTabShown("ad-spend") && <TALPHAAdSpendTab dateRange={tabRange} projectId="TALPHA" />}
+                    {isTabShown("ads-command") && <TALPHAAdsCommandTab />}
+                    {isTabShown("ad-health") && <TALPHAAdHealthTab />}
+                    {isTabShown("ads-recon") && <TALPHAAdsReconTab />}
+                    {isTabShown("customers") && <TALPHACustomerTab dateRange={dateRange} projectId="TALPHA" />}
+                    {isTabShown("market-intel") && <TALPHAMarketIntelTab dateRange={dateRange} projectId="TALPHA" />}
+                    {isTabShown("ask-ai") && <AskAiTab dateRange={dateRange} />}
                     </>}
                 </div>
             </main>
@@ -362,23 +362,23 @@ export default function TALPHADashboardShell() {
  * Nhãn dưới logo: nước đang bán, và nước sắp chạy nếu có — đọc từ config, không gõ tay.
  * Người xem theo team thì ghi tên team trước (danh sách nước đã chỉ còn nước của team).
  */
-function NhanThiTruong({ me }: { me: Me | null }) {
+function MarketLabel({ me }: { me: Me | null }) {
     const { markets } = useMarkets();
-    const dangBan = markets.filter((m) => m.status === "dang_ban").map((m) => m.display);
-    const sapChay = markets.filter((m) => m.status === "sap_chay").map((m) => m.display);
-    const daTat = markets.filter((m) => m.status === "da_tat").map((m) => m.display);
+    const activeMarkets = markets.filter((m) => m.status === "dang_ban").map((m) => m.display);
+    const upcomingMarkets = markets.filter((m) => m.status === "sap_chay").map((m) => m.display);
+    const disabledMarkets = markets.filter((m) => m.status === "da_tat").map((m) => m.display);
     const team = me && !me.full && me.teams.length ? me.teams.map((t) => t.name).join(" · ") : null;
     return (
         <>
             <span className="mt-2 text-xs text-muted-foreground">
                 {team && <strong className="font-semibold text-foreground">Team {team}: </strong>}
-                {dangBan.length ? dangBan.join(" · ") : "…"}
+                {activeMarkets.length ? activeMarkets.join(" · ") : "…"}
             </span>
-            {sapChay.length > 0 && (
-                <span className="mt-0.5 text-[10px] text-muted-foreground">Sắp chạy: {sapChay.join(" · ")}</span>
+            {upcomingMarkets.length > 0 && (
+                <span className="mt-0.5 text-[10px] text-muted-foreground">Sắp chạy: {upcomingMarkets.join(" · ")}</span>
             )}
-            {daTat.length > 0 && (
-                <span className="mt-0.5 text-[10px] text-muted-foreground">Đã tắt: {daTat.join(" · ")}</span>
+            {disabledMarkets.length > 0 && (
+                <span className="mt-0.5 text-[10px] text-muted-foreground">Đã tắt: {disabledMarkets.join(" · ")}</span>
             )}
         </>
     );

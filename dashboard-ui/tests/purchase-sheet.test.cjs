@@ -23,7 +23,7 @@ const GRID = [
 ];
 
 console.log("── Đọc đợt thanh toán ──");
-const DOT = P.docDotTienHang(GRID);
+const DOT = P.parsePurchasePayments(GRID);
 t("đọc đủ 5 đợt, bỏ qua dòng tiêu đề và dòng THÁNG", () => {
     assert.deepStrictEqual(DOT.map((d) => d.ngay), ["2026-07-27", "2026-08-14", "2026-08-21", "2026-08-28", "2026-09-11"]);
 });
@@ -52,7 +52,7 @@ t("ghi 'đã thanh toán' mà không ghi số thì coi như trả đủ tổng",
 });
 
 t("số có dấu cách gõ nhầm sau dấu chấm vẫn đọc được (đợt 2/10/2026: '420. 325')", () => {
-    const d = P.docDotTienHang([["29/9", "X", "1", "", "", "THANH TOÁN NGÀY 2/10 \n\nTỔNG : 420. 325 VND"]]);
+    const d = P.parsePurchasePayments([["29/9", "X", "1", "", "", "THANH TOÁN NGÀY 2/10 \n\nTỔNG : 420. 325 VND"]]);
     assert.strictEqual(d.length, 1);
     assert.strictEqual(d[0].ngay, "2026-10-02");
     assert.strictEqual(d[0].tong_vnd, 420325);
@@ -63,32 +63,32 @@ t("dấu cách KHÔNG có dấu ngăn thì không nối hai số (năm 2026 vớ
 
 console.log("── Ngày sao kê từ tên file ──");
 t("đọc được cả ba kiểu tên file NAZA", () => {
-    assert.strictEqual(P.ngaySaoKe("ĐỐI SOÁT COD 2026.9.11.xlsx"), "2026-09-11");
-    assert.strictEqual(P.ngaySaoKe("A.THÁI COD TAIWAN 2026-7-24.xlsx"), "2026-07-24");
-    assert.strictEqual(P.ngaySaoKe("ĐỐI SOÁT COD TAIWAN 14.08.2026.xlsx"), "2026-08-14");
-    assert.strictEqual(P.ngaySaoKe("sao kê không ngày.xlsx"), null);
+    assert.strictEqual(P.statementDateFromName("ĐỐI SOÁT COD 2026.9.11.xlsx"), "2026-09-11");
+    assert.strictEqual(P.statementDateFromName("A.THÁI COD TAIWAN 2026-7-24.xlsx"), "2026-07-24");
+    assert.strictEqual(P.statementDateFromName("ĐỐI SOÁT COD TAIWAN 14.08.2026.xlsx"), "2026-08-14");
+    assert.strictEqual(P.statementDateFromName("sao kê không ngày.xlsx"), null);
 });
 t("tên viết liền YYYYMMDD (kỳ 12/10/2026: \"TAIWAN 20261012.xlsx\")", () => {
-    assert.strictEqual(P.ngaySaoKe("TAIWAN 20261012.xlsx"), "2026-10-12");
-    assert.strictEqual(P.ngaySaoKe("台湾COD对账单 20261005.xlsx"), "2026-10-05");
-    assert.strictEqual(P.ngaySaoKe("TAIWAN 20261399.xlsx"), null);        // tháng 13 → không phải ngày
-    assert.strictEqual(P.ngaySaoKe("đơn 1202610125.xlsx"), null);         // dãy số dài hơn 8 chữ
+    assert.strictEqual(P.statementDateFromName("TAIWAN 20261012.xlsx"), "2026-10-12");
+    assert.strictEqual(P.statementDateFromName("台湾COD对账单 20261005.xlsx"), "2026-10-05");
+    assert.strictEqual(P.statementDateFromName("TAIWAN 20261399.xlsx"), null);        // tháng 13 → không phải ngày
+    assert.strictEqual(P.statementDateFromName("đơn 1202610125.xlsx"), null);         // dãy số dài hơn 8 chữ
 });
 
 console.log("── Ghép đợt vào kỳ ──");
 t("đợt nằm giữa hai kỳ về kỳ GẦN HƠN, không về kỳ duyệt trước", () => {
     // 27/7 cách kỳ 24/7 ba ngày, cách kỳ 31/7 bốn ngày.
     const dot = [{ ngay: "2026-07-27" }, { ngay: "2026-07-31" }];
-    const m = P.ghepDotVaoKy(dot, [{ id: "31/7", ngay: "2026-07-31" }, { id: "24/7", ngay: "2026-07-24" }], 4);
+    const m = P.matchPaymentsToPeriods(dot, [{ id: "31/7", ngay: "2026-07-31" }, { id: "24/7", ngay: "2026-07-24" }], 4);
     assert.strictEqual(m.get("24/7").ngay, "2026-07-27");
     assert.strictEqual(m.get("31/7").ngay, "2026-07-31");
 });
 t("không đợt nào trong cửa sổ thì kỳ đó không có tiền hàng", () => {
-    const m = P.ghepDotVaoKy([{ ngay: "2026-08-01" }], [{ id: "k", ngay: "2026-09-11" }], 4);
+    const m = P.matchPaymentsToPeriods([{ ngay: "2026-08-01" }], [{ id: "k", ngay: "2026-09-11" }], 4);
     assert.strictEqual(m.has("k"), false);
 });
 t("một đợt không bị ghép vào hai kỳ", () => {
-    const m = P.ghepDotVaoKy([{ ngay: "2026-08-10" }], [{ id: "a", ngay: "2026-08-09" }, { id: "b", ngay: "2026-08-11" }], 4);
+    const m = P.matchPaymentsToPeriods([{ ngay: "2026-08-10" }], [{ id: "a", ngay: "2026-08-09" }, { id: "b", ngay: "2026-08-11" }], 4);
     assert.strictEqual(m.size, 1);
 });
 

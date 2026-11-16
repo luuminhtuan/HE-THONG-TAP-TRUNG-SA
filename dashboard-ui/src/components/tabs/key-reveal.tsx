@@ -7,11 +7,11 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 // khi người bấm (POST /api/talpha/khoa/reveal, ghi log), giữ trong bộ nhớ trang, tải lại trang là mất.
 
 /** Khoá đang dùng của một tên biến (TALPHA_POSCAKE_TH_KEY…). Rỗng = chưa có khoá. */
-export async function layKhoa(ten: string): Promise<string> {
+export async function revealCredential(keyName: string): Promise<string> {
     const r = await fetch("/api/talpha/khoa/reveal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ten }),
+        body: JSON.stringify({ ten: keyName }),
         cache: "no-store",
     });
     const j = await r.json().catch(() => ({}));
@@ -20,31 +20,31 @@ export async function layKhoa(ten: string): Promise<string> {
 }
 
 /** Bản che (••••b699) + con mắt: bấm là hiện khoá thật, bấm lại là che. */
-export function KhoaCoMat({ ten, che, className }: { ten: string; che: string; className?: string }) {
-    const [that, setThat] = useState<string | null>(null);
-    const [dang, setDang] = useState(false);
-    const [loi, setLoi] = useState("");
+export function MaskedCredential({ ten: keyName, che: masked, className }: { ten: string; che: string; className?: string }) {
+    const [revealed, setRevealed] = useState<string | null>(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
 
-    const bam = async () => {
-        if (that !== null) { setThat(null); return; }
-        setDang(true);
-        setLoi("");
-        try { setThat(await layKhoa(ten)); }
-        catch (e) { setLoi(e instanceof Error ? e.message : "Không xem được khoá"); }
-        finally { setDang(false); }
+    const toggle = async () => {
+        if (revealed !== null) { setRevealed(null); return; }
+        setLoading(true);
+        setError("");
+        try { setRevealed(await revealCredential(keyName)); }
+        catch (e) { setError(e instanceof Error ? e.message : "Không xem được khoá"); }
+        finally { setLoading(false); }
     };
 
     return (
         <span className={className}>
             <span className="inline-flex max-w-full items-center gap-1">
-                <span className="break-all font-mono text-slate-300">{that ?? che}</span>
-                <button type="button" onClick={bam} disabled={dang}
-                    aria-label={that !== null ? "Che khoá" : "Xem khoá"} title={that !== null ? "Che khoá" : "Xem khoá"}
+                <span className="break-all font-mono text-slate-300">{revealed ?? masked}</span>
+                <button type="button" onClick={toggle} disabled={loading}
+                    aria-label={revealed !== null ? "Che khoá" : "Xem khoá"} title={revealed !== null ? "Che khoá" : "Xem khoá"}
                     className="shrink-0 rounded p-0.5 text-slate-400 hover:text-foreground disabled:opacity-50">
-                    {dang ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : that !== null ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                    {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : revealed !== null ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                 </button>
             </span>
-            {loi && <span className="block text-rose-400">{loi}</span>}
+            {error && <span className="block text-rose-400">{error}</span>}
         </span>
     );
 }

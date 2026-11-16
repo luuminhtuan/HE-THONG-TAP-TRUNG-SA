@@ -10,7 +10,7 @@ export const ADMIN_SECTIONS = [
 
 export type AdminSectionId = (typeof ADMIN_SECTIONS)[number]["id"];
 
-export function tieuDeMucQuanTri(slug: string): string {
+export function adminSectionTitle(slug: string): string {
     const m = ADMIN_SECTIONS.find((x) => x.slug === slug) ?? ADMIN_SECTIONS[0];
     return `${m.label} · Quản trị · ANTALO`;
 }

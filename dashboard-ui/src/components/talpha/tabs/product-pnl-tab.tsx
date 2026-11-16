@@ -31,53 +31,53 @@ interface Data {
     ship_basis: Record<string, string>;
 }
 
-const ngayVN = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+const formatDmy = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const pctText = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(1)}%` : DASH);
 const signed = (n: number) => `${n >= 0 ? "+" : ""}${formatMoney(n)}`;
-const laiClass = (n: number) => (n >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400");
+const profitClass = (n: number) => (n >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400");
 
 export default function TALPHAProductPnLTab({ dateRange }: Props) {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<Data | null>(null);
-    const [loi, setLoi] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
     const { loaded: marketsLoaded } = useMarkets();
 
     useEffect(() => {
-        let dung = false;
+        let cancelled = false;
         const from = format(dateRange?.from ?? new Date(), "yyyy-MM-dd");
         const to = format(dateRange?.to ?? new Date(), "yyyy-MM-dd");
-        setLoading(true); setLoi(null);
+        setLoading(true); setError(null);
         fetch(`/api/talpha/product-pnl?from=${from}&to=${to}`)
             .then(async r => {
                 const d = await r.json();
                 if (!r.ok || d.error) throw new Error(d.error || `HTTP ${r.status}`);
                 return d as Data;
             })
-            .then(d => { if (!dung) setData(d); })
-            .catch(e => { if (!dung) { setData(null); setLoi(String(e?.message || e)); } })
-            .finally(() => { if (!dung) setLoading(false); });
-        return () => { dung = true; };
+            .then(d => { if (!cancelled) setData(d); })
+            .catch(e => { if (!cancelled) { setData(null); setError(String(e?.message || e)); } })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
     }, [dateRange]);
 
     if (loading || !marketsLoaded) return <TabSkeleton cards={6} rows={8} />;
-    if (loi || !data) {
+    if (error || !data) {
         return (
             <div className="rounded-xl border border-rose-300 bg-rose-50 p-5 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
                 <p className="font-semibold">Không tính được P&L theo sản phẩm.</p>
-                <p className="mt-1">{loi}</p>
+                <p className="mt-1">{error}</p>
             </div>
         );
     }
 
     const t = data.total;
-    const adsTong = t.ads + t.ads_khong_ma;
-    const biDot = data.rows.filter(r => r.ads > 0 && r.orders === 0);
+    const totalAds = t.ads + t.ads_khong_ma;
+    const zeroOrderProducts = data.rows.filter(r => r.ads > 0 && r.orders === 0);
 
     return (
         <div className="space-y-6">
             <ReportHero
                 emoji="📦"
-                title={`P&L theo sản phẩm — ${ngayVN(data.from)} → ${ngayVN(data.to)}`}
+                title={`P&L theo sản phẩm — ${formatDmy(data.from)} → ${formatDmy(data.to)}`}
                 subtitle={
                     <>
                         Đơn đã chốt trên POS (trừ huỷ, nháp, đơn trống) — cùng nền với tab P&L. Doanh số một sản phẩm là tiền
@@ -91,8 +91,8 @@ export default function TALPHAProductPnLTab({ dateRange }: Props) {
                 <KpiTile emoji="🏷️" label="Sản phẩm" value={formatNumber(data.rows.filter(r => r.orders > 0).length)}
                     sub={`${formatNumber(t.units)} cái · ${formatNumber(t.orders)} đơn`} />
                 <KpiTile emoji="💵" label="Doanh số" value={formatVNDCompact(t.doanh_so)} />
-                <KpiTile emoji="💸" label="Tiền ads" value={formatVNDCompact(adsTong)}
-                    sub={t.ads_khong_ma > 0 ? `${formatVNDCompact(t.ads_khong_ma)} camp không ghi mã` : `${pctText(adsTong, t.doanh_so)} doanh số`}
+                <KpiTile emoji="💸" label="Tiền ads" value={formatVNDCompact(totalAds)}
+                    sub={t.ads_khong_ma > 0 ? `${formatVNDCompact(t.ads_khong_ma)} camp không ghi mã` : `${pctText(totalAds, t.doanh_so)} doanh số`}
                     tone={t.ads_khong_ma > 0 ? "warn" : "neutral"} />
                 <KpiTile emoji="📦" label="Giá vốn" value={formatVNDCompact(t.cogs)}
                     sub={data.missing_costs.length ? `${data.missing_costs.length} mã thiếu giá` : `${pctText(t.cogs, t.doanh_so)} doanh số`}
@@ -103,12 +103,12 @@ export default function TALPHAProductPnLTab({ dateRange }: Props) {
                     tone={t.lai >= 0 ? "good" : "bad"} />
             </KpiRow>
 
-            {(biDot.length > 0 || data.missing_costs.length > 0 || t.ads_khong_ma > 0) && (
+            {(zeroOrderProducts.length > 0 || data.missing_costs.length > 0 || t.ads_khong_ma > 0) && (
                 <section className="rounded-xl border border-amber-300 bg-amber-50/60 p-5 text-sm dark:border-amber-500/30 dark:bg-amber-500/5">
                     <h3 className="section-header mb-2">⚠️ Cần xem</h3>
                     <ul className="space-y-1.5 text-foreground">
-                        {biDot.length > 0 && (
-                            <li><strong>Tiêu tiền ads mà 0 đơn:</strong> {biDot.map(r => `${r.ten} (${formatVNDCompact(r.ads)})`).join(" · ")}</li>
+                        {zeroOrderProducts.length > 0 && (
+                            <li><strong>Tiêu tiền ads mà 0 đơn:</strong> {zeroOrderProducts.map(r => `${r.ten} (${formatVNDCompact(r.ads)})`).join(" · ")}</li>
                         )}
                         {t.ads_khong_ma > 0 && (
                             <li><strong>{formatVNDCompact(t.ads_khong_ma)} tiền ads</strong> ở campaign không ghi mã sản phẩm — không gán được cho sản phẩm nào, chỉ cộng vào tổng.</li>
@@ -138,9 +138,9 @@ export default function TALPHAProductPnLTab({ dateRange }: Props) {
                             <td />
                         </tr>
                     )}
-                    <TongRow cells={[
-                        "TỔNG", formatNumber(t.orders), formatNumber(t.units), formatMoney(t.doanh_so), formatMoney(adsTong),
-                        pctText(adsTong, t.doanh_so), formatMoney(t.ship), formatMoney(t.cogs), signed(t.lai), pctText(t.lai, t.doanh_so),
+                    <TotalRow cells={[
+                        "TỔNG", formatNumber(t.orders), formatNumber(t.units), formatMoney(t.doanh_so), formatMoney(totalAds),
+                        pctText(totalAds, t.doanh_so), formatMoney(t.ship), formatMoney(t.cogs), signed(t.lai), pctText(t.lai, t.doanh_so),
                     ]} lai={t.lai} />
                 </>}
             />
@@ -150,18 +150,18 @@ export default function TALPHAProductPnLTab({ dateRange }: Props) {
                 notes={[
                     <>Doanh số một sản phẩm: POS để giá bán từng dòng hàng = 0, nên tiền đơn được chia theo số lượng. Đơn ghép nhiều sản phẩm giá lệch nhau thì phần chia chỉ là gần đúng; tổng vẫn khớp tab P&L.</>,
                     <>Tiền ads: campaign có ô mã sản phẩm (&ldquo;…/040/…&rdquo;), chỉ campaign của người trong team như file TỔNG TEAM{t.ads_ngoai_team > 0 ? ` (${formatVNDCompact(t.ads_ngoai_team)} của campaign không nhận ra người trong team không tính)` : ""}.</>,
-                    ...Object.entries(data.ship_basis).map(([code, moTa]) => <>Phí ship {marketName(code)}: {moTa}</>),
+                    ...Object.entries(data.ship_basis).map(([code, description]) => <>Phí ship {marketName(code)}: {description}</>),
                 ]}
             />
         </div>
     );
 }
 
-function TongRow({ cells, lai }: { cells: ReactNode[]; lai: number }) {
+function TotalRow({ cells, lai: profit }: { cells: ReactNode[]; lai: number }) {
     return (
         <tr className="border-t-2 border-amber-500/30 bg-amber-500/5 font-bold">
             {cells.map((c, i) => (
-                <td key={i} className={cn("px-3 py-2 tabular-nums", i === 0 ? "text-left" : "text-right", i === 8 && laiClass(lai))}>{c}</td>
+                <td key={i} className={cn("px-3 py-2 tabular-nums", i === 0 ? "text-left" : "text-right", i === 8 && profitClass(profit))}>{c}</td>
             ))}
         </tr>
     );
@@ -192,6 +192,6 @@ const COLUMNS: Column<Row>[] = [
         title: "Số cái × giá vốn một cái",
         render: r => (r.thieu_gia ? "thiếu giá" : r.cogs > 0 ? formatMoney(r.cogs) : DASH),
     },
-    { key: "lai", label: "Lãi gộp", align: "right", cellClassName: r => cn("font-semibold", laiClass(r.lai)), render: r => signed(r.lai) },
+    { key: "lai", label: "Lãi gộp", align: "right", cellClassName: r => cn("font-semibold", profitClass(r.lai)), render: r => signed(r.lai) },
     { key: "bien", label: "Biên", align: "right", render: r => pctText(r.lai, r.doanh_so) },
 ];

@@ -21,7 +21,7 @@ import { canMarket, seesAllMarkets, type Access } from "@/lib/talpha/access-rule
 // Ô số ghi dạng SỐ (format_all.py). Ô chữ kiểu Sheet vi_VN vẫn đọc được:
 // "32.842.574" → 32842574 · "5,9%" → 5.9 · "" → 0 — dấu chấm là phân cách nghìn, dấu phẩy là
 // thập phân, đọc nhầm là sai gấp nghìn lần.
-export function soVN(v: unknown): number {
+export function parseVnNumber(v: unknown): number {
     if (typeof v === "number") return Number.isFinite(v) ? v : 0;
     const s = String(v ?? "").replace(/[đ%\s]/g, "").trim();
     if (!s) return 0;
@@ -32,10 +32,10 @@ export function soVN(v: unknown): number {
 export type Tab = { title: string; head: string[]; rows: unknown[][] };
 
 /** Các tab TỔNG TEAM của một tháng ('YYYY-MM'). Tháng chưa có số (format_all chưa chạy) → null. */
-export async function docThang(thang: string): Promise<Tab[] | null> {
+export async function readMonthTabs(yearMonth: string): Promise<Tab[] | null> {
     const rows = await query<{ ten_tab: string; hang: unknown[][] }>(
         "SELECT ten_tab, hang FROM bao_cao_tab WHERE thang = @thang AND tep = 'tong_team' ORDER BY thu_tu",
-        { thang });
+        { thang: yearMonth });
     if (!rows.length) return null;
     return rows
         .map((r) => ({ title: r.ten_tab, head: (r.hang[0] || []).map((h) => String(h ?? "").trim()), rows: r.hang.slice(1) }))
@@ -43,23 +43,23 @@ export async function docThang(thang: string): Promise<Tab[] | null> {
         .filter((t) => t.head.includes("TỔNG TIỀN ADS"));
 }
 
-export type So = { ads: number; mess: number; don: number; doanh_so: number; ds_giao_tc: number };
-export const soRong = (): So => ({ ads: 0, mess: 0, don: 0, doanh_so: 0, ds_giao_tc: 0 });
-export const cong = (a: So, b: So) => {
+export type Metrics = { ads: number; mess: number; don: number; doanh_so: number; ds_giao_tc: number };
+export const emptyMetrics = (): Metrics => ({ ads: 0, mess: 0, don: 0, doanh_so: 0, ds_giao_tc: 0 });
+export const addMetrics = (a: Metrics, b: Metrics) => {
     a.ads += b.ads; a.mess += b.mess; a.don += b.don; a.doanh_so += b.doanh_so; a.ds_giao_tc += b.ds_giao_tc;
 };
-function docDong(head: string[], r: unknown[]): So {
-    const g = (ten: string) => soVN(r[head.indexOf(ten)]);
+function readRow(head: string[], r: unknown[]): Metrics {
+    const g = (column: string) => parseVnNumber(r[head.indexOf(column)]);
     return { ads: g("TỔNG TIỀN ADS"), mess: g("SỐ TIN NHẮN"), don: g("Số đơn"), doanh_so: g("Doanh Số"), ds_giao_tc: g("DS Giao TC") };
 }
 
 // "15/09/2026" → "2026-09-15"; dòng "TỔNG" và dòng lạ → null.
-function ngayISO(o: unknown): string | null {
+function dmyToIso(o: unknown): string | null {
     const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(o ?? "").trim());
     return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
 }
 
-function cacThang(from: string, to: string): string[] {
+function monthsInRange(from: string, to: string): string[] {
     const out: string[] = [];
     let [y, m] = from.slice(0, 7).split("-").map(Number);
     const [ty, tm] = to.slice(0, 7).split("-").map(Number);
@@ -73,48 +73,48 @@ function cacThang(from: string, to: string): string[] {
 // Tab trong file TỔNG TEAM (format_all.py): "Tổng" = cả team · một tab mỗi marketer
 // (cột 8 là "Tiền (local)") · "(không gán)" nếu có đơn chưa gán · một tab mỗi nước khi
 // có từ hai nước có số trở lên (cột 8 là mã tiền địa phương, tên tab là tên nước).
-function loaiTab(t: Tab): { loai: "team" | "unassigned" | "marketer" | "market"; code?: string } {
+function classifyTab(t: Tab): { loai: "team" | "unassigned" | "marketer" | "market"; code?: string } {
     if (t.title === "Tổng") return { loai: "team" };
     if (t.title === UNASSIGNED) return { loai: "unassigned" };
     if (t.head[7] === "Tiền (local)") return { loai: "marketer" };
-    const nuoc = MARKETS_PUBLIC.markets.find((m) => m.display === t.title || m.key === t.title);
-    return { loai: "market", code: nuoc?.code };
+    const market = MARKETS_PUBLIC.markets.find((m) => m.display === t.title || m.key === t.title);
+    return { loai: "market", code: market?.code };
 }
 
-export async function theoKhoang(fromIn: string, to: string, a: Access | null) {
+export async function reportForRange(fromIn: string, to: string, a: Access | null) {
     // Không tính trước mốc gốc — kể cả khi ai đó gọi thẳng route với from sớm hơn.
     const from = REPORT_START_DATE && fromIn < REPORT_START_DATE ? REPORT_START_DATE : fromIn;
-    const team = soRong();
-    const unassigned = soRong();
-    const nguoi = new Map<string, So>();
-    const nuoc = new Map<string, { code?: string; so: So }>();
-    const ngay = new Map<string, So>();
+    const team = emptyMetrics();
+    const unassigned = emptyMetrics();
+    const byMarketer = new Map<string, Metrics>();
+    const byMarket = new Map<string, { code?: string; so: Metrics }>();
+    const byDay = new Map<string, Metrics>();
     // Từng ngày của từng tab NƯỚC — để dựng lại "cả team" cho người chỉ xem một phần nước.
-    const ngayNuoc = new Map<string, Map<string, So>>();
-    const thieuThang: string[] = [];
+    const byMarketDay = new Map<string, Map<string, Metrics>>();
+    const missingMonths: string[] = [];
 
     if (from <= to) {
-        for (const thang of cacThang(from, to)) {
-            const tabs = await docThang(thang);
-            if (!tabs) { thieuThang.push(thang); continue; }
+        for (const yearMonth of monthsInRange(from, to)) {
+            const tabs = await readMonthTabs(yearMonth);
+            if (!tabs) { missingMonths.push(yearMonth); continue; }
             for (const t of tabs) {
-                const { loai, code } = loaiTab(t);
+                const { loai: kind, code } = classifyTab(t);
                 for (const r of t.rows) {
-                    const d = ngayISO(r?.[0]);
+                    const d = dmyToIso(r?.[0]);
                     if (!d || d < from || d > to) continue;
-                    const so = docDong(t.head, r);
-                    if (loai === "team") {
-                        cong(team, so);
-                        const n = ngay.get(d) || soRong(); cong(n, so); ngay.set(d, n);
-                    } else if (loai === "unassigned") {
-                        cong(unassigned, so);
-                    } else if (loai === "marketer") {
-                        const n = nguoi.get(t.title) || soRong(); cong(n, so); nguoi.set(t.title, n);
+                    const metrics = readRow(t.head, r);
+                    if (kind === "team") {
+                        addMetrics(team, metrics);
+                        const n = byDay.get(d) || emptyMetrics(); addMetrics(n, metrics); byDay.set(d, n);
+                    } else if (kind === "unassigned") {
+                        addMetrics(unassigned, metrics);
+                    } else if (kind === "marketer") {
+                        const n = byMarketer.get(t.title) || emptyMetrics(); addMetrics(n, metrics); byMarketer.set(t.title, n);
                     } else {
-                        const n = nuoc.get(t.title) || { code, so: soRong() }; cong(n.so, so); nuoc.set(t.title, n);
+                        const n = byMarket.get(t.title) || { code, so: emptyMetrics() }; addMetrics(n.so, metrics); byMarket.set(t.title, n);
                         if (code) {
-                            const m = ngayNuoc.get(code) || new Map<string, So>();
-                            const x = m.get(d) || soRong(); cong(x, so); m.set(d, x); ngayNuoc.set(code, m);
+                            const m = byMarketDay.get(code) || new Map<string, Metrics>();
+                            const x = m.get(d) || emptyMetrics(); addMetrics(x, metrics); m.set(d, x); byMarketDay.set(code, m);
                         }
                     }
                 }
@@ -129,43 +129,43 @@ export async function theoKhoang(fromIn: string, to: string, a: Access | null) {
     // thì format_all.py không dựng tab nước → tháng đó người xem một phần thấy 0.
     const hep = !!a && !seesAllMarkets(a);
     if (hep) {
-        ngay.clear();
-        for (const [code, m] of ngayNuoc) {
+        byDay.clear();
+        for (const [code, m] of byMarketDay) {
             if (!canMarket(a!, code)) continue;
-            for (const [d, so] of m) { const n = ngay.get(d) || soRong(); cong(n, so); ngay.set(d, n); }
+            for (const [d, metrics] of m) { const n = byDay.get(d) || emptyMetrics(); addMetrics(n, metrics); byDay.set(d, n); }
         }
     }
 
-    const days = [...ngay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, so]) => ({ date, ...so }));
-    const months = new Map<string, So>();
+    const days = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, metrics]) => ({ date, ...metrics }));
+    const months = new Map<string, Metrics>();
     for (const d of days) {
-        const n = months.get(d.date.slice(0, 7)) || soRong(); cong(n, d); months.set(d.date.slice(0, 7), n);
+        const n = months.get(d.date.slice(0, 7)) || emptyMetrics(); addMetrics(n, d); months.set(d.date.slice(0, 7), n);
     }
-    const teamTraVe = hep ? days.reduce((s, d) => { cong(s, d); return s; }, soRong()) : team;
+    const teamResult = hep ? days.reduce((s, d) => { addMetrics(s, d); return s; }, emptyMetrics()) : team;
 
     return {
         from, to, start_date: REPORT_START_DATE,
         // Tháng trong khoảng mà vòng báo cáo (format_all.py, phút :20 mỗi giờ) chưa ghi số — số tháng đó
         // KHÔNG có trong tổng. Giao diện phải báo ra, không được coi như tháng đó bằng 0.
-        missing_months: thieuThang,
-        team: teamTraVe,
+        missing_months: missingMonths,
+        team: teamResult,
         // true = số đã cắt theo team của người xem (giao diện ẩn bảng marketer, KPI cả công ty).
         scoped: hep,
-        marketers: hep ? [] : [...nguoi.entries()]
-            .map(([tab, so]) => ({ tab, display: DISPLAY[tab] || tab, ...so }))
+        marketers: hep ? [] : [...byMarketer.entries()]
+            .map(([tab, metrics]) => ({ tab, display: DISPLAY[tab] || tab, ...metrics }))
             .sort((a, b) => b.doanh_so - a.doanh_so),
         unassigned: !hep && (unassigned.ads || unassigned.don) ? unassigned : null,
-        markets: [...nuoc.entries()]
+        markets: [...byMarket.entries()]
             .filter(([, v]) => !hep || (!!v.code && canMarket(a!, v.code)))
             .map(([tab, v]) => ({ tab, code: v.code || null, ...v.so }))
             .sort((a, b) => b.doanh_so - a.doanh_so),
         days,
         // Từng ngày của từng tab NƯỚC (04/11/2026, cho tab Lãi lỗ: so doanh số với kiện đã lên
         // 3PL theo ngày). Cùng luật cắt theo team như `markets`.
-        market_days: [...ngayNuoc.entries()]
+        market_days: [...byMarketDay.entries()]
             .filter(([code]) => !hep || canMarket(a!, code))
-            .flatMap(([code, m]) => [...m.entries()].map(([date, so]) => ({ code, date, ...so })))
+            .flatMap(([code, m]) => [...m.entries()].map(([date, metrics]) => ({ code, date, ...metrics })))
             .sort((x, y) => x.date.localeCompare(y.date) || x.code.localeCompare(y.code)),
-        months: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, so]) => ({ month, ...so })),
+        months: [...months.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, metrics]) => ({ month, ...metrics })),
     };
 }

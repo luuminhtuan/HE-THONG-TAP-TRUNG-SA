@@ -14,7 +14,7 @@ const khongGhiChu = (d) => Object.fromEntries(Object.entries(d).filter(([k]) => 
 
 console.log("── Thị trường: phủ lên luật gốc ──");
 t("ra đúng kết quả chung của ba bản (dashboard · Python · bot)", () => {
-    const ra = T.phuLuat(BO.luat, BO.phu);
+    const ra = T.applyMarketOverrides(BO.luat, BO.phu);
     const md = BO.mong_doi;
     assert.deepStrictEqual(khongGhiChu(ra.markets), md.markets);
     assert.deepStrictEqual(khongGhiChu(ra.market_aliases), md.market_aliases);
@@ -23,9 +23,9 @@ t("ra đúng kết quả chung của ba bản (dashboard · Python · bot)", () 
 });
 t("không sửa luật gốc truyền vào; không có file phủ thì y nguyên", () => {
     const truoc = JSON.stringify(BO.luat);
-    T.phuLuat(BO.luat, BO.phu);
+    T.applyMarketOverrides(BO.luat, BO.phu);
     assert.strictEqual(JSON.stringify(BO.luat), truoc);
-    assert.deepStrictEqual(T.phuLuat(BO.luat, null), BO.luat);
+    assert.deepStrictEqual(T.applyMarketOverrides(BO.luat, null), BO.luat);
 });
 t("shop POS sinh từ markets trùng đúng talpha.yaml cũ (đổi nguồn mà không đổi shop nào)", () => {
     const yaml = require("js-yaml");
@@ -36,60 +36,60 @@ t("shop POS sinh từ markets trùng đúng talpha.yaml cũ (đổi nguồn mà 
 });
 
 console.log("── Thị trường: soát nước nhập trên trang ──");
-const LUAT = T.phuLuat(BO.luat, null);
+const LUAT = T.applyMarketOverrides(BO.luat, null);
 const thai = (sua = {}) => ({
     key: "Thailand", display: "Thái Lan", shop_label: "TH", currency: "THB", currency_symbol: "฿",
     rate_vnd: 700, pos_money_divisor: 1, shop_id: "123456", status: "dang_ban", orders_from: "2026-11-05",
     flag: "🇹🇭", tokens: ["TH", "THAI"], team: "dong_nam_a", ...sua,
 });
 t("nước mới khai đủ thì không lỗi", () => {
-    assert.deepStrictEqual(T.loiThiTruong(thai(), LUAT, true), []);
+    assert.deepStrictEqual(T.marketInputErrors(thai(), LUAT, true), []);
 });
 t("sắp chạy được để trống tỷ giá, số chia, shop; đang bán / đã tắt thì không", () => {
-    assert.deepStrictEqual(T.loiThiTruong(thai({ status: "sap_chay", rate_vnd: null, pos_money_divisor: null, shop_id: "" }), LUAT, true), []);
+    assert.deepStrictEqual(T.marketInputErrors(thai({ status: "sap_chay", rate_vnd: null, pos_money_divisor: null, shop_id: "" }), LUAT, true), []);
     for (const status of ["dang_ban", "da_tat"]) {
-        const loi = T.loiThiTruong(thai({ status, rate_vnd: null, pos_money_divisor: null, shop_id: "" }), LUAT, true).join(" | ");
+        const loi = T.marketInputErrors(thai({ status, rate_vnd: null, pos_money_divisor: null, shop_id: "" }), LUAT, true).join(" | ");
         assert.ok(/tỷ giá/.test(loi) && /số chia/.test(loi) && /shop POS/.test(loi), loi);
     }
 });
 t("mã shop vào thẳng SQL của view → chỉ 2–3 chữ in hoa; không trùng nước khác", () => {
-    assert.ok(T.loiThiTruong(thai({ shop_label: "T'H" }), LUAT, true).some((x) => /Mã shop/.test(x)));
-    assert.ok(T.loiThiTruong(thai({ shop_label: "SG" }), LUAT, true).some((x) => /đã thuộc nước khác/.test(x)));
+    assert.ok(T.marketInputErrors(thai({ shop_label: "T'H" }), LUAT, true).some((x) => /Mã shop/.test(x)));
+    assert.ok(T.marketInputErrors(thai({ shop_label: "SG" }), LUAT, true).some((x) => /đã thuộc nước khác/.test(x)));
 });
 t("không đổi được mã shop của nước đã có — đơn cũ đang mang mã đó", () => {
     const sg = { ...thai(), key: "Singapore", display: "Singapore", shop_label: "SP", shop_id: "715135541", tokens: ["SG"], team: null };
-    assert.ok(T.loiThiTruong(sg, LUAT, false).some((x) => /Không đổi được mã shop SG/.test(x)));
+    assert.ok(T.marketInputErrors(sg, LUAT, false).some((x) => /Không đổi được mã shop SG/.test(x)));
 });
 t("mã campaign đang thuộc nước khác → từ chối (chi tiêu nước kia sẽ chạy sang)", () => {
-    assert.ok(T.loiThiTruong(thai({ tokens: ["TH", "SG"] }), LUAT, true).some((x) => /SG đang thuộc Singapore/.test(x)));
-    assert.ok(T.loiThiTruong(thai({ tokens: [] }), LUAT, true).some((x) => /ít nhất một mã/.test(x)));
+    assert.ok(T.marketInputErrors(thai({ tokens: ["TH", "SG"] }), LUAT, true).some((x) => /SG đang thuộc Singapore/.test(x)));
+    assert.ok(T.marketInputErrors(thai({ tokens: [] }), LUAT, true).some((x) => /ít nhất một mã/.test(x)));
 });
 t("shop POS trùng nước khác, số chia lẻ, team lạ, thêm trùng tên → từ chối", () => {
-    assert.ok(T.loiThiTruong(thai({ shop_id: "715135541" }), LUAT, true).some((x) => /Shop POS 715135541/.test(x)));
-    assert.ok(T.loiThiTruong(thai({ pos_money_divisor: 1.5 }), LUAT, true).some((x) => /số nguyên/.test(x)));
-    assert.ok(T.loiThiTruong(thai({ team: "khong_co" }), LUAT, true).some((x) => /Không có team/.test(x)));
-    assert.ok(T.loiThiTruong({ ...thai(), key: "Singapore" }, LUAT, true).some((x) => /Đã có nước Singapore/.test(x)));
+    assert.ok(T.marketInputErrors(thai({ shop_id: "715135541" }), LUAT, true).some((x) => /Shop POS 715135541/.test(x)));
+    assert.ok(T.marketInputErrors(thai({ pos_money_divisor: 1.5 }), LUAT, true).some((x) => /số nguyên/.test(x)));
+    assert.ok(T.marketInputErrors(thai({ team: "khong_co" }), LUAT, true).some((x) => /Không có team/.test(x)));
+    assert.ok(T.marketInputErrors({ ...thai(), key: "Singapore" }, LUAT, true).some((x) => /Đã có nước Singapore/.test(x)));
 });
 
 console.log("── Thị trường: form ⇄ file phủ ──");
 t("mở form từ luật: mã campaign + team đọc ngược từ market_aliases, access.teams", () => {
-    const sg = T.nhapTuLuat("Singapore", LUAT);
+    const sg = T.inputFromRules("Singapore", LUAT);
     assert.deepStrictEqual(sg.tokens, ["SG"]);
     assert.strictEqual(sg.team, "dong_nam_a");
     assert.strictEqual(sg.rate_vnd, 20000);
 });
 t("sửa nước có trong config: CHỈ ghi ô đã sửa — ô khác vẫn theo file gốc", () => {
-    const sg = T.nhapTuLuat("Singapore", LUAT);
-    assert.deepStrictEqual(T.khoiPhuTuNhap(sg, LUAT), {});
-    assert.deepStrictEqual(T.khoiPhuTuNhap({ ...sg, rate_vnd: 19500 }, LUAT), { rate_vnd: 19500 });
-    assert.deepStrictEqual(T.khoiPhuTuNhap({ ...sg, tokens: ["SG", "sgp"], team: "dong_a" }, LUAT), { tokens: ["SGP"], team: "dong_a" });
+    const sg = T.inputFromRules("Singapore", LUAT);
+    assert.deepStrictEqual(T.overrideFromInput(sg, LUAT), {});
+    assert.deepStrictEqual(T.overrideFromInput({ ...sg, rate_vnd: 19500 }, LUAT), { rate_vnd: 19500 });
+    assert.deepStrictEqual(T.overrideFromInput({ ...sg, tokens: ["SG", "sgp"], team: "dong_a" }, LUAT), { tokens: ["SGP"], team: "dong_a" });
 });
 t("thêm nước: ghi đủ; phủ lại rồi mở form ra đúng cái đã nhập", () => {
-    const khoi = T.khoiPhuTuNhap(thai(), LUAT);
+    const khoi = T.overrideFromInput(thai(), LUAT);
     assert.strictEqual(khoi.shop_label, "TH");
     assert.deepStrictEqual(khoi.tokens, ["TH", "THAI"]);
-    const sau = T.phuLuat(BO.luat, { markets: { Thailand: khoi } });
-    assert.deepStrictEqual(T.nhapTuLuat("Thailand", sau), thai());
+    const sau = T.applyMarketOverrides(BO.luat, { markets: { Thailand: khoi } });
+    assert.deepStrictEqual(T.inputFromRules("Thailand", sau), thai());
 });
 
 console.log("── Thị trường: camp thuộc nước nào (soát trước khi xoá nước) ──");
@@ -97,14 +97,14 @@ t("cùng kết quả campaignMarket của rules.ts trên luật đang chạy", (
     const luat = { market_aliases: R.RULES.market_aliases, camp_market_tokens: R.RULES.camp_market_tokens };
     for (const ten of ["TW/SAnh/001/ABC", "SG/Thai/x", "Thuong/JP/abc", "ae/loc", "khong ma nuoc", "", "Thuong/SG/TW"]) {
         const m = R.campaignMarket(ten);
-        assert.strictEqual(T.nuocCuaCamp(ten, luat), m.source === "mac_dinh" ? null : m.market, ten);
+        assert.strictEqual(T.marketOfCampaign(ten, luat), m.source === "mac_dinh" ? null : m.market, ten);
     }
 });
 t("nước vừa thêm trên trang (chưa khởi động lại) đã nhận camp mang mã của nó", () => {
-    const sau = T.phuLuat(BO.luat, { markets: { Thailand: { display: "Thái Lan", shop_label: "TH", tokens: ["TH", "THAI"] } } });
-    assert.strictEqual(T.nuocCuaCamp("TH/SAnh/001", sau), "Thailand");
-    assert.strictEqual(T.nuocCuaCamp("Thuong/thai/abc", sau), "Thailand");
-    assert.strictEqual(T.nuocCuaCamp("TH/SAnh/001", BO.luat), null);
+    const sau = T.applyMarketOverrides(BO.luat, { markets: { Thailand: { display: "Thái Lan", shop_label: "TH", tokens: ["TH", "THAI"] } } });
+    assert.strictEqual(T.marketOfCampaign("TH/SAnh/001", sau), "Thailand");
+    assert.strictEqual(T.marketOfCampaign("Thuong/thai/abc", sau), "Thailand");
+    assert.strictEqual(T.marketOfCampaign("TH/SAnh/001", BO.luat), null);
 });
 
 console.log(`${ok} phép thử thị trường qua.`);

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { giaoDich } from "@/lib/db";
+import { withTransaction } from "@/lib/db";
 import { buildInventoryPayload } from "@/lib/talpha/inventory";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,7 @@ async function handler(req: Request) {
         // Payload là JSON tồn kho đầy đủ, ghi đều theo lịch → phải có hạn xoá, nếu không bảng phình
         // vô hạn. Giữ 60 ngày (bản BigQuery dùng hạn xoá phân vùng 60 ngày): dọn dòng quá hạn
         // trong CÙNG transaction — ghi lỗi thì không xoá gì.
-        await giaoDich(async (q) => {
+        await withTransaction(async (q) => {
             await q(
                 `INSERT INTO inventory_snapshot (snapshot_time, source, payload)
                  VALUES (now(), 'pos-poscake', @payload)`,

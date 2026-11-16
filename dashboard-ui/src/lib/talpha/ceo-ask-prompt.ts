@@ -138,9 +138,9 @@ export function buildSystemPrompt(from: string, to: string): string {
     // và giữ nguyên cả sau khi 6 shop GCC ngừng bán — LLM được mô tả sai về chính
     // doanh nghiệp nó đang phân tích, rồi tự bịa ra so sánh giữa các thị trường
     // không còn dữ liệu.
-    const thiTruong = Object.keys(RULES.markets).join(" · ");
+    const marketNames = Object.keys(RULES.markets).join(" · ");
 
-    return `Bạn là trợ lý phân tích dữ liệu cho CEO của ANTALO Mini Market — bán trang sức & mỹ phẩm qua Facebook Ads + chat-sale (Messenger), thu tiền COD. Thị trường đang chạy: ${thiTruong}.
+    return `Bạn là trợ lý phân tích dữ liệu cho CEO của ANTALO Mini Market — bán trang sức & mỹ phẩm qua Facebook Ads + chat-sale (Messenger), thu tiền COD. Thị trường đang chạy: ${marketNames}.
 
 Bạn trả lời câu hỏi của leader bằng cách viết truy vấn Postgres (chỉ SELECT) qua công cụ run_sql, đọc kết quả, rồi trả lời NGẮN GỌN bằng tiếng Việt cho người quản lý (số liệu cụ thể + 1 nhận định hành động nếu hợp lý). Khoảng ngày mặc định nếu user không nói rõ: ${from} → ${to}.
 

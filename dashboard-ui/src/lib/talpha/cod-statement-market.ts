@@ -18,24 +18,24 @@
  */
 import { RULES } from "./rules";
 import { reconcile, parseAmount, parseDelimited, type PosOrder, type StatementRow } from "./cod-recon";
-import { laFileSing, matchChannel, normTracking, toIsoDate, type NazaStatement } from "./naza-statement";
-import type { DonCod } from "./cod-market";
+import { isSgFile, matchChannel, normTracking, toIsoDate, type NazaStatement } from "./naza-statement";
+import type { CodOrder } from "./cod-market";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Dò cột của bảng sao kê
 // ─────────────────────────────────────────────────────────────────────────
 
 /** Tên cột: bỏ dấu, chữ thường, ký tự lạ thành dấu cách — giữ chữ Hán (转单号…). */
-export function chuanTenCot(s: string): string {
+export function normalizeColumnName(s: string): string {
     return String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
         .replace(/đ/g, "d").replace(/[^a-z0-9㐀-鿿]+/g, " ").trim();
 }
 
-type Truong = "tracking" | "order_id" | "amount" | "fee" | "paid_date" | "status";
-const THU_TU: Truong[] = ["tracking", "order_id", "amount", "fee", "paid_date", "status"];
+type StatementField = "tracking" | "order_id" | "amount" | "fee" | "paid_date" | "status";
+const FIELD_ORDER: StatementField[] = ["tracking", "order_id", "amount", "fee", "paid_date", "status"];
 
 /** Tên cột hay gặp ở sao kê COD (Anh · Việt · Trung). Viết sẵn ở dạng chuanTenCot. */
-const COT: Record<Truong, string[]> = {
+const COLUMN_ALIASES: Record<StatementField, string[]> = {
     tracking: ["tracking", "tracking no", "tracking number", "tracking id", "tracking code", "awb", "awb no",
         "awb number", "hawb", "waybill", "waybill no", "waybill number", "airway bill", "shipment no",
         "shipment number", "consignment no", "consignment number", "ma van don", "van don", "mvd", "ma tracking",
@@ -53,37 +53,37 @@ const COT: Record<Truong, string[]> = {
     status: ["status", "trang thai", "状态"],
 };
 
-const COT_THEM: Record<string, string[]> =
+const EXTRA_COLUMN_ALIASES: Record<string, string[]> =
     (RULES as unknown as { cod_settlement?: { column_map?: Record<string, string[]> } }).cod_settlement?.column_map || {};
 
-const tenCot = (f: Truong) => [...(COT_THEM[f] || []).map(chuanTenCot), ...COT[f]].filter(Boolean);
+const aliasesFor = (f: StatementField) => [...(EXTRA_COLUMN_ALIASES[f] || []).map(normalizeColumnName), ...COLUMN_ALIASES[f]].filter(Boolean);
 const coHan = (s: string) => /[㐀-鿿]/.test(s);
 /** Cột phí cũng hay có chữ "cod" ("COD fee") — đừng để nó thành cột tiền COD. */
-const LA_PHI = /\b(fee|fees|phi|charge|charges)\b|运费|手续费/;
+const FEE_COLUMN_RE = /\b(fee|fees|phi|charge|charges)\b|运费|手续费/;
 
-export type CotSaoKe = Partial<Record<Truong, number>>;
+export type StatementColumns = Partial<Record<StatementField, number>>;
 
 /**
  * Cột nào là cột gì. Hai lượt: khớp NGUYÊN tên trước (chắc nhất), rồi mới tới tên cột BẮT ĐẦU
  * bằng tên quen ("Tracking No." · "转单号 Mã vận đơn" — NAZA ghi hai thứ tiếng trong một ô).
  * Mỗi cột chỉ được nhận một nghĩa.
  */
-export function timCotSaoKe(header: string[]): CotSaoKe {
-    const h = header.map(chuanTenCot);
-    const out: CotSaoKe = {};
-    const daLay = new Set<number>();
-    const nhan = (f: Truong, i: number) => { if (i >= 0) { out[f] = i; daLay.add(i); } };
-    for (const f of THU_TU) {
-        const ten = tenCot(f);
-        nhan(f, h.findIndex((x, i) => !daLay.has(i) && x && ten.includes(x)));
+export function detectStatementColumns(header: string[]): StatementColumns {
+    const h = header.map(normalizeColumnName);
+    const out: StatementColumns = {};
+    const usedColumns = new Set<number>();
+    const assign = (f: StatementField, i: number) => { if (i >= 0) { out[f] = i; usedColumns.add(i); } };
+    for (const f of FIELD_ORDER) {
+        const name = aliasesFor(f);
+        assign(f, h.findIndex((x, i) => !usedColumns.has(i) && x && name.includes(x)));
     }
-    for (const f of THU_TU) {
+    for (const f of FIELD_ORDER) {
         if (out[f] !== undefined) continue;
-        const ten = tenCot(f);
-        nhan(f, h.findIndex((x, i) => {
-            if (daLay.has(i) || !x) return false;
-            if (f === "amount" && LA_PHI.test(x)) return false;
-            return ten.some((t) => coHan(t) ? x.includes(t) : x === t || x.startsWith(`${t} `));
+        const name = aliasesFor(f);
+        assign(f, h.findIndex((x, i) => {
+            if (usedColumns.has(i) || !x) return false;
+            if (f === "amount" && FEE_COLUMN_RE.test(x)) return false;
+            return name.some((t) => coHan(t) ? x.includes(t) : x === t || x.startsWith(`${t} `));
         }));
     }
     return out;
@@ -94,54 +94,54 @@ export function timCotSaoKe(header: string[]): CotSaoKe {
  * nguyên, dấu phẩy luôn là ngăn nghìn) đọc thành 4.590. Nên: MỘT dấu phẩy, sau nó 1–2 chữ số,
  * không có dấu chấm → phẩy thập phân. "1,399" (3 chữ số sau phẩy) vẫn là ngăn nghìn.
  */
-export function soTienSaoKe(raw: string): number {
+export function parseStatementAmount(raw: string): number {
     const s = String(raw ?? "").trim();
-    const so = s.replace(/[^\d.,()-]/g, "");
-    return parseAmount(/^\(?-?\d+,\d{1,2}\)?$/.test(so) ? s.replace(",", ".") : s);
+    const numStr = s.replace(/[^\d.,()-]/g, "");
+    return parseAmount(/^\(?-?\d+,\d{1,2}\)?$/.test(numStr) ? s.replace(",", ".") : s);
 }
 
-const DONG_TONG = /^(total|tong|tong cong|grand total|sum|合计|总计|小计)\b/i;
+const TOTAL_ROW_RE = /^(total|tong|tong cong|grand total|sum|合计|总计|小计)\b/i;
 
 /**
  * Một bảng (CSV đã tách, hoặc một sheet .xlsx) → dòng sao kê. Dòng tiêu đề có thể nằm dưới vài
  * dòng tên công ty / ngày — dò 12 dòng đầu, lấy dòng đầu tiên có cột mã (vận đơn hoặc đơn) VÀ
  * cột tiền. Bỏ dòng "Tổng".
  */
-export function docBangSaoKe(table: string[][]): { rows: StatementRow[]; cot: CotSaoKe; header: string[] } | null {
+export function parseStatementTable(table: string[][]): { rows: StatementRow[]; cot: StatementColumns; header: string[] } | null {
     for (let r = 0; r < Math.min(12, table.length); r++) {
         const header = (table[r] || []).map((c) => String(c ?? "").trim());
-        const cot = timCotSaoKe(header);
-        if ((cot.tracking === undefined && cot.order_id === undefined) || cot.amount === undefined) continue;
+        const columns = detectStatementColumns(header);
+        if ((columns.tracking === undefined && columns.order_id === undefined) || columns.amount === undefined) continue;
         const o = (row: string[], i?: number) => (i === undefined ? "" : String(row[i] ?? "").trim());
         const rows: StatementRow[] = [];
         for (const row of table.slice(r + 1)) {
-            const tracking = o(row, cot.tracking), order_id = o(row, cot.order_id);
+            const tracking = o(row, columns.tracking), order_id = o(row, columns.order_id);
             if (!tracking && !order_id) continue;
-            if (DONG_TONG.test(chuanTenCot(tracking || order_id))) continue;
-            const ngay = o(row, cot.paid_date);
+            if (TOTAL_ROW_RE.test(normalizeColumnName(tracking || order_id))) continue;
+            const paidDate = o(row, columns.paid_date);
             rows.push({
                 tracking, order_id,
-                amount: soTienSaoKe(o(row, cot.amount)),
-                fee: soTienSaoKe(o(row, cot.fee)),
-                paid_date: toIsoDate(ngay) || ngay,
-                status: o(row, cot.status),
+                amount: parseStatementAmount(o(row, columns.amount)),
+                fee: parseStatementAmount(o(row, columns.fee)),
+                paid_date: toIsoDate(paidDate) || paidDate,
+                status: o(row, columns.status),
             });
         }
-        return { rows, cot, header };
+        return { rows, cot: columns, header };
     }
     return null;
 }
 
 /** File .csv / .tsv / .txt → dòng sao kê. */
-export function docCsvSaoKe(text: string) {
-    return docBangSaoKe(parseDelimited(text));
+export function parseStatementCsv(text: string) {
+    return parseStatementTable(parseDelimited(text));
 }
 
 /** Nhiều sheet .xlsx → lấy sheet đọc được NHIỀU dòng nhất (sheet tóm tắt thường ít dòng). */
-export function chonSheetSaoKe(sheets: { name: string; rows: string[][] }[]) {
-    let best: (ReturnType<typeof docBangSaoKe> & { sheet: string }) | null = null;
+export function pickStatementSheet(sheets: { name: string; rows: string[][] }[]) {
+    let best: (ReturnType<typeof parseStatementTable> & { sheet: string }) | null = null;
     for (const s of sheets) {
-        const d = docBangSaoKe(s.rows);
+        const d = parseStatementTable(s.rows);
         if (d && d.rows.length && (!best || d.rows.length > best.rows.length)) best = { ...d, sheet: s.name };
     }
     return best;
@@ -151,11 +151,11 @@ export function chonSheetSaoKe(sheets: { name: string; rows: string[][] }[]) {
 // Sao kê kiểu NAZA — chỉ lấy dòng của nước đang mở
 // ─────────────────────────────────────────────────────────────────────────
 
-const TEN_DAI = /TAIWAN|ĐÀI LOAN|台湾/;
+const TAIWAN_NAME_RE = /TAIWAN|ĐÀI LOAN|台湾/;
 /** Dòng có dấu hiệu Đài: kênh 'STWCOD专线-711', hoặc kênh có trong bảng giá Đài. */
-const dongDai = (channel: string) => /台湾|STW|TAIWAN/i.test(channel) || matchChannel(channel) !== null;
+const isTaiwanChannel = (channel: string) => /台湾|STW|TAIWAN/i.test(channel) || matchChannel(channel) !== null;
 
-export type NazaNuoc = {
+export type NazaMarketPart = {
     /** Tổng tiền COD (tiền nước đó) của các dòng đã chọn. */
     cod_local: number | null;
     ty_gia_rmb: number | null;      // tiền nước → tệ (mẫu Sing ghi theo từng đơn)
@@ -192,77 +192,77 @@ export type NazaNuoc = {
  * Mẫu Sing (thật, kỳ 05/10/2026) KHÁC mẫu Đài ở sheet TỔNG: 本期回款金额 là TỆ sau phí thu hộ
  * (cột 回款金额（RMB) cộng lại), không phải tiền SGD. Đem so với tổng COD SGD là báo lệch giả.
  */
-export function chonDongNaza(naza: NazaStatement, code: string, filename: string):
-    { rows: StatementRow[]; bo_qua: number; tong: NazaNuoc; canh_bao: string[] } | { loi: string } {
+export function pickNazaRows(naza: NazaStatement, code: string, filename: string):
+    { rows: StatementRow[]; bo_qua: number; tong: NazaMarketPart; canh_bao: string[] } | { loi: string } {
     const lines = naza.cod_lines;
     const fees = naza.fee_lines || [];
     const sgCod = lines.filter((l) => l.market === "SG");
     const sgFee = fees.filter((l) => l.market === "SG");
-    const ten = filename.normalize("NFC").toUpperCase();
-    const tenSing = laFileSing(filename, null) && !TEN_DAI.test(ten);
-    let chon = lines, phi = fees;
+    const upperFileName = filename.normalize("NFC").toUpperCase();
+    const isSgName = isSgFile(filename, null) && !TAIWAN_NAME_RE.test(upperFileName);
+    let picked = lines, pickedFees = fees;
     if (code === "SG") {
-        if (sgCod.length) { chon = sgCod; phi = sgFee; }
-        else if (lines.length && tenSing) chon = lines;
-        else if (!lines.length && (sgFee.length || tenSing)) { chon = []; phi = sgFee.length ? sgFee : fees; }
+        if (sgCod.length) { picked = sgCod; pickedFees = sgFee; }
+        else if (lines.length && isSgName) picked = lines;
+        else if (!lines.length && (sgFee.length || isSgName)) { picked = []; pickedFees = sgFee.length ? sgFee : fees; }
         else return { loi: "File này là sao kê ĐÀI LOAN (không có dòng COD nào của Singapore). Bấm nút Đài Loan rồi tải lại ở đó." };
     } else {
         if (sgCod.length || sgFee.length) return { loi: "File này là sao kê SINGAPORE. Bấm nút Singapore rồi tải lại ở đó." };
-        const dai = [...lines.map((l) => l.channel), ...fees.map((l) => l.channel)];
-        if (TEN_DAI.test(ten) || (dai.length && dai.filter(dongDai).length * 2 >= dai.length)) {
+        const allChannels = [...lines.map((l) => l.channel), ...fees.map((l) => l.channel)];
+        if (TAIWAN_NAME_RE.test(upperFileName) || (allChannels.length && allChannels.filter(isTaiwanChannel).length * 2 >= allChannels.length)) {
             return { loi: "File này là sao kê ĐÀI LOAN. Bấm nút Đài Loan rồi tải lại ở đó." };
         }
     }
     // Số ở sheet TỔNG chỉ là của nước này khi cả file là của nước này (file gộp thì không).
-    const caFile = chon.length === lines.length && phi.length === fees.length;
+    const caFile = picked.length === lines.length && pickedFees.length === fees.length;
     const s = naza.summary;
-    const so = (n: number) => (Math.round(n * 100) / 100).toLocaleString("vi-VN");
-    const canh_bao: string[] = [];
-    if (lines.length - chon.length) canh_bao.push(`Bỏ ${lines.length - chon.length} dòng COD của nước khác trong file.`);
+    const numStr = (n: number) => (Math.round(n * 100) / 100).toLocaleString("vi-VN");
+    const warnings: string[] = [];
+    if (lines.length - picked.length) warnings.push(`Bỏ ${lines.length - picked.length} dòng COD của nước khác trong file.`);
 
-    const cod = chon.reduce((t, l) => t + (Number(l.cod_twd) || 0), 0);
-    const coVe = chon.some((l) => l.ve_rmb != null);
-    if (caFile && s.cod_twd != null && chon.length) {
+    const cod = picked.reduce((t, l) => t + (Number(l.cod_twd) || 0), 0);
+    const hasReceived = picked.some((l) => l.ve_rmb != null);
+    if (caFile && s.cod_twd != null && picked.length) {
         // Mẫu Sing: so tiền về (tệ) từng đơn với sheet TỔNG. Mẫu Đài: so tiền COD.
-        const chiTiet = coVe ? chon.reduce((t, l) => t + (Number(l.ve_rmb) || 0), 0) : cod;
-        if (Math.abs(chiTiet - s.cod_twd) > 0.5) {
-            canh_bao.push(`Chi tiết COD cộng ra ${so(chiTiet)}${coVe ? "¥" : ""} nhưng sheet TỔNG ghi ${so(s.cod_twd)}${coVe ? "¥" : ""} — hỏi lại bên giao hàng.`);
+        const detailSum = hasReceived ? picked.reduce((t, l) => t + (Number(l.ve_rmb) || 0), 0) : cod;
+        if (Math.abs(detailSum - s.cod_twd) > 0.5) {
+            warnings.push(`Chi tiết COD cộng ra ${numStr(detailSum)}${hasReceived ? "¥" : ""} nhưng sheet TỔNG ghi ${numStr(s.cod_twd)}${hasReceived ? "¥" : ""} — hỏi lại bên giao hàng.`);
         }
     }
-    const tyGia = chon.find((l) => l.ty_gia_rmb != null)?.ty_gia_rmb ?? null;
-    const coTyGia = chon.length > 0 && chon.every((l) => l.ty_gia_rmb != null);
+    const rate = picked.find((l) => l.ty_gia_rmb != null)?.ty_gia_rmb ?? null;
+    const hasRates = picked.length > 0 && picked.every((l) => l.ty_gia_rmb != null);
     const tron = (n: number) => Math.round(n * 100) / 100;
-    const thuHo = chon.filter((l) => l.ty_gia_rmb != null && l.ve_rmb != null).map((l) => ({
+    const codFees = picked.filter((l) => l.ty_gia_rmb != null && l.ve_rmb != null).map((l) => ({
         tracking: l.tracking, cod_rmb: tron(l.cod_twd * l.ty_gia_rmb!), phi_rmb: tron(l.cod_twd * l.ty_gia_rmb! - l.ve_rmb!),
     }));
-    const trkPhi = new Set(phi.map((l) => normTracking(l.tracking)));
+    const feeTrackings = new Set(pickedFees.map((l) => normTracking(l.tracking)));
     return {
-        rows: chon.map((l) => ({
+        rows: picked.map((l) => ({
             tracking: l.tracking, order_id: l.order_id, amount: l.cod_twd,
             fee: 0, paid_date: l.recv_date || "", status: "paid",
         })),
-        bo_qua: lines.length - chon.length,
-        canh_bao,
+        bo_qua: lines.length - picked.length,
+        canh_bao: warnings,
         tong: {
             cod_local: Math.round(cod * 100) / 100,
             // Tỷ giá ở sheet TỔNG của file Sing có lúc là số Đài chép sang (kỳ 24/09 ghi 0,2021) —
             // chỉ tin tỷ giá ghi trên từng đơn.
-            ty_gia_rmb: code === "SG" ? tyGia : tyGia ?? s.rate_twd_rmb ?? null,
+            ty_gia_rmb: code === "SG" ? rate : rate ?? s.rate_twd_rmb ?? null,
             ty_gia_vnd: s.rate_rmb_vnd ?? null,
-            phi_rmb: Math.round(phi.reduce((t, l) => t + l.ship_fee + l.op_fee + (l.first_leg_fee ?? 0), 0) * 100) / 100,
-            don_phi: phi.length,
+            phi_rmb: Math.round(pickedFees.reduce((t, l) => t + l.ship_fee + l.op_fee + (l.first_leg_fee ?? 0), 0) * 100) / 100,
+            don_phi: pickedFees.length,
             tien_hang_vnd: caFile ? (code === "SG" ? s.purchase_sg_vnd ?? s.purchase_vnd : s.purchase_vnd) ?? null : null,
             phai_nhan_vnd: caFile ? s.payable_vnd ?? null : null,
             sheets: naza.sheets,
             tong_dong: caFile ? naza.summary_lines || [] : [],
-            quy_te_rmb: coTyGia ? tron(chon.reduce((t, l) => t + l.cod_twd * l.ty_gia_rmb!, 0)) : chon.length ? null : 0,
-            ve_rmb: coVe ? tron(chon.reduce((t, l) => t + (Number(l.ve_rmb) || 0), 0)) : chon.length ? null : 0,
-            thu_ho: thuHo,
-            phi_dong: phi.map((l) => ({
+            quy_te_rmb: hasRates ? tron(picked.reduce((t, l) => t + l.cod_twd * l.ty_gia_rmb!, 0)) : picked.length ? null : 0,
+            ve_rmb: hasReceived ? tron(picked.reduce((t, l) => t + (Number(l.ve_rmb) || 0), 0)) : picked.length ? null : 0,
+            thu_ho: codFees,
+            phi_dong: pickedFees.map((l) => ({
                 tracking: l.tracking, order_id: l.order_id, kg: l.chargeable_kg,
                 ship: l.ship_fee, first_leg: l.first_leg_fee ?? 0, op: l.op_fee,
             })),
-            trung_phi: (naza.fee_audit?.duplicates || []).filter((d) => trkPhi.has(normTracking(d.tracking))),
+            trung_phi: (naza.fee_audit?.duplicates || []).filter((d) => feeTrackings.has(normTracking(d.tracking))),
         },
     };
 }
@@ -271,7 +271,7 @@ export function chonDongNaza(naza: NazaStatement, code: string, filename: string
 // Kho sao kê một nước
 // ─────────────────────────────────────────────────────────────────────────
 
-export type SaoKeNuoc = {
+export type MarketStatement = {
     id: string;
     filename: string;
     uploaded_at: string;
@@ -280,17 +280,17 @@ export type SaoKeNuoc = {
     ngay: string | null;
     rows: StatementRow[];
     /** Tên cột đã nhận ra (kiểu bảng) — để người dùng soát máy đọc đúng cột chưa. */
-    cot?: Partial<Record<Truong, string>>;
-    naza?: NazaNuoc;
+    cot?: Partial<Record<StatementField, string>>;
+    naza?: NazaMarketPart;
     canh_bao: string[];
 };
 
-export const tenKhoSaoKe = (code: string) => `cod_statements_${code.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+export const statementStoreName = (code: string) => `cod_statements_${code.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
 /** Kho việc người làm (tiền về ngân hàng, đã hỏi / bỏ qua) của một nước — như `cod_actions` của Đài. */
-export const tenKhoViec = (code: string) => `cod_actions_${code.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+export const actionStoreName = (code: string) => `cod_actions_${code.toLowerCase().replace(/[^a-z0-9]/g, "")}`;
 
-const tenFile = (s: string) => s.normalize("NFC").trim().toLowerCase();
-const khoaDong = (r: StatementRow) => normTracking(r.tracking) || `#${String(r.order_id).trim().toUpperCase()}`;
+const normFilename = (s: string) => s.normalize("NFC").trim().toLowerCase();
+const rowKey = (r: StatementRow) => normTracking(r.tracking) || `#${String(r.order_id).trim().toUpperCase()}`;
 
 /**
  * Tải lại CÙNG MỘT KỲ thì THAY, không cộng thêm — một đơn chỉ được trả một lần, để hai bản
@@ -301,35 +301,35 @@ const khoaDong = (r: StatementRow) => normTracking(r.tracking) || `#${String(r.o
  * đơn nào để so trùng). Bảng của đối tác khác thì KHÔNG dùng luật cùng ngày: chưa biết họ gửi
  * mấy file một ngày, mà thay nhầm là mất cả một kỳ.
  */
-export function thayKyCu(list: SaoKeNuoc[], moi: SaoKeNuoc): { list: SaoKeNuoc[]; thay: string[] } {
-    const keyMoi = new Set(moi.rows.map(khoaDong));
-    const thay: string[] = [];
+export function replaceSamePeriod(list: MarketStatement[], incoming: MarketStatement): { list: MarketStatement[]; thay: string[] } {
+    const incomingKeys = new Set(incoming.rows.map(rowKey));
+    const replaced: string[] = [];
     const giu = list.filter((s) => {
-        if (tenFile(s.filename) === tenFile(moi.filename)) { thay.push(s.filename); return false; }
-        if (s.kieu === "naza" && moi.kieu === "naza" && s.ngay && s.ngay === moi.ngay) { thay.push(s.filename); return false; }
-        const ks = new Set(s.rows.map(khoaDong));
+        if (normFilename(s.filename) === normFilename(incoming.filename)) { replaced.push(s.filename); return false; }
+        if (s.kieu === "naza" && incoming.kieu === "naza" && s.ngay && s.ngay === incoming.ngay) { replaced.push(s.filename); return false; }
+        const ks = new Set(s.rows.map(rowKey));
         let chung = 0;
-        for (const k of ks) if (keyMoi.has(k)) chung++;
-        const it = Math.min(ks.size, keyMoi.size);
-        if (it > 0 && chung * 2 >= it) { thay.push(s.filename); return false; }
+        for (const k of ks) if (incomingKeys.has(k)) chung++;
+        const smallerSize = Math.min(ks.size, incomingKeys.size);
+        if (smallerSize > 0 && chung * 2 >= smallerSize) { replaced.push(s.filename); return false; }
         return true;
     });
-    return { list: [...giu, moi].slice(-30), thay };
+    return { list: [...giu, incoming].slice(-30), thay: replaced };
 }
 
-export function ngayKy(filename: string, rows: StatementRow[], ngayTen: (f: string) => string | null): string | null {
-    const theoTen = ngayTen(filename);
-    if (theoTen) return theoTen;
-    const ngay = rows.map((r) => r.paid_date).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
-    return ngay.length ? ngay[ngay.length - 1] : null;
+export function periodDate(filename: string, rows: StatementRow[], dateFromName: (f: string) => string | null): string | null {
+    const fromName = dateFromName(filename);
+    if (fromName) return fromName;
+    const paidDates = rows.map((r) => r.paid_date).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    return paidDates.length ? paidDates[paidDates.length - 1] : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
 // Khớp sao kê với đơn của nước đó
 // ─────────────────────────────────────────────────────────────────────────
 
-export type KyNuoc = {
-    id: string; filename: string; uploaded_at: string; kieu: SaoKeNuoc["kieu"]; ngay: string | null;
+export type MarketPeriod = {
+    id: string; filename: string; uploaded_at: string; kieu: MarketStatement["kieu"]; ngay: string | null;
     so_dong: number; cod_local: number;
     phai_nhan_vnd: number | null;   // theo sao kê (NAZA có sheet TỔNG) — có thể ÂM
     uoc_vnd: number | null;         // không có thì ước = tiền COD × tỷ giá, CHƯA trừ phí
@@ -339,12 +339,12 @@ export type KyNuoc = {
     tru_vao_dai: string | null;
     phi_rmb: number | null; don_phi: number; tien_hang_vnd: number | null;
     khop: number; lech: number; khong_co_don: number;
-    cot?: SaoKeNuoc["cot"]; canh_bao: string[];
+    cot?: MarketStatement["cot"]; canh_bao: string[];
 };
-export type DonDaTra = DonCod & { da_tra?: { ky: string; so_tien: number } };
-export type KetQuaKhop = {
-    ky: KyNuoc[];
-    don: DonDaTra[];
+export type PaidOrder = CodOrder & { da_tra?: { ky: string; so_tien: number } };
+export type MarketMatchResult = {
+    ky: MarketPeriod[];
+    don: PaidOrder[];
     lech: { order_id: string; tracking: string; cod_don: number; tra: number; ky: string }[];
     khong_co_don: { order_id: string; tracking: string; so_tien: number; ky: string }[];
     tra_hai_lan: { order_id: string; tracking: string; ky: string[] }[];
@@ -365,60 +365,60 @@ export type KetQuaKhop = {
  * vào tiền COD Đài cùng ngày (bản gộp) — cộng ở đây nữa là trừ hai lần. `ngayGopDai` = các ngày
  * kỳ Đài có gộp phần Sing, để màn hình ghi rõ khoản âm đó đã trừ ở đâu.
  */
-export function khopSaoKeNuoc(don: DonCod[], kho: SaoKeNuoc[], rateVnd: number, ngayGopDai: string[] = []): KetQuaKhop {
+export function matchMarketStatements(orders: CodOrder[], statements: MarketStatement[], rateVnd: number, twMergedDates: string[] = []): MarketMatchResult {
     const uid = (i: number) => `D${i}`;
-    const pos: PosOrder[] = don.map((d, i) => ({
+    const pos: PosOrder[] = orders.map((d, i) => ({
         order_uid: uid(i), order_id: d.order_id, tracking: d.tracking || null,
         order_date: d.order_date || "", status_category: d.nhom, status_name: d.trang_thai,
         cod_local: Number(d.cod_local) || 0, marketer: "", sale: "",
     }));
-    const traO = new Map<string, { ky: string; so_tien: number }[]>();
-    const out: KetQuaKhop = {
+    const paidIn = new Map<string, { ky: string; so_tien: number }[]>();
+    const out: MarketMatchResult = {
         ky: [], don: [], lech: [], khong_co_don: [], tra_hai_lan: [],
-        da_gui_ve: { vnd: 0, co_uoc: false, cod_local: 0, so_ky: kho.length, ky_am: 0, am_vnd: 0 },
+        da_gui_ve: { vnd: 0, co_uoc: false, cod_local: 0, so_ky: statements.length, ky_am: 0, am_vnd: 0 },
         da_tra: { so_don: 0, cod_local: 0 },
     };
 
-    for (const s of kho) {
+    for (const s of statements) {
         const r = reconcile(pos, s.rows);
-        let khop = 0, lech = 0, khong = 0;
+        let khop = 0, mismatched = 0, unmatched = 0;
         for (const l of r.lines) {
             if (l.verdict === "thua_o_sao_ke") {
-                khong++;
+                unmatched++;
                 out.khong_co_don.push({ order_id: l.order_id, tracking: l.tracking, so_tien: l.stm_amount, ky: s.filename });
                 continue;
             }
             if (l.verdict !== "khop" && l.verdict !== "lech_tien") continue;
             if (l.verdict === "khop") khop++;
             else {
-                lech++;
+                mismatched++;
                 out.lech.push({ order_id: l.order_id, tracking: l.tracking, cod_don: l.pos_amount, tra: l.stm_amount, ky: s.filename });
             }
             const k = l.order_uid!;
-            traO.set(k, [...(traO.get(k) || []), { ky: s.filename, so_tien: l.stm_amount }]);
+            paidIn.set(k, [...(paidIn.get(k) || []), { ky: s.filename, so_tien: l.stm_amount }]);
         }
         const cod = s.rows.reduce((t, x) => t + (Number(x.amount) || 0), 0);
         const phai = s.naza?.phai_nhan_vnd ?? null;
-        const uoc = phai == null && rateVnd > 0 && cod > 0 ? Math.round(cod * rateVnd) : null;
+        const estVnd = phai == null && rateVnd > 0 && cod > 0 ? Math.round(cod * rateVnd) : null;
         const am = phai != null && phai < 0;
         out.ky.push({
             id: s.id, filename: s.filename, uploaded_at: s.uploaded_at, kieu: s.kieu, ngay: s.ngay,
             so_dong: s.rows.length, cod_local: Math.round(cod * 100) / 100,
-            phai_nhan_vnd: phai, uoc_vnd: uoc,
+            phai_nhan_vnd: phai, uoc_vnd: estVnd,
             tinh_vao_da_gui: !am,
-            tru_vao_dai: am && s.ngay && ngayGopDai.includes(s.ngay) ? s.ngay : null,
+            tru_vao_dai: am && s.ngay && twMergedDates.includes(s.ngay) ? s.ngay : null,
             phi_rmb: s.naza?.phi_rmb ?? null, don_phi: s.naza?.don_phi ?? 0, tien_hang_vnd: s.naza?.tien_hang_vnd ?? null,
-            khop, lech, khong_co_don: khong, cot: s.cot, canh_bao: s.canh_bao || [],
+            khop, lech: mismatched, khong_co_don: unmatched, cot: s.cot, canh_bao: s.canh_bao || [],
         });
         out.da_gui_ve.cod_local += cod;
         if (am) { out.da_gui_ve.ky_am++; out.da_gui_ve.am_vnd += phai; }
         else if (phai != null) out.da_gui_ve.vnd += phai;
-        else if (uoc != null) { out.da_gui_ve.vnd += uoc; out.da_gui_ve.co_uoc = true; }
+        else if (estVnd != null) { out.da_gui_ve.vnd += estVnd; out.da_gui_ve.co_uoc = true; }
     }
     out.da_gui_ve.cod_local = Math.round(out.da_gui_ve.cod_local * 100) / 100;
 
-    out.don = don.map((d, i) => {
-        const t = traO.get(uid(i));
+    out.don = orders.map((d, i) => {
+        const t = paidIn.get(uid(i));
         if (!t) return d;
         if (t.length > 1) out.tra_hai_lan.push({ order_id: d.order_id, tracking: d.tracking, ky: t.map((x) => x.ky) });
         out.da_tra.so_don++;

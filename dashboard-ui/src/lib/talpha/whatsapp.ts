@@ -14,16 +14,16 @@
 export type PhoneRule = { cc: string; national_len: number; trunk?: string };
 
 /** Một cụm chữ số → số quốc tế, hoặc null nếu không chắc. */
-function motSo(digits: string, coPlus: boolean, r: PhoneRule): string | null {
+function toIntlNumber(digits: string, coPlus: boolean, r: PhoneRule): string | null {
     let d = digits;
     if (d.startsWith("00")) { d = d.slice(2); coPlus = true; }
     const trunk = r.trunk || "";
     // Đã có mã nước của chính nước này — kể cả kiểu ghi thừa số 0: +886 0912…
     if (d.startsWith(r.cc)) {
-        const con = d.slice(r.cc.length);
-        if (con.length === r.national_len) return d;
-        if (trunk && con.startsWith(trunk) && con.length === trunk.length + r.national_len) {
-            return r.cc + con.slice(trunk.length);
+        const nationalPart = d.slice(r.cc.length);
+        if (nationalPart.length === r.national_len) return d;
+        if (trunk && nationalPart.startsWith(trunk) && nationalPart.length === trunk.length + r.national_len) {
+            return r.cc + nationalPart.slice(trunk.length);
         }
     }
     // Ghi "+" rõ ràng mà không phải mã nước này: số nước khác (vd +63 của Philippines) — giữ
@@ -39,17 +39,17 @@ export function waNumber(raw: string | null | undefined, r: PhoneRule | null | u
     const s = String(raw ?? "").trim();
     if (!s) return null;
     // Một ô có khi ghi hai số: "0912345678 / 0987654321" — lấy số hợp lệ đầu tiên.
-    for (const phan of s.split(/[/,;|]+/)) {
-        const digits = phan.replace(/\D/g, "");
+    for (const part of s.split(/[/,;|]+/)) {
+        const digits = part.replace(/\D/g, "");
         if (!digits) continue;
-        const n = motSo(digits, /^\s*\+/.test(phan), r);
+        const n = toIntlNumber(digits, /^\s*\+/.test(part), r);
         if (n) return n;
     }
     // Hai số dính liền không dấu ngăn (gặp thật: 20 chữ số "09…09…") → thử số đầu.
     const all = s.replace(/\D/g, "");
     const trunk = r.trunk || "";
-    const dai = trunk.length + r.national_len;
-    if (trunk && all.startsWith(trunk) && all.length >= 2 * dai) return motSo(all.slice(0, dai), false, r);
+    const fullLen = trunk.length + r.national_len;
+    if (trunk && all.startsWith(trunk) && all.length >= 2 * fullLen) return toIntlNumber(all.slice(0, fullLen), false, r);
     return null;
 }
 
@@ -69,21 +69,21 @@ export function waLink(raw: string | null | undefined, r: PhoneRule | null | und
  * hàng gì, bao nhiêu tiền mặt phải trả, địa chỉ, giờ nhận. Thiếu ô nào thì bỏ dòng đó, không
  * viết "undefined".
  */
-export function tinXacNhan(o: {
+export function orderConfirmationMessage(o: {
     customer?: string | null; product?: string | null; quantity?: number | null;
     cod?: number | null; currency?: string | null; address?: string | null; tracking?: string | null;
 }): string {
-    const ten = String(o.customer || "").trim().split(/\s+/)[0] || "there";
-    const dong = [`Hi ${ten}, thank you for your order! Please confirm the details:`];
-    const hang = String(o.product || "").trim();
-    if (hang) dong.push(`- Item: ${hang}${o.quantity && o.quantity > 1 && !/×\d/.test(hang) ? ` x${o.quantity}` : ""}`);
+    const firstName = String(o.customer || "").trim().split(/\s+/)[0] || "there";
+    const lines = [`Hi ${firstName}, thank you for your order! Please confirm the details:`];
+    const item = String(o.product || "").trim();
+    if (item) lines.push(`- Item: ${item}${o.quantity && o.quantity > 1 && !/×\d/.test(item) ? ` x${o.quantity}` : ""}`);
     if (o.cod && o.cod > 0) {
-        const tien = Math.round(o.cod * 100) / 100;
-        dong.push(`- Total: ${tien} ${o.currency || ""} (cash on delivery)`.replace(/\s+\(/, " ("));
+        const total = Math.round(o.cod * 100) / 100;
+        lines.push(`- Total: ${total} ${o.currency || ""} (cash on delivery)`.replace(/\s+\(/, " ("));
     }
     const dc = String(o.address || "").replace(/\s+/g, " ").trim();
-    if (dc) dong.push(`- Address: ${dc}`);
-    if (o.tracking) dong.push(`- Parcel: ${o.tracking}`);
-    dong.push("", "Please reply YES to confirm, and tell us a good time for delivery. Thank you!");
-    return dong.join("\n");
+    if (dc) lines.push(`- Address: ${dc}`);
+    if (o.tracking) lines.push(`- Parcel: ${o.tracking}`);
+    lines.push("", "Please reply YES to confirm, and tell us a good time for delivery. Thank you!");
+    return lines.join("\n");
 }

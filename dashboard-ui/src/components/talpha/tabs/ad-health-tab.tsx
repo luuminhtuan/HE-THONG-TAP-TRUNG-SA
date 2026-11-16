@@ -129,7 +129,7 @@ export default function TALPHAAdHealthTab() {
 
     if (loading) return <TabSkeleton />;
 
-    const pctTienKhongDon = sum.spend7d > 0 ? (sum.tienKhongDon / sum.spend7d) * 100 : 0;
+    const noOrderSpendPct = sum.spend7d > 0 ? (sum.tienKhongDon / sum.spend7d) * 100 : 0;
     const kpis = [
         { label: "Chi 7 ngày (VND)", value: formatVNDCompact(sum.spend7d), icon: Megaphone, color: "text-blue-400" },
         { label: "Đơn 7 ngày (đã gán)", value: sum.orders7d.toLocaleString("vi-VN"), icon: TrendingUp, color: "text-emerald-400" },
@@ -137,7 +137,7 @@ export default function TALPHAAdHealthTab() {
         {
             label: `Tiêu không ra đơn · ${sum.adKhongDon} QC`,
             value: formatVNDCompact(sum.tienKhongDon), icon: Ban, color: "text-rose-500",
-            sub: `${pctTienKhongDon.toFixed(1)}% chi tiêu 7 ngày`,
+            sub: `${noOrderSpendPct.toFixed(1)}% chi tiêu 7 ngày`,
         },
         {
             label: `Đang xấu đi · ${sum.adXauDi} QC`,

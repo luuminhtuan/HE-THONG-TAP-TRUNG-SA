@@ -24,7 +24,7 @@ import { RULES } from "./rules";
 import { fetchSheetCsv } from "./sheet-source";
 
 /** Một đợt thanh toán tiền hàng đọc được từ file. */
-export type DotTienHang = {
+export type PurchasePayment = {
     ngay: string;                  // YYYY-MM-DD — ngày thanh toán
     tong_vnd: number;              // tổng phải trả của đợt (đã gồm nợ kỳ trước nếu có)
     moi_vnd: number;               // tiền hàng mới của kỳ này
@@ -64,7 +64,7 @@ export function csvToGrid(text: string): string[][] {
 }
 
 /** "1.009.562" · "6.988.000" → số. */
-function soVnd(s: string): number {
+function parseVnd(s: string): number {
     return Number(String(s).replace(/[^\d]/g, "")) || 0;
 }
 
@@ -72,13 +72,13 @@ function soVnd(s: string): number {
 // dấu ngăn. Đợt 2/10/2026 ghi "TỔNG : 420. 325 VND" — bộ đọc cũ trượt cả ô, kỳ
 // sao kê 05/10 báo "không có đợt nào" dù NAZA trừ đúng 420.325đ. Cách mà không có
 // dấu ngăn thì không nối ("2026 6.185.790" vẫn là hai số).
-const SO = String.raw`\d+(?:[.,]\s?\d+)*`;
-const RE_NGAY = /THANH\s*TOÁN\s*NGÀY\s*(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{4}))?/;
-const RE_TONG = new RegExp(String.raw`TỔNG\s*:?\s*(${SO})\s*VN`);
-const RE_CONG = new RegExp(String.raw`(${SO})\s*\+\s*(${SO})`);
-const RE_DA_TRA_SO = new RegExp(String.raw`ĐÃ\s*THANH\s*TOÁN\s*(${SO})`);
-const RE_DA_TRA = /ĐÃ\s*THANH\s*TOÁN/;
-const RE_CON_THIEU = new RegExp(String.raw`CÒN\s*THIẾU\s*:?\s*(${SO})`);
+const NUM_RE = String.raw`\d+(?:[.,]\s?\d+)*`;
+const RE_DATE = /THANH\s*TOÁN\s*NGÀY\s*(\d{1,2})\s*\/\s*(\d{1,2})(?:\s*\/\s*(\d{4}))?/;
+const RE_TOTAL = new RegExp(String.raw`TỔNG\s*:?\s*(${NUM_RE})\s*VN`);
+const RE_SUM = new RegExp(String.raw`(${NUM_RE})\s*\+\s*(${NUM_RE})`);
+const RE_PAID_AMOUNT = new RegExp(String.raw`ĐÃ\s*THANH\s*TOÁN\s*(${NUM_RE})`);
+const RE_PAID = /ĐÃ\s*THANH\s*TOÁN/;
+const RE_OUTSTANDING = new RegExp(String.raw`CÒN\s*THIẾU\s*:?\s*(${NUM_RE})`);
 
 /**
  * Tìm mọi đợt thanh toán trong lưới ô.
@@ -87,7 +87,7 @@ const RE_CON_THIEU = new RegExp(String.raw`CÒN\s*THIẾU\s*:?\s*(${SO})`);
  * "16/7/2026" ở đầu bảng), và khi tháng tụt hẳn so với đợt trước (12 → 1) thì
  * sang năm mới.
  */
-export function docDotTienHang(grid: string[][]): DotTienHang[] {
+export function parsePurchasePayments(grid: string[][]): PurchasePayment[] {
     const nam0 = (() => {
         for (const row of grid) for (const c of row) {
             const m = String(c).match(/\b\d{1,2}\/\d{1,2}\/(20\d{2})\b/);
@@ -96,39 +96,39 @@ export function docDotTienHang(grid: string[][]): DotTienHang[] {
         return new Date().getFullYear();
     })();
 
-    const dot: DotTienHang[] = [];
-    let nam = nam0, thangTruoc = 0;
+    const dot: PurchasePayment[] = [];
+    let year = nam0, prevMonth = 0;
     grid.forEach((row, r) => {
         for (const raw of row) {
             const text = String(raw ?? "").normalize("NFC").replace(/\s+/g, " ").trim();
-            const hoa = text.toUpperCase();
-            const mn = hoa.match(RE_NGAY);
+            const upper = text.toUpperCase();
+            const mn = upper.match(RE_DATE);
             if (!mn) continue;
-            const mt = hoa.match(RE_TONG);
+            const mt = upper.match(RE_TOTAL);
             if (!mt) continue;          // ô nói "thanh toán ngày…" mà không có tổng → không phải đợt
 
-            const ngayN = Number(mn[1]), thang = Number(mn[2]);
-            if (mn[3]) nam = Number(mn[3]);
-            else if (thangTruoc && thang < thangTruoc - 6) nam += 1;
-            thangTruoc = thang;
+            const day = Number(mn[1]), month = Number(mn[2]);
+            if (mn[3]) year = Number(mn[3]);
+            else if (prevMonth && month < prevMonth - 6) year += 1;
+            prevMonth = month;
 
-            const tong = soVnd(mt[1]);
+            const total = parseVnd(mt[1]);
             // "6.185.790 + 1.405.597 TỔNG: 7.591.387" — phần cộng nằm TRƯỚC chữ TỔNG.
-            const truocTong = hoa.slice(0, mt.index);
-            const mc = truocTong.match(RE_CONG);
-            const no = mc ? soVnd(mc[2]) : 0;
-            const moi = mc ? soVnd(mc[1]) : tong;
+            const beforeTotal = upper.slice(0, mt.index);
+            const mc = beforeTotal.match(RE_SUM);
+            const no = mc ? parseVnd(mc[2]) : 0;
+            const newAmount = mc ? parseVnd(mc[1]) : total;
 
-            const daTraSo = hoa.match(RE_DA_TRA_SO);
-            const conThieu = hoa.match(RE_CON_THIEU);
+            const paidMatch = upper.match(RE_PAID_AMOUNT);
+            const outstandingMatch = upper.match(RE_OUTSTANDING);
             dot.push({
-                ngay: `${nam}-${String(thang).padStart(2, "0")}-${String(ngayN).padStart(2, "0")}`,
-                tong_vnd: tong,
-                moi_vnd: moi,
+                ngay: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+                tong_vnd: total,
+                moi_vnd: newAmount,
                 no_ky_truoc_vnd: no,
-                da_ghi_thanh_toan: RE_DA_TRA.test(hoa),
-                da_tra_vnd: daTraSo ? soVnd(daTraSo[1]) : (RE_DA_TRA.test(hoa) ? tong : null),
-                con_thieu_vnd: conThieu ? soVnd(conThieu[1]) : null,
+                da_ghi_thanh_toan: RE_PAID.test(upper),
+                da_tra_vnd: paidMatch ? parseVnd(paidMatch[1]) : (RE_PAID.test(upper) ? total : null),
+                con_thieu_vnd: outstandingMatch ? parseVnd(outstandingMatch[1]) : null,
                 dong: r + 1,
                 nguyen_van: text,
             });
@@ -143,19 +143,19 @@ export function docDotTienHang(grid: string[][]): DotTienHang[] {
  * "20261012" (viết liền — kỳ 12/10/2026 tên "TAIWAN 20261012.xlsx", trước đây đọc ra rỗng nên
  * kỳ đó không ghép được đợt nào trong file tiền hàng).
  */
-export function ngaySaoKe(filename: string): string | null {
+export function statementDateFromName(filename: string): string | null {
     const ymd = filename.match(/(20\d{2})[.\-_/](\d{1,2})[.\-_/](\d{1,2})/);
     const dmy = filename.match(/(\d{1,2})[.\-_/](\d{1,2})[.\-_/](20\d{2})/);
-    const lien = filename.match(/(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)/);
+    const compact = filename.match(/(?<!\d)(20\d{2})(\d{2})(\d{2})(?!\d)/);
     const [y, m, d] = ymd ? [ymd[1], ymd[2], ymd[3]] : dmy ? [dmy[3], dmy[2], dmy[1]]
-        : lien ? [lien[1], lien[2], lien[3]] : [];
+        : compact ? [compact[1], compact[2], compact[3]] : [];
     if (!y) return null;
     const mm = Number(m), dd = Number(d);
     if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
     return `${y}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
 }
 
-const ngayCach = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
+const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000;
 
 /**
  * Ghép mỗi đợt thanh toán vào đúng MỘT kỳ sao kê: gần ngày nhất, trong cửa sổ
@@ -163,26 +163,26 @@ const ngayCach = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b
  * (27/7 cách 24/7 ba ngày, cách 31/7 bốn ngày) về kỳ gần hơn chứ không về kỳ
  * nào được duyệt trước.
  */
-export function ghepDotVaoKy(
-    dot: DotTienHang[],
-    ky: { id: string; ngay: string | null }[],
-    cuaSoNgay = CFG.match_window_days ?? 4,
-): Map<string, DotTienHang> {
+export function matchPaymentsToPeriods(
+    dot: PurchasePayment[],
+    periods: { id: string; ngay: string | null }[],
+    windowDays = CFG.match_window_days ?? 4,
+): Map<string, PurchasePayment> {
     const cap: { id: string; i: number; d: number }[] = [];
-    for (const k of ky) {
+    for (const k of periods) {
         if (!k.ngay) continue;
         dot.forEach((x, i) => {
-            const d = ngayCach(k.ngay!, x.ngay);
-            if (d <= cuaSoNgay) cap.push({ id: k.id, i, d });
+            const d = daysApart(k.ngay!, x.ngay);
+            if (d <= windowDays) cap.push({ id: k.id, i, d });
         });
     }
     cap.sort((a, b) => a.d - b.d);
-    const out = new Map<string, DotTienHang>();
-    const daDung = new Set<number>();
+    const out = new Map<string, PurchasePayment>();
+    const usedPayments = new Set<number>();
     for (const c of cap) {
-        if (out.has(c.id) || daDung.has(c.i)) continue;
+        if (out.has(c.id) || usedPayments.has(c.i)) continue;
         out.set(c.id, dot[c.i]);
-        daDung.add(c.i);
+        usedPayments.add(c.i);
     }
     return out;
 }
@@ -192,38 +192,38 @@ export function ghepDotVaoKy(
 // ─────────────────────────────────────────────────────────────────────────
 // Màn đối soát không được sập vì file tiền hàng tạm không mở được. Lỗi thì trả
 // danh sách rỗng kèm câu nói rõ vì sao — mục soát sẽ hiện câu đó.
-const DEM_MS = 5 * 60_000;
-let dem: { luc: number; ket: KetQuaTienHang } | null = null;
+const CACHE_MS = 5 * 60_000;
+let cache: { luc: number; ket: PurchaseSheetResult } | null = null;
 
-export type KetQuaTienHang = { dot: DotTienHang[]; loi: string | null; doc_luc: string };
+export type PurchaseSheetResult = { dot: PurchasePayment[]; loi: string | null; doc_luc: string };
 
-export async function docTienHang(): Promise<KetQuaTienHang> {
-    if (dem && Date.now() - dem.luc < DEM_MS) return dem.ket;
+export async function readPurchaseSheet(): Promise<PurchaseSheetResult> {
+    if (cache && Date.now() - cache.luc < CACHE_MS) return cache.ket;
     const luc = new Date().toISOString();
-    let ket: KetQuaTienHang;
+    let result: PurchaseSheetResult;
     if (!CFG.sheet_id) {
-        ket = { dot: [], loi: "Chưa khai file tiền hàng ở config/talpha_rules.json → cod_settlement.purchase_sheet.", doc_luc: luc };
+        result = { dot: [], loi: "Chưa khai file tiền hàng ở config/talpha_rules.json → cod_settlement.purchase_sheet.", doc_luc: luc };
     } else {
         try {
             const r = await fetchSheetCsv(CFG.sheet_id, CFG.sheet_gid || "0");
             const grid = csvToGrid(r.csv);
-            const dot = docDotTienHang(grid);
+            const dot = parsePurchasePayments(grid);
             // Cả file chỉ còn ô lỗi công thức (#REF!, #N/A…) thì nói thẳng ra. 14/09/2026 bản
             // sao dùng IMPORTRANGE theo TÊN tab, tab gốc đổi tên là cả file thành một ô #REF!
             // — câu "không thấy đợt nào" khi đó chỉ khiến người ta đi soát nhầm chỗ.
             const o = grid.flat().map((c) => c.trim()).filter(Boolean);
-            const loiCongThuc = o.length > 0 && o.every((c) => /^#(REF!|N\/A|ERROR!|VALUE!|NAME\?)$/i.test(c));
-            ket = {
+            const allFormulaErrors = o.length > 0 && o.every((c) => /^#(REF!|N\/A|ERROR!|VALUE!|NAME\?)$/i.test(c));
+            result = {
                 dot,
                 loi: dot.length ? null
-                    : loiCongThuc ? `File tiền hàng đang ra lỗi công thức ${o[0]} — thường là IMPORTRANGE trỏ tới tab đã đổi tên. Sửa công thức, hoặc khai thẳng file gốc vào cod_settlement.purchase_sheet.`
+                    : allFormulaErrors ? `File tiền hàng đang ra lỗi công thức ${o[0]} — thường là IMPORTRANGE trỏ tới tab đã đổi tên. Sửa công thức, hoặc khai thẳng file gốc vào cod_settlement.purchase_sheet.`
                         : "Đọc được file tiền hàng nhưng không thấy đợt thanh toán nào.",
                 doc_luc: luc,
             };
         } catch (e) {
-            ket = { dot: [], loi: `Không đọc được file tiền hàng: ${(e as Error).message}`, doc_luc: luc };
+            result = { dot: [], loi: `Không đọc được file tiền hàng: ${(e as Error).message}`, doc_luc: luc };
         }
     }
-    dem = { luc: Date.now(), ket };
-    return ket;
+    cache = { luc: Date.now(), ket: result };
+    return result;
 }

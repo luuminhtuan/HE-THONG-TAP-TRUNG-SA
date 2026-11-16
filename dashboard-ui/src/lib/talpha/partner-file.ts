@@ -222,9 +222,9 @@ export function parsePartnerFile(text: string): PartnerParse {
 // ─────────────────────────────────────────────────────────────────────────
 
 /** So mã đơn: bỏ khoảng trắng thừa, không phân biệt hoa thường. */
-const donKey = (s?: string | null) => String(s ?? "").trim().replace(/\s+/g, " ").toUpperCase();
+const normOrderNo = (s?: string | null) => String(s ?? "").trim().replace(/\s+/g, " ").toUpperCase();
 
-export type MaTrung = { tracking: string; don: string[] };
+export type DuplicateTracking = { tracking: string; don: string[] };
 
 /**
  * Khoá lưu kho của từng dòng: mã vận đơn, chưa có thì mã đơn.
@@ -239,34 +239,34 @@ export type MaTrung = { tracking: string; don: string[] };
  * mã vận đơn — và mã bị dùng chung được nêu ra để sửa trong Sheet. Hai dòng giống
  * hệt nhau (cùng mã vận đơn, cùng mã đơn: Sheet chép đôi một dòng) vẫn là MỘT đơn.
  */
-export function khoaChoDong(rows: PartnerRow[]): { khoa: (string | null)[]; trung: MaTrung[] } {
+export function assignRowKeys(rows: PartnerRow[]): { khoa: (string | null)[]; trung: DuplicateTracking[] } {
     const giu = new Map<string, string>();          // khoá → mã đơn đang giữ khoá đó
     const trung = new Map<string, string[]>();      // mã vận đơn → các đơn cùng mang
-    const nhan = (k: string, don: string) => {
-        const chu = giu.get(k);
-        if (chu !== undefined && donKey(chu) !== donKey(don)) return false;
-        giu.set(k, don);
+    const claim = (k: string, order: string) => {
+        const holder = giu.get(k);
+        if (holder !== undefined && normOrderNo(holder) !== normOrderNo(order)) return false;
+        giu.set(k, order);
         return true;
     };
 
-    const khoa = rows.map((r) => {
-        const goc = r.tracking || r.order_no;
-        if (!goc) return null;
-        if (nhan(goc, r.order_no)) return goc;
+    const keys = rows.map((r) => {
+        const baseKey = r.tracking || r.order_no;
+        if (!baseKey) return null;
+        if (claim(baseKey, r.order_no)) return baseKey;
 
         // Mã này đã thuộc về một đơn KHÁC ngay trong Sheet.
-        const ds = trung.get(goc) || [giu.get(goc)!];
-        if (!ds.some((d) => donKey(d) === donKey(r.order_no))) ds.push(r.order_no);
-        trung.set(goc, ds);
+        const ds = trung.get(baseKey) || [giu.get(baseKey)!];
+        if (!ds.some((d) => normOrderNo(d) === normOrderNo(r.order_no))) ds.push(r.order_no);
+        trung.set(baseKey, ds);
 
-        const nen = r.order_no || goc;
+        const nen = r.order_no || baseKey;
         for (let n = 1; ; n++) {
             const k = n === 1 && r.order_no ? nen : `${nen}#${n}`;
-            if (nhan(k, r.order_no)) return k;
+            if (claim(k, r.order_no)) return k;
         }
     });
 
-    return { khoa, trung: [...trung].map(([tracking, don]) => ({ tracking, don })) };
+    return { khoa: keys, trung: [...trung].map(([tracking, order]) => ({ tracking, don: order })) };
 }
 
 /**
@@ -281,15 +281,15 @@ export function khoaChoDong(rows: PartnerRow[]): { khoa: (string | null)[]; trun
  * Chỉ gỡ khi CHẮC: mã đơn của khoá cũ có mặt trong lần nạp này, ở khoá khác. Đơn
  * không còn trong Sheet thì GIỮ — sổ đơn là cơ sở dữ liệu, không tự xoá.
  */
-export function khoaCuBiThay(
-    kho: Record<string, { order_no?: string | null }>,
+export function supersededKeys(
+    stored: Record<string, { order_no?: string | null }>,
     rows: PartnerRow[],
-    khoa: (string | null)[],
+    keys: (string | null)[],
 ): string[] {
-    const moi = new Set(khoa.filter((k): k is string => !!k));
-    const donMoi = new Set(rows.map((r) => donKey(r.order_no)).filter(Boolean));
-    return Object.entries(kho)
-        .filter(([k, p]) => !moi.has(k) && donMoi.has(donKey(p.order_no)))
+    const newKeys = new Set(keys.filter((k): k is string => !!k));
+    const newOrderNos = new Set(rows.map((r) => normOrderNo(r.order_no)).filter(Boolean));
+    return Object.entries(stored)
+        .filter(([k, p]) => !newKeys.has(k) && newOrderNos.has(normOrderNo(p.order_no)))
         .map(([k]) => k);
 }
 

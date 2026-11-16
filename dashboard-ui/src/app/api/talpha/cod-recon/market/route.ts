@@ -2,19 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { MARKETS_PUBLIC } from "@/lib/talpha/rules";
 import { trackMarket } from "@/lib/talpha/tracking";
-import { loadMarketShipments, nhanNguonDoiTac } from "@/lib/talpha/tracking-market";
+import { loadMarketShipments, partnerSourceLabel } from "@/lib/talpha/tracking-market";
 import { trackingFromLink } from "@/lib/talpha/cod-recon";
 import {
-    nhanTrangThai, nhanTrangThaiPos, nhomTheoPos, nhomTheoVanDon, tongHopCod, type DonCod,
+    statusText, posStatusText, classifyByPos, classifyByShipment, summarizeCod, type CodOrder,
 } from "@/lib/talpha/cod-market";
-import { parseNazaStatement, xlsxThanhBang } from "@/lib/talpha/naza-statement";
+import { parseNazaStatement, xlsxToTables } from "@/lib/talpha/naza-statement";
 import {
-    chonDongNaza, chonSheetSaoKe, docCsvSaoKe, khopSaoKeNuoc, ngayKy, tenKhoSaoKe, tenKhoViec, thayKyCu,
-    type CotSaoKe, type SaoKeNuoc,
+    pickNazaRows, pickStatementSheet, parseStatementCsv, matchMarketStatements, periodDate, statementStoreName, actionStoreName, replaceSamePeriod,
+    type StatementColumns, type MarketStatement,
 } from "@/lib/talpha/cod-statement-market";
-import { soCodNuoc } from "@/lib/talpha/cod-so-nuoc";
+import { buildCodMarketLedger } from "@/lib/talpha/cod-so-nuoc";
 import { emptyActions, type CodActions } from "@/lib/talpha/cod-actions";
-import { ngaySaoKe } from "@/lib/talpha/purchase-sheet";
+import { statementDateFromName } from "@/lib/talpha/purchase-sheet";
 import { readStoreFresh, updateStore } from "@/lib/talpha/store";
 import { MAX_UPLOAD_BYTES, tooBigMessage } from "@/lib/talpha/upload-limit";
 
@@ -41,42 +41,42 @@ export const dynamic = "force-dynamic";
 // Đài Loan KHÔNG đi qua đây: màn Đài dùng /api/talpha/cod-recon với sao kê NAZA.
 // ═══════════════════════════════════════════════════════════════════
 
-type Nguon = { loai: "doi_tac" | "weship" | "pos"; nhan: string; cap_nhat: string | null };
+type DataSource = { loai: "doi_tac" | "weship" | "pos"; nhan: string; cap_nhat: string | null };
 
-function nuocCua(req: NextRequest) {
+function marketFromRequest(req: NextRequest) {
     const code = String(req.nextUrl.searchParams.get("market") || "").toUpperCase();
     const m = MARKETS_PUBLIC.markets.find((x) => x.code === code);
     return m && code !== "TW" ? m : null;
 }
-const SAI_NUOC = { error: "market phải là mã một nước ngoài Đài (SG, AE…)" };
+const INVALID_MARKET = { error: "market phải là mã một nước ngoài Đài (SG, AE…)" };
 /** Chỉ phần cần đọc của kho sao kê Đài (route /api/talpha/cod-recon). */
-type KyDai = { filename: string; naza?: { sg_gop?: unknown } };
-const khoRong = (): { statements: SaoKeNuoc[] } => ({ statements: [] });
+type TwStatement = { filename: string; naza?: { sg_gop?: unknown } };
+const emptyStore = (): { statements: MarketStatement[] } => ({ statements: [] });
 
 /** Mọi đơn của một nước, chia nhóm đã giao / chưa giao / không tính. */
-async function layDon(code: string): Promise<{ don: DonCod[]; nguon: Nguon }> {
-    let don: DonCod[] = [];
-    let nguon: Nguon;
+async function loadOrders(code: string): Promise<{ don: CodOrder[]; nguon: DataSource }> {
+    let orders: CodOrder[] = [];
+    let source: DataSource;
 
     const tm = trackMarket(code);
     if (tm.code === code) {
         const { shipments, store, lastImport } = await loadMarketShipments(tm,
             (): { registered: Record<string, never>; statuses: Record<string, unknown>; last_sync?: { at: string; ok: boolean } } =>
                 ({ registered: {}, statuses: {} }));
-        const laPos = tm.source === "pos";
-        don = shipments.map((s) => {
-            const p = nhomTheoVanDon(s.status, s.sub_status);
+        const isPos = tm.source === "pos";
+        orders = shipments.map((s) => {
+            const p = classifyByShipment(s.status, s.sub_status);
             return {
                 order_id: s.order_id, tracking: s.track17_code || "", order_date: s.order_date,
                 // Đơn POS chưa có mã AWB = hàng chưa rời kho, đừng gọi là "Đã tạo vận đơn".
-                trang_thai: laPos && !s.track17_code ? "Chưa gửi hàng" : nhanTrangThai(s.status, s.raw_status),
+                trang_thai: isPos && !s.track17_code ? "Chưa gửi hàng" : statusText(s.status, s.raw_status),
                 nhom: p.nhom, ly_do: p.ly_do,
                 cod_local: Number(s.cod_local) || 0, khach: s.customer || "",
             };
         });
-        nguon = laPos
+        source = isPos
             ? { loai: "weship", nhan: "Đơn POS + trạng thái tra ở WeShip", cap_nhat: store.last_sync?.ok ? store.last_sync.at : null }
-            : { loai: "doi_tac", nhan: nhanNguonDoiTac(shipments, store as { last_sync?: { register_rejected?: number } }), cap_nhat: lastImport };
+            : { loai: "doi_tac", nhan: partnerSourceLabel(shipments, store as { last_sync?: { register_rejected?: number } }), cap_nhat: lastImport };
     } else {
         // NULLS LAST: BigQuery xếp NULL cuối khi DESC, Postgres mặc định xếp đầu.
         const rows = await query<Record<string, unknown>>(
@@ -92,51 +92,51 @@ async function layDon(code: string): Promise<{ don: DonCod[]; nguon: Nguon }> {
             { m: code },
         );
         for (const r of rows) {
-            const p = nhomTheoPos(r.status_category as string);
+            const p = classifyByPos(r.status_category as string);
             if (!p) continue;
-            don.push({
+            orders.push({
                 order_id: String(r.order_id ?? ""),
                 tracking: trackingFromLink(r.tracking_link as string | null) || "",
                 order_date: r.order_date ? String(r.order_date).slice(0, 10) : null,
-                trang_thai: nhanTrangThaiPos(r.status_name as string, r.status_category as string),
+                trang_thai: posStatusText(r.status_name as string, r.status_category as string),
                 nhom: p.nhom, ly_do: p.ly_do,
                 cod_local: Number(r.cod) || 0,
                 khach: String(r.bill_full_name || ""),
             });
         }
-        nguon = { loai: "pos", nhan: "Đơn trên POS (chưa có bảng đơn của bên giao hàng)", cap_nhat: null };
+        source = { loai: "pos", nhan: "Đơn trên POS (chưa có bảng đơn của bên giao hàng)", cap_nhat: null };
     }
-    return { don, nguon };
+    return { don: orders, nguon: source };
 }
 
 export async function GET(req: NextRequest) {
-    const m = nuocCua(req);
-    if (!m) return NextResponse.json(SAI_NUOC, { status: 400 });
+    const m = marketFromRequest(req);
+    if (!m) return NextResponse.json(INVALID_MARKET, { status: 400 });
     try {
-        const [{ don, nguon }, kho, khoDai, actions] = await Promise.all([
-            layDon(m.code), readStoreFresh(tenKhoSaoKe(m.code), khoRong()),
-            m.code === "SG" ? readStoreFresh<{ statements: KyDai[] }>("cod_statements", { statements: [] }) : null,
-            readStoreFresh<CodActions>(tenKhoViec(m.code), emptyActions()),
+        const [{ don: orders, nguon: source }, statementStore, twStatementStore, actions] = await Promise.all([
+            loadOrders(m.code), readStoreFresh(statementStoreName(m.code), emptyStore()),
+            m.code === "SG" ? readStoreFresh<{ statements: TwStatement[] }>("cod_statements", { statements: [] }) : null,
+            readStoreFresh<CodActions>(actionStoreName(m.code), emptyActions()),
         ]);
         // Kỳ Đài có gộp phần Sing (24/09/2026): khoản âm của kỳ Sing cùng ngày đã trừ ở đó.
-        const ngayGopDai = (khoDai?.statements || []).filter((s) => s.naza?.sg_gop)
-            .map((s) => ngaySaoKe(s.filename.normalize("NFC"))).filter((d): d is string => !!d);
-        const k = khopSaoKeNuoc(don, kho.statements, m.rate_vnd, ngayGopDai);
+        const twMergedDates = (twStatementStore?.statements || []).filter((s) => s.naza?.sg_gop)
+            .map((s) => statementDateFromName(s.filename.normalize("NFC"))).filter((d): d is string => !!d);
+        const k = matchMarketStatements(orders, statementStore.statements, m.rate_vnd, twMergedDates);
         // Sổ dựng đúng các khối của màn Đài (08/10/2026): tiền về · việc hôm nay · các kỳ + ngân hàng ·
         // luồng tiền + máy soát · tỷ giá. Mốc "hôm nay" theo ?to= như màn Đài, mặc định hôm nay.
         const to = req.nextUrl.searchParams.get("to");
-        const so = soCodNuoc({
+        const ledger = buildCodMarketLedger({
             code: m.code, currency: m.currency, symbol: m.symbol, rateVnd: m.rate_vnd,
-            don, kho: kho.statements, k, actions,
+            don: orders, kho: statementStore.statements, k, actions,
             asOf: to && /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : new Date().toISOString().slice(0, 10),
         });
         return NextResponse.json({
-            so,
+            so: ledger,
             market: { code: m.code, display: m.display, currency: m.currency, symbol: m.symbol, rate_vnd: m.rate_vnd },
-            nguon,
-            sao_ke: kho.statements.length,
+            nguon: source,
+            sao_ke: statementStore.statements.length,
             // "Còn phải gửi" chỉ còn đơn CHƯA thấy trên kỳ sao kê nào; đơn đã trả tính riêng.
-            tong: tongHopCod(k.don.filter((d) => !d.da_tra), m.rate_vnd),
+            tong: summarizeCod(k.don.filter((d) => !d.da_tra), m.rate_vnd),
             da_tra: k.da_tra,
             da_gui_ve: k.da_gui_ve,
             ky: k.ky,
@@ -152,8 +152,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-    const m = nuocCua(req);
-    if (!m) return NextResponse.json(SAI_NUOC, { status: 400 });
+    const m = marketFromRequest(req);
+    if (!m) return NextResponse.json(INVALID_MARKET, { status: 400 });
     try {
         const form = await req.formData();
         const file = form.get("file");
@@ -165,15 +165,15 @@ export async function POST(req: NextRequest) {
             }, { status: 422 });
         }
 
-        const tenFile = file.name.normalize("NFC").trim();
-        const canhBao: string[] = [];
-        let st: Omit<SaoKeNuoc, "id" | "uploaded_at" | "ngay">;
+        const fileName = file.name.normalize("NFC").trim();
+        const warnings: string[] = [];
+        let st: Omit<MarketStatement, "id" | "uploaded_at" | "ngay">;
 
         if (/\.xlsx$/i.test(file.name)) {
             const buf = Buffer.from(await file.arrayBuffer());
             let naza;
             try {
-                naza = await parseNazaStatement(buf, tenFile);
+                naza = await parseNazaStatement(buf, fileName);
             } catch (e) {
                 console.error("cod-recon/market đọc xlsx lỗi:", e);
                 return NextResponse.json({
@@ -183,23 +183,23 @@ export async function POST(req: NextRequest) {
             // Sao kê kiểu NAZA — chỉ lấy dòng của nước đang mở. Kỳ chưa thu được COD nào thì file
             // chỉ có sheet TỔNG + PHÍ (Sing 24/09/2026) — vẫn là sao kê NAZA.
             if (naza.cod_lines.length || naza.fee_lines.length) {
-                const c = chonDongNaza(naza, m.code, tenFile);
+                const c = pickNazaRows(naza, m.code, fileName);
                 if ("loi" in c) return NextResponse.json({ error: c.loi }, { status: 422 });
-                canhBao.push(...c.canh_bao);
-                st = { filename: tenFile, kieu: "naza", rows: c.rows, naza: c.tong, canh_bao: canhBao };
+                warnings.push(...c.canh_bao);
+                st = { filename: fileName, kieu: "naza", rows: c.rows, naza: c.tong, canh_bao: warnings };
             } else {
-                const d = chonSheetSaoKe(await xlsxThanhBang(buf));
-                if (!d) return NextResponse.json({ error: khongThayCot(m.code) }, { status: 422 });
-                st = { filename: tenFile, kieu: "bang", rows: d.rows, cot: tenCot(d.header, d.cot), canh_bao: canhBao };
+                const d = pickStatementSheet(await xlsxToTables(buf));
+                if (!d) return NextResponse.json({ error: missingColumnsMessage(m.code) }, { status: 422 });
+                st = { filename: fileName, kieu: "bang", rows: d.rows, cot: columnNames(d.header, d.cot), canh_bao: warnings };
             }
         } else {
-            const d = docCsvSaoKe(await file.text());
-            if (!d || !d.rows.length) return NextResponse.json({ error: khongThayCot(m.code) }, { status: 422 });
-            st = { filename: tenFile, kieu: "bang", rows: d.rows, cot: tenCot(d.header, d.cot), canh_bao: canhBao };
+            const d = parseStatementCsv(await file.text());
+            if (!d || !d.rows.length) return NextResponse.json({ error: missingColumnsMessage(m.code) }, { status: 422 });
+            st = { filename: fileName, kieu: "bang", rows: d.rows, cot: columnNames(d.header, d.cot), canh_bao: warnings };
         }
 
-        const chiCoPhi = st.kieu === "naza" && (st.naza?.don_phi || st.naza?.phai_nhan_vnd != null);
-        if (!st.rows.length && !chiCoPhi) return NextResponse.json({ error: "File không có dòng đơn nào." }, { status: 422 });
+        const feesOnly = st.kieu === "naza" && (st.naza?.don_phi || st.naza?.phai_nhan_vnd != null);
+        if (!st.rows.length && !feesOnly) return NextResponse.json({ error: "File không có dòng đơn nào." }, { status: 422 });
         if (st.kieu === "bang" && !st.rows.some((r) => r.amount)) {
             return NextResponse.json({
                 error: `Đọc được ${st.rows.length} dòng nhưng cột tiền COD (“${st.cot?.amount}”) toàn số 0 — ` +
@@ -207,23 +207,23 @@ export async function POST(req: NextRequest) {
             }, { status: 422 });
         }
 
-        const moi: SaoKeNuoc = {
+        const newStatement: MarketStatement = {
             ...st,
             id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
             uploaded_at: new Date().toISOString(),
-            ngay: ngayKy(tenFile, st.rows, ngaySaoKe),
+            ngay: periodDate(fileName, st.rows, statementDateFromName),
         };
-        let thay: string[] = [];
-        await updateStore(tenKhoSaoKe(m.code), khoRong(), (cur) => {
-            const r = thayKyCu(cur.statements, moi);
-            thay = r.thay;
+        let replaced: string[] = [];
+        await updateStore(statementStoreName(m.code), emptyStore(), (cur) => {
+            const r = replaceSamePeriod(cur.statements, newStatement);
+            replaced = r.thay;
             return { statements: r.list };
         });
         return NextResponse.json({
             ok: true,
-            statement: { id: moi.id, filename: moi.filename, kieu: moi.kieu, so_dong: moi.rows.length, cot: moi.cot },
-            thay,
-            canh_bao: canhBao,
+            statement: { id: newStatement.id, filename: newStatement.filename, kieu: newStatement.kieu, so_dong: newStatement.rows.length, cot: newStatement.cot },
+            thay: replaced,
+            canh_bao: warnings,
         });
     } catch (e) {
         console.error("cod-recon/market POST lỗi:", e);
@@ -232,24 +232,24 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-    const m = nuocCua(req);
-    if (!m) return NextResponse.json(SAI_NUOC, { status: 400 });
+    const m = marketFromRequest(req);
+    if (!m) return NextResponse.json(INVALID_MARKET, { status: 400 });
     const id = req.nextUrl.searchParams.get("statement") || "";
     if (!id) return NextResponse.json({ error: "Thiếu mã kỳ sao kê" }, { status: 400 });
-    const after = await updateStore(tenKhoSaoKe(m.code), khoRong(), (cur) => ({
+    const after = await updateStore(statementStoreName(m.code), emptyStore(), (cur) => ({
         statements: cur.statements.filter((s) => s.id !== id),
     }));
     return NextResponse.json({ ok: true, remaining: after.statements.length });
 }
 
 /** Tên cột thật trong file của từng trường đã nhận — trả về để màn hình in ra cho người soát. */
-function tenCot(header: string[], cot: CotSaoKe): SaoKeNuoc["cot"] {
-    const out: SaoKeNuoc["cot"] = {};
-    for (const [k, i] of Object.entries(cot)) if (i !== undefined) out[k as keyof CotSaoKe] = header[i];
+function columnNames(header: string[], columnIndex: StatementColumns): MarketStatement["cot"] {
+    const out: MarketStatement["cot"] = {};
+    for (const [k, i] of Object.entries(columnIndex)) if (i !== undefined) out[k as keyof StatementColumns] = header[i];
     return out;
 }
 
-function khongThayCot(code: string): string {
+function missingColumnsMessage(code: string): string {
     return "Không tìm ra cột mã vận đơn (hoặc mã đơn) và cột tiền COD trong file. Cần một dòng tiêu đề có " +
         "kiểu “Tracking / AWB / Mã vận đơn / 转单号” và “COD / COD Amount / Số tiền / COD金额”. " +
         `File ${code} đặt tên cột khác thì gửi Claude để khai thêm (talpha_rules.json → cod_settlement.column_map).`;

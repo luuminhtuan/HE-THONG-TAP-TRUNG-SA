@@ -20,60 +20,60 @@ import fs from "fs";
 import yaml from "js-yaml";
 import { query } from "@/lib/db";
 import { TALPHA_YAML } from "./config-path";
-import { truyVanDongBo } from "./db-sync";
-import { MARKET_DA_TAT, MESS_PANCAKE, RULES, SHOP2MKT, SHOP_POS } from "./rules";
-import { cheKhoa } from "./khoa-file";
-import { BIEN_TOKEN_META } from "./tkqc-luat";
+import { querySync } from "./db-sync";
+import { DISABLED_MARKETS, MESS_PANCAKE, RULES, SHOP2MKT, SHOP_POS } from "./rules";
+import { maskCredential } from "./khoa-file";
+import { META_TOKEN_VARS } from "./tkqc-luat";
 import { PANCAKE_API, hanToken } from "./pancake";
 import { getQuota, keyId } from "./track17";
 import { TRACK_MARKETS } from "./tracking";
 
-const BIEN_CHIA = "TALPHA_ENCRYPTION_KEY";
-const chiaMaHoa = () => (process.env[BIEN_CHIA] || "").trim();
-const SQL_DOC = `SELECT name, public.pgp_sym_decrypt(encrypted_value, $1) AS value, note, updated_at, updated_by
+const ENCRYPTION_KEY_VAR = "TALPHA_ENCRYPTION_KEY";
+const getEncryptionKey = () => (process.env[ENCRYPTION_KEY_VAR] || "").trim();
+const READ_SQL = `SELECT name, public.pgp_sym_decrypt(encrypted_value, $1) AS value, note, updated_at, updated_by
                  FROM api_credentials`;
-const LAM_MOI_SAU = 5 * 60_000;
+const REFRESH_INTERVAL_MS = 5 * 60_000;
 
-type BanGhi = { value: string; note: string | null; updated_at: string; updated_by: string | null };
-type Dong = BanGhi & { name: string };
+type CredentialRecord = { value: string; note: string | null; updated_at: string; updated_by: string | null };
+type CredentialRow = CredentialRecord & { name: string };
 
-let nho: { map: Map<string, BanGhi>; luc: number } | null = null;
+let cache: { map: Map<string, CredentialRecord>; luc: number } | null = null;
 let loiLuc = 0;
-let dangLamMoi = false;
-let daBaoThieu = false;
+let refreshing = false;
+let warnedMissingKey = false;
 
-const thanhMap = (rows: Dong[]) => new Map(rows.map(({ name, ...r }) => [name, r]));
+const toMap = (rows: CredentialRow[]) => new Map(rows.map(({ name, ...r }) => [name, r]));
 
 /** Nạp lại bảng khoá (không chặn). */
-async function lamMoi(): Promise<void> {
-    const chia = chiaMaHoa();
-    if (!chia || !process.env.DATABASE_URL) return;
-    const rows = await query<Dong>(SQL_DOC.replace("$1", "@chia"), { chia });
-    nho = { map: thanhMap(rows), luc: Date.now() };
+async function refreshCache(): Promise<void> {
+    const encryptionKey = getEncryptionKey();
+    if (!encryptionKey || !process.env.DATABASE_URL) return;
+    const rows = await query<CredentialRow>(READ_SQL.replace("$1", "@chia"), { chia: encryptionKey });
+    cache = { map: toMap(rows), luc: Date.now() };
 }
 
 /** Khoá trong kho. Lượt đầu đọc đồng bộ (docKhoa không await được); sau đó làm mới nền mỗi 5 phút. */
-function khoaTrongKho(): Map<string, BanGhi> {
-    if (nho) {
-        if (Date.now() - nho.luc > LAM_MOI_SAU && !dangLamMoi) {
-            dangLamMoi = true;
-            lamMoi().catch((e) => console.error("khoa: làm mới bảng api_credentials lỗi:", e))
-                .finally(() => { dangLamMoi = false; });
+function storedCredentials(): Map<string, CredentialRecord> {
+    if (cache) {
+        if (Date.now() - cache.luc > REFRESH_INTERVAL_MS && !refreshing) {
+            refreshing = true;
+            refreshCache().catch((e) => console.error("khoa: làm mới bảng api_credentials lỗi:", e))
+                .finally(() => { refreshing = false; });
         }
-        return nho.map;
+        return cache.map;
     }
-    const chia = chiaMaHoa();
-    if (!process.env.DATABASE_URL || !chia) {
-        if (!daBaoThieu && process.env.DATABASE_URL) {
-            console.error(`khoa: chưa đặt ${BIEN_CHIA} — không giải mã được khoá trong kho, dùng khoá trong .env.local`);
-            daBaoThieu = true;
+    const encryptionKey = getEncryptionKey();
+    if (!process.env.DATABASE_URL || !encryptionKey) {
+        if (!warnedMissingKey && process.env.DATABASE_URL) {
+            console.error(`khoa: chưa đặt ${ENCRYPTION_KEY_VAR} — không giải mã được khoá trong kho, dùng khoá trong .env.local`);
+            warnedMissingKey = true;
         }
         return new Map();
     }
     if (Date.now() - loiLuc < 30_000) return new Map();   // kho vừa lỗi — đừng chặn mỗi lượt gọi
     try {
-        nho = { map: thanhMap(truyVanDongBo<Dong>(SQL_DOC, [chia])), luc: Date.now() };
-        return nho.map;
+        cache = { map: toMap(querySync<CredentialRow>(READ_SQL, [encryptionKey])), luc: Date.now() };
+        return cache.map;
     } catch (e) {
         loiLuc = Date.now();
         console.error("khoa: KHÔNG đọc được bảng api_credentials — dùng khoá trong .env.local:", e);
@@ -82,47 +82,47 @@ function khoaTrongKho(): Map<string, BanGhi> {
 }
 
 /** Khoá đang dùng: nhập trên trang (kho) trước, rồi biến môi trường (.env.local). */
-export function docKhoa(ten: string): string {
-    return (khoaTrongKho().get(ten)?.value ?? process.env[ten] ?? "").trim();
+export function getCredential(credentialName: string): string {
+    return (storedCredentials().get(credentialName)?.value ?? process.env[credentialName] ?? "").trim();
 }
 
 /** Toàn bộ môi trường đã phủ khoá nhập trên trang — cho hàm nhận cả bảng (17TRACK nhiều khoá). */
-export function moiTruongKhoa(): Record<string, string | undefined> {
-    const kho = Object.fromEntries([...khoaTrongKho()].map(([k, v]) => [k, v.value]));
-    return { ...process.env, ...kho };
+export function envWithCredentials(): Record<string, string | undefined> {
+    const stored = Object.fromEntries([...storedCredentials()].map(([k, v]) => [k, v.value]));
+    return { ...process.env, ...stored };
 }
 
 // ─── Danh sách khoá ─────────────────────────────────────────────────
 
-export type LoaiKhoa = "meta" | "pos" | "pancake" | "track17" | "gemini";
-export type KhoaDef = {
+export type CredentialKind = "meta" | "pos" | "pancake" | "track17" | "gemini";
+export type CredentialDef = {
     ten: string;
     nhan: string;
     dung_cho: string;
-    loai: LoaiKhoa;
+    loai: CredentialKind;
     shop?: { name: string; shop_id: string; api_url: string };
 };
 
-type YamlTho = {
+type RawYaml = {
     meta_ads?: { access_token?: string; ad_account_ids?: string[] };
 };
 
 /** talpha.yaml CHƯA thay ${…} — để biết token Meta nằm ở biến nào, và danh sách TKQC. */
-function yamlTho(): YamlTho {
-    return (yaml.load(fs.readFileSync(TALPHA_YAML(), "utf8")) as YamlTho) || {};
+function readRawYaml(): RawYaml {
+    return (yaml.load(fs.readFileSync(TALPHA_YAML(), "utf8")) as RawYaml) || {};
 }
 
-const tenBien = (v: unknown) => /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(String(v ?? "").trim())?.[1] || null;
+const envVarName = (v: unknown) => /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(String(v ?? "").trim())?.[1] || null;
 
 /** Khoá nào cần nhập. Shop POS lấy từ markets (SHOP_POS) — thêm nước ở config hoặc /admin →
  *  Thị trường là có thêm ô ở đây. Nước đã tắt không gọi POS nữa nên không có ô (khoá cũ vẫn
  *  nằm trong file, bật lại là dùng). */
-export function danhSachKhoa(): KhoaDef[] {
-    const cfg = yamlTho();
+export function listCredentials(): CredentialDef[] {
+    const cfg = readRawYaml();
     const markets = RULES.markets as Record<string, { display?: string }>;
-    const conChay = (key?: string | null) => !!key && !MARKET_DA_TAT.has(key);
-    const meta = tenBien(cfg.meta_ads?.access_token) || BIEN_TOKEN_META[0];
-    const out: KhoaDef[] = [{
+    const isActive = (key?: string | null) => !!key && !DISABLED_MARKETS.has(key);
+    const meta = envVarName(cfg.meta_ads?.access_token) || META_TOKEN_VARS[0];
+    const out: CredentialDef[] = [{
         ten: meta,
         nhan: "Token Meta Ads",
         dung_cho: "Chi tiêu quảng cáo mỗi giờ, Ads Command Center — sync kéo MỌI TKQC token thấy",
@@ -130,14 +130,14 @@ export function danhSachKhoa(): KhoaDef[] {
     }];
     // Token phụ (tuỳ chọn): TKQC nằm ở BM / app khác mà token chính không thấy. Mỗi TK đọc bằng token
     // ĐẦU TIÊN thấy nó (lib/talpha/tkqc.ts, sync/core/tkqc.py).
-    BIEN_TOKEN_META.slice(1).forEach((ten, i) => out.push({
-        ten,
+    META_TOKEN_VARS.slice(1).forEach((credentialName, i) => out.push({
+        ten: credentialName,
         nhan: `Token Meta ${i + 2} — BM / app khác (tuỳ chọn)`,
         dung_cho: "Chỉ cần khi có TKQC mà token chính không thấy, vd TK của Business Manager cũ",
         loai: "meta",
     }));
     for (const s of SHOP_POS) {
-        if (!conChay(s.name)) continue;
+        if (!isActive(s.name)) continue;
         out.push({
             ten: s.bien_key,
             nhan: `Key POS ${markets[s.name]?.display || s.name}`,
@@ -147,13 +147,13 @@ export function danhSachKhoa(): KhoaDef[] {
         });
     }
     // Nước nào dùng Pancake / 17TRACK đọc từ talpha_rules.json (markets.*.mess_source, tracking.markets).
-    const nuocPancake = MESS_PANCAKE.filter(conChay).map((k) => markets[k]?.display || k).join(", ");
-    const nuoc17 = TRACK_MARKETS.filter((m) => m.provider === "17track" && conChay(SHOP2MKT[m.code]))
+    const pancakeMarkets = MESS_PANCAKE.filter(isActive).map((k) => markets[k]?.display || k).join(", ");
+    const nuoc17 = TRACK_MARKETS.filter((m) => m.provider === "17track" && isActive(SHOP2MKT[m.code]))
         .map((m) => m.label).join(", ");
     out.push({
         ten: "TALPHA_PANCAKE_API_TOKEN",
         nhan: "Token Pancake",
-        dung_cho: nuocPancake ? `Tin nhắn ${nuocPancake} (Meta không báo)` : "Chưa nước nào đếm tin nhắn qua Pancake",
+        dung_cho: pancakeMarkets ? `Tin nhắn ${pancakeMarkets} (Meta không báo)` : "Chưa nước nào đếm tin nhắn qua Pancake",
         loai: "pancake",
     });
     out.push({
@@ -174,7 +174,7 @@ export function danhSachKhoa(): KhoaDef[] {
 
 // ─── Trạng thái + lưu ───────────────────────────────────────────────
 
-export type TrangThaiKhoa = Omit<KhoaDef, "shop"> & {
+export type CredentialStatus = Omit<CredentialDef, "shop"> & {
     shop_id: string | null;
     nguon: "trang" | "env" | "thieu";
     che: string;
@@ -185,51 +185,51 @@ export type TrangThaiKhoa = Omit<KhoaDef, "shop"> & {
 };
 
 /** Khoá nào đang dùng, lấy từ đâu — giá trị đã che, không bao giờ trả khoá thật. */
-export function trangThaiKhoa(): TrangThaiKhoa[] {
-    const kho = khoaTrongKho();
-    return danhSachKhoa().map(({ shop, ...d }) => {
-        const trang = kho.get(d.ten)?.value || "";
+export function getCredentialsStatus(): CredentialStatus[] {
+    const stored = storedCredentials();
+    return listCredentials().map(({ shop, ...d }) => {
+        const pageValue = stored.get(d.ten)?.value || "";
         const env = (process.env[d.ten] || "").trim();
-        const v = trang || env;
+        const v = pageValue || env;
         return {
             ...d,
             shop_id: shop?.shop_id || null,
-            nguon: trang ? "trang" : env ? "env" : "thieu",
-            che: cheKhoa(v),
+            nguon: pageValue ? "trang" : env ? "env" : "thieu",
+            che: maskCredential(v),
             do_dai: v.length,
-            cap_nhat: trang ? kho.get(d.ten)?.note || null : null,
-            env_khac: !!trang && !!env && env !== trang,
+            cap_nhat: pageValue ? stored.get(d.ten)?.note || null : null,
+            env_khac: !!pageValue && !!env && env !== pageValue,
         };
     });
 }
 
 /** Đặt hoặc bỏ (`null`) một khoá trên trang (bảng api_credentials, mã hoá), rồi nạp lại bản nhớ. */
-export async function luuKhoa(ten: string, giaTri: string | null, ghiChu: string, ai = ""): Promise<void> {
-    if (giaTri === null) {
-        await query("DELETE FROM api_credentials WHERE name = @ten", { ten });
+export async function saveCredential(credentialName: string, value: string | null, note: string, ai = ""): Promise<void> {
+    if (value === null) {
+        await query("DELETE FROM api_credentials WHERE name = @ten", { ten: credentialName });
     } else {
-        const chia = chiaMaHoa();
-        if (!chia) throw new Error(`Chưa đặt ${BIEN_CHIA} trên máy chủ — không mã hoá được khoá để lưu`);
+        const encryptionKey = getEncryptionKey();
+        if (!encryptionKey) throw new Error(`Chưa đặt ${ENCRYPTION_KEY_VAR} trên máy chủ — không mã hoá được khoá để lưu`);
         await query(
             `INSERT INTO api_credentials (name, encrypted_value, note, updated_at, updated_by)
              VALUES (@ten, public.pgp_sym_encrypt(@giaTri, @chia), @ghiChu, now(), @ai)
              ON CONFLICT (name) DO UPDATE SET encrypted_value = EXCLUDED.encrypted_value, note = EXCLUDED.note,
                updated_at = now(), updated_by = EXCLUDED.updated_by`,
-            { ten, giaTri, chia, ghiChu: ghiChu || null, ai: ai || null });
+            { ten: credentialName, giaTri: value, chia: encryptionKey, ghiChu: note || null, ai: ai || null });
     }
-    await lamMoi();
+    await refreshCache();
 }
 
 // ─── Gọi thử khoá ──────────────────────────────────────────────────
 
-export type KetQuaKiem = { ok: boolean; chi_tiet: string; canh_bao?: string; het_han?: string | null };
+export type VerifyResult = { ok: boolean; chi_tiet: string; canh_bao?: string; het_han?: string | null };
 
-const HET_GIO = 20_000;
+const TIMEOUT_MS = 20_000;
 const GRAPH = "https://graph.facebook.com/v21.0";
 
 async function graph(duong: string, tok: string, q: Record<string, string> = {}) {
     const r = await fetch(`${GRAPH}/${duong}?${new URLSearchParams({ ...q, access_token: tok })}`,
-        { cache: "no-store", signal: AbortSignal.timeout(HET_GIO) });
+        { cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j.error) throw new Error(`Meta từ chối: ${j.error?.message || `HTTP ${r.status}`}`);
     return j;
@@ -238,56 +238,56 @@ async function graph(duong: string, tok: string, q: Record<string, string> = {})
 /** Token sống, đọc được bao nhiêu TKQC. Sync kéo MỌI TKQC token thấy (04/11/2026, lib/talpha/tkqc.ts), nên
  *  token đọc được ít nhất một TK là lưu được; TKQC vào báo cáo đang chạy mà token mới không thấy thì cảnh báo
  *  — lưu token đó là mất chi tiêu của các TK ấy. */
-async function kiemMeta(tok: string, bien: string): Promise<KetQuaKiem> {
+async function verifyMeta(tok: string, envVar: string): Promise<VerifyResult> {
     const me = await graph("me", tok, { fields: "id,name" });
-    const tk = await graph("me/adaccounts", tok, { fields: "account_id", limit: "500" });
-    const docDuoc = new Set((tk.data || []).map((a: { account_id: string }) => String(a.account_id)));
+    const adAccounts = await graph("me/adaccounts", tok, { fields: "account_id", limit: "500" });
+    const readableIds = new Set((adAccounts.data || []).map((a: { account_id: string }) => String(a.account_id)));
     // Import muộn: tkqc.ts đọc khoá qua file này — import thẳng là vòng lặp module.
-    let dangBaoCao: { id: string; ten: string; bien_token: string | null }[] = [];
+    let reportingAccounts: { id: string; ten: string; bien_token: string | null }[] = [];
     try {
-        dangBaoCao = await (await import("@/lib/talpha/tkqc")).tkqcBaoCao(false);
+        reportingAccounts = await (await import("@/lib/talpha/tkqc")).reportingAdAccounts(false);
     } catch { /* chưa có kho số / danh bạ — chỉ báo số TK đọc được */ }
     // Chỉ so các TK mà CHÍNH biến này đang đọc — token phụ không thấy TK của token chính là đương nhiên.
-    const thieu = dangBaoCao.filter((t) => (t.bien_token || BIEN_TOKEN_META[0]) === bien && !docDuoc.has(t.id));
-    let het: string | null = null;
+    const missing = reportingAccounts.filter((t) => (t.bien_token || META_TOKEN_VARS[0]) === envVar && !readableIds.has(t.id));
+    let expiry: string | null = null;
     try {
         const exp = (await graph("debug_token", tok, { input_token: tok }))?.data?.expires_at;
-        if (exp) het = new Date(exp * 1000).toISOString();
+        if (exp) expiry = new Date(exp * 1000).toISOString();
     } catch { /* không đọc được hạn thì thôi, token vẫn sống */ }
     return {
-        ok: docDuoc.size > 0,
-        chi_tiet: `${me.name || "Token"} đọc được ${docDuoc.size} TKQC — sync kéo tất cả`,
-        canh_bao: thieu.length ? `TKQC đang vào báo cáo mà token này KHÔNG thấy: ${thieu.map((t) => t.ten || t.id).join(", ")}` : undefined,
-        het_han: het,
+        ok: readableIds.size > 0,
+        chi_tiet: `${me.name || "Token"} đọc được ${readableIds.size} TKQC — sync kéo tất cả`,
+        canh_bao: missing.length ? `TKQC đang vào báo cáo mà token này KHÔNG thấy: ${missing.map((t) => t.ten || t.id).join(", ")}` : undefined,
+        het_han: expiry,
     };
 }
 
-async function kiemPos(d: KhoaDef, key: string): Promise<KetQuaKiem> {
+async function verifyPos(d: CredentialDef, key: string): Promise<VerifyResult> {
     const s = d.shop!;
     const r = await fetch(`${s.api_url}/shops/${s.shop_id}/orders?${new URLSearchParams({ api_key: key, page_size: "1" })}`,
-        { cache: "no-store", signal: AbortSignal.timeout(HET_GIO) });
+        { cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
     const j = await r.json().catch(() => null);
     if (!r.ok || !j || j.success === false) throw new Error(`POS từ chối: ${j?.message || `HTTP ${r.status}`}`);
     return { ok: true, chi_tiet: `Shop ${s.shop_id} gọi được, ${Number(j.total_entries ?? 0).toLocaleString("vi-VN")} đơn` };
 }
 
-async function kiemPancake(tok: string): Promise<KetQuaKiem> {
-    const het = hanToken(tok);
-    const hetHan = het ? new Date(het).toISOString() : null;
-    if (het && het < Date.now()) return { ok: false, chi_tiet: "Token đã hết hạn", het_han: hetHan };
+async function verifyPancake(tok: string): Promise<VerifyResult> {
+    const expiry = hanToken(tok);
+    const expiryIso = expiry ? new Date(expiry).toISOString() : null;
+    if (expiry && expiry < Date.now()) return { ok: false, chi_tiet: "Token đã hết hạn", het_han: expiryIso };
     const r = await fetch(`${PANCAKE_API}/pages?access_token=${encodeURIComponent(tok)}`,
-        { cache: "no-store", signal: AbortSignal.timeout(HET_GIO) });
+        { cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
     const j = await r.json().catch(() => null);
     if (!r.ok || !j || j.success === false) throw new Error(`Pancake từ chối: ${j?.message || `HTTP ${r.status}`}`);
     const c = j.categorized || {};
     const n = (c.activated?.length || 0) + (c.inactivated?.length || 0);
-    return { ok: true, chi_tiet: `Đọc được ${n} page`, het_han: hetHan };
+    return { ok: true, chi_tiet: `Đọc được ${n} page`, het_han: expiryIso };
 }
 
 /** Liệt kê model — miễn phí, không tốn lượt hỏi. Khoá đi ở header, không nằm trên địa chỉ (log). */
-async function kiemGemini(key: string): Promise<KetQuaKiem> {
+async function verifyGemini(key: string): Promise<VerifyResult> {
     const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=100",
-        { headers: { "x-goog-api-key": key }, cache: "no-store", signal: AbortSignal.timeout(HET_GIO) });
+        { headers: { "x-goog-api-key": key }, cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
     const j = await r.json().catch(() => null);
     if (!r.ok) throw new Error(`Google từ chối: ${j?.error?.message || `HTTP ${r.status}`}`);
     const n = ((j?.models || []) as { supportedGenerationMethods?: string[] }[])
@@ -296,20 +296,20 @@ async function kiemGemini(key: string): Promise<KetQuaKiem> {
 }
 
 /** Hỏi quota — miễn phí, không trừ lượt đăng ký nào. */
-async function kiemTrack17(key: string): Promise<KetQuaKiem> {
+async function verifyTrack17(key: string): Promise<VerifyResult> {
     const q = await getQuota({ id: keyId(key), label: "khoá này", key });
     return { ok: true, chi_tiet: `Còn ${q.remain.toLocaleString("vi-VN")}/${q.total.toLocaleString("vi-VN")} lượt đăng ký mã` };
 }
 
 /** Gọi thử một khoá với dịch vụ thật. Không ghi gì, không tốn quota. */
-export async function kiemKhoa(d: KhoaDef, giaTri: string): Promise<KetQuaKiem> {
-    if (!giaTri) return { ok: false, chi_tiet: "Chưa có khoá" };
+export async function verifyCredential(d: CredentialDef, value: string): Promise<VerifyResult> {
+    if (!value) return { ok: false, chi_tiet: "Chưa có khoá" };
     try {
-        if (d.loai === "meta") return await kiemMeta(giaTri, d.ten);
-        if (d.loai === "pos") return await kiemPos(d, giaTri);
-        if (d.loai === "pancake") return await kiemPancake(giaTri);
-        if (d.loai === "gemini") return await kiemGemini(giaTri);
-        return await kiemTrack17(giaTri);
+        if (d.loai === "meta") return await verifyMeta(value, d.ten);
+        if (d.loai === "pos") return await verifyPos(d, value);
+        if (d.loai === "pancake") return await verifyPancake(value);
+        if (d.loai === "gemini") return await verifyGemini(value);
+        return await verifyTrack17(value);
     } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         return { ok: false, chi_tiet: /timeout|aborted/i.test(msg) ? "Dịch vụ không trả lời sau 20 giây" : msg };

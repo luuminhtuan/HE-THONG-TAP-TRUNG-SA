@@ -15,10 +15,10 @@ export default function WaLink({ href, size = "md", className }: {
     href?: string | null; size?: "md" | "lg"; className?: string;
 }) {
     if (!href) return null;
-    const so = href.replace(/^https:\/\/wa\.me\//, "+").replace(/\?.*$/, "");
+    const phone = href.replace(/^https:\/\/wa\.me\//, "+").replace(/\?.*$/, "");
     return (
         <a href={href} target="_blank" rel="noopener noreferrer"
-            title={`Mở WhatsApp ${so} — tin xác nhận đơn đã soạn sẵn, sửa được trước khi gửi`}
+            title={`Mở WhatsApp ${phone} — tin xác nhận đơn đã soạn sẵn, sửa được trước khi gửi`}
             className={cn("inline-flex flex-none items-center justify-center gap-1.5 rounded-lg bg-emerald-600 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 dark:bg-emerald-500 dark:text-emerald-950 dark:hover:bg-emerald-400",
                 size === "lg" ? "px-4 py-2 text-sm" : "px-3 py-1 text-[12.5px]", className)}>
             <MessageCircle className={size === "lg" ? "h-4 w-4" : "h-3.5 w-3.5"} />WhatsApp

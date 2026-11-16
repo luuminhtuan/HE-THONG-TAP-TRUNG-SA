@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccess } from "@/lib/talpha/access";
-import { danhSachKhoa, docKhoa, kiemKhoa, luuKhoa, trangThaiKhoa } from "@/lib/talpha/khoa";
-import { loiGiaTri } from "@/lib/talpha/khoa-file";
+import { listCredentials, getCredential, verifyCredential, saveCredential, getCredentialsStatus } from "@/lib/talpha/khoa";
+import { credentialValueError } from "@/lib/talpha/khoa-file";
 
 export const dynamic = "force-dynamic";
 
@@ -15,11 +15,11 @@ export const dynamic = "force-dynamic";
 // Xem lib/talpha/khoa.ts: lưu ở bảng api_credentials (mã hoá), vì sao không ghi vào .env.local.
 
 export async function GET(req: NextRequest) {
-    const ds = trangThaiKhoa();
-    if (req.nextUrl.searchParams.get("kiem") !== "1") return NextResponse.json({ khoa: ds });
-    const defs = danhSachKhoa();
-    const kq = await Promise.all(defs.map((d) => kiemKhoa(d, docKhoa(d.ten))));
-    return NextResponse.json({ khoa: ds.map((k, i) => ({ ...k, kiem: kq[i] })) });
+    const credentials = getCredentialsStatus();
+    if (req.nextUrl.searchParams.get("kiem") !== "1") return NextResponse.json({ khoa: credentials });
+    const defs = listCredentials();
+    const checkResults = await Promise.all(defs.map((d) => verifyCredential(d, getCredential(d.ten))));
+    return NextResponse.json({ khoa: credentials.map((k, i) => ({ ...k, kiem: checkResults[i] })) });
 }
 
 export async function POST(req: NextRequest) {
@@ -29,33 +29,33 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Chỉ nhận JSON" }, { status: 415 });
     }
     const body = await req.json().catch(() => null);
-    const ten = String(body?.ten || "");
-    const giaTri = String(body?.gia_tri || "").trim();
-    const d = danhSachKhoa().find((x) => x.ten === ten);
-    if (!d) return NextResponse.json({ error: `Không có khoá tên ${ten}` }, { status: 400 });
-    const loi = loiGiaTri(giaTri);
-    if (loi) return NextResponse.json({ error: loi }, { status: 400 });
+    const keyName = String(body?.ten || "");
+    const value = String(body?.gia_tri || "").trim();
+    const d = listCredentials().find((x) => x.ten === keyName);
+    if (!d) return NextResponse.json({ error: `Không có khoá tên ${keyName}` }, { status: 400 });
+    const validationError = credentialValueError(value);
+    if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
 
-    const kiem = await kiemKhoa(d, giaTri);
-    if (!kiem.ok) {
-        return NextResponse.json({ error: `Chưa lưu — ${kiem.chi_tiet}`, kiem }, { status: 422 });
+    const checkResult = await verifyCredential(d, value);
+    if (!checkResult.ok) {
+        return NextResponse.json({ error: `Chưa lưu — ${checkResult.chi_tiet}`, kiem: checkResult }, { status: 422 });
     }
     const a = await getAccess(req);
-    const luc = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", dateStyle: "short", timeStyle: "short" });
-    const ai = a?.email || a?.name || "?";
+    const savedAt = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", dateStyle: "short", timeStyle: "short" });
+    const actor = a?.email || a?.name || "?";
     try {
-        await luuKhoa(ten, giaTri, `${ai} lưu lúc ${luc}`, ai);
+        await saveCredential(keyName, value, `${actor} lưu lúc ${savedAt}`, actor);
     } catch (e) {
         return NextResponse.json({ error: `Chưa lưu — ${e instanceof Error ? e.message : e}` }, { status: 500 });
     }
-    return NextResponse.json({ ok: true, kiem, khoa: trangThaiKhoa() });
+    return NextResponse.json({ ok: true, kiem: checkResult, khoa: getCredentialsStatus() });
 }
 
 export async function DELETE(req: NextRequest) {
-    const ten = req.nextUrl.searchParams.get("ten") || "";
-    if (!danhSachKhoa().some((x) => x.ten === ten)) {
-        return NextResponse.json({ error: `Không có khoá tên ${ten}` }, { status: 400 });
+    const keyName = req.nextUrl.searchParams.get("ten") || "";
+    if (!listCredentials().some((x) => x.ten === keyName)) {
+        return NextResponse.json({ error: `Không có khoá tên ${keyName}` }, { status: 400 });
     }
-    await luuKhoa(ten, null, "");
-    return NextResponse.json({ ok: true, khoa: trangThaiKhoa() });
+    await saveCredential(keyName, null, "");
+    return NextResponse.json({ ok: true, khoa: getCredentialsStatus() });
 }

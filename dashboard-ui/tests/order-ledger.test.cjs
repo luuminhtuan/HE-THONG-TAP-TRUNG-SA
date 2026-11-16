@@ -73,11 +73,11 @@ t("dòng sao kê không ghép được đơn nào → trả về ở `extra`", (
 
 console.log("── Đơn giao lại và mã vận đơn Sheet ghi sai ──");
 t("đọc mã gốc của đơn giao lại ở cả hai phía", () => {
-    assert.strictEqual(L.maGocGiaoLai("T1467 (7564042426-z)"), "7564042426");
-    assert.strictEqual(L.maGocGiaoLai("T1471 ( 06722436439 - Z )"), "6722436439");
-    assert.strictEqual(L.maGocGiaoLai("T1465"), "");
-    assert.strictEqual(L.maGocNaza("7564042426-Z"), "7564042426");
-    assert.strictEqual(L.maGocNaza("T1465"), "");
+    assert.strictEqual(L.redeliveryOrigin("T1467 (7564042426-z)"), "7564042426");
+    assert.strictEqual(L.redeliveryOrigin("T1471 ( 06722436439 - Z )"), "6722436439");
+    assert.strictEqual(L.redeliveryOrigin("T1465"), "");
+    assert.strictEqual(L.nazaRedeliveryOrigin("7564042426-Z"), "7564042426");
+    assert.strictEqual(L.nazaRedeliveryOrigin("T1465"), "");
 });
 
 // Kỳ 9.11 thật: T1467 là hàng hoàn của T1020 gửi cho khách khác. NAZA cấp mã
@@ -317,13 +317,13 @@ t("tiền còn lại tách riêng: đã trừ giá vốn vs chưa", () => {
 const KY = ["2026-08-28", "2026-09-04", "2026-09-11"];
 
 t("đúng nhịp thì im", () => {
-    assert.strictEqual(L.saoKeTreHan(KY, "2026-09-16").tre, false);   // kỳ tới dự kiến 18/09
-    assert.strictEqual(L.saoKeTreHan(KY, "2026-09-18").tre, false);   // đúng ngày dự kiến
-    assert.strictEqual(L.saoKeTreHan(KY, "2026-09-19").tre, false);   // trễ 1 ngày: còn ân hạn
+    assert.strictEqual(L.statementOverdue(KY, "2026-09-16").tre, false);   // kỳ tới dự kiến 18/09
+    assert.strictEqual(L.statementOverdue(KY, "2026-09-18").tre, false);   // đúng ngày dự kiến
+    assert.strictEqual(L.statementOverdue(KY, "2026-09-19").tre, false);   // trễ 1 ngày: còn ân hạn
 });
 
 t("trễ quá ân hạn thì kêu, kèm số ngày trễ", () => {
-    const r = L.saoKeTreHan(KY, "2026-09-22");
+    const r = L.statementOverdue(KY, "2026-09-22");
     assert.strictEqual(r.tre, true);
     assert.strictEqual(r.ky_gan_nhat, "2026-09-11");
     assert.strictEqual(r.du_kien, "2026-09-18");
@@ -331,18 +331,18 @@ t("trễ quá ân hạn thì kêu, kèm số ngày trễ", () => {
 });
 
 t("bỏ qua kỳ thiếu ngày, vẫn lấy kỳ mới nhất", () => {
-    const r = L.saoKeTreHan([null, "2026-09-11", undefined, "rác", "2026-08-28"], "2026-09-25");
+    const r = L.statementOverdue([null, "2026-09-11", undefined, "rác", "2026-08-28"], "2026-09-25");
     assert.strictEqual(r.ky_gan_nhat, "2026-09-11");
     assert.strictEqual(r.tre, true);
 });
 
 t("chưa có kỳ nào thì KHÔNG kêu — không biết nhịp bắt đầu từ đâu", () => {
-    assert.deepStrictEqual(L.saoKeTreHan([], "2026-09-25"),
+    assert.deepStrictEqual(L.statementOverdue([], "2026-09-25"),
         { tre: false, tre_ngay: 0, ky_gan_nhat: null, du_kien: null });
 });
 
 t("đổi nhịp gửi thì đổi luôn ngày dự kiến", () => {
-    const r = L.saoKeTreHan(["2026-09-11"], "2026-09-30", { chuKy: 14 });
+    const r = L.statementOverdue(["2026-09-11"], "2026-09-30", { chuKy: 14 });
     assert.strictEqual(r.du_kien, "2026-09-25");
     assert.strictEqual(r.tre_ngay, 5);
 });
@@ -359,27 +359,27 @@ const donNgay = [
 const ids = (ds) => ds.map((r) => r.id);
 
 t("khoảng 01/10–27/10 bỏ đơn tháng 9, giữ cả hai đầu mút", () => {
-    assert.deepStrictEqual(ids(L.locTheoNgayLenDon(donNgay, "2026-10-01", "2026-10-27", "2026-10-27")),
+    assert.deepStrictEqual(ids(L.filterByOrderDate(donNgay, "2026-10-01", "2026-10-27", "2026-10-27")),
         ["dau10", "cuoi10", "chuaNgay"]);
 });
 
 t("thiếu ngày lên đơn thì xét ngày gửi hàng", () => {
-    assert.deepStrictEqual(ids(L.locTheoNgayLenDon(donNgay, "2026-09-01", "2026-09-30", "2026-10-27")),
+    assert.deepStrictEqual(ids(L.filterByOrderDate(donNgay, "2026-09-01", "2026-09-30", "2026-10-27")),
         ["thang9", "chiGui"]);
 });
 
 t("dòng chưa ghi ngày nào coi như lên đơn hôm nay — chỉ hiện khi khoảng có hôm nay", () => {
-    assert.ok(ids(L.locTheoNgayLenDon(donNgay, "2026-10-20", "2026-10-27", "2026-10-27")).includes("chuaNgay"));
-    assert.ok(!ids(L.locTheoNgayLenDon(donNgay, "2026-10-01", "2026-10-15", "2026-10-27")).includes("chuaNgay"));
+    assert.ok(ids(L.filterByOrderDate(donNgay, "2026-10-20", "2026-10-27", "2026-10-27")).includes("chuaNgay"));
+    assert.ok(!ids(L.filterByOrderDate(donNgay, "2026-10-01", "2026-10-15", "2026-10-27")).includes("chuaNgay"));
 });
 
 t("không chọn khoảng (hoặc sai dạng) thì giữ nguyên mọi đơn — đường của Tiền COD về", () => {
-    assert.strictEqual(L.locTheoNgayLenDon(donNgay, null, null, "2026-10-27").length, donNgay.length);
-    assert.strictEqual(L.locTheoNgayLenDon(donNgay, "", "abc", "2026-10-27").length, donNgay.length);
+    assert.strictEqual(L.filterByOrderDate(donNgay, null, null, "2026-10-27").length, donNgay.length);
+    assert.strictEqual(L.filterByOrderDate(donNgay, "", "abc", "2026-10-27").length, donNgay.length);
 });
 
 t("ngày có giờ (ISO) vẫn so theo ngày", () => {
-    const r = L.locTheoNgayLenDon([{ order_date: "2026-10-27T15:00:00Z" }], "2026-10-27", "2026-10-27", "2026-10-27");
+    const r = L.filterByOrderDate([{ order_date: "2026-10-27T15:00:00Z" }], "2026-10-27", "2026-10-27", "2026-10-27");
     assert.strictEqual(r.length, 1);
 });
 
@@ -397,7 +397,7 @@ t("danh sách đơn: mới nhất lên đầu, cùng ngày mã lớn trước, k
         { order_no: "T2001", order_date: "2026-11-14" },
     ];
     const truoc = JSON.stringify(ds);
-    assert.deepStrictEqual(L.xepMoiTruoc(ds).map((x) => x.order_no), ["T2001", "T1724", "T1467", "T1465", "T9"]);
+    assert.deepStrictEqual(L.sortNewestFirst(ds).map((x) => x.order_no), ["T2001", "T1724", "T1467", "T1465", "T9"]);
     assert.strictEqual(JSON.stringify(ds), truoc, "không được sửa mảng gốc");
 });
 

@@ -15,12 +15,12 @@ export async function GET(req: Request) {
     const forceFallback = new URL(req.url).searchParams.get("force") === "fallback";
     // Phân quyền theo team: người xem một phần nước chỉ thấy kho của shop nước mình.
     const a = await getAccess(req);
-    const chiNuoc = a && seesAllMarkets(a) ? undefined : (a?.markets || []);
+    const onlyMarkets = a && seesAllMarkets(a) ? undefined : (a?.markets || []);
 
     // 1) Nguồn chính: build live từ POS Poscake
     if (!forceFallback) {
         try {
-            const payload = await buildInventoryPayload(chiNuoc);
+            const payload = await buildInventoryPayload(onlyMarkets);
             return NextResponse.json({ ...payload, _source: "pos-live" });
         } catch (err: any) {
             console.error("inventory: POS live lỗi → thử snapshot dự phòng:", err?.message || err);
@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     }
 
     // Bản dự phòng là ảnh chụp CẢ BA kho gộp sẵn tổng — không cắt theo team được.
-    if (chiNuoc) {
+    if (onlyMarkets) {
         return NextResponse.json({ error: "POS chưa phản hồi — thử lại sau ít phút" }, { status: 503 });
     }
 

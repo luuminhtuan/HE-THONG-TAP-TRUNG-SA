@@ -137,7 +137,7 @@ export default function TALPHAAdsCommandCenterPage() {
     // Xuất Sheet chạy format_all.py cho cả công ty — chỉ giám đốc (route cũng chặn). Mở trang
     // đứng riêng (ngoài shell) thì không có thông tin người xem: để nút, route tự từ chối.
     const me = useAccess();
-    const choXuatSheet = !me || me.full;
+    const canExportSheet = !me || me.full;
     const dropdownRef = useRef<HTMLDivElement>(null);
     const dateRef = useRef<HTMLDivElement>(null);
     const exportPollRef = useRef<any>(null);
@@ -362,7 +362,7 @@ export default function TALPHAAdsCommandCenterPage() {
                         {data && <div className="text-slate-500">{data.source} • {data.duration_ms}ms • {summary?.accounts_fetched}TK • {summary?.shops_fetched}shops</div>}
                     </div>
                     {/* Xuất báo cáo ra Google Sheet (format_all.py) */}
-                    {choXuatSheet && <div className="flex items-center gap-2">
+                    {canExportSheet && <div className="flex items-center gap-2">
                         <button onClick={startExport} disabled={exportState?.running} title="Sinh lại các file báo cáo Google Sheet (marketer + TỔNG) từ dữ liệu hiện tại"
                             className="flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-600/15 px-3 py-1.5 text-xs font-bold text-emerald-300 transition hover:bg-emerald-600/25 disabled:opacity-60">
                             <FileSpreadsheet className={`h-3 w-3 ${exportState?.running ? 'animate-pulse' : ''}`} />

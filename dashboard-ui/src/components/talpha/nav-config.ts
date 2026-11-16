@@ -85,12 +85,12 @@ export const NAV_GROUPS: NavGroup[] = [
 ];
 
 /** Đường dẫn → tab, tab → (nhãn, đường dẫn, mục). */
-export const TAB_THEO_SLUG: Record<string, string> = Object.fromEntries(NAV_GROUPS.flatMap(g => g.tabs.map(t => [t.slug, t.id])));
+export const TAB_BY_SLUG: Record<string, string> = Object.fromEntries(NAV_GROUPS.flatMap(g => g.tabs.map(t => [t.slug, t.id])));
 export const TAB_INFO: Record<string, NavTab & { nhom: string }> = Object.fromEntries(
     NAV_GROUPS.flatMap(g => g.tabs.map(t => [t.id, { ...t, nhom: g.id }])));
 
 /** Tên thẻ trình duyệt của một đường dẫn tab. */
-export function tieuDeTab(slug: string): string {
-    const id = TAB_THEO_SLUG[slug];
+export function tabTitle(slug: string): string {
+    const id = TAB_BY_SLUG[slug];
     return id ? `${TAB_INFO[id].label} · ANTALO` : "ANTALO Dashboard";
 }

@@ -140,7 +140,7 @@ export default function DateRangePicker({ value, onChange, minDate }: DateRangeP
             ? `${format(value.from, "dd/MM/yyyy")} — ${format(value.to, "dd/MM/yyyy")}`
             : `${format(value.from, "dd MMM")} — ${format(value.to, "dd MMM, yyyy")}`;
     // Điện thoại: nhãn ngắn, không thì nút chọn ngày chiếm cả hàng tiêu đề.
-    const nhanNgan = `${format(value.from, "dd/MM")} — ${format(value.to, "dd/MM")}`;
+    const shortLabel = `${format(value.from, "dd/MM")} — ${format(value.to, "dd/MM")}`;
 
     return (
         <div ref={ref} className="relative">
@@ -154,7 +154,7 @@ export default function DateRangePicker({ value, onChange, minDate }: DateRangeP
                            transition-all cursor-pointer select-none"
             >
                 <CalendarIcon className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                <span suppressHydrationWarning className="sm:hidden">{nhanNgan}</span>
+                <span suppressHydrationWarning className="sm:hidden">{shortLabel}</span>
                 <span suppressHydrationWarning className="hidden sm:inline">{displayLabel}</span>
                 <ChevronDown
                     className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`}

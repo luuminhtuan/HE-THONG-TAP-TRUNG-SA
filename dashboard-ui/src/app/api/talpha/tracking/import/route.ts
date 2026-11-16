@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { khoaChoDong, khoaCuBiThay, parsePartnerFile, summarise, type MaTrung } from "@/lib/talpha/partner-file";
+import { assignRowKeys, supersededKeys, parsePartnerFile, summarise, type DuplicateTracking } from "@/lib/talpha/partner-file";
 import { RULES } from "@/lib/talpha/rules";
 import { fetchSheetCsv, sheetIdFrom, serviceAccountEmail, SheetError } from "@/lib/talpha/sheet-source";
 import { readStoreFresh, updateStore } from "@/lib/talpha/store";
@@ -50,7 +50,7 @@ type Store = {
         filename: string; imported_at: string; rows: number;
         unknown_statuses: { value: string; count: number }[];
         /** Mã vận đơn bị nhiều dòng Sheet dùng chung — phải sửa trong Sheet. */
-        ma_trung?: MaTrung[];
+        ma_trung?: DuplicateTracking[];
         /** Số bản cũ đã gỡ vì đơn của nó nay nằm ở khoá khác. */
         bo_ban_cu?: number;
     };
@@ -129,9 +129,9 @@ export async function POST(req: NextRequest) {
 
         const now = new Date();
         const nowIso = now.toISOString();
-        let changed = 0, kept17 = 0, boBanCu = 0;
+        let changed = 0, kept17 = 0, staleRemoved = 0;
         // Mỗi dòng một khoá riêng — hai dòng cùng mã vận đơn không còn đè nhau.
-        const { khoa, trung } = khoaChoDong(parsed.rows);
+        const { khoa: rowKeys, trung: duplicates } = assignRowKeys(parsed.rows);
 
         await updateStore<Store>(STORE, emptyStore(), (cur) => {
             cur.partner ||= {};
@@ -139,14 +139,14 @@ export async function POST(req: NextRequest) {
             // Đơn đã đổi khoá thì gỡ bản cũ, kẻo một đơn thành hai. Trạng thái của
             // bản cũ chỉ gỡ khi nó đến từ chính Sheet — số 17TRACK là của mã vận đơn
             // thật, vẫn đúng.
-            for (const k of khoaCuBiThay(cur.partner, parsed.rows, khoa)) {
+            for (const k of supersededKeys(cur.partner, parsed.rows, rowKeys)) {
                 delete cur.partner[k];
                 if (cur.statuses[k]?.source === "doi_tac") delete cur.statuses[k];
-                boBanCu++;
+                staleRemoved++;
             }
 
             for (const [i, r] of parsed.rows.entries()) {
-                const key = khoa[i];
+                const key = rowKeys[i];
                 if (!key) continue;
 
                 cur.partner[key] = {
@@ -194,7 +194,7 @@ export async function POST(req: NextRequest) {
             cur.partner_import = {
                 filename: file.name, imported_at: nowIso, rows: parsed.rows.length,
                 unknown_statuses: parsed.unknown_statuses,
-                ma_trung: trung, bo_ban_cu: boBanCu,
+                ma_trung: duplicates, bo_ban_cu: staleRemoved,
             };
             return cur;
         });
@@ -217,8 +217,8 @@ export async function POST(req: NextRequest) {
             // Giá trị NOTE chưa khai — nêu thẳng thay vì nuốt, vì nuốt là mất đơn
             // khỏi mọi cảnh báo mà không ai biết.
             unknown_statuses: parsed.unknown_statuses,
-            ma_trung: trung,
-            bo_ban_cu: boBanCu,
+            ma_trung: duplicates,
+            bo_ban_cu: staleRemoved,
             summary: {
                 total: s.total,
                 waiting_pickup: s.waiting_pickup,

@@ -14,95 +14,95 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { MARKETS_PUBLIC, EXCHANGE_RATES, posMoneyDivisor, campaignMarket, DISPLAY, normCampMarketer, CAMP_MARKETS } from "@/lib/talpha/rules";
-import { chuanTenPage, trangCuaCamp, demTrongNgay, laTrangCuaNuoc } from "@/lib/talpha/pancake";
-import { cacPage, hoiThoaiTu, sleep, GIAN_MS, tokenPancake } from "@/lib/talpha/pancake-api";
+import { normalizePageName, pageOfCampaign, countForDay, isMarketPage } from "@/lib/talpha/pancake";
+import { cacPage, conversationsSince, sleep, GIAN_MS, tokenPancake } from "@/lib/talpha/pancake-api";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const homNayVN = () => new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
+const todayVN = () => new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
 
-type KetQua = Record<string, unknown>;
-const NHO = new Map<string, { at: number; kq: KetQua }>();
+type Result = Record<string, unknown>;
+const CACHE = new Map<string, { at: number; kq: Result }>();
 
 export async function GET(req: NextRequest) {
     const sp = req.nextUrl.searchParams;
     const code = String(sp.get("market") || "").toUpperCase();
-    const nuoc = MARKETS_PUBLIC.markets.find((m) => m.code === code);
-    if (!nuoc) return NextResponse.json({ error: `market lạ: ${code || "(trống)"}` }, { status: 400 });
-    const ngay = sp.get("date") || homNayVN();
-    if (!DATE_RE.test(ngay)) return NextResponse.json({ error: "date phải dạng YYYY-MM-DD" }, { status: 400 });
-    const trangThem = String(sp.get("trang") || "").split("|").map((x) => x.trim()).filter(Boolean);
+    const market = MARKETS_PUBLIC.markets.find((m) => m.code === code);
+    if (!market) return NextResponse.json({ error: `market lạ: ${code || "(trống)"}` }, { status: 400 });
+    const date = sp.get("date") || todayVN();
+    if (!DATE_RE.test(date)) return NextResponse.json({ error: "date phải dạng YYYY-MM-DD" }, { status: 400 });
+    const extraPages = String(sp.get("trang") || "").split("|").map((x) => x.trim()).filter(Boolean);
 
     // Bot gửi mỗi giờ + bản tin thường cùng giờ: giữ 3 phút để hai lượt không gọi Pancake hai lần.
-    const khoa = `${code}|${ngay}|${trangThem.map(chuanTenPage).sort().join("|")}`;
-    const hit = NHO.get(khoa);
+    const cacheKey = `${code}|${date}|${extraPages.map(normalizePageName).sort().join("|")}`;
+    const hit = CACHE.get(cacheKey);
     if (hit && Date.now() - hit.at < 180_000) return NextResponse.json(hit.kq);
 
-    const loi: string[] = [];
-    const thang = ngay.slice(0, 7);
+    const errors: string[] = [];
+    const month = date.slice(0, 7);
 
     // ── Camp của nước này trong tháng → page (tên) → chủ page + camp ──
-    const chuTrang = new Map<string, { ten: string; nv: string | null; camps: Set<string>; ngayCuoi: string }>();
-    const ghiCamp = (cn: string, d: string) => {
-        const t = trangCuaCamp(cn);
+    const pageOwners = new Map<string, { ten: string; nv: string | null; camps: Set<string>; ngayCuoi: string }>();
+    const recordCamp = (cn: string, d: string) => {
+        const t = pageOfCampaign(cn);
         if (!t) return;
-        const k = chuanTenPage(t);
+        const k = normalizePageName(t);
         const p = cn.split("/").map((x) => x.trim());
         const mi = p.findIndex((s) => s.toUpperCase() in CAMP_MARKETS);
         const key = mi >= 0 && mi + 1 < p.length ? normCampMarketer(p[mi + 1]) : null;
-        const cu = chuTrang.get(k);
-        if (!cu) chuTrang.set(k, { ten: t, nv: key ? DISPLAY[key] || key : null, camps: new Set([cn]), ngayCuoi: d });
+        const existing = pageOwners.get(k);
+        if (!existing) pageOwners.set(k, { ten: t, nv: key ? DISPLAY[key] || key : null, camps: new Set([cn]), ngayCuoi: d });
         else {
-            cu.camps.add(cn);
-            if (d >= cu.ngayCuoi && key) { cu.nv = DISPLAY[key] || key; cu.ngayCuoi = d; }
+            existing.camps.add(cn);
+            if (d >= existing.ngayCuoi && key) { existing.nv = DISPLAY[key] || key; existing.ngayCuoi = d; }
         }
     };
     try {
         const rows = await query(
             `SELECT campaign_name, to_char(MAX(date), 'YYYY-MM-DD') AS d FROM fb_ads_data
              WHERE date >= @dau::date AND date <= @ngay::date GROUP BY 1`,
-            { dau: `${thang}-01`, ngay },
+            { dau: `${month}-01`, ngay: date },
         );
         for (const r of rows as { campaign_name: string; d: string }[]) {
-            if (campaignMarket(r.campaign_name).market === nuoc.key) ghiCamp(r.campaign_name, r.d);
+            if (campaignMarket(r.campaign_name).market === market.key) recordCamp(r.campaign_name, r.d);
         }
-    } catch (e: any) { loi.push(`đọc camp tháng ${thang} lỗi: ${e?.message || e}`); }
-    for (const t of trangThem) if (!chuTrang.has(chuanTenPage(t))) chuTrang.set(chuanTenPage(t), { ten: t, nv: null, camps: new Set(), ngayCuoi: "" });
+    } catch (e: any) { errors.push(`đọc camp tháng ${month} lỗi: ${e?.message || e}`); }
+    for (const t of extraPages) if (!pageOwners.has(normalizePageName(t))) pageOwners.set(normalizePageName(t), { ten: t, nv: null, camps: new Set(), ngayCuoi: "" });
 
     // ── Pancake: tin nhắn mới theo page ──
-    const { tok, het_han, loi: loiTok } = tokenPancake();
-    const pancake = { ok: false, het_han, loi: loiTok };
-    const pages: KetQua[] = [];
-    if (!loiTok) {
+    const { tok, het_han: expired, loi: tokenError } = tokenPancake();
+    const pancake = { ok: false, het_han: expired, loi: tokenError };
+    const pages: Result[] = [];
+    if (!tokenError) {
         try {
-            const tatCa = await cacPage(tok);
+            const allPages = await cacPage(tok);
             // Khớp theo tên camp là chính; luật đuôi tên CHỈ nhận đúng mã nước (… JP) — "Prime Leather
             // Japan", "GoutEase … Spray Japan" là page SẢN PHẨM bán ở Đài, đuôi "Japan" là tên hàng.
-            const cua = tatCa.filter((p) => chuTrang.has(chuanTenPage(p.name)) || laTrangCuaNuoc(p.name, [nuoc.code]));
-            for (const p of cua) {
-                const ct = chuTrang.get(chuanTenPage(p.name));
+            const marketPages = allPages.filter((p) => pageOwners.has(normalizePageName(p.name)) || isMarketPage(p.name, [market.code]));
+            for (const p of marketPages) {
+                const owner = pageOwners.get(normalizePageName(p.name));
                 try {
-                    const dem = demTrongNgay((await hoiThoaiTu(tok, p.id, ngay)).hts, ngay);
-                    pages.push({ page_id: p.id, name: p.name, nv: ct?.nv || null, camps: ct ? [...ct.camps] : [], ...dem });
+                    const counts = countForDay((await conversationsSince(tok, p.id, date)).hts, date);
+                    pages.push({ page_id: p.id, name: p.name, nv: owner?.nv || null, camps: owner ? [...owner.camps] : [], ...counts });
                 } catch (e: any) {
                     // Page chưa chạy camp nào mà Pancake báo lỗi (chưa có gói cước…) thì bỏ, khỏi làm rối tin.
-                    if (ct) pages.push({ page_id: p.id, name: p.name, nv: ct.nv || null, camps: [...ct.camps], loi: String(e?.message || e) });
+                    if (owner) pages.push({ page_id: p.id, name: p.name, nv: owner.nv || null, camps: [...owner.camps], loi: String(e?.message || e) });
                 }
                 await sleep(GIAN_MS);
             }
             // Page có camp mà tài khoản Pancake không thấy — nói ra, đừng lặng lẽ thành 0 mess.
-            const thay = new Set(tatCa.map((p) => chuanTenPage(p.name)));
+            const seenPages = new Set(allPages.map((p) => normalizePageName(p.name)));
             // Chỉ báo khi camp CÓ TIÊU trong ngày: page đổi tên (10/10/2026 "Lucky Silver JP" thành
             // "Veloura Collection Gold") thì camp cũ đã tắt vẫn mang tên cũ — báo là nhiễu.
-            for (const [k, v] of chuTrang) if (!thay.has(k) && v.ngayCuoi === ngay) pages.push({ page_id: null, name: v.ten, nv: v.nv, camps: [...v.camps], loi: "tài khoản Pancake không thấy page này (page đổi tên?)" });
+            for (const [k, v] of pageOwners) if (!seenPages.has(k) && v.ngayCuoi === date) pages.push({ page_id: null, name: v.ten, nv: v.nv, camps: [...v.camps], loi: "tài khoản Pancake không thấy page này (page đổi tên?)" });
             pancake.ok = true;
         } catch (e: any) { pancake.loi = String(e?.message || e); }
     }
 
     // ── Đơn + doanh số theo page (bảng đơn, cùng luật Sheet) ──
-    const don: KetQua[] = [];
+    const orders: Result[] = [];
     try {
         // total_quantity là chuỗi: không phải số thì coi như 0 (như SAFE_CAST cũ), đừng để ::float8 làm chết câu.
         const rows = await query(
@@ -116,19 +116,19 @@ export async function GET(req: NextRequest) {
                                       THEN total_quantity::float8 END, 0) = 0
                         AND COALESCE(total_price, 0) = 0 AND COALESCE(cod, 0) = 0)
              GROUP BY 1, 2, 3`,
-            { code, ngay },
+            { code, ngay: date },
         );
-        const chia = posMoneyDivisor(code), ty = EXCHANGE_RATES[nuoc.key] || 0;
+        const divisor = posMoneyDivisor(code), rate = EXCHANGE_RATES[market.key] || 0;
         for (const r of rows as { page_name: string; page_id: string | null; tag: string | null; n: number; cod: number }[]) {
-            const local = Number(r.cod || 0) / chia;
-            don.push({ page_name: r.page_name, page_id: r.page_id, tag: r.tag, don: Number(r.n), ds_local: Math.round(local), ds_vnd: Math.round(local * ty) });
+            const local = Number(r.cod || 0) / divisor;
+            orders.push({ page_name: r.page_name, page_id: r.page_id, tag: r.tag, don: Number(r.n), ds_local: Math.round(local), ds_vnd: Math.round(local * rate) });
         }
-    } catch (e: any) { loi.push(`đọc đơn lỗi: ${e?.message || e}`); }
+    } catch (e: any) { errors.push(`đọc đơn lỗi: ${e?.message || e}`); }
 
-    const kq: KetQua = {
-        market: code, key: nuoc.key, date: ngay, currency: nuoc.currency, symbol: nuoc.symbol, rate_vnd: nuoc.rate_vnd,
-        pancake, pages, don, loi, luc: new Date().toISOString(),
+    const result: Result = {
+        market: code, key: market.key, date: date, currency: market.currency, symbol: market.symbol, rate_vnd: market.rate_vnd,
+        pancake, pages, don: orders, loi: errors, luc: new Date().toISOString(),
     };
-    NHO.set(khoa, { at: Date.now(), kq });
-    return NextResponse.json(kq);
+    CACHE.set(cacheKey, { at: Date.now(), kq: result });
+    return NextResponse.json(result);
 }

@@ -150,22 +150,22 @@ console.log("── Khoá kho: mỗi dòng Sheet là đúng một đơn ──")
 const dong = (no, tracking) => ({ order_no: no, tracking });
 
 t("BẪY THẬT: hai dòng chung mã vận đơn → giữ CẢ HAI đơn, dòng sau khoá theo mã đơn, và nêu ra", () => {
-    const { khoa, trung } = P.khoaChoDong([
+    const { khoa, trung } = P.assignRowKeys([
         dong("T1465", "18008693"), dong("T1466", "06722435584"), dong("T1467 (7564042426-z)", "18008693"),
     ]);
     assert.deepStrictEqual(khoa, ["18008693", "06722435584", "T1467 (7564042426-z)"]);
     assert.deepStrictEqual(trung, [{ tracking: "18008693", don: ["T1465", "T1467 (7564042426-z)"] }]);
 });
 t("dòng chép đôi y hệt (cùng mã, cùng đơn) vẫn là MỘT đơn, không báo trùng", () => {
-    const { khoa, trung } = P.khoaChoDong([dong("T1200", "17961048"), dong("T1200", "17961048")]);
+    const { khoa, trung } = P.assignRowKeys([dong("T1200", "17961048"), dong("T1200", "17961048")]);
     assert.deepStrictEqual(khoa, ["17961048", "17961048"]);
     assert.deepStrictEqual(trung, []);
 });
 t("chưa có mã vận đơn thì khoá theo mã đơn; trống cả hai thì bỏ", () => {
-    assert.deepStrictEqual(P.khoaChoDong([dong("T1720", ""), dong("", "")]).khoa, ["T1720", null]);
+    assert.deepStrictEqual(P.assignRowKeys([dong("T1720", ""), dong("", "")]).khoa, ["T1720", null]);
 });
 t("dòng trùng mã mà không có mã đơn vẫn được khoá riêng, không đè", () => {
-    const { khoa } = P.khoaChoDong([dong("T1", "111"), dong("", "111")]);
+    const { khoa } = P.assignRowKeys([dong("T1", "111"), dong("", "111")]);
     assert.strictEqual(new Set(khoa).size, 2);
 });
 t("BẪY THẬT: đơn đổi khoá → gỡ bản cũ; đơn không còn trong Sheet → GIỮ", () => {
@@ -181,8 +181,8 @@ t("BẪY THẬT: đơn đổi khoá → gỡ bản cũ; đơn không còn trong 
         dong("T1604", "18029770"), dong("T1485", "06722445669"), dong("T1585", "06722446382"),
         dong("T1465", "18008693"), dong("T1467 (7564042426-z)", "18008693"),
     ];
-    const { khoa } = P.khoaChoDong(rows);
-    assert.deepStrictEqual(P.khoaCuBiThay(kho, rows, khoa).sort(), ["06722444931", "6722446382", "T1604"]);
+    const { khoa } = P.assignRowKeys(rows);
+    assert.deepStrictEqual(P.supersededKeys(kho, rows, khoa).sort(), ["06722444931", "6722446382", "T1604"]);
 });
 
 console.log(`\n${pass} phép thử — tất cả đạt.`);

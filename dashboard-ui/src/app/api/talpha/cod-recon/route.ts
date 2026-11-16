@@ -9,9 +9,9 @@ import {
     MATCH_KEY, type PosOrder, type StatementRow,
 } from "@/lib/talpha/cod-recon";
 import {
-    canhBaoGopSing, dienMaVanDonKho, laFileSing, parseNazaStatement, type NazaStatement,
+    sgMergeWarning, fillTrackingInStatements, isSgFile, parseNazaStatement, type NazaStatement,
 } from "@/lib/talpha/naza-statement";
-import { ngaySaoKe } from "@/lib/talpha/purchase-sheet";
+import { statementDateFromName } from "@/lib/talpha/purchase-sheet";
 import { readStoreFresh, updateStore } from "@/lib/talpha/store";
 import { MAX_UPLOAD_BYTES, tooBigMessage } from "@/lib/talpha/upload-limit";
 
@@ -206,7 +206,7 @@ function warnings(st?: Statement): string[] {
             "Khoản này không nằm trong bảng giá vận chuyển — đối chiếu với đơn mua hàng.",
         );
     }
-    if (n.sg_gop) w.push(canhBaoGopSing(n.sg_gop, n.summary.payable_vnd));
+    if (n.sg_gop) w.push(sgMergeWarning(n.sg_gop, n.summary.payable_vnd));
     return w;
 }
 
@@ -288,7 +288,7 @@ export async function GET(req: NextRequest) {
         // Nên khớp với HỢP của mọi bản sao kê đã tải. Bản đang chọn chỉ quyết
         // định xem phần quyết toán và soát phí của kỳ nào.
         // Dòng COD mất mã vận đơn (kỳ 05/10–16/10/2026, cột tên 运单号) lấy lại từ sheet PHÍ.
-        const allRows = dienMaVanDonKho(store.statements).flatMap((s) => s.rows);
+        const allRows = fillTrackingInStatements(store.statements).flatMap((s) => s.rows);
         const result = reconcile(orders, allRows, { asOf: to });
         const notes = chosen
             ? warnings(chosen)
@@ -375,16 +375,16 @@ export async function GET(req: NextRequest) {
  * TAIWAN.) Từ kỳ sau NAZA gửi thêm file Sing CÙNG NGÀY — file đó bị chặn ở
  * POST (laFileSing), không thì nó đè mất kỳ Đài.
  */
-const tenFile = (name: string) => name.normalize("NFC").trim();
+const normalizeFileName = (name: string) => name.normalize("NFC").trim();
 function replaceSameFile(list: Statement[], filename: string): Statement[] {
-    const key = tenFile(filename).toLowerCase();
-    const ngay = ngaySaoKe(tenFile(filename));
-    return list.filter((s) => tenFile(s.filename).toLowerCase() !== key
-        && !(ngay && ngaySaoKe(tenFile(s.filename)) === ngay));
+    const key = normalizeFileName(filename).toLowerCase();
+    const statementDate = statementDateFromName(normalizeFileName(filename));
+    return list.filter((s) => normalizeFileName(s.filename).toLowerCase() !== key
+        && !(statementDate && statementDateFromName(normalizeFileName(s.filename)) === statementDate));
 }
 
 // Từ 08/10/2026 Singapore có kho sao kê riêng (/api/talpha/cod-recon/market?market=SG).
-const SING_CHUA_NHAN =
+const SG_STATEMENT_REJECTED =
     "Đây là sao kê SINGAPORE. Màn này là sổ COD Đài Loan (tiền đọc như TWD, và file cùng ngày " +
     "sẽ thay kỳ Đài) — bấm nút Singapore ở đầu màn rồi tải lại file ở đó.";
 
@@ -413,8 +413,8 @@ export async function POST(req: NextRequest) {
                         "hoặc Lưu thành .csv rồi tải lại.",
                 }, { status: 422 });
             }
-            if (laFileSing(file.name, naza.market)) {
-                return NextResponse.json({ error: SING_CHUA_NHAN }, { status: 422 });
+            if (isSgFile(file.name, naza.market)) {
+                return NextResponse.json({ error: SG_STATEMENT_REJECTED }, { status: 422 });
             }
             if (!naza.cod_lines.length) {
                 return NextResponse.json({
@@ -436,7 +436,7 @@ export async function POST(req: NextRequest) {
 
             const statement: Statement = {
                 id: mkId(),
-                filename: tenFile(file.name),
+                filename: normalizeFileName(file.name),
                 uploaded_at: new Date().toISOString(),
                 row_count: rows.length,
                 detected_columns: ["tracking", "order_id", "amount", "paid_date"],
@@ -469,8 +469,8 @@ export async function POST(req: NextRequest) {
             });
         }
 
-        if (laFileSing(file.name, null)) {
-            return NextResponse.json({ error: SING_CHUA_NHAN }, { status: 422 });
+        if (isSgFile(file.name, null)) {
+            return NextResponse.json({ error: SG_STATEMENT_REJECTED }, { status: 422 });
         }
         const text = await file.text();
         const { rows, mapping, header } = parseStatement(text);
@@ -497,7 +497,7 @@ export async function POST(req: NextRequest) {
         const detected = Object.keys(mapping);
         const statement: Statement = {
             id: mkId(),
-            filename: tenFile(file.name),
+            filename: normalizeFileName(file.name),
             uploaded_at: new Date().toISOString(),
             row_count: rows.length,
             detected_columns: detected,

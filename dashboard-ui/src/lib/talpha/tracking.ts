@@ -308,12 +308,12 @@ export function buildAlerts(shipments: Shipment[], now: Date = new Date(), opt: 
         }
 
         if (TERMINAL.has(s.status)) {
-            const lech = statusMismatch(s.status, s.t17_status, s.t17_sub_status);
-            if (lech) {
+            const mismatch = statusMismatch(s.status, s.t17_status, s.t17_sub_status);
+            if (mismatch) {
                 out.push({
                     level: "canh_bao", code: "lech_trang_thai",
                     title: "Đối tác và 17TRACK báo khác nhau",
-                    detail: lech + (s.t17_event ? ` Sự kiện cuối 17TRACK: ${s.t17_event}` : ""),
+                    detail: mismatch + (s.t17_event ? ` Sự kiện cuối 17TRACK: ${s.t17_event}` : ""),
                     days: null, shipment: s,
                 });
             }
@@ -362,11 +362,11 @@ export function buildAlerts(shipments: Shipment[], now: Date = new Date(), opt: 
         if (idle !== null && idle >= staleDays && idle < 365) {
             // Chưa có mã vận đơn = hàng chưa rời kho: người phải hỏi là ĐỐI TÁC, không phải
             // hãng vận chuyển (Singapore 25/09/2026: đơn "Đã lên đơn/Chưa lên đơn" nằm cả tuần).
-            const chuaGui = !s.track17_code && (s.status === "InfoReceived" || s.status === "NotFound");
+            const notShipped = !s.track17_code && (s.status === "InfoReceived" || s.status === "NotFound");
             out.push({
                 level: "canh_bao", code: "dung_im",
-                title: chuaGui ? `Chưa gửi hàng ${idle} ngày` : `Đứng im ${idle} ngày`,
-                detail: chuaGui
+                title: notShipped ? `Chưa gửi hàng ${idle} ngày` : `Đứng im ${idle} ngày`,
+                detail: notShipped
                     ? "Đơn chưa có mã vận đơn — hỏi đối tác vì sao chưa gửi."
                     : `Vẫn ở “${statusLabel(s.status)}” mà không có cập nhật mới — hỏi lại hãng vận chuyển.`,
                 days: idle, shipment: s,
@@ -494,13 +494,13 @@ export function planRegister(
     const remain = opt.quotaRemain == null || !Number.isFinite(opt.quotaRemain) ? Infinity : Math.max(0, opt.quotaRemain);
     const cap = Math.min(perRun, remain);
     const scope = opt.scope ?? TRACK_CFG.register_scope;
-    const canhBao = scope !== "tat_ca"
+    const alertedShipments = scope !== "tat_ca"
         ? new Set(buildAlerts(shipments, now, { staleDays: opt.staleDays }).filter((a) => a.level !== "nhac").map((a) => a.shipment))
         : null;
-    const tuNgay = opt.fromDate !== undefined ? opt.fromDate : TRACK_CFG.register_from_date;
+    const registerFrom = opt.fromDate !== undefined ? opt.fromDate : TRACK_CFG.register_from_date;
     // Đơn đã kết thúc chỉ đăng ký để đối chiếu, và chỉ khi có khung ngày cố định — không
     // có khung thì "mọi đơn đã giao" là cả nghìn mã.
-    const layKetThuc = (opt.terminal ?? TRACK_CFG.register_terminal) && !!tuNgay && scope !== "canh_bao";
+    const includeTerminal = (opt.terminal ?? TRACK_CFG.register_terminal) && !!registerFrom && scope !== "canh_bao";
     const seen = new Set<string>();
     for (const s of shipments) if (s.registered && s.track17_code) seen.add(s.track17_code);
 
@@ -508,12 +508,12 @@ export function planRegister(
     for (const s of shipments) {
         const n = s.track17_code;
         if (s.registered || !isTrack17Number(n) || seen.has(n)) continue;
-        if (s.status && TERMINAL.has(s.status) && !layKetThuc) continue;
-        if (scope === "canh_bao" && !canhBao!.has(s)) continue;
-        if (tuNgay) {
+        if (s.status && TERMINAL.has(s.status) && !includeTerminal) continue;
+        if (scope === "canh_bao" && !alertedShipments!.has(s)) continue;
+        if (registerFrom) {
             // Khung theo NGÀY TẠO đơn (Sỹ Anh chốt 25/09/2026: từ 20/08).
             const d = (s.order_date || s.ship_date || "").slice(0, 10);
-            if (d && d < tuNgay) continue;
+            if (d && d < registerFrom) continue;
         } else {
             const d = s.ship_date || s.order_date;
             const age = d ? daysBetween(`${d.slice(0, 10)}T00:00:00Z`, now) : null;
@@ -532,15 +532,15 @@ export function planRegister(
         };
     }
 
-    const gap = cand.filter((s) => canhBao!.has(s));
-    const thuong = cand.filter((s) => !canhBao!.has(s));
+    const gap = cand.filter((s) => alertedShipments!.has(s));
+    const thuong = cand.filter((s) => !alertedShipments!.has(s));
     const pickGap = gap.slice(0, cap);
     let nhip = 0;
     if (Number.isFinite(remain)) {
         const total = opt.quotaTotal && opt.quotaTotal > 0 ? opt.quotaTotal : remain;
-        const giuLai = Math.ceil(total * TRACK_CFG.register_reserve_pct);
-        const ngay = Math.max(1, opt.daysLeft ?? daysLeftInMonth(now));
-        nhip = Math.max(0, Math.floor((remain - pickGap.length - giuLai) / ngay));
+        const reserve = Math.ceil(total * TRACK_CFG.register_reserve_pct);
+        const remainingDays = Math.max(1, opt.daysLeft ?? daysLeftInMonth(now));
+        nhip = Math.max(0, Math.floor((remain - pickGap.length - reserve) / remainingDays));
     }
     const pickThuong = thuong.slice(0, Math.max(0, Math.min(cap - pickGap.length, nhip)));
     const pick = [...pickGap, ...pickThuong];
@@ -602,7 +602,7 @@ const TW_MARKET: TrackMarket = {
 };
 
 /** Luật khai sai (regex hỏng, thiếu trạng thái) thì bỏ luật đó chứ không làm sập cả màn. */
-function docLuat(rules: MarketCfgRaw["status_rules"]): StatusRule[] {
+function parseStatusRules(rules: MarketCfgRaw["status_rules"]): StatusRule[] {
     const out: StatusRule[] = [];
     for (const r of rules || []) {
         if (!r || !r.match || !r.status) continue;
@@ -630,7 +630,7 @@ export const TRACK_MARKETS: TrackMarket[] = [TW_MARKET, ...Object.entries(RAW_MA
         concurrency: Math.min(5, Math.max(1, Number(m.weship?.concurrency ?? 3))),
         timeout_ms: Math.max(5000, Number(m.weship?.timeout_ms ?? 20000)),
     } : null,
-    status_rules: docLuat(m.status_rules),
+    status_rules: parseStatusRules(m.status_rules),
 }))];
 
 /** Mã thị trường lạ → TW (thị trường gốc) — đọc nhầm sổ nước khác là trộn đơn hai nước. */
@@ -664,7 +664,7 @@ export type SavedTrack = {
     last_event_time?: string | null; last_event?: string | null; source?: string | null;
 };
 
-const isoNgay = (d?: string | null) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? `${d.slice(0, 10)}T00:00:00Z` : null);
+const toIsoMidnight = (d?: string | null) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? `${d.slice(0, 10)}T00:00:00Z` : null);
 
 /**
  * Dòng bảng đối tác + trạng thái 17TRACK đã lưu → Shipment. Cùng luật với Đài:
@@ -678,10 +678,10 @@ export function partnerOrderShipment(
     const tracking = String(row.tracking || "").replace(/\s+/g, "").toUpperCase();
     const raw = String(row.status || "").trim() || null;
     const pStatus = mapMarketStatus(market, raw);
-    const moc = isoNgay(row.ship_date) || isoNgay(row.order_date);
+    const anchor = toIsoMidnight(row.ship_date) || toIsoMidnight(row.order_date);
     const co17 = !!saved?.status && saved.source === "17track";
-    const doiTacKetThuc = !!pStatus && TERMINAL.has(pStatus);
-    const dung17 = co17 && !(doiTacKetThuc && !TERMINAL.has(saved!.status as string));
+    const partnerTerminal = !!pStatus && TERMINAL.has(pStatus);
+    const dung17 = co17 && !(partnerTerminal && !TERMINAL.has(saved!.status as string));
     return {
         tracking: tracking || `DON-${row.order_no || "?"}`,
         track17_code: tracking && isTrack17Number(tracking) ? tracking : null,
@@ -697,8 +697,8 @@ export function partnerOrderShipment(
         cod_local: Number(row.cod) || 0,
         status: dung17 ? (saved!.status as string) : pStatus,
         sub_status: dung17 ? (saved!.sub_status ?? null) : null,
-        status_since: dung17 ? (saved!.status_since ?? null) : moc,
-        last_event_time: dung17 ? (saved!.last_event_time ?? null) : moc,
+        status_since: dung17 ? (saved!.status_since ?? null) : anchor,
+        last_event_time: dung17 ? (saved!.last_event_time ?? null) : anchor,
         last_event: dung17 ? (saved!.last_event ?? null) : raw,
         registered,
         source: dung17 ? "17track" : "doi_tac",
@@ -713,7 +713,7 @@ export function partnerOrderShipment(
 }
 
 /** 17TRACK báo hàng đang/đã hoàn bằng Exception + sub_status Exception_Returning/Returned. */
-const HOAN_SUB = /Returning|Returned/i;
+const RETURN_SUB_RE = /Returning|Returned/i;
 
 /**
  * Đối tác ghi đơn KẾT THÚC mà 17TRACK nói khác theo kiểu MẤT TIỀN → câu cảnh báo; không
@@ -727,7 +727,7 @@ const HOAN_SUB = /Returning|Returned/i;
 export function statusMismatch(partner?: string | null, t17?: string | null, t17sub?: string | null): string | null {
     if (!partner || !t17 || t17 === "NotFound") return null;
     if (partner === "Delivered") {
-        if (t17 === "Exception" && HOAN_SUB.test(t17sub || "")) {
+        if (t17 === "Exception" && RETURN_SUB_RE.test(t17sub || "")) {
             return "Đối tác ghi ĐÃ GIAO, 17TRACK ghi hàng đang/đã HOÀN — tiền COD có thể không về.";
         }
         if (t17 === "Exception" || t17 === "DeliveryFailure") {
@@ -756,6 +756,6 @@ export function fixTrack17Code(n?: string | null): string | null {
  * là mã tracking. Lấy bản đã qua code_fixes (FamilyMart có lại số 0 đầu mà Sheet
  * nuốt mất), rồi bỏ tiền tố 73N — tiền tố đó chỉ 17TRACK cần cho mã 7-Eleven.
  */
-export function maLayHang(tracking?: string | null, track17Code?: string | null): string {
+export function pickupCode(tracking?: string | null, track17Code?: string | null): string {
     return String(track17Code || fixTrack17Code(tracking) || "").trim().replace(/^73N/i, "");
 }

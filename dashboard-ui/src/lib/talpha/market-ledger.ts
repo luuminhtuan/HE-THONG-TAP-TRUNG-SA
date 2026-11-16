@@ -15,7 +15,7 @@
  * Hàm thuần — để test được.
  */
 import { TERMINAL, type Shipment, type TrackAlert } from "./tracking";
-import { tinXacNhan, waLink, type PhoneRule } from "./whatsapp";
+import { orderConfirmationMessage, waLink, type PhoneRule } from "./whatsapp";
 
 export type Light = "xanh" | "vang" | "do" | "xam";
 
@@ -51,12 +51,12 @@ export type MarketLedgerRow = {
 
 export type ProductInfo = { sku: string; quantity: number | null };
 
-const laHoan = (s: Shipment) =>
+const isReturned = (s: Shipment) =>
     (!!s.status && TERMINAL.has(s.status) && s.status !== "Delivered")
     || (s.status === "Exception" && /Return/i.test(String(s.sub_status || "")));
 
 /** Chữ trạng thái cho sổ — ngắn, và rơi đúng nhóm màu của statusCls. */
-export function nhanSo(s: Shipment): string {
+export function ledgerStatusLabel(s: Shipment): string {
     const st = s.status;
     if (st === "Delivered") return "Giao thành công";
     if (st === "Returned" || st === "Expired") return "Đã hoàn";
@@ -85,17 +85,17 @@ export function buildMarketLedger(
     alerts: TrackAlert[],
     opt: { rateVnd: number; phone?: PhoneRule | null; carrier?: string; currency?: string },
 ): MarketLedgerRow[] {
-    const canhBao = new Map<string, TrackAlert>();
+    const alertByTracking = new Map<string, TrackAlert>();
     for (const a of alerts) {
         if (a.level === "nhac") continue;
         const k = a.shipment.tracking;
-        if (!canhBao.has(k)) canhBao.set(k, a);   // alerts đã xếp gấp trước
+        if (!alertByTracking.has(k)) alertByTracking.set(k, a);   // alerts đã xếp gấp trước
     }
     const rows = shipments.map((s): MarketLedgerRow => {
-        const a = canhBao.get(s.tracking);
+        const a = alertByTracking.get(s.tracking);
         const p = products.get(String(s.order_id || ""));
         let light: Light, note: string;
-        if (laHoan(s)) {
+        if (isReturned(s)) {
             light = "xam"; note = "Hoàn / huỷ — không có tiền về";
         } else if (a) {
             light = "do"; note = `${a.title}${a.detail ? ` — ${a.detail}` : ""}`;
@@ -104,7 +104,7 @@ export function buildMarketLedger(
         } else if (!s.track17_code) {
             light = "vang"; note = "Chưa gửi hàng — chờ bên giao hàng lên vận đơn";
         } else {
-            light = "vang"; note = `Đang đi — ${nhanSo(s).toLowerCase()}`;
+            light = "vang"; note = `Đang đi — ${ledgerStatusLabel(s).toLowerCase()}`;
         }
         return {
             key: s.tracking,
@@ -114,7 +114,7 @@ export function buildMarketLedger(
             tracking: s.track17_code || "",
             carrier: opt.carrier || s.ship_method || "",
             status: s.status,
-            status_vi: nhanSo(s),
+            status_vi: ledgerStatusLabel(s),
             raw_status: s.raw_status ?? null,
             last_event: s.last_event ?? null,
             last_event_time: s.last_event_time ?? null,
@@ -123,7 +123,7 @@ export function buildMarketLedger(
             quantity: p?.quantity ?? null,
             customer: s.customer || "",
             phone: s.phone || "",
-            wa: waLink(s.phone, opt.phone, tinXacNhan({
+            wa: waLink(s.phone, opt.phone, orderConfirmationMessage({
                 customer: s.customer, product: p?.sku, quantity: p?.quantity,
                 cod: Number(s.cod_local) || 0, currency: opt.currency, address: s.address || s.city,
             })),

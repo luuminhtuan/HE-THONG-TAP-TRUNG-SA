@@ -34,18 +34,18 @@
 // lib/talpha/lai-lo-nguon.ts, ráp ở app/api/talpha/lai-lo/route.ts.
 // ═══════════════════════════════════════════════════════════════════
 
-export type NhomKien = "giao" | "hoan" | "dang_di" | "cho_gui" | "huy";
-export const NHOM_KIEN: NhomKien[] = ["giao", "hoan", "dang_di", "cho_gui", "huy"];
+export type ParcelGroup = "giao" | "hoan" | "dang_di" | "cho_gui" | "huy";
+export const PARCEL_GROUPS: ParcelGroup[] = ["giao", "hoan", "dang_di", "cho_gui", "huy"];
 
 /** Một kiện đã lên 3PL (Đài, Sing, Nhật: dòng bảng đối tác · UAE: đơn POS). Tiền đều là VND. */
-export type Kien = {
+export type Parcel = {
     nuoc: string;
     ma: string;
     /** Ngày lên đơn (YYYY-MM-DD) — kỳ báo cáo tính theo ngày này. */
     ngay: string;
     /** Ngày xuất kho, nếu 3PL ghi — để biết hàng hoàn còn hạn lưu kho không. */
     ngay_gui?: string | null;
-    nhom: NhomKien;
+    nhom: ParcelGroup;
     trang_thai: string;
     /** Tiền COD quy theo tỷ giá niêm yết markets.*.rate_vnd — cùng thước với Doanh số. */
     cod_vnd: number;
@@ -70,16 +70,16 @@ export type Kien = {
 // ─────────────────────────────────────────────────────────────────────────
 // Phân kiện theo kết quả giao
 // ─────────────────────────────────────────────────────────────────────────
-const CHUA_DI = new Set(["InfoReceived", "NotFound", "Pending"]);
+const NOT_SHIPPED_STATUSES = new Set(["InfoReceived", "NotFound", "Pending"]);
 
 /**
  * Trạng thái chuẩn (bảng đối tác + 17TRACK / WeShip) → nhóm. Chữ gốc của 3PL "Đang hoàn về
  * kho" có nước map ra Exception, có nước DeliveryFailure — đọc thêm chữ gốc để khỏi đếm hàng
  * đang hoàn vào "đang đi" (tiền không về nữa mà vẫn được hứa).
  */
-export function nhomKien(
-    status?: string | null, sub?: string | null, raw?: string | null, daGui = false,
-): NhomKien {
+export function classifyParcel(
+    status?: string | null, sub?: string | null, raw?: string | null, shipped = false,
+): ParcelGroup {
     const s = String(status || "");
     if (s === "Delivered") return "giao";
     if (s === "Cancelled") return "huy";
@@ -88,17 +88,17 @@ export function nhomKien(
     const r = String(raw || "").normalize("NFC").toLowerCase();
     if (/hoàn|tiêu hủy|tiêu huỷ|return/.test(r) && !/đã giao/.test(r)) return "hoan";
     if (/hủy đơn|huỷ đơn/.test(r)) return "huy";
-    if ((!s || CHUA_DI.has(s)) && !daGui) return "cho_gui";
+    if ((!s || NOT_SHIPPED_STATUSES.has(s)) && !shipped) return "cho_gui";
     return "dang_di";
 }
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tỉ lệ giao thành công — thước để ước kiện còn đang đi
 // ─────────────────────────────────────────────────────────────────────────
-export type CauHinhTyLe = { cua_so_ngay: number; bo_gan_ngay: number; mau_toi_thieu: number };
-export const TY_LE_MAC_DINH: CauHinhTyLe = { cua_so_ngay: 90, bo_gan_ngay: 21, mau_toi_thieu: 20 };
+export type DeliveryRateConfig = { cua_so_ngay: number; bo_gan_ngay: number; mau_toi_thieu: number };
+export const DEFAULT_DELIVERY_RATE_CONFIG: DeliveryRateConfig = { cua_so_ngay: 90, bo_gan_ngay: 21, mau_toi_thieu: 20 };
 
-export type TyLeGiao = {
+export type DeliveryRate = {
     /** Phần tiền COD giao thành công trên các kiện ĐÃ CÓ KẾT QUẢ. null = chưa có kiện nào xong. */
     r: number | null;
     giao: number; hoan: number;
@@ -107,7 +107,7 @@ export type TyLeGiao = {
     tam: boolean;
 };
 
-const congNgay = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 /**
  * Lấy kiện đã có kết quả (giao/hoàn) lên đơn trong [asOf − cua_so, asOf − bo_gan]. Bỏ các ngày
@@ -115,23 +115,23 @@ const congNgay = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:0
  * giao bị thổi phồng. Mẫu nhỏ quá thì lấy mọi kiện xong của nước đó và báo `tam`.
  * Tính theo TIỀN COD, không theo số kiện: kiện to hoàn thì mất nhiều hơn kiện nhỏ.
  */
-export function tyLeGiao(kien: Kien[], asOf: string, cfg: CauHinhTyLe = TY_LE_MAC_DINH): TyLeGiao {
-    const xong = kien.filter((k) => (k.nhom === "giao" || k.nhom === "hoan") && k.ngay && k.ngay <= asOf);
-    const tu = congNgay(asOf, -cfg.cua_so_ngay), den = congNgay(asOf, -cfg.bo_gan_ngay);
-    let mau = xong.filter((k) => k.ngay >= tu && k.ngay <= den);
-    let tam = false, khoangTu: string | null = tu, khoangDen: string | null = den;
+export function computeDeliveryRate(parcels: Parcel[], asOf: string, cfg: DeliveryRateConfig = DEFAULT_DELIVERY_RATE_CONFIG): DeliveryRate {
+    const xong = parcels.filter((k) => (k.nhom === "giao" || k.nhom === "hoan") && k.ngay && k.ngay <= asOf);
+    const windowStart = addDays(asOf, -cfg.cua_so_ngay), windowEnd = addDays(asOf, -cfg.bo_gan_ngay);
+    let mau = xong.filter((k) => k.ngay >= windowStart && k.ngay <= windowEnd);
+    let provisional = false, rangeFrom: string | null = windowStart, rangeTo: string | null = windowEnd;
     if (mau.length < cfg.mau_toi_thieu) {
         mau = xong;
-        tam = true;
-        khoangTu = mau.reduce<string | null>((m, k) => (!m || k.ngay < m ? k.ngay : m), null);
-        khoangDen = mau.reduce<string | null>((m, k) => (!m || k.ngay > m ? k.ngay : m), null);
+        provisional = true;
+        rangeFrom = mau.reduce<string | null>((m, k) => (!m || k.ngay < m ? k.ngay : m), null);
+        rangeTo = mau.reduce<string | null>((m, k) => (!m || k.ngay > m ? k.ngay : m), null);
     }
     const g = mau.filter((k) => k.nhom === "giao"), h = mau.filter((k) => k.nhom === "hoan");
     const tg = g.reduce((s, k) => s + k.cod_vnd, 0), th = h.reduce((s, k) => s + k.cod_vnd, 0);
     return {
         r: tg + th > 0 ? tg / (tg + th) : null,
-        giao: g.length, hoan: h.length, tu: khoangTu, den: khoangDen,
-        tam: tam || mau.length < cfg.mau_toi_thieu,
+        giao: g.length, hoan: h.length, tu: rangeFrom, den: rangeTo,
+        tam: provisional || mau.length < cfg.mau_toi_thieu,
     };
 }
 
@@ -140,10 +140,10 @@ export function tyLeGiao(kien: Kien[], asOf: string, cfg: CauHinhTyLe = TY_LE_MA
 // ─────────────────────────────────────────────────────────────────────────
 export type Phi3pl = { di: number; giao: number; hoan: number; ty_gia: number };
 export type Khoan = { doanh_thu: number; gia_von: number; phi: Phi3pl };
-export const khoanRong = (): Khoan => ({ doanh_thu: 0, gia_von: 0, phi: { di: 0, giao: 0, hoan: 0, ty_gia: 0 } });
-export const tongPhi = (p: Phi3pl) => p.di + p.giao + p.hoan + p.ty_gia;
+export const emptyAmounts = (): Khoan => ({ doanh_thu: 0, gia_von: 0, phi: { di: 0, giao: 0, hoan: 0, ty_gia: 0 } });
+export const totalFees = (p: Phi3pl) => p.di + p.giao + p.hoan + p.ty_gia;
 
-function congKhoan(a: Khoan, b: Khoan, he = 1) {
+function addAmounts(a: Khoan, b: Khoan, he = 1) {
     a.doanh_thu += b.doanh_thu * he; a.gia_von += b.gia_von * he;
     a.phi.di += b.phi.di * he; a.phi.giao += b.phi.giao * he; a.phi.hoan += b.phi.hoan * he; a.phi.ty_gia += b.phi.ty_gia * he;
 }
@@ -153,7 +153,7 @@ function congKhoan(a: Khoan, b: Khoan, he = 1) {
  * (hàng đã bán) lẫn khi hoàn mà hàng không quay lại kho bán tiếp; phí chặng đi mất cả hai đường.
  * Chênh tỷ giá chỉ có khi tiền về: tiền niêm yết − tiền 3PL thật quy ra (âm = được lợi).
  */
-export function khoanKien(k: Kien, p: number): Khoan {
+export function parcelAmounts(k: Parcel, p: number): Khoan {
     if (k.nhom === "huy") {
         // Huỷ trước khi đi: hàng chưa rời kho. Sao kê vẫn thu phí kiện này thì tính phí đó.
         return { doanh_thu: 0, gia_von: 0, phi: { di: k.phi_that ? k.phi_di_vnd : 0, giao: 0, hoan: 0, ty_gia: 0 } };
@@ -167,14 +167,14 @@ export function khoanKien(k: Kien, p: number): Khoan {
     };
 }
 
-const xacSuat = (k: Kien, r: number) => (k.nhom === "giao" ? 1 : k.nhom === "hoan" ? 0 : r);
+const xacSuat = (k: Parcel, r: number) => (k.nhom === "giao" ? 1 : k.nhom === "hoan" ? 0 : r);
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tổng một nước trong kỳ
 // ─────────────────────────────────────────────────────────────────────────
-export type DemNhom = { n: number; cod: number };
-export type TongKien = {
-    kien: Record<NhomKien, DemNhom> & { tong: DemNhom };
+export type GroupCount = { n: number; cod: number };
+export type ParcelTotals = {
+    kien: Record<ParcelGroup, GroupCount> & { tong: GroupCount };
     /** Doanh thu ĐÃ CHẮC: tiền COD kiện đã giao xong. */
     doanh_thu_chac: number;
     du_kien: Khoan;
@@ -186,29 +186,29 @@ export type TongKien = {
     hoan_con_han: { n: number; gia_von: number };
 };
 
-export function tongKien(kien: Kien[], r: number | null): TongKien {
+export function sumParcels(parcels: Parcel[], r: number | null): ParcelTotals {
     const rr = r ?? 0;
-    const dem = Object.fromEntries([...NHOM_KIEN, "tong"].map((n) => [n, { n: 0, cod: 0 }])) as TongKien["kien"];
-    const duKien = khoanRong(), toiThieu = khoanRong();
-    let chac = 0, thieu = 0, uoc = 0;
-    const conHan = { n: 0, gia_von: 0 };
-    for (const k of kien) {
-        dem[k.nhom].n++; dem[k.nhom].cod += k.cod_vnd;
-        dem.tong.n++; dem.tong.cod += k.cod_vnd;
+    const counts = Object.fromEntries([...PARCEL_GROUPS, "tong"].map((n) => [n, { n: 0, cod: 0 }])) as ParcelTotals["kien"];
+    const expected = emptyAmounts(), minimum = emptyAmounts();
+    let chac = 0, missingCogsCount = 0, estimatedFeeCount = 0;
+    const returnsInStorage = { n: 0, gia_von: 0 };
+    for (const k of parcels) {
+        counts[k.nhom].n++; counts[k.nhom].cod += k.cod_vnd;
+        counts.tong.n++; counts.tong.cod += k.cod_vnd;
         if (k.nhom === "giao") chac += k.cod_vnd;
-        if (k.nhom !== "huy" && k.gia_von_vnd == null) thieu++;
-        if (k.nhom !== "huy" && !k.phi_that) uoc++;
-        if (k.nhom === "hoan" && k.hoan_con_han && !k.hang_ve_kho) { conHan.n++; conHan.gia_von += k.gia_von_vnd ?? 0; }
-        congKhoan(duKien, khoanKien(k, xacSuat(k, rr)));
-        congKhoan(toiThieu, khoanKien(k, xacSuat(k, 0)));
+        if (k.nhom !== "huy" && k.gia_von_vnd == null) missingCogsCount++;
+        if (k.nhom !== "huy" && !k.phi_that) estimatedFeeCount++;
+        if (k.nhom === "hoan" && k.hoan_con_han && !k.hang_ve_kho) { returnsInStorage.n++; returnsInStorage.gia_von += k.gia_von_vnd ?? 0; }
+        addAmounts(expected, parcelAmounts(k, xacSuat(k, rr)));
+        addAmounts(minimum, parcelAmounts(k, xacSuat(k, 0)));
     }
-    return { kien: dem, doanh_thu_chac: chac, du_kien: duKien, toi_thieu: toiThieu, thieu_gia_von: thieu, phi_uoc: uoc, hoan_con_han: conHan };
+    return { kien: counts, doanh_thu_chac: chac, du_kien: expected, toi_thieu: minimum, thieu_gia_von: missingCogsCount, phi_uoc: estimatedFeeCount, hoan_con_han: returnsInStorage };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
 // Đơn đã chốt mà CHƯA lên 3PL — vài ngày cuối kỳ
 // ─────────────────────────────────────────────────────────────────────────
-export type ChoLen3pl = { vnd: number; ngay: { date: string; doanh_so: number; kien: number }[]; khoan: Khoan };
+export type Pending3pl = { vnd: number; ngay: { date: string; doanh_so: number; kien: number }[]; khoan: Khoan };
 
 /**
  * Sale lên đơn sang bảng 3PL trễ một hai ngày: nhìn kỳ tới hôm nay thì tiền ads đã tiêu cho các
@@ -217,36 +217,36 @@ export type ChoLen3pl = { vnd: number; ngay: { date: string; doanh_so: number; k
  * tỷ lệ trung bình mỗi đồng COD của chính các kiện trong kỳ. Ngày cũ hơn thì phần chênh là đơn
  * không bao giờ thành kiện (huỷ, bom trước khi gửi) — không ước gì.
  */
-export function choLen3pl(
-    doanhSoNgay: { date: string; doanh_so: number }[], kienKy: Kien[], r: number | null,
-    homNay: string, soNgay: number,
-): ChoLen3pl {
-    const tu = congNgay(homNay, -(soNgay - 1));
-    const codNgay = new Map<string, number>();
-    for (const k of kienKy) codNgay.set(k.ngay, (codNgay.get(k.ngay) || 0) + k.cod_vnd);
-    const ngay = doanhSoNgay
-        .filter((d) => d.date >= tu && d.date <= homNay)
-        .map((d) => ({ date: d.date, doanh_so: d.doanh_so, kien: codNgay.get(d.date) || 0 }))
+export function estimatePending3pl(
+    dailySales: { date: string; doanh_so: number }[], periodParcels: Parcel[], r: number | null,
+    homNay: string, recentDays: number,
+): Pending3pl {
+    const windowStart = addDays(homNay, -(recentDays - 1));
+    const codByDate = new Map<string, number>();
+    for (const k of periodParcels) codByDate.set(k.ngay, (codByDate.get(k.ngay) || 0) + k.cod_vnd);
+    const days = dailySales
+        .filter((d) => d.date >= windowStart && d.date <= homNay)
+        .map((d) => ({ date: d.date, doanh_so: d.doanh_so, kien: codByDate.get(d.date) || 0 }))
         .filter((d) => d.doanh_so - d.kien > 0);
-    const vnd = ngay.reduce((s, d) => s + (d.doanh_so - d.kien), 0);
-    const khoan = khoanRong();
+    const vnd = days.reduce((s, d) => s + (d.doanh_so - d.kien), 0);
+    const khoan = emptyAmounts();
     if (vnd > 0 && r != null) {
         // Tỷ lệ trên mỗi đồng COD nếu kiện còn đang đi — lấy từ chính các kiện trong kỳ.
-        const goc = kienKy.filter((k) => k.nhom !== "huy");
-        const cod = goc.reduce((s, k) => s + k.cod_vnd, 0);
+        const baseParcels = periodParcels.filter((k) => k.nhom !== "huy");
+        const cod = baseParcels.reduce((s, k) => s + k.cod_vnd, 0);
         if (cod > 0) {
-            const mau = khoanRong();
-            for (const k of goc) congKhoan(mau, khoanKien({ ...k, nhom: "dang_di" }, r));
-            congKhoan(khoan, mau, vnd / cod);
+            const mau = emptyAmounts();
+            for (const k of baseParcels) addAmounts(mau, parcelAmounts({ ...k, nhom: "dang_di" }, r));
+            addAmounts(khoan, mau, vnd / cod);
         }
     }
-    return { vnd, ngay, khoan };
+    return { vnd, ngay: days, khoan };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
 // Chi phí vận hành — nhập tay theo tháng, phân bổ theo ngày
 // ─────────────────────────────────────────────────────────────────────────
-export type KhoanVanHanh = {
+export type OpexItem = {
     id: string;
     /** Nhóm: Lương · Mặt bằng · Phần mềm · Khác… */
     nhom: string;
@@ -263,63 +263,63 @@ export type KhoanVanHanh = {
     sua_boi?: string;
 };
 
-export const soNgayThang = (ym: string) => {
+export const daysInMonth = (ym: string) => {
     const [y, m] = ym.split("-").map(Number);
     return new Date(Date.UTC(y, m, 0)).getUTCDate();
 };
 
 /** Tiền một khoản rơi vào [from, to]: mỗi tháng = số tiền tháng × số ngày trùng ÷ số ngày tháng. */
-export function vanHanhTrongKhoang(k: KhoanVanHanh, from: string, to: string): number {
+export function opexInRange(k: OpexItem, from: string, to: string): number {
     if (!(k.so_tien_thang_vnd > 0) || from > to) return 0;
-    let tong = 0;
+    let total = 0;
     let [y, m] = from.slice(0, 7).split("-").map(Number);
-    const ketThuc = to.slice(0, 7);
+    const endMonth = to.slice(0, 7);
     for (;;) {
         const ym = `${y}-${String(m).padStart(2, "0")}`;
-        if (ym > ketThuc) break;
+        if (ym > endMonth) break;
         if (ym >= k.tu_thang && (!k.den_thang || ym <= k.den_thang)) {
-            const dau = `${ym}-01`, cuoi = `${ym}-${String(soNgayThang(ym)).padStart(2, "0")}`;
-            const a = from > dau ? from : dau, b = to < cuoi ? to : cuoi;
-            const ngay = Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000) + 1;
-            if (ngay > 0) tong += k.so_tien_thang_vnd * ngay / soNgayThang(ym);
+            const monthStart = `${ym}-01`, monthEnd = `${ym}-${String(daysInMonth(ym)).padStart(2, "0")}`;
+            const a = from > monthStart ? from : monthStart, b = to < monthEnd ? to : monthEnd;
+            const days = Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000) + 1;
+            if (days > 0) total += k.so_tien_thang_vnd * days / daysInMonth(ym);
         }
         m += 1; if (m > 12) { m = 1; y += 1; }
     }
-    return tong;
+    return total;
 }
 
-export type PhanBoVanHanh = {
+export type OpexAllocation = {
     /** Mỗi nước: khoản riêng của nước + phần chi phí chung chia theo doanh số. */
     theo_nuoc: Record<string, { rieng: number; chung: number }>;
     chung: number;
     /** Phần chung không chia được vì cả kỳ không nước nào có doanh số. */
     chung_chua_chia: number;
-    chi_tiet: (KhoanVanHanh & { trong_ky_vnd: number })[];
+    chi_tiet: (OpexItem & { trong_ky_vnd: number })[];
 };
 
 /**
  * Chia chi phí vận hành của kỳ về từng nước. Khoản "CHUNG" chia theo phần doanh số của nước trên
  * TỔNG doanh số MỌI nước (không chỉ nước người xem thấy — leader thấy đúng phần team mình gánh).
  */
-export function phanBoVanHanh(
-    items: KhoanVanHanh[], from: string, to: string, doanhSo: Record<string, number>,
-): PhanBoVanHanh {
-    const theo_nuoc: PhanBoVanHanh["theo_nuoc"] = {};
-    const lay = (c: string) => (theo_nuoc[c] ||= { rieng: 0, chung: 0 });
-    const chi_tiet = items.map((k) => ({ ...k, trong_ky_vnd: vanHanhTrongKhoang(k, from, to) }))
+export function allocateOpex(
+    items: OpexItem[], from: string, to: string, salesByMarket: Record<string, number>,
+): OpexAllocation {
+    const byMarket: OpexAllocation["theo_nuoc"] = {};
+    const bucket = (c: string) => (byMarket[c] ||= { rieng: 0, chung: 0 });
+    const details = items.map((k) => ({ ...k, trong_ky_vnd: opexInRange(k, from, to) }))
         .filter((k) => k.trong_ky_vnd > 0);
     let chung = 0;
-    for (const k of chi_tiet) {
+    for (const k of details) {
         if (k.thuoc === "CHUNG") chung += k.trong_ky_vnd;
-        else lay(k.thuoc).rieng += k.trong_ky_vnd;
+        else bucket(k.thuoc).rieng += k.trong_ky_vnd;
     }
-    const tongDs = Object.values(doanhSo).reduce((s, v) => s + Math.max(0, v), 0);
-    if (tongDs > 0) for (const [c, v] of Object.entries(doanhSo)) if (v > 0) lay(c).chung += chung * v / tongDs;
-    return { theo_nuoc, chung, chung_chua_chia: tongDs > 0 ? 0 : chung, chi_tiet };
+    const totalSales = Object.values(salesByMarket).reduce((s, v) => s + Math.max(0, v), 0);
+    if (totalSales > 0) for (const [c, v] of Object.entries(salesByMarket)) if (v > 0) bucket(c).chung += chung * v / totalSales;
+    return { theo_nuoc: byMarket, chung, chung_chua_chia: totalSales > 0 ? 0 : chung, chi_tiet: details };
 }
 
 /** Kiểm một khoản người dùng gõ. Trả câu lỗi tiếng Việt, hoặc null nếu hợp lệ. */
-export function loiKhoanVanHanh(k: Partial<KhoanVanHanh>, nuocHopLe: string[]): string | null {
+export function opexItemError(k: Partial<OpexItem>, validMarkets: string[]): string | null {
     const ym = /^\d{4}-(0[1-9]|1[0-2])$/;
     if (!String(k.ten || "").trim()) return "Thiếu tên khoản chi";
     if (!String(k.nhom || "").trim()) return "Thiếu nhóm chi phí";
@@ -327,6 +327,6 @@ export function loiKhoanVanHanh(k: Partial<KhoanVanHanh>, nuocHopLe: string[]): 
     if (!ym.test(String(k.tu_thang || ""))) return "Tháng bắt đầu phải dạng YYYY-MM";
     if (k.den_thang != null && k.den_thang !== "" && !ym.test(String(k.den_thang))) return "Tháng kết thúc phải dạng YYYY-MM";
     if (k.den_thang && k.den_thang < String(k.tu_thang)) return "Tháng kết thúc đứng trước tháng bắt đầu";
-    if (k.thuoc !== "CHUNG" && !nuocHopLe.includes(String(k.thuoc || ""))) return "Khoản chi phải thuộc CHUNG hoặc một nước đang bán";
+    if (k.thuoc !== "CHUNG" && !validMarkets.includes(String(k.thuoc || ""))) return "Khoản chi phải thuộc CHUNG hoặc một nước đang bán";
     return null;
 }

@@ -9,7 +9,7 @@
 import { execFileSync } from "child_process";
 import path from "path";
 
-export function truyVanDongBo<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T[] {
+export function querySync<T = Record<string, unknown>>(sql: string, params: unknown[] = []): T[] {
     if (!process.env.DATABASE_URL) throw new Error("chưa đặt DATABASE_URL");
     const script = path.join(process.cwd(), "scripts", "sync-query.cjs");
     try {

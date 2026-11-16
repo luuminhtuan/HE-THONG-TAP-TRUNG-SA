@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccess } from "@/lib/talpha/access";
-import { danhSachKhoa, docKhoa } from "@/lib/talpha/khoa";
+import { listCredentials, getCredential } from "@/lib/talpha/khoa";
 
 export const dynamic = "force-dynamic";
 
@@ -22,11 +22,11 @@ export async function POST(req: NextRequest) {
     if (!a || a.kind === "internal") return NextResponse.json({ error: "Không có quyền xem khoá" }, { status: 403 });
 
     const body = await req.json().catch(() => null);
-    const ten = String(body?.ten || "");
+    const keyName = String(body?.ten || "");
     // Key POS của nước mới thêm chưa có trong danhSachKhoa tới khi dashboard khởi động lại.
-    if (!LA_KEY_POS.test(ten) && !danhSachKhoa().some((d) => d.ten === ten)) {
-        return NextResponse.json({ error: `Không có khoá tên ${ten}` }, { status: 400 });
+    if (!LA_KEY_POS.test(keyName) && !listCredentials().some((d) => d.ten === keyName)) {
+        return NextResponse.json({ error: `Không có khoá tên ${keyName}` }, { status: 400 });
     }
-    console.log(`[khoa] ${a.email || a.name || "?"} xem khoá ${ten}`);
-    return NextResponse.json({ ten, gia_tri: docKhoa(ten) }, { headers: { "Cache-Control": "no-store" } });
+    console.log(`[khoa] ${a.email || a.name || "?"} xem khoá ${keyName}`);
+    return NextResponse.json({ ten: keyName, gia_tri: getCredential(keyName) }, { headers: { "Cache-Control": "no-store" } });
 }

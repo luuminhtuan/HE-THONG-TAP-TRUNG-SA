@@ -95,7 +95,7 @@ export async function loadPosMarketShipments<S extends MarketStoreBase>(
     mk: TrackMarket, emptyStore: () => S,
 ): Promise<{ shipments: Shipment[]; store: S; lastImport: string | null }> {
     const store = await readStoreFresh<S>(mk.store, emptyStore());
-    const tuNgay = TRACK_CFG.register_from_date;
+    const registerFromDate = TRACK_CFG.register_from_date;
     // NULLS LAST giữ thứ tự BigQuery (NULL cuối khi xếp giảm). Mã đơn không phải số (hoặc dài quá
     // bigint) thì coi là NULL như SAFE_CAST cũ, không làm chết câu.
     const rows = await query<PosOrderRow>(
@@ -111,10 +111,10 @@ export async function loadPosMarketShipments<S extends MarketStoreBase>(
                 ON v.shop_id = o.shop_id AND v.order_id = o.id
          WHERE v.market = @m
            AND v.status_category NOT IN ('HUY', 'DON_THO')
-           ${tuNgay ? "AND v.order_date >= @tu::date" : ""}
+           ${registerFromDate ? "AND v.order_date >= @tu::date" : ""}
          ORDER BY v.order_date DESC NULLS LAST,
                   CASE WHEN v.order_id ~ '^-?[0-9]{1,18}$' THEN v.order_id::bigint END DESC NULLS LAST`,
-        tuNgay ? { m: mk.pos_market || mk.code, tu: tuNgay } : { m: mk.pos_market || mk.code },
+        registerFromDate ? { m: mk.pos_market || mk.code, tu: registerFromDate } : { m: mk.pos_market || mk.code },
     );
     const statuses = store.statuses as Record<string, WeshipSaved>;
     const shipments = rows.map((r) => {
@@ -131,7 +131,7 @@ export async function loadPosMarketShipments<S extends MarketStoreBase>(
  * theo dõi — Nhật 13/10/2026: 17TRACK từ chối đăng ký mọi mã Sagawa ("The carrier temporarily
  * does not support registration") nên trạng thái chỉ theo bảng đối tác.
  */
-export function nhanNguonDoiTac(
+export function partnerSourceLabel(
     shipments: Pick<Shipment, "registered">[], store: { last_sync?: { register_rejected?: number } },
 ): string {
     if (!shipments.some((s) => s.registered) && Number(store.last_sync?.register_rejected) > 0) {
@@ -168,7 +168,7 @@ export async function syncWeshipMarket(mk: TrackMarket, now: Date = new Date()):
 
     let checked = 0, changed = 0, notFound = 0;
     const loi = kq.filter((x) => "error" in x) as { awb: string; error: string }[];
-    const so = await updateStore<WeshipStore>(mk.store, emptyWeship(), (cur) => {
+    const updatedStore = await updateStore<WeshipStore>(mk.store, emptyWeship(), (cur) => {
         for (const x of kq) {
             if (!("page" in x) || !x.page) continue;
             if (!x.page.found) { notFound++; continue; }
@@ -191,5 +191,5 @@ export async function syncWeshipMarket(mk: TrackMarket, now: Date = new Date()):
         };
         return cur;
     });
-    return so.last_sync!;
+    return updatedStore.last_sync!;
 }

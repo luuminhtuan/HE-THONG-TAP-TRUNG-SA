@@ -31,7 +31,7 @@ import {
     costPriceVnd, posMoneyDivisor,
 } from "@/lib/talpha/rules";
 import { productCodes } from "@/lib/talpha/order-ledger";
-import { BANG_GIA_NHAT, cuocNhatRmb, phiShipNhatVnd } from "@/lib/talpha/phi-ship-nhat";
+import { JP_FEE_SCHEDULE, jpFreightRmb, jpShippingFeeVnd } from "@/lib/talpha/phi-ship-nhat";
 import { readStoreFresh } from "@/lib/talpha/store";
 
 type FeeLine = { ship_fee?: number; op_fee?: number; chargeable_kg?: number | null };
@@ -58,23 +58,23 @@ const SG_FEES = (FEES.SG as SgFees | undefined) || null;
 const AE_FEES = (FEES.AE as AeFees | undefined) || null;
 
 /** Phí fulfillment D&T theo bậc: bậc đầu tiên có trần ≥ số đơn trung bình/ngày; vượt hết thì bậc cuối. */
-function phiFulfillmentAe(donMoiNgay: number): number | null {
+function aeFulfillmentFee(ordersPerDay: number): number | null {
     const bac = [...(AE_FEES?.fulfillment_fee_tiers || [])].sort((a, b) => a.max_orders_per_day - b.max_orders_per_day);
     if (!bac.length) return null;
-    return (bac.find((b) => donMoiNgay < b.max_orders_per_day) || bac[bac.length - 1]).fee;
+    return (bac.find((b) => ordersPerDay < b.max_orders_per_day) || bac[bac.length - 1]).fee;
 }
 
 // Khoá so sánh cho tên gõ tay: chữ HOA, dạng NFC. POS có lúc lưu tiếng Việt ở dạng dấu
 // tách rời (NFD) — "MỌC TÓC VN" hai kiểu mã hoá nhìn giống hệt nhau mà so bằng thì trượt.
-export const khoaTen = (s: string) => s.normalize("NFC").trim().toUpperCase();
+export const nameKey = (s: string) => s.normalize("NFC").trim().toUpperCase();
 const ALIASES: Record<string, string> = Object.fromEntries(
     Object.entries((RULES as unknown as { product_name_aliases?: Record<string, string> }).product_name_aliases || {})
         .filter(([k]) => !k.startsWith("_"))
-        .map(([k, v]) => [khoaTen(k), v]));
+        .map(([k, v]) => [nameKey(k), v]));
 
 // Shop nào đặt tên sản phẩm theo mã 3 số của bảng giá. UAE đánh số riêng ("Oralhoe Dental 002")
 // — đọc số cuối tên là lấy nhầm giá mã 002 (vòng phong thuỷ). markets.*.product_code_in_name.
-const MA_3_SO_THEO_SHOP: Record<string, boolean> = Object.fromEntries(
+const CODE_IN_NAME_BY_SHOP: Record<string, boolean> = Object.fromEntries(
     Object.values(RULES.markets as Record<string, { shop_label?: string; product_code_in_name?: boolean }>)
         .filter((m) => m && typeof m === "object" && m.shop_label)
         .map((m) => [String(m.shop_label).toUpperCase(), m.product_code_in_name !== false]));
@@ -86,53 +86,53 @@ const MA_3_SO_THEO_SHOP: Record<string, boolean> = Object.fromEntries(
 // → "Health Product - 01"…) — cùng product_id, cùng mã vạch — và tra theo tên là 178/230 đơn tháng
 // 10 mất giá vốn. Mục nào khai `barcode` thì đổi tên bao nhiêu lần vẫn ra đúng giá; khoá gom ở tab
 // P&L theo SP lấy tên khai trong bảng nên tên cũ và tên mới gộp làm một dòng.
-type GiaShop = { gia: number; ten: string };
-const GIA_THEO_TEN: Record<string, Record<string, number>> = {};
-const GIA_THEO_MA: Record<string, Record<string, GiaShop>> = {};
+type ShopPrice = { gia: number; ten: string };
+const COST_BY_NAME: Record<string, Record<string, number>> = {};
+const COST_BY_BARCODE: Record<string, Record<string, ShopPrice>> = {};
 for (const m of Object.values(RULES.markets as Record<string, {
     shop_label?: string; product_costs_vnd?: Record<string, { hang?: number; hop?: number; barcode?: string | string[] } | string>;
 }>)) {
     if (!m || typeof m !== "object" || !m.shop_label || !m.product_costs_vnd) continue;
-    const bang: Record<string, number> = {}, theoMa: Record<string, GiaShop> = {};
-    for (const [ten, v] of Object.entries(m.product_costs_vnd)) {
-        if (ten.startsWith("_") || typeof v !== "object" || !(Number(v.hang) > 0)) continue;
-        const gia = Number(v.hang) + Number(v.hop || 0);
-        bang[khoaTen(ten)] = gia;
-        for (const ma of [v.barcode || []].flat()) if (String(ma).trim()) theoMa[String(ma).trim()] = { gia, ten: khoaTen(ten) };
+    const byName: Record<string, number> = {}, barcodePrice: Record<string, ShopPrice> = {};
+    for (const [name, v] of Object.entries(m.product_costs_vnd)) {
+        if (name.startsWith("_") || typeof v !== "object" || !(Number(v.hang) > 0)) continue;
+        const unitCost = Number(v.hang) + Number(v.hop || 0);
+        byName[nameKey(name)] = unitCost;
+        for (const code of [v.barcode || []].flat()) if (String(code).trim()) barcodePrice[String(code).trim()] = { gia: unitCost, ten: nameKey(name) };
     }
-    GIA_THEO_TEN[String(m.shop_label).toUpperCase()] = bang;
-    GIA_THEO_MA[String(m.shop_label).toUpperCase()] = theoMa;
+    COST_BY_NAME[String(m.shop_label).toUpperCase()] = byName;
+    COST_BY_BARCODE[String(m.shop_label).toUpperCase()] = barcodePrice;
 }
 
 /** Đọc kho sao kê NAZA (Đài): phí trung bình một kiện + cân tính phí trung bình. */
-async function docSaoKeNaza() {
-    const kho = await readStoreFresh<{ statements: Statement[] }>("cod_statements", { statements: [] });
-    let kien = 0, vnd = 0, ky = 0, kienCoCan = 0, tongCan = 0, tongNac = 0, tongBac500 = 0;
-    for (const s of kho.statements || []) {
+async function loadNazaFeeStats() {
+    const store = await readStoreFresh<{ statements: Statement[] }>("cod_statements", { statements: [] });
+    let parcelCount = 0, vnd = 0, periodCount = 0, weighedParcels = 0, totalKg = 0, total100gSteps = 0, total500gSteps = 0;
+    for (const s of store.statements || []) {
         const lines = s.naza?.fee_lines || [];
         if (!lines.length) continue;
-        ky += 1;
+        periodCount += 1;
         const rate = s.naza?.summary?.rate_rmb_vnd || COST_RATE_RMB_VND;
         // File gộp "phí vận chuyển + phí thao tác" vào một cột thì op_fee đã nằm trong ship_fee.
-        const gop = !!s.naza?.summary?.fees_combined;
+        const feesCombined = !!s.naza?.summary?.fees_combined;
         for (const l of lines) {
-            const rmb = Math.abs(Number(l.ship_fee || 0)) + (gop ? 0 : Math.abs(Number(l.op_fee || 0)));
-            kien += 1;
+            const rmb = Math.abs(Number(l.ship_fee || 0)) + (feesCombined ? 0 : Math.abs(Number(l.op_fee || 0)));
+            parcelCount += 1;
             vnd += rmb * rate;
             const kg = Number(l.chargeable_kg || 0);
             if (kg > 0) {
-                kienCoCan += 1;
-                tongCan += kg;
+                weighedParcels += 1;
+                totalKg += kg;
                 // Chặng đầu Singapore tính theo TỪNG 0,1 kg — làm tròn lên từng kiện rồi mới lấy trung bình.
-                tongNac += Math.ceil(kg * 10 - 1e-9);
+                total100gSteps += Math.ceil(kg * 10 - 1e-9);
                 // Cước Nhật tính theo bậc 0,5 kg — cũng làm tròn lên từng kiện (tối thiểu 1 bậc).
-                tongBac500 += Math.max(1, Math.ceil(kg * 2 - 1e-9));
+                total500gSteps += Math.max(1, Math.ceil(kg * 2 - 1e-9));
             }
         }
     }
     return {
-        tw: kien ? { per_order_vnd: vnd / kien, parcels: kien, periods: ky } : null,
-        can: kienCoCan ? { kg_tb: tongCan / kienCoCan, nac_100g_tb: tongNac / kienCoCan, bac_500g_tb: tongBac500 / kienCoCan, kien: kienCoCan } : null,
+        tw: parcelCount ? { per_order_vnd: vnd / parcelCount, parcels: parcelCount, periods: periodCount } : null,
+        can: weighedParcels ? { kg_tb: totalKg / weighedParcels, nac_100g_tb: total100gSteps / weighedParcels, bac_500g_tb: total500gSteps / weighedParcels, kien: weighedParcels } : null,
     };
 }
 
@@ -140,10 +140,10 @@ async function docSaoKeNaza() {
 function shipSgRmb(codRmb: number, can: { kg_tb: number; nac_100g_tb: number } | null): number | null {
     const f = SG_FEES;
     if (!f || !can || !f.first_leg_per_100g?.thuong || !f.last_leg?.first_2kg) return null;
-    const changDau = f.first_leg_per_100g.thuong * can.nac_100g_tb;
-    const changCuoi = f.last_leg.first_2kg + Math.max(0, can.kg_tb - 2) * (f.last_leg.extra_per_kg || 0);
+    const firstLeg = f.first_leg_per_100g.thuong * can.nac_100g_tb;
+    const lastLeg = f.last_leg.first_2kg + Math.max(0, can.kg_tb - 2) * (f.last_leg.extra_per_kg || 0);
     const cod = Math.max((f.cod_fee?.pct || 0) * codRmb, f.cod_fee?.min || 0);
-    return changDau + changCuoi + cod + (f.single_parcel_fee || 0);
+    return firstLeg + lastLeg + cod + (f.single_parcel_fee || 0);
 }
 
 /**
@@ -152,8 +152,8 @@ function shipSgRmb(codRmb: number, can: { kg_tb: number; nac_100g_tb: number } |
  * "?:<tên>" khi chưa tra được giá. Dòng ghép nhiều mã ("042 - BLACK + 043 - COFFEE")
  * tách thành nhiều dòng, mỗi mã một dòng, cùng số lượng.
  */
-export type DongHang = { sp: string; ten: string; qty: number; gia_vnd: number | null };
-export type DonChiPhi = {
+export type OrderLine = { sp: string; ten: string; qty: number; gia_vnd: number | null };
+export type OrderCost = {
     key: string; shop: string; d: string;
     /** Tiền đơn quy VND — cùng cách Sheet tính cột Doanh Số. */
     vnd: number;
@@ -162,17 +162,17 @@ export type DonChiPhi = {
     du: boolean;
     /** Phí ship ước tính (VND); null = nước chưa có sao kê/bảng giá. */
     ship: number | null;
-    dong: DongHang[];
+    dong: OrderLine[];
 };
-export type ThieuGia = { ma: string; ten: string; qty: number; orders: number };
+export type MissingCost = { ma: string; ten: string; qty: number; orders: number };
 
 /**
  * `chiShop` (phân quyền theo team, 05/10/2026): chỉ giữ đơn của shop được xem (mã "TW"…).
  * Bỏ trống = mọi shop. Lọc ngay từ dòng đầu nên mã thiếu giá, cơ sở phí ship cũng chỉ
  * còn của nước đó.
  */
-export async function tinhChiPhiDon(from: string, to: string, chiShop?: (shop: string) => boolean): Promise<{
-    don: DonChiPhi[]; thieu: ThieuGia[]; ship_basis: Record<string, string>;
+export async function computeOrderCosts(from: string, to: string, shopFilter?: (shop: string) => boolean): Promise<{
+    don: OrderCost[]; thieu: MissingCost[]; ship_basis: Record<string, string>;
 }> {
     const rows = await query(
         `
@@ -197,75 +197,75 @@ export async function tinhChiPhiDon(from: string, to: string, chiShop?: (shop: s
         { from, to, tz: POS_TIMEZONE },
     );
 
-    const donMap = new Map<string, DonChiPhi>();
-    const thieu = new Map<string, { ma: string; ten: string; qty: number; don: Set<string> }>();
+    const orderMap = new Map<string, OrderCost>();
+    const missing = new Map<string, { ma: string; ten: string; qty: number; don: Set<string> }>();
     for (const r of rows as any[]) {
-        if (chiShop && !chiShop(r.shop)) continue;
+        if (shopFilter && !shopFilter(r.shop)) continue;
         const key = `${r.shop}-${r.id}`;
-        let o = donMap.get(key);
+        let o = orderMap.get(key);
         if (!o) {
             const local = (Number(r.cod) > 0 ? Number(r.cod) : Number(r.total_price)) / posMoneyDivisor(r.shop);
             o = { key, shop: r.shop, d: r.d, vnd: local * (EXCHANGE_RATES[SHOP2MKT[r.shop]] || 0), cogs: 0, du: true, ship: null, dong: [] };
-            donMap.set(key, o);
+            orderMap.set(key, o);
         }
         if (r.product_name == null && r.variation_name == null) { o.du = false; continue; }  // đơn không có dòng hàng
-        const ten = `${r.product_name || ""} ${r.variation_name || ""}`.trim();
+        const name = `${r.product_name || ""} ${r.variation_name || ""}`.trim();
         const qty = Number(r.qty || 0);
-        const ghiThieu = (ma: string) => {
-            const t = thieu.get(ma) || { ma, ten, qty: 0, don: new Set<string>() };
-            t.qty += qty; t.don.add(key); thieu.set(ma, t);
+        const recordMissing = (code: string) => {
+            const t = missing.get(code) || { ma: code, ten: name, qty: 0, don: new Set<string>() };
+            t.qty += qty; t.don.add(key); missing.set(code, t);
             o!.du = false;
-            o!.dong.push({ sp: `?:${ten || "(không tên)"}`, ten, qty, gia_vnd: null });
+            o!.dong.push({ sp: `?:${name || "(không tên)"}`, ten: name, qty, gia_vnd: null });
         };
         // Tên khai tay ở product_name_aliases thắng; sau đó giá theo tên của shop (UAE); cuối cùng
         // mới đọc mã 3 số trong tên (chỉ ở shop đặt tên theo mã của bảng giá).
-        const biDanh = ALIASES[khoaTen(ten)];
-        const theoMa = r.barcode ? GIA_THEO_MA[r.shop]?.[String(r.barcode).trim()] : undefined;
-        const giaTen = GIA_THEO_TEN[r.shop]?.[khoaTen(ten)];
-        if (!biDanh && theoMa) {
-            o.cogs += theoMa.gia * qty;
-            o.dong.push({ sp: `${r.shop}:${theoMa.ten}`, ten, qty, gia_vnd: theoMa.gia });
+        const biDanh = ALIASES[nameKey(name)];
+        const barcodePrice = r.barcode ? COST_BY_BARCODE[r.shop]?.[String(r.barcode).trim()] : undefined;
+        const costByName = COST_BY_NAME[r.shop]?.[nameKey(name)];
+        if (!biDanh && barcodePrice) {
+            o.cogs += barcodePrice.gia * qty;
+            o.dong.push({ sp: `${r.shop}:${barcodePrice.ten}`, ten: name, qty, gia_vnd: barcodePrice.gia });
             continue;
         }
-        if (!biDanh && giaTen !== undefined) {
-            o.cogs += giaTen * qty;
-            o.dong.push({ sp: `${r.shop}:${khoaTen(ten)}`, ten, qty, gia_vnd: giaTen });
+        if (!biDanh && costByName !== undefined) {
+            o.cogs += costByName * qty;
+            o.dong.push({ sp: `${r.shop}:${nameKey(name)}`, ten: name, qty, gia_vnd: costByName });
             continue;
         }
-        const codes = biDanh ? [biDanh] : MA_3_SO_THEO_SHOP[r.shop] === false ? [] : productCodes(ten);
-        if (!codes.length) { ghiThieu(ten || "(không tên)"); continue; }
+        const codes = biDanh ? [biDanh] : CODE_IN_NAME_BY_SHOP[r.shop] === false ? [] : productCodes(name);
+        if (!codes.length) { recordMissing(name || "(không tên)"); continue; }
         for (const c of codes) {
-            const gia = costPriceVnd(c);
-            if (gia === null) { ghiThieu(c); continue; }
-            o.cogs += gia * qty;
-            o.dong.push({ sp: c, ten, qty, gia_vnd: gia });
+            const unitCost = costPriceVnd(c);
+            if (unitCost === null) { recordMissing(c); continue; }
+            o.cogs += unitCost * qty;
+            o.dong.push({ sp: c, ten: name, qty, gia_vnd: unitCost });
         }
     }
 
-    const naza = await docSaoKeNaza();
+    const naza = await loadNazaFeeStats();
     // UAE: bậc phí fulfillment theo số đơn TRUNG BÌNH/NGÀY của khoảng đang xem.
-    const soNgay = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1);
-    const donAe = [...donMap.values()].filter((o) => o.shop === "AE").length;
-    const fulfillAe = phiFulfillmentAe(donAe / soNgay);
-    const tyGiaAe = EXCHANGE_RATES[SHOP2MKT.AE] || 0;
-    const tyGiaJp = EXCHANGE_RATES[SHOP2MKT.JP] || 0;
-    for (const o of donMap.values()) {
+    const dayCount = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1);
+    const aeOrders = [...orderMap.values()].filter((o) => o.shop === "AE").length;
+    const fulfillAe = aeFulfillmentFee(aeOrders / dayCount);
+    const aeRate = EXCHANGE_RATES[SHOP2MKT.AE] || 0;
+    const jpRate = EXCHANGE_RATES[SHOP2MKT.JP] || 0;
+    for (const o of orderMap.values()) {
         if (o.shop === "TW") o.ship = naza.tw ? naza.tw.per_order_vnd : null;
         else if (o.shop === "SG") {
             const rmb = shipSgRmb(o.vnd / COST_RATE_RMB_VND, naza.can);
             o.ship = rmb === null ? null : rmb * COST_RATE_RMB_VND;
         } else if (o.shop === "AE") {
-            o.ship = fulfillAe === null || !AE_FEES?.delivered_ship_fee || !tyGiaAe ? null
-                : (fulfillAe + AE_FEES.delivered_ship_fee + (AE_FEES.cod_fee_pct || 0) * (o.vnd / tyGiaAe)) * tyGiaAe;
+            o.ship = fulfillAe === null || !AE_FEES?.delivered_ship_fee || !aeRate ? null
+                : (fulfillAe + AE_FEES.delivered_ship_fee + (AE_FEES.cod_fee_pct || 0) * (o.vnd / aeRate)) * aeRate;
         } else if (o.shop === "JP") {
-            o.ship = tyGiaJp ? phiShipNhatVnd(o.vnd / tyGiaJp, naza.can ? naza.can.bac_500g_tb : null, tyGiaJp, COST_RATE_RMB_VND) : null;
+            o.ship = jpRate ? jpShippingFeeVnd(o.vnd / jpRate, naza.can ? naza.can.bac_500g_tb : null, jpRate, COST_RATE_RMB_VND) : null;
         }
     }
 
     // Cơ sở ước tính phí ship từng nước — giao diện in ra để người đọc biết số từ đâu.
     const fmt = (n: number) => Math.round(n).toLocaleString("vi-VN");
     const tbShip = (shop: string) => {
-        const ds = [...donMap.values()].filter((o) => o.shop === shop && o.ship !== null);
+        const ds = [...orderMap.values()].filter((o) => o.shop === shop && o.ship !== null);
         return ds.length ? ds.reduce((s, o) => s + (o.ship || 0), 0) / ds.length : null;
     };
     const ship_basis: Record<string, string> = {};
@@ -283,24 +283,24 @@ export async function tinhChiPhiDon(from: string, to: string, chiShop?: (shop: s
     const ae = tbShip("AE");
     if (AE_FEES && ae !== null) {
         ship_basis.AE = `trung bình ${fmt(ae)}đ/đơn theo bảng giá D&T Fulfillment: `
-            + `fulfillment ${fulfillAe} AED (${(donAe / soNgay).toFixed(1)} đơn/ngày) + vận chuyển đơn thành công `
+            + `fulfillment ${fulfillAe} AED (${(aeOrders / dayCount).toFixed(1)} đơn/ngày) + vận chuyển đơn thành công `
             + `${AE_FEES.delivered_ship_fee} AED + thu hộ COD ${((AE_FEES.cod_fee_pct || 0) * 100).toFixed(0)}% tiền đơn, `
-            + `quy ${fmt(tyGiaAe)}đ/AED. Đơn hoàn chỉ mất phí fulfillment — P&L đang tính như đơn giao thành công.`;
+            + `quy ${fmt(aeRate)}đ/AED. Đơn hoàn chỉ mất phí fulfillment — P&L đang tính như đơn giao thành công.`;
     }
     const jp = tbShip("JP");
-    if (BANG_GIA_NHAT && naza.can && jp !== null) {
+    if (JP_FEE_SCHEDULE && naza.can && jp !== null) {
         const bac = naza.can.bac_500g_tb;
-        ship_basis.JP = `trung bình ${fmt(jp)}đ/đơn theo bảng giá NAZA Nhật: cước ${BANG_GIA_NHAT.first_half_kg?.thuong} tệ 0,5 kg đầu `
-            + `+ ${BANG_GIA_NHAT.extra_half_kg?.thuong} tệ mỗi 0,5 kg tiếp (trung bình ${bac.toFixed(2)} bậc 0,5 kg/kiện theo cân `
-            + `${fmt(naza.can.kien)} kiện NAZA Đài → ${(cuocNhatRmb(bac) || 0).toFixed(1)} tệ) + phí thu hộ theo bậc tiền COD `
-            + `(${(BANG_GIA_NHAT.cod_fee_jpy_tiers || []).map((x) => `≤${fmt(x.max_cod_jpy)}¥: ${x.fee}¥`).join(" · ")}), `
-            + `quy ${fmt(COST_RATE_RMB_VND)}đ/tệ, ${fmt(tyGiaJp)}đ/yên. Chưa gồm phụ thu vùng xa 1.600¥, phí từ chối / hoàn 800¥.`;
+        ship_basis.JP = `trung bình ${fmt(jp)}đ/đơn theo bảng giá NAZA Nhật: cước ${JP_FEE_SCHEDULE.first_half_kg?.thuong} tệ 0,5 kg đầu `
+            + `+ ${JP_FEE_SCHEDULE.extra_half_kg?.thuong} tệ mỗi 0,5 kg tiếp (trung bình ${bac.toFixed(2)} bậc 0,5 kg/kiện theo cân `
+            + `${fmt(naza.can.kien)} kiện NAZA Đài → ${(jpFreightRmb(bac) || 0).toFixed(1)} tệ) + phí thu hộ theo bậc tiền COD `
+            + `(${(JP_FEE_SCHEDULE.cod_fee_jpy_tiers || []).map((x) => `≤${fmt(x.max_cod_jpy)}¥: ${x.fee}¥`).join(" · ")}), `
+            + `quy ${fmt(COST_RATE_RMB_VND)}đ/tệ, ${fmt(jpRate)}đ/yên. Chưa gồm phụ thu vùng xa 1.600¥, phí từ chối / hoàn 800¥.`;
     }
-    if (chiShop) for (const k of Object.keys(ship_basis)) if (!chiShop(k)) delete ship_basis[k];
+    if (shopFilter) for (const k of Object.keys(ship_basis)) if (!shopFilter(k)) delete ship_basis[k];
 
     return {
-        don: [...donMap.values()],
-        thieu: [...thieu.values()]
+        don: [...orderMap.values()],
+        thieu: [...missing.values()]
             .map((t) => ({ ma: t.ma, ten: t.ten, qty: t.qty, orders: t.don.size }))
             .sort((a, b) => b.orders - a.orders),
         ship_basis,

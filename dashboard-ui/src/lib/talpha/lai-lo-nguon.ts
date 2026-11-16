@@ -20,14 +20,14 @@ import { readStoreFresh } from "@/lib/talpha/store";
 import {
     COST_RATE_RMB_VND, EXCHANGE_RATES, RULES, SHOP2MKT, costPriceVnd,
 } from "@/lib/talpha/rules";
-import { maGocGiaoLai, productCodes } from "@/lib/talpha/order-ledger";
-import { napSoDonDai } from "@/lib/talpha/so-don-dai";
+import { redeliveryOrigin, productCodes } from "@/lib/talpha/order-ledger";
+import { loadTwOrderLedger } from "@/lib/talpha/so-don-dai";
 import { loadPartnerMarketShipments } from "@/lib/talpha/tracking-market";
 import { TERMINAL, trackMarket } from "@/lib/talpha/tracking";
 import { awbFromPartner } from "@/lib/talpha/weship";
-import { tinhChiPhiDon } from "@/lib/talpha/order-costs";
-import { BANG_GIA_NHAT, cuocNhatRmb, phiThuHoNhat } from "@/lib/talpha/phi-ship-nhat";
-import { nhomKien, type Kien } from "@/lib/talpha/lai-lo";
+import { computeOrderCosts } from "@/lib/talpha/order-costs";
+import { JP_FEE_SCHEDULE, jpFreightRmb, jpCodFee } from "@/lib/talpha/phi-ship-nhat";
+import { classifyParcel, type Parcel } from "@/lib/talpha/lai-lo";
 
 type Cfg = {
     ty_le_giao?: { cua_so_ngay?: number; bo_gan_ngay?: number; mau_toi_thieu?: number };
@@ -36,33 +36,33 @@ type Cfg = {
     nhom_van_hanh?: string[];
 };
 export const KQKD: Cfg = (RULES as unknown as { ket_qua_kd?: Cfg }).ket_qua_kd || {};
-export const CFG_TY_LE = {
+export const DELIVERY_RATE_CFG = {
     cua_so_ngay: Number(KQKD.ty_le_giao?.cua_so_ngay ?? 90),
     bo_gan_ngay: Number(KQKD.ty_le_giao?.bo_gan_ngay ?? 21),
     mau_toi_thieu: Number(KQKD.ty_le_giao?.mau_toi_thieu ?? 20),
 };
-export const CHO_LEN_3PL_NGAY = Number(KQKD.cho_len_3pl_ngay ?? 3);
-export const NHOM_VAN_HANH = KQKD.nhom_van_hanh?.length ? KQKD.nhom_van_hanh : ["Lương", "Mặt bằng", "Phần mềm & công cụ", "Khác"];
-const VE_KHO = new Set((KQKD.hang_hoan?.quay_lai_kho_ban_tiep || ["AE"]).map((x) => x.toUpperCase()));
-const LUU_KHO = Number(KQKD.hang_hoan?.luu_kho_ngay ?? 30);
-const VE_KHO_SAU_GUI = Number(KQKD.hang_hoan?.ve_kho_sau_gui_ngay ?? 14);
+export const PENDING_3PL_DAYS = Number(KQKD.cho_len_3pl_ngay ?? 3);
+export const OPEX_CATEGORIES = KQKD.nhom_van_hanh?.length ? KQKD.nhom_van_hanh : ["Lương", "Mặt bằng", "Phần mềm & công cụ", "Khác"];
+const RESTOCKABLE_MARKETS = new Set((KQKD.hang_hoan?.quay_lai_kho_ban_tiep || ["AE"]).map((x) => x.toUpperCase()));
+const FREE_STORAGE_DAYS = Number(KQKD.hang_hoan?.luu_kho_ngay ?? 30);
+const RETURN_TO_WAREHOUSE_DAYS = Number(KQKD.hang_hoan?.ve_kho_sau_gui_ngay ?? 14);
 
 const FEES = (RULES as unknown as { shipping_fees?: Record<string, any> }).shipping_fees || {};
 const rate = (code: string) => EXCHANGE_RATES[SHOP2MKT[code]] || 0;
 const clean = (x?: string | null) => String(x || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
-const soNgay = (a: string, b: string) => Math.floor((Date.parse(b) - Date.parse(a)) / 86_400_000);
+const daysBetween = (a: string, b: string) => Math.floor((Date.parse(b) - Date.parse(a)) / 86_400_000);
 const tb = (xs: number[]) => (xs.length ? xs.reduce((s, x) => s + x, 0) / xs.length : null);
 const fmt = (n: number) => Math.round(n).toLocaleString("vi-VN");
 
 /** Hàng hoàn còn trong hạn lưu kho miễn phí của 3PL (ước ngày về kho = ngày gửi + VE_KHO_SAU_GUI). */
-function conHan(ngayGui: string | null | undefined, ngay: string, asOf: string, daHuy: boolean) {
-    if (daHuy) return false;
-    const goc = ngayGui || ngay;
-    return !!goc && soNgay(goc, asOf) <= VE_KHO_SAU_GUI + LUU_KHO;
+function isWithinFreeStorage(shipDate: string | null | undefined, date: string, asOf: string, isDestroyed: boolean) {
+    if (isDestroyed) return false;
+    const baseDate = shipDate || date;
+    return !!baseDate && daysBetween(baseDate, asOf) <= RETURN_TO_WAREHOUSE_DAYS + FREE_STORAGE_DAYS;
 }
 
 /** Giá vốn theo SKU: mọi mã phải có giá, thiếu một mã là null (cộng nửa vời ra lãi đẹp giả). */
-function giaVonSku(sku: string | null | undefined, qty: number): number | null {
+function skuCogs(sku: string | null | undefined, qty: number): number | null {
     const codes = productCodes(sku);
     if (!codes.length) return null;
     let s = 0;
@@ -74,52 +74,52 @@ function giaVonSku(sku: string | null | undefined, qty: number): number | null {
     return s;
 }
 
-export type NguonNuoc = { kien: Kien[]; co_so: string[]; nguon: string };
+export type MarketSource = { kien: Parcel[]; co_so: string[]; nguon: string };
 
 // ─────────────────────────────────────────────────────────────────────────
 // ĐÀI
 // ─────────────────────────────────────────────────────────────────────────
-async function kienDai(asOf: string): Promise<NguonNuoc> {
-    const { rows, stm } = await napSoDonDai(asOf);
+async function twParcels(asOf: string): Promise<MarketSource> {
+    const { rows, stm } = await loadTwOrderLedger(asOf);
     const rTw = rate("TW");
     // Tỷ giá NAZA kỳ mới nhất (TWD→tệ × tệ→đồng) — cho kiện chưa được trả tiền.
-    const ky = stm.statements
+    const periods = stm.statements
         .map((s) => ({
             ngay: s.rows.reduce((mx, r) => (r.paid_date > mx ? r.paid_date : mx), ""),
             tw: s.naza?.summary?.rate_twd_rmb ?? null, rv: s.naza?.summary?.rate_rmb_vnd ?? null,
         }))
         .filter((k) => k.tw && k.rv)
         .sort((a, b) => b.ngay.localeCompare(a.ngay));
-    const chuoi = ky.length ? ky[0].tw! * ky[0].rv! : null;
-    const phiCo = rows.filter((r) => r.fee_vnd != null).map((r) => r.fee_vnd as number);
-    const phiTb = tb(phiCo) ?? 0;
+    const chuoi = periods.length ? periods[0].tw! * periods[0].rv! : null;
+    const knownFees = rows.filter((r) => r.fee_vnd != null).map((r) => r.fee_vnd as number);
+    const avgFee = tb(knownFees) ?? 0;
 
-    const kien: Kien[] = rows.map((r) => {
-        const ngay = r.order_date || r.ship_date || "";
-        const nhom = nhomKien(r.status, null, r.status_raw, !!r.ship_date);
+    const parcels: Parcel[] = rows.map((r) => {
+        const date = r.order_date || r.ship_date || "";
+        const group = classifyParcel(r.status, null, r.status_raw, !!r.ship_date);
         // Kiện GIAO LẠI (mã gốc trong ngoặc) dùng chính hàng của kiện hoàn — giá vốn đã tính ở
         // kiện gốc, tính lại là đếm một món hàng hai lần.
-        const giaoLai = !!maGocGiaoLai(r.order_no);
+        const isRedelivery = !!redeliveryOrigin(r.order_no);
         return {
-            nuoc: "TW", ma: r.order_no || r.tracking, ngay, ngay_gui: r.ship_date || null, nhom,
+            nuoc: "TW", ma: r.order_no || r.tracking, ngay: date, ngay_gui: r.ship_date || null, nhom: group,
             trang_thai: r.status_raw || r.status || "",
             cod_vnd: r.cod_twd * rTw,
             cod_that_vnd: r.gross_vnd ?? (chuoi ? r.cod_twd * chuoi : null),
-            gia_von_vnd: giaoLai ? 0 : r.cogs_vnd,
-            phi_di_vnd: r.fee_vnd ?? phiTb,
+            gia_von_vnd: isRedelivery ? 0 : r.cogs_vnd,
+            phi_di_vnd: r.fee_vnd ?? avgFee,
             phi_giao_vnd: 0,
             phi_hoan_vnd: 0,
             phi_that: r.fee_vnd != null,
-            hang_ve_kho: VE_KHO.has("TW"),
-            hoan_con_han: nhom === "hoan" && conHan(r.ship_date, ngay, asOf, r.status === "Destroyed" || /tiêu hu/i.test(r.status_raw)),
+            hang_ve_kho: RESTOCKABLE_MARKETS.has("TW"),
+            hoan_con_han: group === "hoan" && isWithinFreeStorage(r.ship_date, date, asOf, r.status === "Destroyed" || /tiêu hu/i.test(r.status_raw)),
         };
     });
     return {
-        kien,
+        kien: parcels,
         nguon: "Bảng đơn NAZA + 17TRACK · sao kê NAZA",
         co_so: [
             `Phí 3PL: phí thật trong sheet PHÍ của ${stm.statements.length} kỳ sao kê NAZA (vận chuyển + thao tác, NAZA thu cả kiện hoàn); `
-            + `kiện chưa vào kỳ nào lấy trung bình ${fmt(phiTb)}đ/kiện của ${phiCo.length} kiện đã có phí. Hoàn về kho NAZA miễn phí 1 tháng.`,
+            + `kiện chưa vào kỳ nào lấy trung bình ${fmt(avgFee)}đ/kiện của ${knownFees.length} kiện đã có phí. Hoàn về kho NAZA miễn phí 1 tháng.`,
             chuoi
                 ? `Chênh tỷ giá: NAZA quy TWD→tệ→đồng theo tỷ giá từng kỳ (kỳ mới nhất ${fmt(chuoi)}đ/TWD) so với ${fmt(rTw)}đ/TWD của Doanh số.`
                 : "Chênh tỷ giá: chưa có kỳ sao kê nào ghi đủ tỷ giá.",
@@ -131,7 +131,7 @@ async function kienDai(asOf: string): Promise<NguonNuoc> {
 // ─────────────────────────────────────────────────────────────────────────
 // SINGAPORE · NHẬT — bảng đối tác + sao kê NAZA nước đó
 // ─────────────────────────────────────────────────────────────────────────
-type SaoKeNuoc = {
+type MarketStatementStore = {
     statements: {
         filename: string; ngay?: string;
         rows?: { tracking: string; amount: number }[];
@@ -143,18 +143,18 @@ type SaoKeNuoc = {
     }[];
 };
 
-async function kienDoiTac(code: "SG" | "JP", asOf: string): Promise<NguonNuoc> {
+async function partnerParcels(code: "SG" | "JP", asOf: string): Promise<MarketSource> {
     const mk = trackMarket(code);
     if (mk.code !== code) throw new Error(`chưa khai tracking.markets.${code}`);
     const [{ shipments }, sk] = await Promise.all([
         loadPartnerMarketShipments(mk, () => ({ registered: {}, statuses: {} })),
-        readStoreFresh<SaoKeNuoc>(`cod_statements_${code.toLowerCase()}`, { statements: [] }),
+        readStoreFresh<MarketStatementStore>(`cod_statements_${code.toLowerCase()}`, { statements: [] }),
     ]);
     const rLocal = rate(code);
 
     // Phí từng kiện trong sao kê, quy VND theo tỷ giá tệ của kỳ đó. Một kiện có thể bị thu ở
     // hai kỳ (NAZA thu bù hàng đặc thù kỳ sau) — cộng dồn.
-    const phiDi = new Map<string, number>(), thuHo = new Map<string, number>(), canKien: number[] = [];
+    const outboundFees = new Map<string, number>(), codFees = new Map<string, number>(), parcelWeights: number[] = [];
     let chuoi: { tw: number; rv: number; ngay: string } | null = null;
     for (const s of sk.statements) {
         const n = s.naza;
@@ -162,74 +162,74 @@ async function kienDoiTac(code: "SG" | "JP", asOf: string): Promise<NguonNuoc> {
         const rv = Number(n.ty_gia_vnd) || COST_RATE_RMB_VND;
         for (const l of n.phi_dong || []) {
             const k = clean(l.tracking);
-            phiDi.set(k, (phiDi.get(k) || 0) + (Number(l.ship) + Number(l.first_leg) + Number(l.op)) * rv);
-            if (Number(l.kg) > 0) canKien.push(Number(l.kg));
+            outboundFees.set(k, (outboundFees.get(k) || 0) + (Number(l.ship) + Number(l.first_leg) + Number(l.op)) * rv);
+            if (Number(l.kg) > 0) parcelWeights.push(Number(l.kg));
         }
         for (const l of n.thu_ho || []) {
             const k = clean(l.tracking);
-            thuHo.set(k, (thuHo.get(k) || 0) + Number(l.phi_rmb) * rv);
+            codFees.set(k, (codFees.get(k) || 0) + Number(l.phi_rmb) * rv);
         }
-        const ngay = s.ngay || "";
-        if (n.ty_gia_rmb && n.ty_gia_vnd && (!chuoi || ngay > chuoi.ngay)) chuoi = { tw: n.ty_gia_rmb, rv: n.ty_gia_vnd, ngay };
+        const date = s.ngay || "";
+        if (n.ty_gia_rmb && n.ty_gia_vnd && (!chuoi || date > chuoi.ngay)) chuoi = { tw: n.ty_gia_rmb, rv: n.ty_gia_vnd, ngay: date };
     }
-    const phiCo = [...phiDi.values()];
+    const knownFees = [...outboundFees.values()];
     const f = FEES[code] || {};
 
     // Ước khi kiện chưa vào sao kê nào: trung bình kiện đã có (≥ 3 kiện), không thì bảng giá.
-    let phiDiUoc: number | null = phiCo.length >= 3 ? tb(phiCo) : null;
-    let cachUoc = phiDiUoc != null ? `trung bình ${fmt(phiDiUoc)}đ/kiện của ${phiCo.length} kiện đã có trong sao kê` : "";
-    if (phiDiUoc == null) {
+    let estOutboundFee: number | null = knownFees.length >= 3 ? tb(knownFees) : null;
+    let estimateMethod = estOutboundFee != null ? `trung bình ${fmt(estOutboundFee)}đ/kiện của ${knownFees.length} kiện đã có trong sao kê` : "";
+    if (estOutboundFee == null) {
         if (code === "SG" && f.first_leg_per_100g?.thuong && f.last_leg?.first_2kg) {
-            const kg = tb(canKien) ?? 0.3;
+            const kg = tb(parcelWeights) ?? 0.3;
             const rmb = f.first_leg_per_100g.thuong * Math.ceil(kg * 10 - 1e-9) + f.last_leg.first_2kg + Number(f.single_parcel_fee || 0);
-            phiDiUoc = rmb * COST_RATE_RMB_VND;
-            cachUoc = `bảng giá Singapore (${kg.toFixed(1)} kg/kiện): ${rmb.toFixed(1)} tệ`;
+            estOutboundFee = rmb * COST_RATE_RMB_VND;
+            estimateMethod = `bảng giá Singapore (${kg.toFixed(1)} kg/kiện): ${rmb.toFixed(1)} tệ`;
         } else if (code === "JP") {
-            const rmb = cuocNhatRmb(1) ?? 0;
-            phiDiUoc = rmb * COST_RATE_RMB_VND;
-            cachUoc = `bảng giá NAZA Nhật 0,5 kg đầu: ${rmb} tệ`;
-        } else phiDiUoc = 0;
+            const rmb = jpFreightRmb(1) ?? 0;
+            estOutboundFee = rmb * COST_RATE_RMB_VND;
+            estimateMethod = `bảng giá NAZA Nhật 0,5 kg đầu: ${rmb} tệ`;
+        } else estOutboundFee = 0;
     }
 
-    const kien: Kien[] = shipments.map((s) => {
+    const parcels: Parcel[] = shipments.map((s) => {
         const k = clean(s.tracking);
-        const ngay = s.order_date || s.ship_date || "";
-        const nhom = nhomKien(s.status, s.sub_status, s.raw_status, !!s.ship_date);
+        const date = s.order_date || s.ship_date || "";
+        const group = classifyParcel(s.status, s.sub_status, s.raw_status, !!s.ship_date);
         const codVnd = s.cod_local * rLocal;
         const codRmb = chuoi ? s.cod_local * chuoi.tw : codVnd / COST_RATE_RMB_VND;
-        let di = phiDi.get(k);
+        let di = outboundFees.get(k);
         const that = di != null;
-        let giao = 0, hoan = 0;
+        let deliveryFee = 0, returnFee = 0;
         if (code === "SG") {
             // Thu hộ COD chỉ khi thu được tiền: % tiền đơn, có mức sàn. Hoàn: nhập kho hàng hoàn.
-            giao = thuHo.get(k) ?? Math.max(Number(f.cod_fee?.pct || 0) * codRmb, Number(f.cod_fee?.min || 0)) * COST_RATE_RMB_VND;
-            hoan = Number(f.returns?.return_inbound || 0) * COST_RATE_RMB_VND;
-            di = di ?? phiDiUoc!;
+            deliveryFee = codFees.get(k) ?? Math.max(Number(f.cod_fee?.pct || 0) * codRmb, Number(f.cod_fee?.min || 0)) * COST_RATE_RMB_VND;
+            returnFee = Number(f.returns?.return_inbound || 0) * COST_RATE_RMB_VND;
+            di = di ?? estOutboundFee!;
         } else {
             // Nhật: phí ủy thác thu hộ thu DÙ khách có nhận hay không → vào phí chặng đi.
             // Hoàn = phí từ chối nhận (xử lý hàng hoàn).
-            const thuHoNhat = thuHo.get(k) ?? (phiThuHoNhat(s.cod_local, BANG_GIA_NHAT) ?? 0) * rLocal;
-            di = (di ?? phiDiUoc!) + thuHoNhat;
-            hoan = Number(f.refusal_fee_jpy || 0) * rLocal;
+            const jpCodFeeVnd = codFees.get(k) ?? (jpCodFee(s.cod_local, JP_FEE_SCHEDULE) ?? 0) * rLocal;
+            di = (di ?? estOutboundFee!) + jpCodFeeVnd;
+            returnFee = Number(f.refusal_fee_jpy || 0) * rLocal;
         }
         return {
-            nuoc: code, ma: s.order_id || s.tracking, ngay, ngay_gui: s.ship_date || null, nhom,
+            nuoc: code, ma: s.order_id || s.tracking, ngay: date, ngay_gui: s.ship_date || null, nhom: group,
             trang_thai: s.raw_status || s.status || "",
             cod_vnd: codVnd,
             cod_that_vnd: chuoi ? s.cod_local * chuoi.tw * chuoi.rv : null,
-            gia_von_vnd: giaVonSku(s.sku, s.quantity || 1),
-            phi_di_vnd: di, phi_giao_vnd: giao, phi_hoan_vnd: hoan, phi_that: that,
-            hang_ve_kho: VE_KHO.has(code),
-            hoan_con_han: nhom === "hoan" && conHan(s.ship_date, ngay, asOf, /tiêu hu/i.test(String(s.raw_status || "")) || s.status === "Destroyed"),
+            gia_von_vnd: skuCogs(s.sku, s.quantity || 1),
+            phi_di_vnd: di, phi_giao_vnd: deliveryFee, phi_hoan_vnd: returnFee, phi_that: that,
+            hang_ve_kho: RESTOCKABLE_MARKETS.has(code),
+            hoan_con_han: group === "hoan" && isWithinFreeStorage(s.ship_date, date, asOf, /tiêu hu/i.test(String(s.raw_status || "")) || s.status === "Destroyed"),
         };
     });
 
-    const tenNuoc = code === "SG" ? "Singapore" : "Nhật";
+    const marketName = code === "SG" ? "Singapore" : "Nhật";
     return {
-        kien,
-        nguon: `Bảng đối tác ${tenNuoc} + 17TRACK · sao kê NAZA ${tenNuoc}`,
+        kien: parcels,
+        nguon: `Bảng đối tác ${marketName} + 17TRACK · sao kê NAZA ${marketName}`,
         co_so: [
-            `Phí 3PL: phí thật từng kiện trong ${sk.statements.length} kỳ sao kê ${tenNuoc} (vận chuyển + chặng đầu + thao tác${code === "SG" ? ", thu hộ COD" : ""}); kiện chưa có sao kê ước ${cachUoc}.`,
+            `Phí 3PL: phí thật từng kiện trong ${sk.statements.length} kỳ sao kê ${marketName} (vận chuyển + chặng đầu + thao tác${code === "SG" ? ", thu hộ COD" : ""}); kiện chưa có sao kê ước ${estimateMethod}.`,
             code === "SG"
                 ? `Thu hộ COD ${(Number(f.cod_fee?.pct || 0) * 100).toFixed(0)}% (tối thiểu ${f.cod_fee?.min || 0} tệ) chỉ khi giao được; hàng hoàn mất phí đi + nhập kho hoàn ${f.returns?.return_inbound || 0} tệ, lưu tối đa 30 ngày rồi huỷ.`
                 : `Phí thu hộ theo bậc tiền COD thu dù khách có nhận hay không; khách từ chối mất thêm ${fmt(Number(f.refusal_fee_jpy || 0))}¥, hàng về kho NAZA Nhật.`,
@@ -244,15 +244,15 @@ async function kienDoiTac(code: "SG" | "JP", asOf: string): Promise<NguonNuoc> {
 // ─────────────────────────────────────────────────────────────────────────
 // UAE — đơn POS + WeShip, bảng giá D&T Fulfillment
 // ─────────────────────────────────────────────────────────────────────────
-const POS_SANG_CHUAN: Record<string, string> = {
+const POS_TO_STANDARD_STATUS: Record<string, string> = {
     GIAO_THANH_CONG: "Delivered", DON_HOAN: "Returned", HUY: "Cancelled", DANG_GIAO: "InTransit",
 };
 
-async function kienUae(from: string, to: string, asOf: string): Promise<NguonNuoc> {
+async function aeParcels(from: string, to: string, asOf: string): Promise<MarketSource> {
     const mk = trackMarket("AE");
-    const tu = new Date(Date.parse(`${asOf}T00:00:00Z`) - (CFG_TY_LE.cua_so_ngay + 30) * 86_400_000).toISOString().slice(0, 10);
-    const batDau = from < tu ? from : tu;
-    const [rows, store, chiPhi] = await Promise.all([
+    const windowStart = new Date(Date.parse(`${asOf}T00:00:00Z`) - (DELIVERY_RATE_CFG.cua_so_ngay + 30) * 86_400_000).toISOString().slice(0, 10);
+    const startDate = from < windowStart ? from : windowStart;
+    const [rows, store, orderCosts] = await Promise.all([
         query(
             `SELECT v.order_id, to_char(v.order_date, 'YYYY-MM-DD') AS order_date, v.status_name, v.status_category,
                     safe_divide(o.cod, NULLIF(v.pos_money_divisor, 0)) AS cod, o.partner, o.time_send_partner
@@ -260,34 +260,34 @@ async function kienUae(from: string, to: string, asOf: string): Promise<NguonNuo
              LEFT JOIN sale_order o ON v.shop_id = o.shop_id AND v.order_id = o.id
              WHERE v.market = @m AND v.status_category NOT IN ('DON_THO')
                AND v.order_date BETWEEN @tu::date AND @den::date`,
-            { m: mk.pos_market || "AE", tu: batDau, den: to },
+            { m: mk.pos_market || "AE", tu: startDate, den: to },
         ),
         readStoreFresh<{ statuses: Record<string, { status?: string | null; sub_status?: string | null; raw_status?: string | null; source?: string }> }>(
             mk.store, { statuses: {} }),
-        tinhChiPhiDon(from, to, (shop) => shop === "AE"),
+        computeOrderCosts(from, to, (shop) => shop === "AE"),
     ]);
-    const gv = new Map(chiPhi.don.map((d) => [d.key.replace(/^AE-/, ""), d]));
+    const gv = new Map(orderCosts.don.map((d) => [d.key.replace(/^AE-/, ""), d]));
     const f = FEES.AE || {};
     const rAe = rate("AE");
     // Phí fulfillment theo bậc số đơn TRUNG BÌNH/NGÀY của kỳ đang xem (đơn hoàn cũng mất).
-    const soNgayKy = Math.max(1, soNgay(from, to) + 1);
-    const donKy = (rows as any[]).filter((r) => r.order_date >= from && r.order_date <= to && r.status_category !== "HUY").length;
+    const periodDays = Math.max(1, daysBetween(from, to) + 1);
+    const periodOrders = (rows as any[]).filter((r) => r.order_date >= from && r.order_date <= to && r.status_category !== "HUY").length;
     const bac = [...(f.fulfillment_fee_tiers || [])].sort((a: any, b: any) => a.max_orders_per_day - b.max_orders_per_day);
-    const fulfill = bac.length ? (bac.find((b: any) => donKy / soNgayKy < b.max_orders_per_day) || bac[bac.length - 1]).fee : 0;
+    const fulfill = bac.length ? (bac.find((b: any) => periodOrders / periodDays < b.max_orders_per_day) || bac[bac.length - 1]).fee : 0;
 
-    const kien: Kien[] = (rows as any[]).map((r) => {
+    const parcels: Parcel[] = (rows as any[]).map((r) => {
         const awb = awbFromPartner(r.partner);
         const w = awb ? store.statuses[awb] : undefined;
         const ws = w?.source === "weship" ? w.status || null : null;
         // WeShip đã kết thúc thì tin WeShip; chưa thì POS (Lộc cập nhật giao/hoàn trên POS) — rồi mới tới WeShip dở dang.
-        const pos = POS_SANG_CHUAN[String(r.status_category || "").toUpperCase()] || null;
+        const pos = POS_TO_STANDARD_STATUS[String(r.status_category || "").toUpperCase()] || null;
         const st = ws && TERMINAL.has(ws) ? ws : pos && TERMINAL.has(pos) ? pos : ws || pos;
-        const daGui = !!awb || !!r.time_send_partner || pos === "InTransit";
-        const nhom = nhomKien(st, ws ? w?.sub_status : null, ws ? w?.raw_status : null, daGui);
+        const shipped = !!awb || !!r.time_send_partner || pos === "InTransit";
+        const group = classifyParcel(st, ws ? w?.sub_status : null, ws ? w?.raw_status : null, shipped);
         const cod = Number(r.cod) || 0;
         const d = gv.get(String(r.order_id));
         return {
-            nuoc: "AE", ma: String(r.order_id), ngay: String(r.order_date || ""), ngay_gui: null, nhom,
+            nuoc: "AE", ma: String(r.order_id), ngay: String(r.order_date || ""), ngay_gui: null, nhom: group,
             trang_thai: (ws && w?.raw_status) || r.status_name || r.status_category || "",
             cod_vnd: cod * rAe, cod_that_vnd: null,
             gia_von_vnd: d ? (d.du ? d.cogs : null) : null,
@@ -295,14 +295,14 @@ async function kienUae(from: string, to: string, asOf: string): Promise<NguonNuo
             phi_giao_vnd: (Number(f.delivered_ship_fee || 0) + Number(f.cod_fee_pct || 0) * cod) * rAe,
             phi_hoan_vnd: Number(f.return_ship_fee || 0) * rAe,
             phi_that: false,
-            hang_ve_kho: VE_KHO.has("AE"),
+            hang_ve_kho: RESTOCKABLE_MARKETS.has("AE"),
         };
     });
     return {
-        kien,
+        kien: parcels,
         nguon: "Đơn POS UAE + trạng thái WeShip",
         co_so: [
-            `Phí 3PL: bảng giá D&T Fulfillment (chưa có sao kê) — fulfillment ${fulfill} AED/đơn (${(donKy / soNgayKy).toFixed(1)} đơn/ngày, đơn hoàn cũng mất) `
+            `Phí 3PL: bảng giá D&T Fulfillment (chưa có sao kê) — fulfillment ${fulfill} AED/đơn (${(periodOrders / periodDays).toFixed(1)} đơn/ngày, đơn hoàn cũng mất) `
             + `+ vận chuyển đơn thành công ${f.delivered_ship_fee} AED + thu hộ ${(Number(f.cod_fee_pct || 0) * 100).toFixed(0)}% tiền đơn; đơn hoàn miễn phí vận chuyển.`,
             "Hàng hoàn về kho D&T bán tiếp được → đơn hoàn không mất giá vốn. Chưa trừ phí lưu kho "
             + `${f.storage_fee_aed_per_cbm_month ?? 75} AED/CBM/tháng (D&T thu khi hàng xuất mỗi ngày dưới 10% tồn kho) — chưa có số CBM hàng tồn.`,
@@ -312,9 +312,9 @@ async function kienUae(from: string, to: string, asOf: string): Promise<NguonNuo
 }
 
 /** Mọi kiện của một nước (cả kiện cũ ngoài kỳ — để đo tỉ lệ giao). */
-export function napKienNuoc(code: string, from: string, to: string, asOf: string): Promise<NguonNuoc> {
-    if (code === "TW") return kienDai(asOf);
-    if (code === "SG" || code === "JP") return kienDoiTac(code, asOf);
-    if (code === "AE") return kienUae(from, to, asOf);
+export function loadMarketParcels(code: string, from: string, to: string, asOf: string): Promise<MarketSource> {
+    if (code === "TW") return twParcels(asOf);
+    if (code === "SG" || code === "JP") return partnerParcels(code, asOf);
+    if (code === "AE") return aeParcels(from, to, asOf);
     return Promise.reject(new Error(`chưa có nguồn kiện cho ${code}`));
 }

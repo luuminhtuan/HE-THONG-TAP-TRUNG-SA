@@ -27,29 +27,29 @@ export const ALL_TABS = [
  * chưa kịp lọc thì khai vào đây; lọc xong thì gỡ ra. (ad-spend, ads-command đã lọc
  * từ 05/10/2026 — nay rỗng.)
  */
-export const CHUA_LOC_THEO_NUOC = new Set<string>();
+export const TABS_NOT_MARKET_FILTERED = new Set<string>();
 
 /** Tab chỉ giám đốc: soát tiền ra của thẻ trả TKQC chung cả công ty; Hỏi AI (15/11/2026) — AI truy vấn
  *  số MỌI nước, route /api/talpha/ceo-ask chưa lọc theo team. */
-export const CHI_GIAM_DOC = new Set(["ads-recon", "ask-ai"]);
+export const DIRECTOR_ONLY_TABS = new Set(["ads-recon", "ask-ai"]);
 
 type TeamCfg = { name: string; markets: string[]; leader?: string };
 type RoleCfg = { label: string; desc?: string; full?: boolean; tabs?: string[] };
 type AccessCfg = { teams?: Record<string, TeamCfg | string>; roles?: Record<string, RoleCfg | string> };
 
 const CFG: AccessCfg = (RULES as unknown as { access?: AccessCfg }).access || {};
-const laKhoa = (k: string) => !k.startsWith("_");
+const isConfigKey = (k: string) => !k.startsWith("_");
 
 export const TEAMS: Record<string, TeamCfg> = Object.fromEntries(
-    Object.entries(CFG.teams || {}).filter(([k, v]) => laKhoa(k) && v && typeof v === "object"),
+    Object.entries(CFG.teams || {}).filter(([k, v]) => isConfigKey(k) && v && typeof v === "object"),
 ) as Record<string, TeamCfg>;
 export const ROLES: Record<string, RoleCfg> = Object.fromEntries(
-    Object.entries(CFG.roles || {}).filter(([k, v]) => laKhoa(k) && v && typeof v === "object"),
+    Object.entries(CFG.roles || {}).filter(([k, v]) => isConfigKey(k) && v && typeof v === "object"),
 ) as Record<string, RoleCfg>;
 
 // ── Tên nước (khoá trong `markets`: Taiwan…) ↔ mã shop (TW…) ──
 const MARKETS = Object.entries(RULES.markets as Record<string, { shop_label?: string; shop_id?: string } | string>)
-    .filter(([k, v]) => laKhoa(k) && v && typeof v === "object" && (v as { shop_label?: string }).shop_label) as
+    .filter(([k, v]) => isConfigKey(k) && v && typeof v === "object" && (v as { shop_label?: string }).shop_label) as
     [string, { shop_label: string; shop_id?: string }][];
 export const MARKET_CODE: Record<string, string> = Object.fromEntries(MARKETS.map(([k, v]) => [k, v.shop_label.toUpperCase()]));
 export const MARKET_KEY: Record<string, string> = Object.fromEntries(MARKETS.map(([k, v]) => [v.shop_label.toUpperCase(), k]));
@@ -78,7 +78,7 @@ export type Access = {
     teams: { key: string; name: string; markets: string[] }[];
 };
 
-const danhSachTeam = (keys: string[]) =>
+const listTeams = (keys: string[]) =>
     keys.map((key) => ({ key, name: TEAMS[key].name, markets: TEAMS[key].markets.filter((m) => MARKET_CODE[m]) }));
 
 export function fullAccess(kind: Access["kind"], name: string, extra: Partial<Access> = {}): Access {
@@ -88,7 +88,7 @@ export function fullAccess(kind: Access["kind"], name: string, extra: Partial<Ac
         markets: [...ALL_MARKET_KEYS],
         codes: ALL_MARKET_KEYS.map((k) => MARKET_CODE[k]),
         tabs: [...ALL_TABS],
-        teams: danhSachTeam(Object.keys(TEAMS)),
+        teams: listTeams(Object.keys(TEAMS)),
         ...extra,
     };
 }
@@ -106,16 +106,16 @@ export function accessForUser(u: UserLike): Access {
     const ds = u.teams || [];
     const teamKeys = ds.includes("*") ? Object.keys(TEAMS) : ds.filter((k) => TEAMS[k]);
     const markets = [...new Set(teamKeys.flatMap((k) => TEAMS[k].markets))].filter((m) => MARKET_CODE[m]);
-    const duNuoc = ALL_MARKET_KEYS.length > 0 && ALL_MARKET_KEYS.every((m) => markets.includes(m));
+    const hasAllMarkets = ALL_MARKET_KEYS.length > 0 && ALL_MARKET_KEYS.every((m) => markets.includes(m));
     const tabs = markets.length === 0 ? [] : (rc?.tabs || []).filter((t) =>
-        (ALL_TABS as readonly string[]).includes(t) && !CHI_GIAM_DOC.has(t) && (duNuoc || !CHUA_LOC_THEO_NUOC.has(t)));
+        (ALL_TABS as readonly string[]).includes(t) && !DIRECTOR_ONLY_TABS.has(t) && (hasAllMarkets || !TABS_NOT_MARKET_FILTERED.has(t)));
     return {
         ...base, role, roleLabel: rc?.label || role,
         full: false,
         markets,
         codes: markets.map((m) => MARKET_CODE[m]),
         tabs,
-        teams: danhSachTeam(teamKeys),
+        teams: listTeams(teamKeys),
     };
 }
 
@@ -137,8 +137,8 @@ export function canTab(a: Access, tab: string): boolean {
  * ghi — là việc KẾ TOÁN: chỉ người thấy Tiền COD về (leader nước đó, giám đốc). Cửa proxy đã
  * kiểm nước; hàm này chỉ phân loại việc.
  */
-export function ghiCodDuoc(a: Access, kind: string, viec?: string | null): boolean {
-    if (kind === "done" && viec === "da_doi") return canTab(a, "order-ledger") || canTab(a, "cod-recon");
+export function canWriteCodAction(a: Access, kind: string, action?: string | null): boolean {
+    if (kind === "done" && action === "da_doi") return canTab(a, "order-ledger") || canTab(a, "cod-recon");
     return canTab(a, "cod-recon");
 }
 
@@ -238,8 +238,8 @@ export function checkApi(
             : rule.market === "tracking" ? trackCode(search.get("market"))
             : String(search.get("market") || "").toUpperCase();
         if (!code || !canMarket(a, code)) {
-            const ten = MARKET_KEY[code] || code || "(không ghi nước)";
-            return { ok: false, error: `Tài khoản không được xem thị trường ${ten}` };
+            const label = MARKET_KEY[code] || code || "(không ghi nước)";
+            return { ok: false, error: `Tài khoản không được xem thị trường ${label}` };
         }
     }
     return { ok: true };
@@ -278,10 +278,10 @@ export function sqlCampaignMarketKey(col = "campaign_name"): string {
 
 /** Bảng → điều kiện lọc theo nước. Bảng không có ở đây = người xem một phần không được đụng
  *  (và vai talpha_doc_nuoc cũng không có quyền đọc — migration 0003 + sync/core/pg_view.py). */
-const BANG_LOC_DUOC = ["vw_orders_std", "sale_order", "order_items", "vw_fb_ads_std", "vw_ad_windows"];
-function dieuKien(bang: string, a: Access): string | null {
+const FILTERABLE_TABLES = ["vw_orders_std", "sale_order", "order_items", "vw_fb_ads_std", "vw_ad_windows"];
+function marketFilterFor(table: string, a: Access): string | null {
     const codes = sqlList(a.codes);
-    switch (bang) {
+    switch (table) {
         case "vw_orders_std": return `market IN (${codes})`;
         case "sale_order": return `UPPER(shop_label) IN (${codes})`;
         case "order_items":
@@ -316,35 +316,35 @@ function cheChuoi(sql: string): { code: string; chuoi: string[] } | null {
  * bất kỳ cái nào là từ chối, kể cả bảng không có số tiền: soát theo danh sách đóng chứ không đoán.
  */
 export function scopeQuery(
-    sql: string, a: Access, bangKhac: string[] = [],
+    sql: string, a: Access, otherTables: string[] = [],
 ): { ok: true; sql: string } | { ok: false; error: string } {
     if (seesAllMarkets(a)) return { ok: true, sql };
-    const tuChoi = (ly: string) => ({ ok: false as const, error: `Câu truy vấn có ${ly} — không cho phép với tài khoản xem một phần nước` });
-    if (/__T\d+__/.test(sql)) return tuChoi("ký hiệu __T…__");
+    const reject = (ly: string) => ({ ok: false as const, error: `Câu truy vấn có ${ly} — không cho phép với tài khoản xem một phần nước` });
+    if (/__T\d+__/.test(sql)) return reject("ký hiệu __T…__");
     const che = cheChuoi(sql);
-    if (!che) return tuChoi("dấu \", $, gạch ngược, chuỗi E'…' / U&, chú thích khối hoặc dấu nháy không đóng");
+    if (!che) return reject("dấu \", $, gạch ngược, chuỗi E'…' / U&, chú thích khối hoặc dấu nháy không đóng");
     // Soát TRƯỚC khi thay bảng: thay xong thì "db.public.sale_order" chỉ còn "db. (câu con)".
-    const BA_PHAN = /\b[A-Za-z_]\w*\s*\.\s*[A-Za-z_]\w*\s*\.\s*[A-Za-z_]\w*\b(?!\s*\()/;
-    if (BA_PHAN.test(che.code)) return tuChoi("đường dẫn bảng 3 phần");
+    const THREE_PART_NAME = /\b[A-Za-z_]\w*\s*\.\s*[A-Za-z_]\w*\s*\.\s*[A-Za-z_]\w*\b(?!\s*\()/;
+    if (THREE_PART_NAME.test(che.code)) return reject("đường dẫn bảng 3 phần");
 
-    const thay: string[] = [];
+    const replacements: string[] = [];
     let loi: string | null = null;
     // Tên bảng của dashboard, có hoặc không có tiền tố schema "public." — mọi chỗ nó xuất hiện trong code.
-    const re = new RegExp(`(?:\\bpublic\\s*\\.\\s*)?\\b(${[...BANG_LOC_DUOC, "vw_attribution_quality", "fb_ads_data", "fb_adset_data"].join("|")})\\b`, "gi");
-    const coCho = che.code.replace(re, (_m, bang: string) => {
-        const b = bang.toLowerCase();
-        const dk = dieuKien(b, a);
+    const re = new RegExp(`(?:\\bpublic\\s*\\.\\s*)?\\b(${[...FILTERABLE_TABLES, "vw_attribution_quality", "fb_ads_data", "fb_adset_data"].join("|")})\\b`, "gi");
+    const withPlaceholders = che.code.replace(re, (_m, table: string) => {
+        const b = table.toLowerCase();
+        const dk = marketFilterFor(b, a);
         if (!dk) { loi = loi || `Bảng ${b} gộp số mọi nước — tài khoản chỉ xem một phần nước không đọc được`; return " "; }
-        thay.push(`(SELECT * FROM ${b} WHERE ${dk})`);
-        return ` __T${thay.length - 1}__ `;
+        replacements.push(`(SELECT * FROM ${b} WHERE ${dk})`);
+        return ` __T${replacements.length - 1}__ `;
     });
     if (loi) return { ok: false, error: loi };
-    if (!thay.length) return { ok: false, error: "Câu truy vấn không đọc bảng nào của dashboard" };
+    if (!replacements.length) return { ok: false, error: "Câu truy vấn không đọc bảng nào của dashboard" };
 
     // Phần code còn lại không được có đường nào khác tới dữ liệu.
     const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
-    const khac = bangKhac.map((b) => b.toLowerCase()).filter((b) => b && !BANG_LOC_DUOC.includes(b));
-    const cam: [RegExp, string][] = [
+    const khac = otherTables.map((b) => b.toLowerCase()).filter((b) => b && !FILTERABLE_TABLES.includes(b));
+    const forbidden: [RegExp, string][] = [
         [/\bpg_\w*/i, "bảng / hàm hệ thống pg_…"],
         [/\binformation_schema\b/i, "information_schema"],
         // Hàm chạy một câu SQL nằm trong chuỗi — chuỗi đã bị che nên câu bên trong không được thay bảng.
@@ -352,10 +352,10 @@ export function scopeQuery(
         [/\bpublic\s*\./i, "schema public."],
         ...khac.map((b): [RegExp, string] => [new RegExp(`\\b${esc(b)}\\b`, "i"), `bảng ${b}`]),
     ];
-    for (const [r, ten] of cam) if (r.test(coCho)) return tuChoi(ten);
+    for (const [r, label] of forbidden) if (r.test(withPlaceholders)) return reject(label);
 
-    const ra = coCho
-        .replace(/ __T(\d+)__ /g, (_m, i: string) => ` ${thay[Number(i)]} `)
+    const finalSql = withPlaceholders
+        .replace(/ __T(\d+)__ /g, (_m, i: string) => ` ${replacements[Number(i)]} `)
         .replace(/ \u0000(\d+)\u0000 /g, (_m, i: string) => che.chuoi[Number(i)]);
-    return { ok: true, sql: ra };
+    return { ok: true, sql: finalSql };
 }

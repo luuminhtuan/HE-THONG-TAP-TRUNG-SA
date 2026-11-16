@@ -96,13 +96,13 @@ t("Kế toán: chỉ leader + giám đốc tải sao kê; Thương không gọi 
 });
 t("cod-actions: Thương ghi được 'đã nhắn NAZA', không ghi được tiền về / hỏi / bỏ qua / huỷ", () => {
     assert.ok(A.checkApi(thuong, "/api/talpha/cod-actions", q("")).ok);       // cửa mở cho Sổ đơn
-    assert.ok(A.ghiCodDuoc(thuong, "done", "da_doi"));
+    assert.ok(A.canWriteCodAction(thuong, "done", "da_doi"));
     for (const [k, v] of [["bank"], ["done", "da_hoi"], ["done", "bo_qua"], ["xoa"]]) {
-        assert.ok(!A.ghiCodDuoc(thuong, k, v), `${k}/${v}`);
-        assert.ok(A.ghiCodDuoc(sanh, k, v), `${k}/${v}`);
+        assert.ok(!A.canWriteCodAction(thuong, k, v), `${k}/${v}`);
+        assert.ok(A.canWriteCodAction(sanh, k, v), `${k}/${v}`);
     }
     const leaderDai = A.accessForUser({ id: "5", name: "Leader Đài", role: "leader", teams: ["dong_a"] });
-    assert.ok(A.ghiCodDuoc(leaderDai, "bank") && A.ghiCodDuoc(leaderDai, "done", "bo_qua"));
+    assert.ok(A.canWriteCodAction(leaderDai, "bank") && A.canWriteCodAction(leaderDai, "done", "bo_qua"));
     assert.ok(A.checkApi(leaderDai, "/api/talpha/cod-recon", q("")).ok);
     assert.ok(!A.checkApi(loc, "/api/talpha/cod-actions", q("")).ok);          // Lộc vẫn không đụng sổ Đài
 });

@@ -58,24 +58,24 @@ export const statusCls = (s?: string | null) =>
  *  Mã trạng thái chuẩn đi trước; chữ trạng thái bắt thêm đơn ĐANG hoàn — Đài ghi "Đang hoàn về
  *  kho" thành DeliveryFailure, Sing/Nhật "Đang hoàn" thành Exception. Hàng đang quay về là tiền
  *  đã mất, cùng luật tỷ lệ hoàn khi nạp bảng đối tác. null = còn đang đi / chưa gửi. */
-export function ketQuaGiao(status?: string | null, chu?: string | null): "giao" | "hoan" | "huy" | null {
+export function deliveryOutcome(status?: string | null, statusText?: string | null): "giao" | "hoan" | "huy" | null {
     if (status === "Returned" || status === "Destroyed") return "hoan";
-    if (/hoàn|tiêu hu/i.test(String(chu || ""))) return "hoan";
+    if (/hoàn|tiêu hu/i.test(String(statusText || ""))) return "hoan";
     if (status === "Cancelled") return "huy";
     if (status === "Delivered") return "giao";
     // Dòng đối tác chưa có mã chuẩn (chữ chưa khai status_map) thì đọc theo chữ.
-    if (!status && /thành công/i.test(String(chu || "")) && !/không thành công/i.test(String(chu || ""))) return "giao";
+    if (!status && /thành công/i.test(String(statusText || "")) && !/không thành công/i.test(String(statusText || ""))) return "giao";
     return null;
 }
 
-export type TyLeGiao = { giao: number; hoan: number; huy: number; dang_di: number };
+export type DeliveryCounts = { giao: number; hoan: number; huy: number; dang_di: number };
 
 /** Đếm cho hai ô tỉ lệ. Mẫu số là đơn ĐÃ CÓ KẾT QUẢ (giao + hoàn): đơn còn đang đi chưa biết
  *  giao được hay không, chia trên tổng thì hai tỉ lệ cộng lại không ra 100%. Huỷ không tính. */
-export function demTyLeGiao<T>(rows: T[], doc: (r: T) => [string | null | undefined, string | null | undefined]): TyLeGiao {
-    const t: TyLeGiao = { giao: 0, hoan: 0, huy: 0, dang_di: 0 };
+export function countDeliveryOutcomes<T>(rows: T[], getStatus: (r: T) => [string | null | undefined, string | null | undefined]): DeliveryCounts {
+    const t: DeliveryCounts = { giao: 0, hoan: 0, huy: 0, dang_di: 0 };
     for (const r of rows) {
-        const k = ketQuaGiao(...doc(r));
+        const k = deliveryOutcome(...getStatus(r));
         if (k === "giao") t.giao++; else if (k === "hoan") t.hoan++; else if (k === "huy") t.huy++; else t.dang_di++;
     }
     return t;
@@ -113,7 +113,7 @@ export type LedgerRowUI = {
 };
 
 /** Đơn đã giao mà NAZA chưa trả — `chua_ve_tien` của /api/talpha/order-ledger. */
-export type DonChoTien = {
+export type UnpaidOrder = {
     order_no: string; tracking: string; cod_twd: number;
     ky_da_qua: number; qua_han: boolean; contact_name: string; phone: string;
     doi_key: string; da_doi: { viec: string; ngay: string; lan: number } | null; doi_chu: string;
@@ -130,15 +130,15 @@ export type DonChoTien = {
  * Trong tin bắt buộc có ĐỦ mã đơn, mã vận đơn và số tiền: thiếu một trong ba
  * là bên kia hỏi lại, mất thêm một vòng.
  */
-export function tinDoiTien(list: DonChoTien[], lang: "vi" | "zh"): string {
-    const tong = Math.round(list.reduce((a, x) => a + x.cod_twd, 0)).toLocaleString("vi-VN");
-    const dong = list.map((p) =>
+export function paymentChaseMessage(list: UnpaidOrder[], lang: "vi" | "zh"): string {
+    const total = Math.round(list.reduce((a, x) => a + x.cod_twd, 0)).toLocaleString("vi-VN");
+    const lines = list.map((p) =>
         `${p.order_no} · ${p.tracking} · ${Math.round(p.cod_twd).toLocaleString("vi-VN")} NT$`).join("\n");
     if (lang === "zh") {
         return `您好，以下 ${list.length} 筆訂單已配送成功，但至今未出現在任何一期對帳單中，貨款尚未收到，` +
-            `合計 ${tong} NT$：\n\n${dong}\n\n麻煩協助查詢並儘快撥款，謝謝！`;
+            `合計 ${total} NT$：\n\n${lines}\n\n麻煩協助查詢並儘快撥款，謝謝！`;
     }
     return `Chào bạn, ${list.length} đơn dưới đây đã giao thành công nhưng chưa thấy tiền ` +
-        `trên bất kỳ kỳ sao kê nào, tổng ${tong} NT$:\n\n${dong}\n\n` +
+        `trên bất kỳ kỳ sao kê nào, tổng ${total} NT$:\n\n${lines}\n\n` +
         `Nhờ bạn kiểm tra và chuyển tiền giúp mình nhé. Cảm ơn bạn!`;
 }

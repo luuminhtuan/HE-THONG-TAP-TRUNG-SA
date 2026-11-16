@@ -4,7 +4,7 @@ import {
     RULES, DISPLAY, UNASSIGNED, MESS_PANCAKE,
     attributeOrder, buildAdidOwner, campaignMarket, parseCampaign, isTestCampaign,
 } from "@/lib/talpha/rules";
-import { messPancakeTuBan } from "@/lib/talpha/market-report-store";
+import { pancakeMessFromReports } from "@/lib/talpha/market-report-store";
 import { getAccess } from "@/lib/talpha/access";
 import { canMarket, seesAllMarkets } from "@/lib/talpha/access-rules";
 
@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
     }
     // Phân quyền theo team: đơn theo shop (cột market), chi tiêu theo nước ở tên campaign.
     const a = await getAccess(req);
-    const hep = !a || !seesAllMarkets(a);
+    const restricted = !a || !seesAllMarkets(a);
     const codes = a ? a.codes : [];
 
     try {
@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
                         ANY_VALUE(is_confirmed)    AS is_confirmed
                     FROM vw_orders_std
                     WHERE order_date BETWEEN @from::date AND @to::date AND is_valid
-                      ${hep ? "AND market = ANY(@codes::text[])" : ""}
+                      ${restricted ? "AND market = ANY(@codes::text[])" : ""}
                     GROUP BY 1
                 )
                 -- Lọc nới ra is_valid để lấy THÊM phần ship, nhưng orders/revenue vẫn
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
                        COUNT(*)                                                  AS ship_orders,
                        SUM(revenue_vnd)                                          AS ship_revenue_vnd
                 FROM o GROUP BY 1, 2`,
-            hep ? { from, to, codes } : { from, to },
+            restricted ? { from, to, codes } : { from, to },
         );
 
         // Q1 — bảng tra BẬC 2: id trên đơn → chủ campaign. Không lọc ngày: đơn hôm nay
@@ -116,14 +116,14 @@ export async function GET(req: NextRequest) {
         );
 
         const agg = new Map<string, Bucket>();
-        let spendChuaNhanRa = 0;
+        let unattributedSpend = 0;
 
         for (const r of campRows as any[]) {
             const name = String(r.campaign_name || "");
             if (isTestCampaign(name)) continue;
-            if (hep && !(a && canMarket(a, campaignMarket(name).market))) continue;
+            if (restricted && !(a && canMarket(a, campaignMarket(name).market))) continue;
             const [, key] = parseCampaign(name);
-            if (!key) { spendChuaNhanRa += Number(r.spend || 0); continue; }
+            if (!key) { unattributedSpend += Number(r.spend || 0); continue; }
             const b = agg.get(key) || emptyBucket();
             b.spend += Number(r.spend || 0);
             // Nước Meta không báo tin nhắn (Nhật): mess lấy ở bản số vòng ghi Sheet (Pancake) bên dưới.
@@ -131,15 +131,15 @@ export async function GET(req: NextRequest) {
             agg.set(key, b);
         }
         // Mess Nhật = số Pancake trong bản số theo nước (cùng số Sheet) — 13/10/2026.
-        const pk = await messPancakeTuBan(from, to, (k) => !hep || (!!a && canMarket(a, k)));
-        for (const [nv, n] of Object.entries(pk.theoNguoi)) {
-            const key = nv in RULES.marketers ? nv : UNASSIGNED;
+        const pk = await pancakeMessFromReports(from, to, (k) => !restricted || (!!a && canMarket(a, k)));
+        for (const [marketerKey, n] of Object.entries(pk.theoNguoi)) {
+            const key = marketerKey in RULES.marketers ? marketerKey : UNASSIGNED;
             const b = agg.get(key) || emptyBucket();
             b.mess += n;
             agg.set(key, b);
         }
 
-        let donTest = 0, doanhThuTest = 0;
+        let testOrders = 0, testRevenue = 0;
         for (const r of orderRows as any[]) {
             const raw = String(r.marketer_name || "").trim();
             const tagged = raw && raw.toLowerCase() !== "unknown" ? raw : null;
@@ -150,7 +150,7 @@ export async function GET(req: NextRequest) {
 
             // Đơn sinh ra từ campaign test — đếm riêng để giải trình, không vào bảng.
             if (r.resolved_ad_id && testIds.has(String(r.resolved_ad_id))) {
-                donTest += shipOrders; doanhThuTest += ship;
+                testOrders += shipOrders; testRevenue += ship;
                 continue;
             }
 
@@ -188,7 +188,7 @@ export async function GET(req: NextRequest) {
             })
             .sort((a, b) => b.revenue_vnd - a.revenue_vnd);
 
-        const un = agg.get(UNASSIGNED) || emptyBucket();
+        const unassignedBucket = agg.get(UNASSIGNED) || emptyBucket();
         const sum = (xs: { orders: number; revenue_vnd: number; spend_vnd: number; ship_revenue_vnd?: number; ship_orders?: number; messages?: number }[]) => ({
             orders: xs.reduce((s, x) => s + x.orders, 0),
             revenue_vnd: xs.reduce((s, x) => s + x.revenue_vnd, 0),
@@ -201,13 +201,13 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
             from, to,
             rows,
-            unassigned: { marketer: UNASSIGNED, orders: un.orders, revenue_vnd: un.revenue, ship_orders: un.shipOrders, ship_revenue_vnd: un.ship },
+            unassigned: { marketer: UNASSIGNED, orders: unassignedBucket.orders, revenue_vnd: unassignedBucket.revenue, ship_orders: unassignedBucket.shipOrders, ship_revenue_vnd: unassignedBucket.ship },
             totals: {
                 team: sum(rows),
-                spend_chua_nhan_ra: spendChuaNhanRa,
+                spend_chua_nhan_ra: unattributedSpend,
                 // Campaign test — tách khỏi báo cáo doanh số (rule CEO #7), báo ra để
                 // không ai tưởng bị mất đơn.
-                test: { orders: donTest, revenue_vnd: doanhThuTest },
+                test: { orders: testOrders, revenue_vnd: testRevenue },
             },
             team_size: rows.length,
             // Phần mess đếm ở Pancake (nước Meta không báo) — thieu_thang: tháng chưa có bản số.

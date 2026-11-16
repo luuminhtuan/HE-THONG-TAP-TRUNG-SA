@@ -29,9 +29,9 @@ export async function GET(req: NextRequest) {
     // mang nước team mình ở tên — cùng luật tách nước của Sheet (campaignMarket). TKQC chạy chung
     // mọi nước nên lọc theo DÒNG campaign, không theo tài khoản.
     const a = await getAccess(req);
-    const hep = !a || !seesAllMarkets(a);
-    const locNuoc = hep ? `AND ${sqlCampaignMarketKey("campaign_name")} = ANY(@mk::text[])` : "";
-    const thamSo = hep ? { from, to, mk: a?.markets || [] } : { from, to };
+    const restricted = !a || !seesAllMarkets(a);
+    const marketFilter = restricted ? `AND ${sqlCampaignMarketKey("campaign_name")} = ANY(@mk::text[])` : "";
+    const queryParams = restricted ? { from, to, mk: a?.markets || [] } : { from, to };
 
     try {
         const dayRows = await query(`
@@ -39,16 +39,16 @@ export async function GET(req: NextRequest) {
                        SUM(clicks) AS clicks,
                        SUM(messaging_conversations_started) AS messages
                 FROM fb_ads_data
-                WHERE date BETWEEN @from::date AND @to::date ${locNuoc}
-                GROUP BY 1 ORDER BY 1`, thamSo);
+                WHERE date BETWEEN @from::date AND @to::date ${marketFilter}
+                GROUP BY 1 ORDER BY 1`, queryParams);
 
         const accRows = await query(`
                 SELECT account_id, ANY_VALUE(account_name) AS account_name,
                        SUM(spend) AS spend,
                        SUM(messaging_conversations_started) AS messages
                 FROM fb_ads_data
-                WHERE date BETWEEN @from::date AND @to::date ${locNuoc}
-                GROUP BY 1`, thamSo);
+                WHERE date BETWEEN @from::date AND @to::date ${marketFilter}
+                GROUP BY 1`, queryParams);
 
         const campRows = await query(`
                 SELECT campaign_name, ANY_VALUE(account_name) AS account_name,
@@ -56,8 +56,8 @@ export async function GET(req: NextRequest) {
                        SUM(impressions) AS impressions,
                        SUM(messaging_conversations_started) AS messages
                 FROM fb_ads_data
-                WHERE date BETWEEN @from::date AND @to::date AND spend > 0 ${locNuoc}
-                GROUP BY 1`, thamSo);
+                WHERE date BETWEEN @from::date AND @to::date AND spend > 0 ${marketFilter}
+                GROUP BY 1`, queryParams);
 
         // ── Bổ theo marketer ──
         type Bucket = { spend: number; messages: number; clicks: number; impressions: number; campaigns: number };

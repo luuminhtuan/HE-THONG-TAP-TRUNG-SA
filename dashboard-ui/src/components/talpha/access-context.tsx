@@ -31,7 +31,7 @@ export function useAccess(): Me | null {
 }
 
 /** Tên phạm vi đang xem cho tiêu đề — "Trung Đông", "Đông Nam Á · Đông Á"; xem hết thì null. */
-export function tenPhamVi(me: Me | null): string | null {
+export function scopeLabel(me: Me | null): string | null {
     if (!me || me.full) return null;
     return me.teams.map((t) => t.name).join(" · ") || null;
 }

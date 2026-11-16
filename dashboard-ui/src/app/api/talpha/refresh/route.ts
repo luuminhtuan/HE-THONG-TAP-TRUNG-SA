@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { getAccess } from "@/lib/talpha/access";
-import { trangThaiCapNhat } from "@/lib/talpha/refresh-status";
+import { getRefreshStatus } from "@/lib/talpha/refresh-status";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +13,10 @@ export const dynamic = "force-dynamic";
 //           số rồi dựng báo cáo (1–3 phút). Đang có yêu cầu chờ / đang chạy thì không ghi thêm.
 
 /** Vừa cập nhật xong thì chờ chừng này mới cho bấm lại — Meta, POS giới hạn số lượt gọi. */
-const CHO_PHUT = 3;
+const COOLDOWN_MINUTES = 3;
 
 export async function GET() {
-    return NextResponse.json(await trangThaiCapNhat(), { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(await getRefreshStatus(), { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest) {
@@ -25,25 +25,25 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Chỉ nhận JSON" }, { status: 415 });
     }
     const a = await getAccess(req);
-    const tt = await trangThaiCapNhat();
-    if (!tt.co_lich) {
+    const refreshStatus = await getRefreshStatus();
+    if (!refreshStatus.co_lich) {
         return NextResponse.json({
             error: "Máy này chưa có lịch việc nền nhận lệnh cập nhật (chỉ bản chạy bằng Docker có). Số vẫn tự cập nhật mỗi giờ.",
-            ...tt,
+            ...refreshStatus,
         }, { status: 409 });
     }
-    if (tt.yeu_cau && (tt.yeu_cau.status === "pending" || tt.yeu_cau.status === "running")) {
-        return NextResponse.json({ ok: true, da_co: true, ...tt });
+    if (refreshStatus.yeu_cau && (refreshStatus.yeu_cau.status === "pending" || refreshStatus.yeu_cau.status === "running")) {
+        return NextResponse.json({ ok: true, da_co: true, ...refreshStatus });
     }
-    const xongLuc = tt.yeu_cau?.finished_at ? Date.parse(tt.yeu_cau.finished_at) : 0;
-    if (tt.yeu_cau?.status === "ok" && Date.now() - xongLuc < CHO_PHUT * 60_000) {
+    const finishedAt = refreshStatus.yeu_cau?.finished_at ? Date.parse(refreshStatus.yeu_cau.finished_at) : 0;
+    if (refreshStatus.yeu_cau?.status === "ok" && Date.now() - finishedAt < COOLDOWN_MINUTES * 60_000) {
         return NextResponse.json({
-            error: `Số vừa cập nhật lúc ${new Date(xongLuc).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit" })} — chờ vài phút rồi bấm lại.`,
-            ...tt,
+            error: `Số vừa cập nhật lúc ${new Date(finishedAt).toLocaleTimeString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit" })} — chờ vài phút rồi bấm lại.`,
+            ...refreshStatus,
         }, { status: 429 });
     }
-    const ai = a?.email || a?.name || "?";
-    await query("INSERT INTO refresh_requests (requested_by) VALUES (@ai)", { ai });
-    console.log(`[refresh] ${ai} bấm Cập nhật ngay`);
-    return NextResponse.json({ ok: true, ...(await trangThaiCapNhat()) });
+    const actor = a?.email || a?.name || "?";
+    await query("INSERT INTO refresh_requests (requested_by) VALUES (@ai)", { ai: actor });
+    console.log(`[refresh] ${actor} bấm Cập nhật ngay`);
+    return NextResponse.json({ ok: true, ...(await getRefreshStatus()) });
 }

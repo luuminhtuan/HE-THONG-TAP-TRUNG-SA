@@ -5,9 +5,9 @@
 // Golden-test 29/07: các hàm này ≡ format_all.py trên 502 campaign + 18 tên POS thật.
 // ═══════════════════════════════════════════════════════════════════
 import fs from "fs";
-import { RULES_JSON, THI_TRUONG_FILE_TEST } from "./config-path";
-import { truyVanDongBo } from "./db-sync";
-import { phuLuat, type FilePhu } from "./thi-truong";
+import { RULES_JSON, MARKET_OVERRIDES_TEST_FILE } from "./config-path";
+import { querySync } from "./db-sync";
+import { applyMarketOverrides, type OverridesFile } from "./thi-truong";
 
 /** "da_tat" (04/11/2026): ngừng kéo số mới, GIỮ tỷ giá / số chia / đơn cũ — xem MARKET_DA_TAT. */
 type MarketStatus = "dang_ban" | "sap_chay" | "da_tat";
@@ -49,16 +49,16 @@ type ProductCost = { name: string; cost_price_rmb?: number; cost_price_vnd: numb
 /** Thị trường nhập ở /admin → Thị trường: bảng market_overrides (15/11/2026 — trước đó file
  *  data/thi_truong.json). Chưa ai nhập = null. Kho lỗi thì KÊU và dùng bản gốc — không làm sập cả
  *  dashboard. TALPHA_THI_TRUONG (chỉ test) trỏ vào một FILE phủ thay cho bảng. */
-function docPhuLucKhoiDong(): FilePhu | null {
-    const tep = THI_TRUONG_FILE_TEST();
-    if (tep) {
-        if (!fs.existsSync(tep)) return null;
-        try { return JSON.parse(fs.readFileSync(tep, "utf-8")); }
-        catch (e) { console.error(`rules: ${tep} hỏng định dạng — bỏ qua thị trường nhập trên trang:`, e); return null; }
+function loadStartupOverrides(): OverridesFile | null {
+    const overrideFile = MARKET_OVERRIDES_TEST_FILE();
+    if (overrideFile) {
+        if (!fs.existsSync(overrideFile)) return null;
+        try { return JSON.parse(fs.readFileSync(overrideFile, "utf-8")); }
+        catch (e) { console.error(`rules: ${overrideFile} hỏng định dạng — bỏ qua thị trường nhập trên trang:`, e); return null; }
     }
     if (!process.env.DATABASE_URL) return null;
     try {
-        const rows = truyVanDongBo<{ market_key: string; settings: Record<string, unknown> }>(
+        const rows = querySync<{ market_key: string; settings: Record<string, unknown> }>(
             "SELECT market_key, settings FROM market_overrides ORDER BY market_key");
         return rows.length ? { markets: Object.fromEntries(rows.map((r) => [r.market_key, r.settings])) } : null;
     } catch (e) {
@@ -68,19 +68,19 @@ function docPhuLucKhoiDong(): FilePhu | null {
 }
 
 /** Phần phủ đã nạp lúc khởi động — thi-truong-luu.ts so với kho để biết luật đang chạy đã cũ chưa. */
-export const PHU_LUC_KHOI_DONG: FilePhu | null = docPhuLucKhoiDong();
+export const STARTUP_OVERRIDES: OverridesFile | null = loadStartupOverrides();
 
 /** Luật gốc (talpha_rules.json) ĐÃ phủ thị trường nhập trên trang — mọi thứ bên dưới sinh từ đây.
  *  Đọc một lần lúc khởi động: lưu thị trường trên trang xong thì dashboard tự khởi động lại. */
-export const RULES: Rules = phuLuat(JSON.parse(fs.readFileSync(RULES_JSON(), "utf-8")), PHU_LUC_KHOI_DONG);
+export const RULES: Rules = applyMarketOverrides(JSON.parse(fs.readFileSync(RULES_JSON(), "utf-8")), STARTUP_OVERRIDES);
 
 // ── Tỷ giá & thị trường ──
 // Nước sắp chạy có tỷ giá null → 0 ở đây: doanh thu của nó
 // ra 0 chứ KHÔNG bị nhân với một tỷ giá đoán. Nước đang bán thiếu tỷ giá thì test chặn.
-const soDuong = (v: unknown): v is number => typeof v === "number" && v > 0;
+const isPositive = (v: unknown): v is number => typeof v === "number" && v > 0;
 const MARKET_ENTRIES = Object.entries(RULES.markets).filter(([, v]) => v && typeof v === "object") as [string, MarketInfo][];
 export const EXCHANGE_RATES: Record<string, number> = Object.fromEntries(
-    MARKET_ENTRIES.map(([m, v]) => [m, soDuong(v.rate_vnd) ? v.rate_vnd : 0]));
+    MARKET_ENTRIES.map(([m, v]) => [m, isPositive(v.rate_vnd) ? v.rate_vnd : 0]));
 /** Khoá nước ("Japan") mà Meta KHÔNG báo số tin nhắn — luật bảo vệ thông tin liên lạc của Nhật
  *  (09/10/2026). Số mess của camp nước đó lấy ở Pancake (lib/talpha/pancake-api.ts) hoặc bản số
  *  vòng ghi Sheet (lib/talpha/ban-nuoc.ts), không lấy Meta (luôn 0). */
@@ -92,11 +92,11 @@ export const SHOP2MKT: Record<string, string> = Object.fromEntries(
  * vận đơn, trang khoá. Vẫn giữ trong EXCHANGE_RATES / MONEY_DIV / SHOP2MKT — báo cáo những ngày
  * nước đó còn chạy phải ra đúng số, và Tiền COD về còn thu nốt tiền đơn cũ.
  */
-export const MARKET_DA_TAT: ReadonlySet<string> = new Set(
+export const DISABLED_MARKETS: ReadonlySet<string> = new Set(
     MARKET_ENTRIES.filter(([, v]) => v.status === "da_tat").map(([k]) => k));
 /** Nước ĐANG BÁN — chỉ những nước này được gọi POS sống. Nước sắp chạy có thể đã khai shop (thêm ở
  *  /admin → Thị trường) nhưng chưa bán, thường chưa có key: gọi là chờ timeout mỗi lần mở tab Kho. */
-export const MARKET_DANG_BAN: ReadonlySet<string> = new Set(
+export const ACTIVE_MARKETS: ReadonlySet<string> = new Set(
     MARKET_ENTRIES.filter(([, v]) => (v.status || "dang_ban") === "dang_ban").map(([k]) => k));
 
 /** Shop POS của mọi nước có shop_id (kể cả nước đã tắt — nơi gọi tự lọc MARKET_DA_TAT).
@@ -123,7 +123,7 @@ export const SHOP_POS: ShopPos[] = MARKET_ENTRIES
 // Nước sắp chạy chưa đo số chia (null) → 1: chưa có đơn nào để chia.
 export const MONEY_DIV: Record<string, number> = Object.fromEntries(
     MARKET_ENTRIES.flatMap(([m, v]) => {
-        const d = soDuong(v.pos_money_divisor) ? v.pos_money_divisor : 1;
+        const d = isPositive(v.pos_money_divisor) ? v.pos_money_divisor : 1;
         return [[m, d] as [string, number], [v.shop_label, d] as [string, number]];
     }));
 
@@ -169,7 +169,7 @@ export const MARKETS_PUBLIC: { primary: string | null; markets: MarketPublic[] }
         display: v.display || key,
         currency: v.currency,
         symbol: v.currency_symbol || v.currency,
-        rate_vnd: soDuong(v.rate_vnd) ? v.rate_vnd : 0,
+        rate_vnd: isPositive(v.rate_vnd) ? v.rate_vnd : 0,
         status: v.status || "dang_ban",
         tokens: RULES.camp_market_tokens.filter((t) => RULES.market_aliases[t] === key),
     })),
@@ -249,19 +249,19 @@ export const SALE_DISPLAY: Record<string, string> = Object.fromEntries(
     Object.entries(SALES).map(([k, v]) => [k, v.display || k]));
 export const SALE_UNASSIGNED = SA.unassigned_label || "(chưa gán sale)";
 
-const boDau = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").toUpperCase().trim();
+const stripAccents = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/gi, "d").toUpperCase().trim();
 
 /** Tên người bán trên POS → key trong `sales`; không khớp ai thì trả nguyên tên POS. */
 export function saleFromSeller(seller?: string | null): string | null {
-    const ten = String(seller || "").trim();
-    if (!ten) return null;
-    const u = boDau(ten);
+    const sellerName = String(seller || "").trim();
+    if (!sellerName) return null;
+    const u = stripAccents(sellerName);
     for (const [key, v] of Object.entries(SALES)) {
         if (key.startsWith("_")) continue;
-        const ten_goi = [key, v.display, v.full, ...(v.aliases || [])].filter((x) => x && boDau(x).length >= 3);
-        if (ten_goi.some((x) => u === boDau(x) || u.includes(boDau(x)))) return key;
+        const aliases = [key, v.display, v.full, ...(v.aliases || [])].filter((x) => x && stripAccents(x).length >= 3);
+        if (aliases.some((x) => u === stripAccents(x) || u.includes(stripAccents(x)))) return key;
     }
-    return ten;
+    return sellerName;
 }
 
 /** Đơn → key sale (hoặc nguyên tên người bán POS). Trả null khi không gán được (caller dùng SALE_UNASSIGNED). */
@@ -269,8 +269,8 @@ export function resolveSale(o: { order_uid?: string | null; seller_name?: string
     const manual = SA.manual || {};
     if (o.order_uid && manual[o.order_uid]) return manual[o.order_uid];
 
-    const tuPos = saleFromSeller(o.seller_name);
-    if (tuPos) return tuPos;
+    const fromPos = saleFromSeller(o.seller_name);
+    if (fromPos) return fromPos;
 
     const byPage = SA.by_page || {};
     if (o.page_id && byPage[String(o.page_id)]) return byPage[String(o.page_id)];

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
-import { docLoiFetch } from "@/lib/talpha/refresh-status";
+import { parseFetchErrors } from "@/lib/talpha/refresh-status";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +59,7 @@ export async function GET() {
         const lastOk = rows.find((r: any) => r.ok);
         // 23/09/2026: TKQC mất quyền ads_read vẫn còn dòng cũ nên accountHealth() báo "ok" —
         // lấy tên thẳng từ log vòng chạy rồi gộp vào danh sách lỗi để bot báo đích danh.
-        const fetch_errors = docLoiFetch(last.detail);
+        const fetch_errors = parseFetchErrors(last.detail);
         const loiFetch = [
             ...fetch_errors.tkqc.map((name) => ({
                 kind: "ads", name, rows: null, prev_rows: null,

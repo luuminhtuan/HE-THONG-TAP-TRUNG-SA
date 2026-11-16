@@ -28,7 +28,7 @@ export function configPath(...doan: string[]): string {
  * Như `configPath` nhưng NÉM lỗi nói rõ file nào thiếu, thay vì để đoạn code
  * gọi nó chết bằng một `ENOENT` không ai đọc ra.
  */
-export function configPathBatBuoc(...doan: string[]): string {
+export function requiredConfigPath(...doan: string[]): string {
     const p = configPath(...doan);
     if (!fs.existsSync(p)) {
         throw new Error(
@@ -40,14 +40,14 @@ export function configPathBatBuoc(...doan: string[]): string {
 }
 
 /** `config/talpha_rules.json` — nguồn rule nghiệp vụ DUY NHẤT. */
-export const RULES_JSON = () => configPathBatBuoc("talpha_rules.json");
+export const RULES_JSON = () => requiredConfigPath("talpha_rules.json");
 
 /**
  * Nước thêm / sửa / tắt ở /admin → Thị trường nằm ở bảng market_overrides (15/11/2026 — trước đó file
  * data/thi_truong.json). Test đặt TALPHA_THI_TRUONG trỏ vào một FILE phủ để không đọc kho của máy
  * đang chạy test; không đặt = đọc kho.
  */
-export const THI_TRUONG_FILE_TEST = (): string | null => process.env.TALPHA_THI_TRUONG || null;
+export const MARKET_OVERRIDES_TEST_FILE = (): string | null => process.env.TALPHA_THI_TRUONG || null;
 
 /** `config/projects/talpha.yaml` — danh sách TKQC Meta và shop POS. */
-export const TALPHA_YAML = () => configPathBatBuoc("projects", "talpha.yaml");
+export const TALPHA_YAML = () => requiredConfigPath("projects", "talpha.yaml");

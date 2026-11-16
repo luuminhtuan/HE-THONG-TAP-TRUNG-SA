@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAccess } from "@/lib/talpha/access";
 import { seesAllMarkets } from "@/lib/talpha/access-rules";
-import { docThang, soVN, theoKhoang } from "@/lib/talpha/sheet-tong-team";
+import { readMonthTabs, parseVnNumber, reportForRange } from "@/lib/talpha/sheet-tong-team";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: "from/to phải dạng YYYY-MM-DD" }, { status: 400 });
         }
         try {
-            return NextResponse.json(await theoKhoang(from, to, a));
+            return NextResponse.json(await reportForRange(from, to, a));
         } catch (e: any) {
             console.error("sheet-report (khoảng):", e?.message || e);
             return NextResponse.json({ error: `đọc số báo cáo lỗi: ${e?.message || e}` }, { status: 500 });
@@ -37,21 +37,21 @@ export async function GET(req: NextRequest) {
     if (!DATE_RE.test(date)) {
         return NextResponse.json({ error: "date phải dạng YYYY-MM-DD" }, { status: 400 });
     }
-    const thang = date.slice(0, 7);
+    const month = date.slice(0, 7);
     try {
-        const tabs = await docThang(thang);
+        const tabs = await readMonthTabs(month);
         if (!tabs) {
             return NextResponse.json(
-                { error: `chưa có số báo cáo tháng ${Number(thang.slice(5))} — vòng báo cáo (phút :20 mỗi giờ) chưa chạy` },
+                { error: `chưa có số báo cáo tháng ${Number(month.slice(5))} — vòng báo cáo (phút :20 mỗi giờ) chưa chạy` },
                 { status: 404 });
         }
         const [y, m, d] = date.split("-");
-        const nhan = `${d}/${m}/${y}`;
+        const dateLabel = `${d}/${m}/${y}`;
         const out: Record<string, any> = {};
         for (const t of tabs) {
-            const r = t.rows.find((x) => String(x?.[0] || "").trim() === nhan);
+            const r = t.rows.find((x) => String(x?.[0] || "").trim() === dateLabel);
             if (!r) continue;
-            const g = (ten: string) => soVN(r[t.head.indexOf(ten)]);
+            const g = (column: string) => parseVnNumber(r[t.head.indexOf(column)]);
             out[t.title] = {
                 ads: g("TỔNG TIỀN ADS"), mess: g("SỐ TIN NHẮN"), don: g("Số đơn"),
                 doanh_so: g("Doanh Số"), ds_giao_tc: g("DS Giao TC"),
