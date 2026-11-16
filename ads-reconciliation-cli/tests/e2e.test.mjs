@@ -9,12 +9,12 @@ const SAMPLES = join(ROOT, "data", "samples");
 const FB = join(SAMPLES, "sample-fb-ad-spend_2026-09-01_07.xlsx");
 const BANK = join(SAMPLES, "sample-card-statement_2026-09-01_08.xlsx");
 
-function chay(a = FB, b = BANK) {
+function run(a = FB, b = BANK) {
     return runReconciliation([{ path: a }, { path: b }], { cfg: loadConfig(), save: false });
 }   // bất đồng bộ vì có thể phải nạp bộ đọc PDF
 
 test("chạy trọn vẹn trên file mẫu và bắt đúng từng loại lệch đã gài", async () => {
-    const r = await chay();
+    const r = await run();
     const codes = r.alerts.map((a) => a.code);
 
     assert.equal(r.ky, "2026-W36");
@@ -39,33 +39,33 @@ test("chạy trọn vẹn trên file mẫu và bắt đúng từng loại lệch
 });
 
 test("đảo thứ tự 2 file vẫn ra kết quả y hệt", async () => {
-    const xuoi = await chay(FB, BANK);
-    const nguoc = await chay(BANK, FB);
-    assert.deepEqual(nguoc.summary, xuoi.summary);
-    assert.equal(nguoc.pairs.length, xuoi.pairs.length);
+    const forward = await run(FB, BANK);
+    const reversed = await run(BANK, FB);
+    assert.deepEqual(reversed.summary, forward.summary);
+    assert.equal(reversed.pairs.length, forward.pairs.length);
 });
 
 test("tổng tiền cộng lại phải kín — không đồng nào biến mất giữa đường", async () => {
-    const r = await chay();
-    const bankKhop = r.pairs.reduce((s, p) => s + p.bank.amount, 0);
-    const bankDu = r.bank_unmatched.reduce((s, x) => s + x.amount, 0);
-    assert.equal(bankKhop + bankDu, r.summary.bank_total);
+    const r = await run();
+    const bankMatched = r.pairs.reduce((s, p) => s + p.bank.amount, 0);
+    const bankUnmatched = r.bank_unmatched.reduce((s, x) => s + x.amount, 0);
+    assert.equal(bankMatched + bankUnmatched, r.summary.bank_total);
 
-    const fbKhop = r.pairs.reduce((s, p) => s + p.fb.amount, 0);
-    const fbDu = r.fb_unmatched.reduce((s, x) => s + x.amount, 0);
-    assert.equal(fbKhop + fbDu, r.summary.fb_total);
+    const fbMatched = r.pairs.reduce((s, p) => s + p.fb.amount, 0);
+    const fbUnmatched = r.fb_unmatched.reduce((s, x) => s + x.amount, 0);
+    assert.equal(fbMatched + fbUnmatched, r.summary.fb_total);
 });
 
 test("tin nhắn cảnh báo có đủ số tiền rủi ro và không rỗng", async () => {
     const cfg = loadConfig();
-    const msg = buildMessage(await chay(), cfg);
+    const msg = buildMessage(await run(), cfg);
     assert.match(msg, /ĐỐI SOÁT CHI PHÍ QUẢNG CÁO/);
     assert.match(msg, /35\.400\.000/);
     assert.match(msg, /2026-W36/);
 });
 
 test("CSV xuất đủ mọi dòng của cả hai nguồn", async () => {
-    const r = await chay();
+    const r = await run();
     const csv = toCsv(r);
     // Kiểm tra BOM trên chuỗi GỐC: trim() của JS coi U+FEFF là khoảng trắng và nuốt mất
     assert.ok(csv.startsWith("\ufeff"), "phải có BOM để Excel trên Windows không vỡ tiếng Việt");
@@ -86,8 +86,8 @@ test("thiếu cột bắt buộc thì báo lỗi nói rõ thiếu gì, không ch
 test("lịch sử chỉ lấy kỳ CŨ hơn — chạy lại kỳ cũ không so ngược với kỳ mới", async () => {
     const { loadHistory } = await import("../src/run.mjs");
     const all = loadHistory(null).map((h) => h.ky);
-    for (const ky of all) {
-        assert.ok(loadHistory(ky).every((h) => h.ky < ky), `kỳ ${ky} không được lấy kỳ mới hơn làm kỳ trước`);
+    for (const period of all) {
+        assert.ok(loadHistory(period).every((h) => h.ky < period), `kỳ ${period} không được lấy kỳ mới hơn làm kỳ trước`);
     }
 });
 
@@ -96,7 +96,7 @@ test("sao kê PDF ra ĐÚNG cùng kết quả với bản .xlsx", async () => {
     // toạ độ chữ — sai một cột là tiền rơi sang cột khác mà vẫn ra số đẹp,
     // nên phải so bằng chính con số cuối cùng chứ không chỉ xem có đọc được.
     const PDF = join(SAMPLES, "sample-card-statement_2026-09-01_08.pdf");
-    const [xlsx, pdf] = [await chay(FB, BANK), await chay(FB, PDF)];
+    const [xlsx, pdf] = [await run(FB, BANK), await run(FB, PDF)];
 
     assert.equal(pdf.summary.bank_total, xlsx.summary.bank_total);
     assert.equal(pdf.summary.at_risk, xlsx.summary.at_risk);
@@ -107,12 +107,12 @@ test("sao kê PDF ra ĐÚNG cùng kết quả với bản .xlsx", async () => {
 test("PDF scan (không có lớp chữ) báo lỗi rõ chứ không trả bảng rỗng", async () => {
     const { readAnySheets } = await import("../src/engine.mjs");
     // PDF hợp lệ tối thiểu, một trang trắng, không có chữ nào
-    const trong = Buffer.from(
+    const blankPdf = Buffer.from(
         "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
         "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
         "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n" +
         "trailer<</Root 1 0 R>>\n", "latin1");
-    await assert.rejects(() => readAnySheets("scan.pdf", trong), /SCAN|không lấy ra chữ|lớp chữ/i);
+    await assert.rejects(() => readAnySheets("scan.pdf", blankPdf), /SCAN|không lấy ra chữ|lớp chữ/i);
 });
 
 test("chia đôi sao kê thành 2 file rồi tải cả hai — ra đúng cùng kết quả", async () => {
@@ -121,8 +121,8 @@ test("chia đôi sao kê thành 2 file rồi tải cả hai — ra đúng cùng 
     const { readAnySheets } = await import("../src/engine.mjs");
     const sheets = await readAnySheets(BANK);
     const rows = sheets[0].rows;
-    const head = rows[0], than = rows.slice(1);
-    const nua = Math.ceil(than.length / 2);
+    const head = rows[0], body = rows.slice(1);
+    const half = Math.ceil(body.length / 2);
 
     const csv = (rs) => Buffer.from([head, ...rs]
         .map((r) => r.map((c) => {
@@ -131,27 +131,27 @@ test("chia đôi sao kê thành 2 file rồi tải cả hai — ra đúng cùng 
         }).join(",")).join("\n"), "utf8");
 
     const cfg = loadConfig();
-    const mot = await runReconciliation([{ path: FB }, { path: BANK }], { cfg, save: false });
-    const hai = await runReconciliation([
+    const single = await runReconciliation([{ path: FB }, { path: BANK }], { cfg, save: false });
+    const split = await runReconciliation([
         { path: FB },
-        { path: "the-1.csv", buffer: csv(than.slice(0, nua)) },
-        { path: "the-2.csv", buffer: csv(than.slice(nua)) },
+        { path: "the-1.csv", buffer: csv(body.slice(0, half)) },
+        { path: "the-2.csv", buffer: csv(body.slice(half)) },
     ], { cfg, save: false });
 
-    assert.equal(hai.files.bank.length, 2, "phải nhận cả hai file sao kê");
-    assert.equal(hai.summary.bank_total, mot.summary.bank_total);
-    assert.equal(hai.summary.at_risk, mot.summary.at_risk);
-    assert.equal(hai.stats.matched, mot.stats.matched);
+    assert.equal(split.files.bank.length, 2, "phải nhận cả hai file sao kê");
+    assert.equal(split.summary.bank_total, single.summary.bank_total);
+    assert.equal(split.summary.at_risk, single.summary.at_risk);
+    assert.equal(split.stats.matched, single.stats.matched);
 });
 
 test("tải nhầm cùng một file hai lần thì bỏ bản trùng, KHÔNG đếm gấp đôi", async () => {
     // Không bỏ thì bản thứ hai không ghép được với ai và nổi lên thành
     // "TKQC thu mà thẻ không trừ" — báo động giả, loại đắt tiền nhất.
     const cfg = loadConfig();
-    const mot = await runReconciliation([{ path: FB }, { path: BANK }], { cfg, save: false });
-    const hai = await runReconciliation([{ path: FB }, { path: BANK }, { path: BANK }], { cfg, save: false });
+    const single = await runReconciliation([{ path: FB }, { path: BANK }], { cfg, save: false });
+    const split = await runReconciliation([{ path: FB }, { path: BANK }, { path: BANK }], { cfg, save: false });
 
-    assert.equal(hai.summary.bank_total, mot.summary.bank_total, "tổng tiền không được nhân đôi");
-    assert.equal(hai.summary.at_risk, mot.summary.at_risk);
-    assert.ok(hai.alerts.some((a) => a.code === "TRUNG_GIUA_FILE"), "phải nói ra là đã bỏ dòng trùng");
+    assert.equal(split.summary.bank_total, single.summary.bank_total, "tổng tiền không được nhân đôi");
+    assert.equal(split.summary.at_risk, single.summary.at_risk);
+    assert.ok(split.alerts.some((a) => a.code === "TRUNG_GIUA_FILE"), "phải nói ra là đã bỏ dòng trùng");
 });

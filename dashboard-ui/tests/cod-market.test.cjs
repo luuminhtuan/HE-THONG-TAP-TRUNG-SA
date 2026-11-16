@@ -7,7 +7,7 @@ const C = require("../.test-build/cod-market.js");
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass++; console.log("  ✓", name); };
-const don = (o = {}) => ({ order_id: "S1", tracking: "JT1", order_date: "2026-09-20", trang_thai: "Đang vận chuyển",
+const order = (o = {}) => ({ order_id: "S1", tracking: "JT1", order_date: "2026-09-20", trang_thai: "Đang vận chuyển",
     nhom: "chua_giao", cod_local: 69, khach: "Joy", ...o });
 
 console.log("── Phân nhóm theo trạng thái vận đơn (bảng đối tác + 17TRACK) ──");
@@ -42,13 +42,13 @@ t("đơn thô chưa phải đơn thật → bỏ khỏi danh sách", () => {
 console.log("── Cộng tiền ──");
 t("cộng từng nhóm, quy VND theo tỷ giá rules, chia chưa giao theo trạng thái", () => {
     const x = C.summarizeCod([
-        don({ nhom: "da_giao", cod_local: 99 }),
-        don({ nhom: "da_giao", cod_local: 69 }),
-        don({ nhom: "chua_giao", trang_thai: "Đang vận chuyển", cod_local: 69 }),
-        don({ nhom: "chua_giao", trang_thai: "Đang vận chuyển", cod_local: 79 }),
-        don({ nhom: "chua_giao", trang_thai: "Giao hỏng", cod_local: 99 }),
-        don({ nhom: "khong_tinh", ly_do: "hoan", cod_local: 69 }),
-        don({ nhom: "khong_tinh", ly_do: "huy", cod_local: 99 }),
+        order({ nhom: "da_giao", cod_local: 99 }),
+        order({ nhom: "da_giao", cod_local: 69 }),
+        order({ nhom: "chua_giao", trang_thai: "Đang vận chuyển", cod_local: 69 }),
+        order({ nhom: "chua_giao", trang_thai: "Đang vận chuyển", cod_local: 79 }),
+        order({ nhom: "chua_giao", trang_thai: "Giao hỏng", cod_local: 99 }),
+        order({ nhom: "khong_tinh", ly_do: "hoan", cod_local: 69 }),
+        order({ nhom: "khong_tinh", ly_do: "huy", cod_local: 99 }),
     ], 20000);
     assert.deepStrictEqual(x.da_giao, { so_don: 2, cod_local: 168, vnd_uoc: 3360000 });
     assert.strictEqual(x.chua_giao.so_don, 3);
@@ -59,7 +59,7 @@ t("cộng từng nhóm, quy VND theo tỷ giá rules, chia chưa giao theo trạ
     assert.strictEqual(x.khong_tinh.cod_local, 168);
 });
 t("chưa khai tỷ giá → không quy VND (null), không nhân bừa", () => {
-    assert.strictEqual(C.summarizeCod([don({ nhom: "da_giao" })], 0).da_giao.vnd_uoc, null);
+    assert.strictEqual(C.summarizeCod([order({ nhom: "da_giao" })], 0).da_giao.vnd_uoc, null);
 });
 t("nhãn trạng thái: chuẩn trước, chữ gốc sau", () => {
     assert.strictEqual(C.statusText("Delivered", "Đã giao thành công"), "Đã giao");

@@ -24,7 +24,7 @@ function slotAction(slot, nowHHMM, sentDate, today, windowMin) {
 
 // 00:00 của ngày KẾ TIẾP dateStr, theo giờ VN, tính bằng epoch ms. VN không có giờ mùa
 // nên +07:00 là cố định — không cần thư viện múi giờ.
-const hetNgay = (dateStr) => Date.parse(dateStr + "T00:00:00+07:00") + 86400000;
+const endOfDayTs = (dateStr) => Date.parse(dateStr + "T00:00:00+07:00") + 86400000;
 
 // Tin về một ngày ĐÃ QUA chỉ đủ số khi có vòng sync chạy SAU KHI ngày đó kết thúc.
 // Ngưỡng tuổi KHÔNG trả lời được câu này, và sai về cả hai phía:
@@ -32,10 +32,10 @@ const hetNgay = (dateStr) => Date.parse(dateStr + "T00:00:00+07:00") + 86400000;
 //     nó đã "cũ 490 phút" → ngưỡng phẳng kêu oan, kêu oan vài lần là hết ai đọc;
 //   - 03/09 sync chết từ 14:27 cũng chỉ là "cũ", mà thiếu tới 67% số cả ngày.
 // Câu đúng phải hỏi là "đã có vòng nào chạy sau nửa đêm chưa", không phải "cũ bao lâu".
-function ngayChuaDu(lastOkTs, dateStr) {
+function isDayIncomplete(lastOkTs, dateStr) {
     if (lastOkTs == null || !Number.isFinite(lastOkTs)) return false;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateStr))) return false;
-    return lastOkTs < hetNgay(dateStr);
+    return lastOkTs < endOfDayTs(dateStr);
 }
 
 // ─── Đính chính: tin ĐÃ gửi khi số chưa đủ, chờ vòng sync đủ số rồi gửi lại số đúng ───
@@ -52,14 +52,14 @@ function ngayChuaDu(lastOkTs, dateStr) {
 // →  "gui"     số đã đủ, gửi tin đính chính
 //    "het-han" quá hạn mà số vẫn chưa đủ → bỏ chờ (đính chính muộn quá là tin rác)
 //    null      chờ tiếp
-function canDinhChinh(cho, stale, nowTs = Date.now()) {
-    if (!cho || !/^\d{4}-\d{2}-\d{2}$/.test(String(cho.ngay))) return "het-han";   // rác trong state → dọn
-    const han = Number(cho.hanTs);
-    if (Number.isFinite(han) && nowTs > han) return "het-han";
+function correctionAction(pending, stale, nowTs = Date.now()) {
+    if (!pending || !/^\d{4}-\d{2}-\d{2}$/.test(String(pending.ngay))) return "het-han";   // rác trong state → dọn
+    const deadline = Number(pending.hanTs);
+    if (Number.isFinite(deadline) && nowTs > deadline) return "het-han";
     const ok = stale == null ? NaN : Number(stale.lastOkTs);
     if (!Number.isFinite(ok)) return null;
-    if (cho.intraday) return ok > Number(cho.luc) ? "gui" : null;
-    return ngayChuaDu(ok, cho.ngay) ? null : "gui";
+    if (pending.intraday) return ok > Number(pending.luc) ? "gui" : null;
+    return isDayIncomplete(ok, pending.ngay) ? null : "gui";
 }
 
 // Hạn chờ đính chính của một tin:
@@ -67,9 +67,9 @@ function canDinhChinh(cho, stale, nowTs = Date.now()) {
 //     đính chính cả buổi chiều hôm sau;
 //   - tin GIỮA NGÀY: chỉ tới HẾT NGÀY đó. Qua nửa đêm thì mốc 08:30 sáng sau đã là số cả
 //     ngày đầy đủ — đính chính "số hôm nay lúc 22:00" vào sáng hôm sau là tin rác.
-function hanDinhChinh({ ngay, luc, intraday }, gioHan = 24) {
-    const h = Number(luc) + Number(gioHan) * 3600000;
-    return intraday ? Math.min(h, hetNgay(ngay)) : h;
+function correctionDeadline({ ngay: date, luc: sentAt, intraday }, deadlineHours = 24) {
+    const h = Number(sentAt) + Number(deadlineHours) * 3600000;
+    return intraday ? Math.min(h, endOfDayTs(date)) : h;
 }
 
-module.exports = { toMin, slotAction, hetNgay, ngayChuaDu, canDinhChinh, hanDinhChinh };
+module.exports = { toMin, slotAction, endOfDayTs, isDayIncomplete, correctionAction, correctionDeadline };

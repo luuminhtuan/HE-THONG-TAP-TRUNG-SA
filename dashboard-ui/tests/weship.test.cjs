@@ -17,15 +17,15 @@ const t = (name, fn) => { fn(); pass++; console.log("  ✓", name); };
 const AE = T.trackMarket("AE");
 const TZ = "+04:00";
 
-const dong = (ngay, gio, noi, viec) => `
+const eventRow = (date, time, place, event) => `
     <tr>
     <td align="left" class="text-center">
-   ${ngay}  <div class="second-line">${gio}</div>
+   ${date}  <div class="second-line">${time}</div>
     </td>
-    <td align="left" class="text-left">${noi}&nbsp;</td>
-    <td align="left" class="text-left">${viec}</td>
+    <td align="left" class="text-left">${place}&nbsp;</td>
+    <td align="left" class="text-left">${event}</td>
     </tr>`;
-const trang = (status, events, ref = "AF101090498O8") => `<html><body>
+const trackingPage = (status, events, ref = "AF101090498O8") => `<html><body>
 <div class="tracking-number">Tracking Number: VS1068057</div>
  <div class="panel-title">(Ref : ${ref})</div>  <table>
 <thead><tr><th>From</th><th>To</th><th>Current Status</th><th>Current Activity</th></tr></thead>
@@ -50,11 +50,11 @@ const trang = (status, events, ref = "AF101090498O8") => `<html><body>
   <td align="left"><div class="shipment-details">4</div></td></tr></table>
 </body></html>`;
 
-const GIAO = trang("Delivered", [
-    dong("25 Sep 2026", "05:40 PM", "Receiver Destination", "Delivered"),
-    dong("25 Sep 2026", "09:41 AM", "MAIN OFFICE", "OUT FOR DELIVERY"),
-    dong("24 Sep 2026", "01:27 PM", "123456789", "Check-in process done at hub"),
-    dong("24 Sep 2026", "11:51 AM", "Customer Location", "Shipment at Collection Point"),
+const DELIVERED = trackingPage("Delivered", [
+    eventRow("25 Sep 2026", "05:40 PM", "Receiver Destination", "Delivered"),
+    eventRow("25 Sep 2026", "09:41 AM", "MAIN OFFICE", "OUT FOR DELIVERY"),
+    eventRow("24 Sep 2026", "01:27 PM", "123456789", "Check-in process done at hub"),
+    eventRow("24 Sep 2026", "11:51 AM", "Customer Location", "Shipment at Collection Point"),
 ]);
 
 console.log("── Giờ trên trang (giờ UAE +04:00) ──");
@@ -75,7 +75,7 @@ t("chữ lạ → null, không bịa mốc", () => {
 
 console.log("── Đọc trang ──");
 t("trang có kết quả: mã tham chiếu, điểm đến, trạng thái, lịch sử mới nhất trước", () => {
-    const p = W.parseWeshipPage(GIAO, "VS1068057", TZ);
+    const p = W.parseWeshipPage(DELIVERED, "VS1068057", TZ);
     assert.strictEqual(p.found, true);
     assert.strictEqual(p.ref, "AF101090498O8");
     assert.strictEqual(p.to_city, "Ajman");
@@ -133,16 +133,16 @@ t("chữ chưa khai → null (hiện nguyên văn để khai thêm)", () => {
 
 console.log("── Trạng thái một đơn ──");
 t("đã giao: mốc giao lấy ở History, KHÔNG lấy ô 'Delivered On' (ghi sai giờ)", () => {
-    const k = W.weshipTrack(W.parseWeshipPage(GIAO, "VS1068057", TZ), AE.status_rules);
+    const k = W.weshipTrack(W.parseWeshipPage(DELIVERED, "VS1068057", TZ), AE.status_rules);
     assert.strictEqual(k.status, "Delivered");
     assert.strictEqual(k.status_time, "2026-09-25T13:40:00.000Z");
     assert.strictEqual(k.fail_count, 0);
 });
 t("hẹn lại hai lần: giao hỏng TỪ lần đầu, đếm 2 lần, câu có 'lần 2'", () => {
-    const p = W.parseWeshipPage(trang("Rescheduled", [
-        dong("28 Sep 2026", "10:54 AM", "MAIN OFFICE", "Rescheduled"),
-        dong("26 Sep 2026", "11:02 AM", "MAIN OFFICE", "Rescheduled"),
-        dong("25 Sep 2026", "09:41 AM", "MAIN OFFICE", "OUT FOR DELIVERY"),
+    const p = W.parseWeshipPage(trackingPage("Rescheduled", [
+        eventRow("28 Sep 2026", "10:54 AM", "MAIN OFFICE", "Rescheduled"),
+        eventRow("26 Sep 2026", "11:02 AM", "MAIN OFFICE", "Rescheduled"),
+        eventRow("25 Sep 2026", "09:41 AM", "MAIN OFFICE", "OUT FOR DELIVERY"),
     ]), "VS1068056", TZ);
     const k = W.weshipTrack(p, AE.status_rules);
     assert.strictEqual(k.status, "DeliveryFailure");
@@ -153,9 +153,9 @@ t("hẹn lại hai lần: giao hỏng TỪ lần đầu, đếm 2 lần, câu c�
     assert.match(k.last_event, /Hẹn giao lại \(lần 2\)/);
 });
 t("ô tóm tắt REFUSED + hoạt động 'package cancelled' cùng là từ chối", () => {
-    const p = W.parseWeshipPage(trang("REFUSED", [
-        dong("28 Sep 2026", "10:45 AM", "MAIN OFFICE", "package cancelled"),
-        dong("26 Sep 2026", "10:55 AM", "MAIN OFFICE", "package cancelled"),
+    const p = W.parseWeshipPage(trackingPage("REFUSED", [
+        eventRow("28 Sep 2026", "10:45 AM", "MAIN OFFICE", "package cancelled"),
+        eventRow("26 Sep 2026", "10:55 AM", "MAIN OFFICE", "package cancelled"),
     ]), "VS1068045", TZ);
     const k = W.weshipTrack(p, AE.status_rules);
     assert.strictEqual(k.sub_status, "DeliveryFailure_Rejected");
@@ -163,7 +163,7 @@ t("ô tóm tắt REFUSED + hoạt động 'package cancelled' cùng là từ ch�
     assert.strictEqual(k.fail_count, 2);
 });
 t("chữ lạ: không trạng thái, giữ chữ gốc", () => {
-    const p = W.parseWeshipPage(trang("Held at customs", [dong("28 Sep 2026", "10:00 AM", "X", "Held at customs")]), "VS1", TZ);
+    const p = W.parseWeshipPage(trackingPage("Held at customs", [eventRow("28 Sep 2026", "10:00 AM", "X", "Held at customs")]), "VS1", TZ);
     const k = W.weshipTrack(p, AE.status_rules);
     assert.strictEqual(k.status, null);
     assert.strictEqual(k.raw_status, "Held at customs");
@@ -182,11 +182,11 @@ t("không có mã → null", () => {
 
 console.log("── Đơn POS → vận đơn ──");
 const NOW = new Date("2026-10-05T08:00:00Z");
-const don = (o = {}) => ({ order_id: "15", order_date: "2026-09-26", status_name: "pending", status_category: "DANG_GIAO",
+const order = (o = {}) => ({ order_id: "15", order_date: "2026-09-26", status_name: "pending", status_category: "DANG_GIAO",
     cod: 159, partner: "{'extend_code': 'VS1069070'}", customer: "Maria", phone: "0501234567",
     province: "Abu Dhabi", district: "Al Ain", note: "delivery - 3/10", time_send_partner: "2026-09-28T08:00:37", ...o });
 t("có mã, chưa tra: 'đã tạo vận đơn' tính từ lúc POS gửi hãng (giờ UTC)", () => {
-    const s = W.posWeshipShipment(don(), undefined);
+    const s = W.posWeshipShipment(order(), undefined);
     assert.strictEqual(s.tracking, "VS1069070");
     assert.strictEqual(s.track17_code, "VS1069070");
     assert.strictEqual(s.status, "InfoReceived");
@@ -196,7 +196,7 @@ t("có mã, chưa tra: 'đã tạo vận đơn' tính từ lúc POS gửi hãng 
     assert.strictEqual(s.cod_local, 159);
 });
 t("đã tra: trạng thái WeShip thắng trạng thái POS", () => {
-    const s = W.posWeshipShipment(don({ status_name: "shipped" }), {
+    const s = W.posWeshipShipment(order({ status_name: "shipped" }), {
         status: "DeliveryFailure", sub_status: "DeliveryFailure_Rejected", status_since: "2026-09-26T06:55:00.000Z",
         last_event_time: "2026-09-28T06:45:00.000Z", last_event: "Khách từ chối nhận (lần 2)", source: "weship",
         raw_status: "REFUSED", fail_count: 2,
@@ -207,7 +207,7 @@ t("đã tra: trạng thái WeShip thắng trạng thái POS", () => {
     assert.strictEqual(s.fail_count, 2);
 });
 t("chưa có mã AWB quá 4 ngày → cảnh báo 'Chưa gửi hàng' (hỏi D&T)", () => {
-    const s = W.posWeshipShipment(don({ partner: null, time_send_partner: "" }), undefined);
+    const s = W.posWeshipShipment(order({ partner: null, time_send_partner: "" }), undefined);
     assert.strictEqual(s.tracking, "DON-15");
     assert.strictEqual(s.track17_code, null);
     const a = T.buildAlerts([s], NOW, { staleDays: AE.stale_days });
@@ -216,7 +216,7 @@ t("chưa có mã AWB quá 4 ngày → cảnh báo 'Chưa gửi hàng' (hỏi D&T
     assert.match(a[0].title, /Chưa gửi hàng 9 ngày/);
 });
 t("giao hỏng → cảnh báo giao_hong kèm lý do", () => {
-    const s = W.posWeshipShipment(don(), {
+    const s = W.posWeshipShipment(order(), {
         status: "DeliveryFailure", sub_status: "DeliveryFailure_NoResponse", status_since: "2026-10-04T06:00:00.000Z",
         last_event_time: "2026-10-04T06:00:00.000Z", last_event: "Khách không nghe máy · “NO RESPONSE”", source: "weship",
     });
@@ -227,22 +227,22 @@ t("giao hỏng → cảnh báo giao_hong kèm lý do", () => {
 
 (async () => {
     console.log("── Tra nhiều mã cùng lúc ──");
-    let dang = 0, max = 0;
-    const kq = await W.mapPool([1, 2, 3, 4, 5, 6, 7], 3, async (x) => {
-        dang++; max = Math.max(max, dang);
+    let inFlight = 0, max = 0;
+    const results = await W.mapPool([1, 2, 3, 4, 5, 6, 7], 3, async (x) => {
+        inFlight++; max = Math.max(max, inFlight);
         await new Promise((r) => setTimeout(r, 5 * (8 - x)));
-        dang--;
+        inFlight--;
         return x * 10;
     });
-    assert.deepStrictEqual(kq, [10, 20, 30, 40, 50, 60, 70]);
+    assert.deepStrictEqual(results, [10, 20, 30, 40, 50, 60, 70]);
     assert.ok(max <= 3, `chạy ${max} việc cùng lúc`);
     pass++; console.log("  ✓ giữ thứ tự kết quả, không quá 3 việc cùng lúc");
 
-    const goi = [];
-    const f = async (url, init) => { goi.push([url, init.body]); return { ok: true, text: async () => GIAO }; };
+    const calls = [];
+    const f = async (url, init) => { calls.push([url, init.body]); return { ok: true, text: async () => DELIVERED }; };
     const p = await W.fetchWeship("VS1068057", { url: "https://portal.weshipme.com/tracking", tz_offset: TZ, timeout_ms: 5000 }, f);
     assert.strictEqual(p.status_text, "Delivered");
-    assert.deepStrictEqual(goi, [["https://portal.weshipme.com/tracking", "trackno=VS1068057"]]);
+    assert.deepStrictEqual(calls, [["https://portal.weshipme.com/tracking", "trackno=VS1068057"]]);
     pass++; console.log("  ✓ gửi form trackno=<AWB> tới trang tra đơn");
 
     await assert.rejects(W.fetchWeship("VS1", { url: "u", tz_offset: TZ, timeout_ms: 5000 },

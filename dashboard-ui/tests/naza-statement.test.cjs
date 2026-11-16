@@ -282,7 +282,7 @@ const FEE_OK = [
     console.log("── Kỳ 2026.09.24 bản GỘP Singapore (Sỹ Anh chốt dùng bản này 30/09) ──");
     // Hình dạng file thật: COD chỉ đơn Đài, sheet phí có cả đơn Sing (cột 目的国家
     // = 新加坡, kênh 'S新加坡CODJT专线'), TỔNG có HAI dòng tiền hàng Đài + Sing.
-    async function fileGop() {
+    async function combinedFile() {
         const wb = new ExcelJS.Workbook();
         const s = wb.addWorksheet("汇总 TỔNG");
         [["NAZA供应链"],
@@ -309,12 +309,12 @@ const FEE_OK = [
         return N.parseNazaStatement(Buffer.from(await wb.xlsx.writeBuffer()), "ĐỐI SOÁT COD 2026.09.24 (1).xlsx");
     }
     await t("hai dòng tiền hàng: Đài vào purchase_vnd (đem so file tiền hàng Đài), Sing tách riêng", async () => {
-        const st = await fileGop();
+        const st = await combinedFile();
         assert.strictEqual(st.summary.purchase_vnd, 624232, "không lẫn tiền hàng Sing");
         assert.strictEqual(st.summary.purchase_sg_vnd, 1840046, "bộ đọc cũ bỏ sót dòng này");
     });
     await t("phần Sing: 2 đơn · 76¥ · tổng = phí quy VND + tiền hàng", async () => {
-        const st = await fileGop();
+        const st = await combinedFile();
         assert.strictEqual(st.market, "TW", "có COD Đài → file Đài (gộp Sing)");
         assert.deepStrictEqual(st.fee_lines.map((l) => l.market), ["TW", "SG", "SG"]);
         assert.strictEqual(st.sg_gop.don, 2);
@@ -324,14 +324,14 @@ const FEE_OK = [
         assert.strictEqual(st.sg_gop.tong_vnd, 76 * 3860 + 1840046);
     });
     await t("luồng VND cộng trừ ra đúng phải nhận khi trừ CẢ HAI dòng tiền hàng", async () => {
-        const st = await fileGop();
+        const st = await combinedFile();
         const s = st.summary;
         assert.ok(Math.abs(s.net_rmb * s.rate_rmb_vnd - s.purchase_vnd - s.purchase_sg_vnd - s.payable_vnd) < 1);
         assert.strictEqual(st.checks.math_ok, true);
         assert.strictEqual(st.checks.ship_fee_detail_total, 106, "chi tiết gồm cả đơn Sing, khớp dòng phí TỔNG");
     });
     await t("đơn Sing KHÔNG soát theo bảng giá Đài, không báo 'không nhận ra kênh'", async () => {
-        const st = await fileGop();
+        const st = await combinedFile();
         assert.strictEqual(st.fee_audit.checked, 1);
         assert.strictEqual(st.fee_audit.unknown_channel, 0);
         assert.strictEqual(st.fee_audit.wrong, 0);
@@ -355,7 +355,7 @@ const FEE_OK = [
         assert.strictEqual(st.market, "TW");
     });
     await t("câu cảnh báo kỳ gộp nói đủ phí, tiền hàng, tổng và phải nhận", async () => {
-        const st = await fileGop();
+        const st = await combinedFile();
         const c = N.sgMergeWarning(st.sg_gop, st.summary.payable_vnd);
         assert.ok(c.includes("2 đơn Sing 76¥"), c);
         assert.ok(c.includes("1.840.046đ"), c);
@@ -411,7 +411,7 @@ const FEE_OK = [
     // Sao kê Đài 2026.10.16 tải lên 19/10/2026: NAZA làm rơi ô tiêu đề 收货日期, cả hàng tiêu đề
     // sheet COD dồn sang trái một cột và lặp "COD金额" ở cuối. Dữ liệu vẫn ở chỗ cũ → bộ đọc lấy
     // mã đơn ra ngày, tiền ra "中国台湾", bỏ hết dòng: "Mở được file nhưng không thấy dòng COD nào".
-    const fileLech = async () => {
+    const shiftedFile = async () => {
         const wb = new ExcelJS.Workbook();
         const s = wb.addWorksheet("汇总 TỔNG");
         SUM_OK.forEach((r) => s.addRow(r));
@@ -424,7 +424,7 @@ const FEE_OK = [
         return N.parseNazaStatement(Buffer.from(await wb.xlsx.writeBuffer()), "AT ĐỐI SOÁT TAIWAN 2026.10.16.xlsx");
     };
     await t("tiêu đề dồn trái một cột: vẫn đọc đủ dòng COD, đúng mã đơn và tiền", async () => {
-        const st = await fileLech();
+        const st = await shiftedFile();
         assert.strictEqual(st.cod_lines.length, 2, "dòng tổng cuối sheet không có mã đơn — không tính");
         assert.strictEqual(st.cod_lines[0].order_id, "1870459566-Z");
         assert.strictEqual(st.cod_lines[0].cod_twd, 6000);
@@ -432,7 +432,7 @@ const FEE_OK = [
         assert.strictEqual(st.cod_lines[0].market, "TW");
     });
     await t("cột ngày mất tiêu đề: vẫn lấy được ngày xuất kho", async () => {
-        const st = await fileLech();
+        const st = await shiftedFile();
         assert.strictEqual(st.cod_lines[0].recv_date, "2026-10-05");
         assert.strictEqual(st.cod_lines[1].recv_date, "2026-09-29");
     });
@@ -452,7 +452,7 @@ const FEE_OK = [
         assert.strictEqual(st.checks.math_ok, true, st.checks.math_note);
     });
     await t("tiêu đề dồn trái một cột: cột '运单号Mã tracking' vẫn ra mã vận đơn", async () => {
-        const st = await fileLech();
+        const st = await shiftedFile();
         assert.strictEqual(st.cod_lines[0].tracking, "1871270402");
         assert.strictEqual(st.cod_lines[1].tracking, "18072790");
     });
@@ -461,13 +461,13 @@ const FEE_OK = [
     // Kỳ 05/10, 12/10, 16/10/2026 sheet COD ghi '运单号Mã tracking' thay '转单号': mã vận đơn
     // bị bỏ trống, 原单号 là mã POS Sheet đơn không có → 78 đơn NAZA đã trả bị tính "còn phải
     // gửi" (Sỹ Anh phát hiện 26/10/2026).
-    const fileCod = async (cotMa) => {
+    const fileCod = async (codeColumn) => {
         const wb = new ExcelJS.Workbook();
         const s = wb.addWorksheet("汇总");
         SUM_OK.forEach((r) => s.addRow(r));
         const c = wb.addWorksheet("COD账单");
         c.addRow(["COD结算清单"]);
-        c.addRow(["收货日期 Ngày xuất kho", "原单号 Mã đơn hệ thống", "单号Mã đơn", "客户名称", cotMa, "运输方式", "国家 quốc gia", "COD金额"]);
+        c.addRow(["收货日期 Ngày xuất kho", "原单号 Mã đơn hệ thống", "单号Mã đơn", "客户名称", codeColumn, "运输方式", "国家 quốc gia", "COD金额"]);
         c.addRow(["2026-09-30 10:00:00", "20260923-627552420-1087", "T1749", "ANH THAI", "18066218", "STWCOD专线-711", "中国台湾", 6000]);
         c.addRow(["2026-09-29 10:00:00", "18003463-Z", "18003463-Z", "ANH THAI", "", "STWCOD专线-711(转寄)", "中国台湾", 4000]);
         const f = wb.addWorksheet("速递运费RMB");
@@ -490,13 +490,13 @@ const FEE_OK = [
         assert.deepStrictEqual(st.cod_lines.map((l) => l.tracking), ["18066218", "18077221"]);
     });
     await t("kho đã lưu: dòng COD kỳ sau tra mã trên phí của kỳ TRƯỚC", () => {
-        const kho = N.fillTrackingInStatements([
+        const store = N.fillTrackingInStatements([
             { filename: "ky1", rows: [], naza: { fee_lines: [{ order_id: "20261008-843327461-717", tracking: "18095240" }] } },
             { filename: "ky2", rows: [{ order_id: "20261008-843327461-717", tracking: "", amount: 1049 }], naza: { fee_lines: [] } },
         ]);
-        assert.strictEqual(kho[1].rows[0].tracking, "18095240");
-        assert.strictEqual(kho[1].rows[0].amount, 1049);
-        assert.strictEqual(kho[1].filename, "ky2");
+        assert.strictEqual(store[1].rows[0].tracking, "18095240");
+        assert.strictEqual(store[1].rows[0].amount, 1049);
+        assert.strictEqual(store[1].filename, "ky2");
     });
     await t("BẪY: mã đơn mang HAI mã vận đơn ở sheet PHÍ thì không đoán", () => {
         const [d] = N.fillTrackingFromFees([{ order_id: "T1586", tracking: "" }], [

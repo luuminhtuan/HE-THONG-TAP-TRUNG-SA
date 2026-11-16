@@ -108,12 +108,12 @@ const ship = (o = {}) => ({
     last_event_time: "2026-09-28T06:00:00Z", last_event: "Đã vào kho hãng", registered: true,
     source: "weship", city: "Dubai", note: "", ...o,
 });
-const dung = (shipments, products = new Map()) =>
+const buildLedger = (shipments, products = new Map()) =>
     L.buildMarketLedger(shipments, products, require("../.test-build/tracking.js").buildAlerts(shipments, NOW, { staleDays: 4 }),
         { rateVnd: 7000, phone: AE, carrier: "WeShip", currency: "AED" });
 
 t("giao hỏng → đèn đỏ kèm lý do, có link WhatsApp", () => {
-    const [r] = dung([ship({ status: "DeliveryFailure", sub_status: "DeliveryFailure_Rejected", last_event: "Khách từ chối nhận (lần 2)", fail_count: 2 })]);
+    const [r] = buildLedger([ship({ status: "DeliveryFailure", sub_status: "DeliveryFailure_Rejected", last_event: "Khách từ chối nhận (lần 2)", fail_count: 2 })]);
     assert.strictEqual(r.light, "do");
     assert.match(r.light_note, /Giao không thành công/);
     assert.strictEqual(r.status_vi, "Giao hỏng, chờ giao lại");
@@ -123,30 +123,30 @@ t("giao hỏng → đèn đỏ kèm lý do, có link WhatsApp", () => {
     assert.strictEqual(r.carrier, "WeShip");
 });
 t("đã giao → vàng (tiền còn ở bên giao hàng, chưa có sao kê), KHÔNG xanh", () => {
-    const [r] = dung([ship({ status: "Delivered" })]);
+    const [r] = buildLedger([ship({ status: "Delivered" })]);
     assert.strictEqual(r.light, "vang");
     assert.strictEqual(r.status_vi, "Giao thành công");
     assert.match(r.light_note, /chờ sao kê/);
 });
 t("hoàn / đang hoàn → xám, không đòi", () => {
-    const rs = dung([ship({ tracking: "A", status: "Returned" }), ship({ tracking: "B", status: "Exception", sub_status: "Exception_Returning" })]);
+    const rs = buildLedger([ship({ tracking: "A", status: "Returned" }), ship({ tracking: "B", status: "Exception", sub_status: "Exception_Returning" })]);
     assert.deepStrictEqual(rs.map((r) => r.light), ["xam", "xam"]);
 });
 t("chưa có mã vận đơn quá hạn → đỏ 'Chưa gửi hàng'", () => {
-    const [r] = dung([ship({ tracking: "DON-30", track17_code: null, status: "InfoReceived", status_since: "2026-09-20T00:00:00Z", last_event_time: "2026-09-20T00:00:00Z" })]);
+    const [r] = buildLedger([ship({ tracking: "DON-30", track17_code: null, status: "InfoReceived", status_since: "2026-09-20T00:00:00Z", last_event_time: "2026-09-20T00:00:00Z" })]);
     assert.strictEqual(r.light, "do");
     assert.strictEqual(r.status_vi, "Chờ gửi hàng");
     assert.match(r.light_note, /Chưa gửi hàng/);
 });
 t("dòng đối tác mới lên, chưa trạng thái, chưa mã → 'Chờ gửi hàng', không nói 'đang đi'", () => {
-    const [r] = dung([ship({ tracking: "DON-S1072", track17_code: null, status: null, raw_status: null,
+    const [r] = buildLedger([ship({ tracking: "DON-S1072", track17_code: null, status: null, raw_status: null,
         status_since: "2026-09-28T00:00:00Z", last_event_time: "2026-09-28T00:00:00Z" })]);
     assert.strictEqual(r.status_vi, "Chờ gửi hàng");
     assert.strictEqual(r.light, "vang");
     assert.match(r.light_note, /Chưa gửi hàng/);
 });
 t("ghép hàng của đơn theo mã đơn; mới nhất lên đầu", () => {
-    const rs = dung([ship({ tracking: "A", order_id: "3", order_date: "2026-09-23" }), ship({ tracking: "B", order_id: "20", order_date: "2026-09-26" })],
+    const rs = buildLedger([ship({ tracking: "A", order_id: "3", order_date: "2026-09-23" }), ship({ tracking: "B", order_id: "20", order_date: "2026-09-26" })],
         new Map([["20", { sku: "Oralhoe Dental 002 ×2", quantity: 2 }]]));
     assert.deepStrictEqual(rs.map((r) => r.order_no), ["20", "3"]);
     assert.strictEqual(rs[0].sku, "Oralhoe Dental 002 ×2");

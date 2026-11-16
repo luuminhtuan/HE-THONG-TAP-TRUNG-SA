@@ -85,15 +85,15 @@ t("ngưỡng đúng bằng 50.000 vẫn tính là khớp, hơn một đồng là
 
 console.log("── Việc đã đóng có nổi lại không ──");
 
-const KY = ["2026-07-20", "2026-08-11", "2026-08-17", "2026-08-25"];
+const PERIODS = ["2026-07-20", "2026-08-11", "2026-08-17", "2026-08-25"];
 
 t("chưa làm gì thì đương nhiên còn việc", () => {
-    assert.strictEqual(A.shouldResurface(undefined, KY).lai, true);
+    assert.strictEqual(A.shouldResurface(undefined, PERIODS).lai, true);
 });
 
 t("vừa đòi hôm nay, chưa kỳ nào chốt thêm → việc ĐÓNG, không hiện lại", () => {
     // Đúng lời Sỹ Anh chê: "việc làm xong rồi vẫn hiện".
-    const r = A.shouldResurface({ viec: "da_doi", ngay: "2026-08-26", lan: 1 }, KY);
+    const r = A.shouldResurface({ viec: "da_doi", ngay: "2026-08-26", lan: 1 }, PERIODS);
     assert.strictEqual(r.lai, false);
     assert.strictEqual(r.ky_da_qua, 0);
 });
@@ -101,13 +101,13 @@ t("vừa đòi hôm nay, chưa kỳ nào chốt thêm → việc ĐÓNG, không 
 t("đòi rồi mà qua thêm một kỳ vẫn chưa thấy tiền → NỔI LẠI", () => {
     // NAZA trả theo kỳ chứ không theo ngày, nên phép thử thật là kỳ sau tiền
     // về chưa — không phải "đã bao nhiêu ngày".
-    const r = A.shouldResurface({ viec: "da_doi", ngay: "2026-08-12", lan: 1 }, KY);
+    const r = A.shouldResurface({ viec: "da_doi", ngay: "2026-08-12", lan: 1 }, PERIODS);
     assert.strictEqual(r.lai, true);
     assert.strictEqual(r.ky_da_qua, 2);
 });
 
 t("bỏ qua thì KHÔNG nổi lại — người ta đã chủ động chấp nhận", () => {
-    const r = A.shouldResurface({ viec: "bo_qua", ngay: "2026-07-01", lan: 1, ghi_chu: "14 NT$, kệ" }, KY);
+    const r = A.shouldResurface({ viec: "bo_qua", ngay: "2026-07-01", lan: 1, ghi_chu: "14 NT$, kệ" }, PERIODS);
     assert.strictEqual(r.lai, false);
 });
 
@@ -158,8 +158,8 @@ t("kỳ thiếu tỷ giá thì trả null, KHÔNG coi như 0", () => {
 
 t("tổng thiệt cộng đúng phần các kỳ đọc được tỷ giá", () => {
     const r = A.fxLoss(THAT);
-    const cong = r.rows.reduce((a, x) => a + (x.thiet_vnd ?? 0), 0);
-    assert.ok(Math.abs(r.total_thiet_vnd - cong) < 1e-6);
+    const total = r.rows.reduce((a, x) => a + (x.thiet_vnd ?? 0), 0);
+    assert.ok(Math.abs(r.total_thiet_vnd - total) < 1e-6);
     assert.ok(r.total_thiet_vnd > 1_000_000 && r.total_thiet_vnd < 1_300_000,
         `tổng thiệt 6 kỳ phải quanh 1,1 triệu, đang là ${Math.round(r.total_thiet_vnd)}`);
 });

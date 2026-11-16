@@ -5,7 +5,7 @@ const assert = require("assert");
 const L = require("../.test-build/ad-account-rules.js");
 
 let pass = 0;
-const t = (ten, fn) => { fn(); pass++; console.log("  ✓ " + ten); };
+const t = (name, fn) => { fn(); pass++; console.log("  ✓ " + name); };
 
 console.log("── Loại TKQC thấy lần đầu ──");
 t("VND → loại mặc định (antalo, vào báo cáo)", () => {

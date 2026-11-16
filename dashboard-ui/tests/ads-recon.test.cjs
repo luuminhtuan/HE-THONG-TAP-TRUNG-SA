@@ -35,7 +35,7 @@ const ROSTER = { projects: { talpha: { accounts: [{ id: "act_ok" }] } } };
 
 (async () => {
     const E = await import(ENGINE);
-    const chay = (fb, bank, opts = {}) =>
+    const run = (fb, bank, opts = {}) =>
         E.reconcile([{ sheets: fbSheet(fb), name: "fb.xlsx" }, { sheets: bankSheet(bank), name: "bank.xlsx" }], CFG, opts);
     const codes = (r) => r.alerts.map((a) => a.code);
 
@@ -50,30 +50,30 @@ const ROSTER = { projects: { talpha: { accounts: [{ id: "act_ok" }] } } };
     t("đảo thứ tự 2 file vẫn ra kết quả y hệt", () => {
         const fb = [fbRow("T1", "01/09/2026", 12500000)];
         const bank = [bankRow("01/09/2026", 12500000)];
-        const xuoi = E.reconcile([{ sheets: fbSheet(fb) }, { sheets: bankSheet(bank) }], CFG);
-        const nguoc = E.reconcile([{ sheets: bankSheet(bank) }, { sheets: fbSheet(fb) }], CFG);
-        assert.deepStrictEqual(nguoc.summary, xuoi.summary);
+        const forward = E.reconcile([{ sheets: fbSheet(fb) }, { sheets: bankSheet(bank) }], CFG);
+        const reversed = E.reconcile([{ sheets: bankSheet(bank) }, { sheets: fbSheet(fb) }], CFG);
+        assert.deepStrictEqual(reversed.summary, forward.summary);
     });
 
     console.log("── Ghép cặp ──");
     t("khớp đúng ngày đúng tiền", () => {
-        const r = chay([fbRow("T1", "01/09/2026", 12500000)], [bankRow("01/09/2026", 12500000)]);
+        const r = run([fbRow("T1", "01/09/2026", 12500000)], [bankRow("01/09/2026", 12500000)]);
         assert.strictEqual(r.pairs.length, 1);
         assert.strictEqual(r.pairs[0].exact, true);
         assert.strictEqual(r.pairs[0].confidence, "cao");
     });
     t("thẻ cắt trễ trong cửa sổ ngày vẫn khớp", () => {
-        const r = chay([fbRow("T1", "01/09/2026", 9000000)], [bankRow("03/09/2026", 9000000)]);
+        const r = run([fbRow("T1", "01/09/2026", 9000000)], [bankRow("03/09/2026", 9000000)]);
         assert.strictEqual(r.pairs.length, 1);
         assert.strictEqual(r.pairs[0].date_diff, 2);
     });
     t("trễ quá cửa sổ thì KHÔNG ghép — thà báo thiếu còn hơn ghép bừa", () => {
-        const r = chay([fbRow("T1", "01/09/2026", 9000000)], [bankRow("12/09/2026", 9000000)]);
+        const r = run([fbRow("T1", "01/09/2026", 9000000)], [bankRow("12/09/2026", 9000000)]);
         assert.strictEqual(r.pairs.length, 0);
         assert.strictEqual(r.fb_unmatched.length, 1);
     });
     t("nhiều lựa chọn ngang nhau thì gắn nhãn nghi ngờ", () => {
-        const r = chay([fbRow("T1", "02/09/2026", 5000000)],
+        const r = run([fbRow("T1", "02/09/2026", 5000000)],
                        [bankRow("01/09/2026", 5000000), bankRow("03/09/2026", 5000000)]);
         assert.strictEqual(r.pairs[0].ambiguous, true);
         assert.strictEqual(r.pairs[0].confidence, "thap");
@@ -81,41 +81,41 @@ const ROSTER = { projects: { talpha: { accounts: [{ id: "act_ok" }] } } };
 
     console.log("── Cảnh báo ──");
     t("thẻ trừ mà không có hoá đơn là nghiêm trọng", () => {
-        const r = chay([fbRow("T1", "01/09/2026", 1000000)], [bankRow("01/09/2026", 1000000), bankRow("02/09/2026", 21000000, "FACEBK *ZZZ VISA*4281", "FT9")]);
+        const r = run([fbRow("T1", "01/09/2026", 1000000)], [bankRow("01/09/2026", 1000000), bankRow("02/09/2026", 21000000, "FACEBK *ZZZ VISA*4281", "FT9")]);
         const a = r.alerts.find((x) => x.code === "THE_TRU_MA_KHONG_CO_HOA_DON");
         assert.strictEqual(a.severity, "critical");
         assert.strictEqual(a.amount, 21000000);
     });
     t("hai dòng trừ giống nhau mà một hoá đơn = nghi trừ trùng", () => {
-        const r = chay([fbRow("T1", "03/09/2026", 9900000)],
+        const r = run([fbRow("T1", "03/09/2026", 9900000)],
                        [bankRow("04/09/2026", 9900000, "FACEBK *QQ VISA*4281", "FT1"),
                         bankRow("04/09/2026", 9900000, "FACEBK *QQ VISA*4281", "FT2")]);
         assert.ok(codes(r).includes("TRU_TRUNG"));
     });
     t("hai hoá đơn cùng giá thì hai dòng trừ là bình thường", () => {
-        const r = chay([fbRow("T1", "03/09/2026", 9900000), fbRow("T2", "03/09/2026", 9900000)],
+        const r = run([fbRow("T1", "03/09/2026", 9900000), fbRow("T2", "03/09/2026", 9900000)],
                        [bankRow("04/09/2026", 9900000, "FACEBK *A VISA*4281", "FT1"),
                         bankRow("04/09/2026", 9900000, "FACEBK *B VISA*4281", "FT2")]);
         assert.ok(!codes(r).includes("TRU_TRUNG"));
     });
     t("hoá đơn Failed mà thẻ vẫn trừ thì phải đòi lại", () => {
-        const r = chay([fbRow("T1", "03/09/2026", 11300000, "act_ok", "Failed")], [bankRow("03/09/2026", 11300000)]);
+        const r = run([fbRow("T1", "03/09/2026", 11300000, "act_ok", "Failed")], [bankRow("03/09/2026", 11300000)]);
         assert.strictEqual(r.alerts.find((x) => x.code === "FB_LOI_MA_VAN_TRU").severity, "critical");
     });
     t("TKQC ngoài roster là cảnh báo đỏ", () => {
-        const r = chay([fbRow("T1", "01/09/2026", 4500000, "act_la")], [bankRow("01/09/2026", 4500000)], { roster: ROSTER });
+        const r = run([fbRow("T1", "01/09/2026", 4500000, "act_la")], [bankRow("01/09/2026", 4500000)], { roster: ROSTER });
         const a = r.alerts.find((x) => x.code === "TKQC_LA");
         assert.strictEqual(a.severity, "critical");
         assert.ok(a.title.includes("act_la"));
     });
     t("ngân hàng trừ dư ngoài dung sai thì tách ra thành phí ẩn", () => {
-        const r = chay([fbRow("T1", "02/09/2026", 15000000)], [bankRow("02/09/2026", 15450000)]);
+        const r = run([fbRow("T1", "02/09/2026", 15000000)], [bankRow("02/09/2026", 15450000)]);
         const a = r.alerts.find((x) => x.code === "PHI_AN");
         assert.strictEqual(a.amount, 450000);
         assert.strictEqual(r.summary.fee_total, 450000);
     });
     t("mọi cảnh báo đều phải kèm hướng xử lý", () => {
-        const r = chay([fbRow("T1", "01/09/2026", 5000000)], [bankRow("01/09/2026", 21000000)]);
+        const r = run([fbRow("T1", "01/09/2026", 5000000)], [bankRow("01/09/2026", 21000000)]);
         assert.ok(r.alerts.length > 0);
         assert.ok(r.alerts.every((a) => a.hint && a.title), "cảnh báo không kèm cách xử lý chỉ làm người đọc lo");
     });
@@ -123,7 +123,7 @@ const ROSTER = { projects: { talpha: { accounts: [{ id: "act_ok" }] } } };
     t("chưa khai thẻ thì liệt kê thẻ có thật trong file, kèm mẩu JSON dán thẳng", () => {
         // Chỉ nhắc "đi mà khai" là việc này không bao giờ được làm — phải đưa
         // sẵn 4 số cuối moi từ chính hai file tuần đó.
-        const r = chay([fbRow("T1", "01/09/2026", 5000000, "act_ok", "Paid", "Visa *4281")],
+        const r = run([fbRow("T1", "01/09/2026", 5000000, "act_ok", "Paid", "Visa *4281")],
                        [bankRow("01/09/2026", 5000000, "FACEBK *A VISA*4281"),
                         bankRow("02/09/2026", 4500000, "FACEBK *B VISA*9911", "FT2")]);
         const a = r.alerts.find((x) => x.code === "CHUA_KHAI_THE");
@@ -177,7 +177,7 @@ const ROSTER = { projects: { talpha: { accounts: [{ id: "act_ok" }] } } };
         const fb = [fbRow("T1", "05/09/2026", 500000)];
         const bank = [];
         for (let i = 0; i < 20; i++) bank.push(bankRow(`0${(i % 9) + 1}/09/2026`, 400000 + i * 1000, `FACEBK *Z${i} VISA*4281`, "FT" + i));
-        const r = chay(fb, bank);
+        const r = run(fb, bank);
         const a = r.alerts.find((x) => x.code === "NGUON_LECH_NHAU");
         assert.ok(a, "phải cảnh báo hai nguồn không khớp kỳ");
         assert.strictEqual(a.severity, "critical");
@@ -188,18 +188,18 @@ const ROSTER = { projects: { talpha: { accounts: [{ id: "act_ok" }] } } };
         const fb = [fbRow("T1", "05/09/2026", 500000)];
         const bank = [bankRow("05/09/2026", 500000)];
         for (let i = 0; i < 12; i++) bank.push(bankRow("0" + ((i % 8) + 1) + "/09/2026", 50000 + i, "PHI GIAO DICH QUOC TE FACEBK", "P" + i));
-        const r = chay(fb, bank);
-        const phi = r.alerts.filter((x) => x.code === "PHI_THE_RIENG");
-        assert.strictEqual(phi.length, 1, "12 khoản phí lẻ phải gộp thành MỘT thẻ cảnh báo");
-        assert.strictEqual(phi[0].count, 12);
-        assert.ok(phi[0].title.includes("12 khoản phí thẻ lẻ"));
-        assert.ok(phi[0].amount > 0, "thẻ gộp phải mang tổng tiền");
+        const r = run(fb, bank);
+        const feeAlerts = r.alerts.filter((x) => x.code === "PHI_THE_RIENG");
+        assert.strictEqual(feeAlerts.length, 1, "12 khoản phí lẻ phải gộp thành MỘT thẻ cảnh báo");
+        assert.strictEqual(feeAlerts[0].count, 12);
+        assert.ok(feeAlerts[0].title.includes("12 khoản phí thẻ lẻ"));
+        assert.ok(feeAlerts[0].amount > 0, "thẻ gộp phải mang tổng tiền");
     });
 
     t("hai dòng cùng giá mà CẢ HAI đều không có hoá đơn thì KHÔNG kết luận trừ trùng", () => {
         // Facebook cắt tiền theo ngưỡng nên cùng số tiền lặp lại là bình thường.
         // Kết luận trừ trùng ở đây là đẩy người ta đi khiếu nại ngân hàng oan.
-        const r = chay([fbRow("T1", "01/09/2026", 9000000)],
+        const r = run([fbRow("T1", "01/09/2026", 9000000)],
                        [bankRow("04/09/2026", 466253, "FACEBK *A VISA*4281", "F1"),
                         bankRow("04/09/2026", 466253, "FACEBK *B VISA*4281", "F2")]);
         assert.ok(!r.alerts.some((x) => x.code === "TRU_TRUNG"), "không được kết luận trừ trùng khi chưa có hoá đơn nào khớp");
@@ -238,7 +238,7 @@ const ROSTER = { projects: { talpha: { accounts: [{ id: "act_ok" }] } } };
         const bank = [bankRow("01/09/2026", 12500000)];
         for (let i = 0; i < 5; i++) bank.push(bankRow("0" + (i + 2) + "/09/2026", 500000 + i));
         bank.push(bankRow("08/09/2026", 2.9e48, "FACEBK *X VISA*4281", "FX"));
-        const r = chay([fbRow("T1", "01/09/2026", 12500000)], bank);
+        const r = run([fbRow("T1", "01/09/2026", 12500000)], bank);
         assert.ok(r.summary.bank_total < 1e9, "dòng vô lý phải bị loại khỏi tổng, không được cộng vào");
         assert.ok(r.meta.skipped.bank.some((x) => /vô lý/.test(x.reason)), "phải ghi ra là đã loại dòng nào và vì sao");
     });
@@ -260,24 +260,24 @@ const ROSTER = { projects: { talpha: { accounts: [{ id: "act_ok" }] } } };
         const fb = [fbRow("T1", "05/09/2026", 500000)];
         const bank = [];
         for (let i = 0; i < 20; i++) bank.push(bankRow(`0${(i % 9) + 1}/09/2026`, 400000 + i * 1000, `FACEBK *Z${i} VISA*4281`, "FT" + i));
-        const k = chay(fb, bank).summary.ket_luan;
+        const k = run(fb, bank).summary.ket_luan;
         assert.strictEqual(k.muc, "khong_tin");
         assert.ok(k.viec.length > 0, "phải kèm việc cần làm");
 
-        const sach = chay([fbRow("T1", "01/09/2026", 12500000)], [bankRow("01/09/2026", 12500000)]).summary.ket_luan;
-        assert.ok(["sach", "can_xem"].includes(sach.muc), "khớp sạch thì không được doạ người đọc");
+        const cleanVerdict = run([fbRow("T1", "01/09/2026", 12500000)], [bankRow("01/09/2026", 12500000)]).summary.ket_luan;
+        assert.ok(["sach", "can_xem"].includes(cleanVerdict.muc), "khớp sạch thì không được doạ người đọc");
     });
 
     console.log("── Tiền không được biến mất giữa đường ──");
     t("tổng khớp + tổng dư = tổng nguồn, cả hai phía", () => {
-        const r = chay([fbRow("T1", "01/09/2026", 12500000), fbRow("T2", "07/09/2026", 5600000)],
+        const r = run([fbRow("T1", "01/09/2026", 12500000), fbRow("T2", "07/09/2026", 5600000)],
                        [bankRow("01/09/2026", 12500000), bankRow("08/09/2026", 21000000, "FACEBK *X VISA*4281", "FT9")]);
-        const bankKhop = r.pairs.reduce((s, p) => s + p.bank.amount, 0);
-        const bankDu = r.bank_unmatched.reduce((s, x) => s + x.amount, 0);
-        assert.strictEqual(bankKhop + bankDu, r.summary.bank_total);
-        const fbKhop = r.pairs.reduce((s, p) => s + p.fb.amount, 0);
-        const fbDu = r.fb_unmatched.reduce((s, x) => s + x.amount, 0);
-        assert.strictEqual(fbKhop + fbDu, r.summary.fb_total);
+        const bankMatched = r.pairs.reduce((s, p) => s + p.bank.amount, 0);
+        const bankUnmatched = r.bank_unmatched.reduce((s, x) => s + x.amount, 0);
+        assert.strictEqual(bankMatched + bankUnmatched, r.summary.bank_total);
+        const fbMatched = r.pairs.reduce((s, p) => s + p.fb.amount, 0);
+        const fbUnmatched = r.fb_unmatched.reduce((s, x) => s + x.amount, 0);
+        assert.strictEqual(fbMatched + fbUnmatched, r.summary.fb_total);
     });
 
     console.log(`\n${pass} phép thử — tất cả đạt.`);

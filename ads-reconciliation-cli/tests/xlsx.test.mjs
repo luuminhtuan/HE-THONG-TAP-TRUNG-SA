@@ -43,8 +43,8 @@ test("PDF NHIỀU TRANG phải đọc hết mọi trang, không chỉ trang đ�
 
     assert.equal(sheets.length, 1, "mọi trang phải gộp thành MỘT bảng");
     assert.match(sheets[0].name, /2 trang/);
-    const duLieu = sheets[0].rows.filter((r) => /^\d{2}\/09\/2026$/.test(String(r[0])));
-    assert.equal(duLieu.length, 90, "phải đọc đủ 90 dòng của cả hai trang");
+    const dataRows = sheets[0].rows.filter((r) => /^\d{2}\/09\/2026$/.test(String(r[0])));
+    assert.equal(dataRows.length, 90, "phải đọc đủ 90 dòng của cả hai trang");
 });
 
 test("PDF khoá mật khẩu: báo rõ và gắn cờ, có mật khẩu đúng thì đọc được", async () => {

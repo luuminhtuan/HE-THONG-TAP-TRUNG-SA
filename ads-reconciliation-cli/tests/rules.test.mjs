@@ -92,10 +92,10 @@ test("hoá đơn báo lỗi mà thẻ vẫn trừ = phải đòi lại", () => {
 });
 
 test("ngân hàng trừ dư ít thì chỉ ghi nhận là phí, dư nhiều thì cảnh báo", () => {
-    const nhe = run([fb({ amount: 10000000 })], [bk({ amount: 10050000 })]);
-    assert.equal(find(nhe, "PHI_AN").severity, "info");
-    const nang = run([fb({ amount: 10000000 })], [bk({ amount: 10300000 })]);
-    assert.equal(find(nang, "PHI_AN").severity, "warn");
+    const slight = run([fb({ amount: 10000000 })], [bk({ amount: 10050000 })]);
+    assert.equal(find(slight, "PHI_AN").severity, "info");
+    const heavy = run([fb({ amount: 10000000 })], [bk({ amount: 10300000 })]);
+    assert.equal(find(heavy, "PHI_AN").severity, "warn");
 });
 
 test("vượt trần ngân sách tuần", () => {

@@ -9,7 +9,7 @@
 const fs = require("fs");
 const path = require("path");
 const { Zalo, ThreadType } = require("zca-js");
-const { toZalo, chiaTin } = require("./zalo_text");
+const { toZalo, splitMessage } = require("./zalo_text");
 
 const DIR = __dirname;
 const SESSION_FILE = path.join(DIR, ".zalo_session.json");
@@ -17,65 +17,65 @@ const SESSION_FILE = path.join(DIR, ".zalo_session.json");
 // và tin vận đơn của nước đó chung một nhóm. Nhóm cũ (BÁO CÁO ADS gộp các nước: zalo_group.json;
 // VẬN ĐƠN TW/SGP/UAE: zalo_group_vandon*.json) bỏ hẳn — bot không đọc các file đó nữa.
 //   zalo_group_nuoc_<mã>.json   `node pair.js --tu-nhan` (theo tên nhóm) hoặc `--chon-nuoc <id> --nuoc TW`
-const fileNhomNuoc = (m) => path.join(DIR, `zalo_group_nuoc_${String(m).toLowerCase().replace(/[^a-z]/g, "")}.json`);
+const marketGroupFile = (m) => path.join(DIR, `zalo_group_nuoc_${String(m).toLowerCase().replace(/[^a-z]/g, "")}.json`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function docJson(file) {
+function readJson(file) {
     try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return null; }
 }
 
 // Ghi file quyền 600 qua file tạm rồi đổi tên: chết giữa chừng không để lại phiên cụt.
-function ghiRieng(file, obj) {
-    const tam = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tam, JSON.stringify(obj, null, 2), { mode: 0o600 });
-    fs.renameSync(tam, file);
+function writePrivateFile(file, obj) {
+    const tmpFile = `${file}.${process.pid}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(obj, null, 2), { mode: 0o600 });
+    fs.renameSync(tmpFile, file);
     fs.chmodSync(file, 0o600);
 }
 
 // checkUpdate: false — không gọi npm mỗi lần đăng nhập. logging: false — log của bot tự lo.
 // selfListen: true — người cầm điện thoại nick phụ gõ /baocao cũng phải được nghe. Tin
 // báo cáo của chính bot cũng lọt vào, nhưng không bắt đầu bằng "/" nên bộ đọc lệnh bỏ qua.
-const taoZalo = () => new Zalo({ selfListen: true, checkUpdate: false, logging: false });
+const createZalo = () => new Zalo({ selfListen: true, checkUpdate: false, logging: false });
 
 /** Lưu lại phiên từ api đang chạy (cookie Zalo có thể được làm mới sau đăng nhập). */
-function luuPhien(api, them = {}) {
-    const cu = docJson(SESSION_FILE) || {};
+function saveSession(api, extra = {}) {
+    const previous = readJson(SESSION_FILE) || {};
     const ctx = api.getContext();
     const jar = ctx.cookie && typeof ctx.cookie.toJSON === "function" ? ctx.cookie.toJSON() : null;
-    ghiRieng(SESSION_FILE, {
-        ...cu, ...them,
-        imei: ctx.imei || cu.imei,
-        userAgent: ctx.userAgent || cu.userAgent,
-        language: ctx.language || cu.language || "vi",
-        cookie: (jar && jar.cookies) || cu.cookie,
+    writePrivateFile(SESSION_FILE, {
+        ...previous, ...extra,
+        imei: ctx.imei || previous.imei,
+        userAgent: ctx.userAgent || previous.userAgent,
+        language: ctx.language || previous.language || "vi",
+        cookie: (jar && jar.cookies) || previous.cookie,
         savedAt: new Date().toISOString(),
     });
 }
 
 /** Đăng nhập bằng phiên đã ghép. Chưa ghép → lỗi nói rõ phải làm gì. */
-async function dangNhap() {
-    const s = docJson(SESSION_FILE);
+async function login() {
+    const s = readJson(SESSION_FILE);
     if (!s || !s.imei || !s.cookie || !s.userAgent) {
         throw new Error("chưa ghép nick Zalo — chạy `node pair.js` rồi quét QR");
     }
-    const api = await taoZalo().login({ imei: s.imei, cookie: s.cookie, userAgent: s.userAgent, language: s.language || "vi" });
-    luuPhien(api);
+    const api = await createZalo().login({ imei: s.imei, cookie: s.cookie, userAgent: s.userAgent, language: s.language || "vi" });
+    saveSession(api);
     return api;
 }
 
 /** Nhóm "ADS + VẬN ĐƠN" của một nước. null = chưa chọn → bot không gửi gì cho nước đó. */
-function docNhomNuoc(m) {
-    const g = docJson(fileNhomNuoc(m));
+function readMarketGroup(m) {
+    const g = readJson(marketGroupFile(m));
     return g && g.id ? g : null;
 }
 
-function ghiNhomNuoc(m, g, cach = "") {
-    fs.writeFileSync(fileNhomNuoc(m), JSON.stringify({ id: g.id, name: g.name, nuoc: String(m).toUpperCase(),
-        chonLuc: new Date().toISOString(), ...(cach ? { cach } : {}) }, null, 2) + "\n");
-    return fileNhomNuoc(m);
+function saveMarketGroup(m, g, method = "") {
+    fs.writeFileSync(marketGroupFile(m), JSON.stringify({ id: g.id, name: g.name, nuoc: String(m).toUpperCase(),
+        chonLuc: new Date().toISOString(), ...(method ? { cach: method } : {}) }, null, 2) + "\n");
+    return marketGroupFile(m);
 }
 
-async function danhSachNhom(api) {
+async function listGroups(api) {
     const { gridVerMap } = await api.getAllGroups();
     const ids = Object.keys(gridVerMap || {});
     const out = [];
@@ -89,15 +89,15 @@ async function danhSachNhom(api) {
 }
 
 /** Gửi một bản tin vào nhóm: đổi chữ đậm sang style Zalo, dài quá thì chia nhiều tin. */
-async function guiNhom(api, groupId, text, { maxChars = 1800, sendGapMs = 4000 } = {}) {
-    const phan = chiaTin(toZalo(text), maxChars);
-    for (let i = 0; i < phan.length; i++) {
-        const p = phan[i];
-        const giau = p.styles.length || (p.mentions && p.mentions.length);
-        await api.sendMessage(giau ? { msg: p.msg, styles: p.styles, mentions: p.mentions || [] } : p.msg, groupId, ThreadType.Group);
-        if (i < phan.length - 1) await sleep(sendGapMs);
+async function sendToGroup(api, groupId, text, { maxChars = 1800, sendGapMs = 4000 } = {}) {
+    const parts = splitMessage(toZalo(text), maxChars);
+    for (let i = 0; i < parts.length; i++) {
+        const p = parts[i];
+        const isRich = p.styles.length || (p.mentions && p.mentions.length);
+        await api.sendMessage(isRich ? { msg: p.msg, styles: p.styles, mentions: p.mentions || [] } : p.msg, groupId, ThreadType.Group);
+        if (i < parts.length - 1) await sleep(sendGapMs);
     }
-    return phan.length;
+    return parts.length;
 }
 
 /**
@@ -105,7 +105,7 @@ async function guiNhom(api, groupId, text, { maxChars = 1800, sendGapMs = 4000 }
  * "closed" chỉ phát khi nó THÔI nối — thường vì có phiên web khác của nick phụ chen vào
  * (mở Zalo Web / Zalo PC). Bên gọi quyết định đăng nhập lại lúc nào.
  */
-function batNghe(api, { onMessage, onClosed, log }) {
+function startListening(api, { onMessage, onClosed, log }) {
     const l = api.listener;
     l.on("connected", () => log("Bộ nhận lệnh Zalo đã kết nối."));
     l.on("message", onMessage);
@@ -116,6 +116,6 @@ function batNghe(api, { onMessage, onClosed, log }) {
 }
 
 module.exports = {
-    SESSION_FILE, fileNhomNuoc, ThreadType,
-    taoZalo, ghiRieng, luuPhien, dangNhap, docNhomNuoc, ghiNhomNuoc, danhSachNhom, guiNhom, batNghe,
+    SESSION_FILE, marketGroupFile, ThreadType,
+    createZalo, writePrivateFile, saveSession, login, readMarketGroup, saveMarketGroup, listGroups, sendToGroup, startListening,
 };

@@ -4,11 +4,11 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- CommonJS chạy bằng node thuần
 const { Client } = require("pg");
 
-let vao = "";
+let input = "";
 process.stdin.setEncoding("utf8");
-process.stdin.on("data", (d) => { vao += d; });
+process.stdin.on("data", (d) => { input += d; });
 process.stdin.on("end", async () => {
-    const { sql, params } = JSON.parse(vao || "{}");
+    const { sql, params } = JSON.parse(input || "{}");
     const c = new Client({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 5000 });
     try {
         await c.connect();

@@ -6,12 +6,12 @@
 // Bản WhatsApp ghi state TRƯỚC khi gửi — gửi hỏng là cảnh báo đó mất hẳn. Ở đây bên gọi
 // chỉ lưu state mới SAU khi gửi được.
 const { B, I, clean } = require("./zalo_text");
-const { chuCamp, DISPLAY } = require("./rules");
+const { campaignOwner, DISPLAY } = require("./rules");
 
 const vnd = (n) => Number(n || 0).toLocaleString("vi-VN");
 // Chủ camp tính lại theo luật của Sheet; KHÔNG dùng ô marketer route trả về — route quét cả
 // tên nên camp có trang "…Vàng Thái" của Thương bị ghi là của Thái.
-const chuCua = (w) => { const k = chuCamp(w.campaign); return k ? DISPLAY[k] || k : ""; };
+const ownerLabel = (w) => { const k = campaignOwner(w.campaign); return k ? DISPLAY[k] || k : ""; };
 const ddmm = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : String(d || ""));
 
 function buildAdsAlert(a, st, cfg) {
@@ -24,22 +24,22 @@ function buildAdsAlert(a, st, cfg) {
     // 1) Tổng chi tiêu cao bất thường so với trung bình 7 ngày trước — mỗi ngày báo 1 lần.
     if (!s.spikeAlerted && a.spikeRatio && a.totalSpend >= (cfg.adsMinTotalForSpike || 0)
         && a.spikeRatio >= (cfg.adsSpikeRatio || 1.5)) {
-        const lan = String(a.spikeRatio).replace(".", ",");
-        parts.push(`📈 ${B("Chi tiêu ads hôm nay CAO BẤT THƯỜNG")}\nHôm nay: ${vnd(a.totalSpend)}đ · TB 7 ngày: ${vnd(a.avg7d)}đ (×${lan})`);
+        const ratioText = String(a.spikeRatio).replace(".", ",");
+        parts.push(`📈 ${B("Chi tiêu ads hôm nay CAO BẤT THƯỜNG")}\nHôm nay: ${vnd(a.totalSpend)}đ · TB 7 ngày: ${vnd(a.avg7d)}đ (×${ratioText})`);
         s.spikeAlerted = true;
     }
 
     // 2) Campaign đốt tiền không ra tin nhắn — chỉ camp CHƯA báo hôm nay.
-    const daBao = new Set(s.waste);
-    const moi = (a.wasteful || []).filter((w) => w.spend >= (cfg.adsWasteSpend || 300000) && !daBao.has(w.campaign));
-    if (moi.length) {
-        let m = `🔥 ${B(`Campaign ĐỐT TIỀN KHÔNG RA TIN NHẮN (${moi.length})`)}`;
-        m += moi.slice(0, 12).map((w) =>
-            `\n• ${vnd(w.spend)}đ · 0 tin nhắn${chuCua(w) ? " · " + chuCua(w) : ""}\n   ${clean(w.campaign).slice(0, 70)}`).join("");
-        if (moi.length > 12) m += `\n…và ${moi.length - 12} camp khác.`;
+    const alreadyAlerted = new Set(s.waste);
+    const newWasteful = (a.wasteful || []).filter((w) => w.spend >= (cfg.adsWasteSpend || 300000) && !alreadyAlerted.has(w.campaign));
+    if (newWasteful.length) {
+        let m = `🔥 ${B(`Campaign ĐỐT TIỀN KHÔNG RA TIN NHẮN (${newWasteful.length})`)}`;
+        m += newWasteful.slice(0, 12).map((w) =>
+            `\n• ${vnd(w.spend)}đ · 0 tin nhắn${ownerLabel(w) ? " · " + ownerLabel(w) : ""}\n   ${clean(w.campaign).slice(0, 70)}`).join("");
+        if (newWasteful.length > 12) m += `\n…và ${newWasteful.length - 12} camp khác.`;
         parts.push(m);
-        moi.forEach((w) => daBao.add(w.campaign));
-        s.waste = [...daBao];
+        newWasteful.forEach((w) => alreadyAlerted.add(w.campaign));
+        s.waste = [...alreadyAlerted];
     }
 
     const text = parts.length
@@ -54,9 +54,9 @@ function buildAdsAlert(a, st, cfg) {
 function buildAdsStatus(a, cfg) {
     const { text } = buildAdsAlert(a, undefined, cfg);
     if (text) return text;
-    const lan = a.spikeRatio == null ? "" : ` (×${String(a.spikeRatio).replace(".", ",")})`;
+    const ratioText = a.spikeRatio == null ? "" : ` (×${String(a.spikeRatio).replace(".", ",")})`;
     return `✅ ${B("ADS — chưa thấy gì bất thường")}\n${I(`ngày ${ddmm(a.day)}`)}\n\n`
-        + `Chi tiêu hôm nay: ${vnd(a.totalSpend)}đ · TB 7 ngày: ${vnd(a.avg7d)}đ${lan}\n`
+        + `Chi tiêu hôm nay: ${vnd(a.totalSpend)}đ · TB 7 ngày: ${vnd(a.avg7d)}đ${ratioText}\n`
         + `Không camp nào tiêu từ ${vnd(cfg.adsWasteSpend || 300000)}đ mà 0 tin nhắn.`;
 }
 

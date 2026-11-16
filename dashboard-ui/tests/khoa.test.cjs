@@ -5,7 +5,7 @@ const assert = require("assert");
 const K = require("../.test-build/credential-utils.js");
 
 let ok = 0;
-const t = (ten, fn) => { try { fn(); ok++; console.log("  ✓", ten); } catch (e) { console.error("  ✗", ten); throw e; } };
+const t = (name, fn) => { try { fn(); ok++; console.log("  ✓", name); } catch (e) { console.error("  ✗", name); throw e; } };
 
 console.log("── Khoá kết nối: soát khoá dán vào, che khoá ──");
 t("khoá dán vào: từ chối trống, khoảng trắng, xuống dòng, ký tự lạ", () => {

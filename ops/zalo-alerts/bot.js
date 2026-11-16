@@ -28,41 +28,41 @@
 const fs = require("fs");
 const path = require("path");
 const CFG = require("./config");
-const { buildBaoCaoNuoc, buildTinDinhChinh, buildCanhBaoNuoc } = require("./daily_report");
-const { docLenh, huongDanNuoc, homQua } = require("./commands");
-const { buildVanDonSang, buildVanDonToi, fetchVanDon, ghiSoNhac } = require("./van_don");
-const { slotAction, toMin, canDinhChinh, hanDinhChinh } = require("./schedule");
-const { toZalo, chiaTin } = require("./zalo_text");
-const { MARKETERS, DISPLAY, NUOC, chonNhomTheoTen, trangCuaCamp, campaignMarket } = require("./rules");
-const { buildTinGio, messThayTuPancake } = require("./tin_gio");
-const { layVanTay, vanTayDaNap } = require("./thi_truong");
+const { buildMarketReport, buildCorrectionMessage, buildMarketAlert } = require("./daily_report");
+const { parseCommand, marketHelpMessage, dayBefore } = require("./commands");
+const { buildShipmentMorning, buildShipmentEvening, fetchShipments, recordNudges } = require("./van_don");
+const { slotAction, toMin, correctionAction, correctionDeadline } = require("./schedule");
+const { toZalo, splitMessage } = require("./zalo_text");
+const { MARKETERS, DISPLAY, MARKETS, pickGroupsByName, pageOfCampaign, campaignMarket } = require("./rules");
+const { buildHourlyDigest, messFromPancake } = require("./tin_gio");
+const { fetchOverridesFingerprint, vanTayDaNap: getLoadedFingerprint } = require("./thi_truong");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
 const ARGS = process.argv.slice(2);
 const DRY = ARGS.includes("--dry-run");
 const DR = CFG.dailyReport || {};
-const VD = CFG.vanDon || {};
-const DC_GIO = Number(DR.dinhChinhHanGio) > 0 ? Number(DR.dinhChinhHanGio) : 24;   // hạn chờ đính chính
-const NGUOI = Object.keys(MARKETERS).map((key) => ({ key, ten: DISPLAY[key] }));
+const SHIPMENT_CFG = CFG.vanDon || {};
+const CORRECTION_DEADLINE_HOURS = Number(DR.dinhChinhHanGio) > 0 ? Number(DR.dinhChinhHanGio) : 24;   // hạn chờ đính chính
+const MARKETER_LIST = Object.keys(MARKETERS).map((key) => ({ key, ten: DISPLAY[key] }));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const ddmm = (d) => (/^\d{4}-\d{2}-\d{2}$/.test(String(d)) ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : String(d || ""));
 
 // Nước còn chạy: nước đã tắt (talpha_rules.json → status "da_tat", 04/11/2026) bị lọc khỏi MỌI lịch
 // gửi dưới đây, kể cả khi config.json còn ghi tên nó — tắt nước chỉ cần sửa một chỗ.
-const conChay = (m) => !!NUOC[m] && !NUOC[m].daTat;
+const isActiveMarket = (m) => !!MARKETS[m] && !MARKETS[m].daTat;
 // Nước có nhóm "ADS + VẬN ĐƠN" — thứ tự gửi trong một mốc.
-const CAC_NUOC = ((CFG.nhomNuoc || {}).markets || Object.keys(NUOC)).map((x) => String(x).toUpperCase()).filter(conChay);
+const MARKET_CODES = ((CFG.nhomNuoc || {}).markets || Object.keys(MARKETS)).map((x) => String(x).toUpperCase()).filter(isActiveMarket);
 // Nước có theo dõi vận đơn (Nhật chưa có).
-const VD_MARKETS = (Array.isArray(VD.markets) && VD.markets.length ? VD.markets : ["TW"]).map((x) => String(x).toUpperCase()).filter(conChay);
+const SHIPMENT_MARKETS = (Array.isArray(SHIPMENT_CFG.markets) && SHIPMENT_CFG.markets.length ? SHIPMENT_CFG.markets : ["TW"]).map((x) => String(x).toUpperCase()).filter(isActiveMarket);
 // Nước Meta không báo số tin nhắn (Nhật): bản tin ads lấy mess từ Pancake (09/10/2026).
 const MESS_PANCAKE = (((CFG.nhomNuoc || {}).messPancake) || []).map((x) => String(x).toUpperCase());
 // Tin MỖI GIỜ (ads + tin nhắn Pancake + đơn theo page) — Sỹ Anh yêu cầu 09/10/2026 cho Nhật.
-const MG = CFG.moiGio || {};
-const MG_MARKETS = (MG.markets || []).map((x) => String(x).toUpperCase()).filter(conChay);
+const HOURLY_CFG = CFG.moiGio || {};
+const HOURLY_MARKETS = (HOURLY_CFG.markets || []).map((x) => String(x).toUpperCase()).filter(isActiveMarket);
 // UAE không qua 17TRACK: đơn POS + tra thẳng trang WeShip (Sỹ Anh chốt 28/09/2026).
-const NGUON_NUOC = { AE: "đơn POS + tra trang WeShip" };
+const SHIPMENT_SOURCES = { AE: "đơn POS + tra trang WeShip" };
 
 function argAfter(flag) {
     const i = ARGS.indexOf(flag);
@@ -96,9 +96,9 @@ function inQuietHours() {
 }
 
 const DAILY_AT = /^\d{1,2}:\d{2}$/.test(String(DR.at || "")) ? DR.at : "08:30";
-const VD_AT = /^\d{1,2}:\d{2}$/.test(String(VD.at || "")) ? VD.at : "";   // trống = không tự gửi tin vận đơn sáng
-const VD_TOI = /^\d{1,2}:\d{2}$/.test(String(VD.toiAt || "")) ? VD.toiAt : "";   // trống = không gửi tin tối
-const gioCua = (ts) => new Date(ts).toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: CFG.timezone });
+const SHIPMENT_AT = /^\d{1,2}:\d{2}$/.test(String(SHIPMENT_CFG.at || "")) ? SHIPMENT_CFG.at : "";   // trống = không tự gửi tin vận đơn sáng
+const SHIPMENT_EVENING_AT = /^\d{1,2}:\d{2}$/.test(String(SHIPMENT_CFG.toiAt || "")) ? SHIPMENT_CFG.toiAt : "";   // trống = không gửi tin tối
+const formatHHMM = (ts) => new Date(ts).toLocaleString("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: CFG.timezone });
 const INTRADAY_SLOTS = (DR.intradaySlots || []).map((x) => String(x).trim()).filter((x) => /^\d{1,2}:\d{2}$/.test(x));
 const slotLabel = (hhmm) => { const t = vnDateStr(); return `HÔM NAY ${t.slice(8, 10)}/${t.slice(5, 7)} · ${hhmm}`; };
 
@@ -119,9 +119,9 @@ async function fetchStale() {
 
 // Bảng số theo nước × người của một tháng — format_all.py ghi mỗi giờ vào bảng
 // market_monthly_reports (15/11/2026, trước đó file data/bao_cao_nuoc); bot hỏi qua dashboard mỗi lần.
-async function docBan(thang) {
+async function readMonthlyReport(month) {
     try {
-        const r = await fetch(`${CFG.dashboardBaseUrl}/api/talpha/market-report?month=${encodeURIComponent(thang)}`,
+        const r = await fetch(`${CFG.dashboardBaseUrl}/api/talpha/market-report?month=${encodeURIComponent(month)}`,
             { signal: AbortSignal.timeout(30_000) });
         return r.ok ? await r.json() : null;
     } catch (e) {
@@ -132,30 +132,30 @@ async function docBan(thang) {
 
 // /api/talpha/realtime hỏi thẳng Meta + POS live (chậm, có rate-limit): bốn nước của CÙNG một
 // mốc dùng chung một lượt gọi. Giữ 3 phút; lượt hỏng thì bỏ khỏi bộ nhớ để lần sau gọi lại.
-const RT_GIU_MS = 3 * 60 * 1000;
-const rtNho = new Map();
-function layRealtime(dateStr) {
-    const hit = rtNho.get(dateStr);
-    if (hit && Date.now() - hit.at < RT_GIU_MS) return hit.p;
+const REALTIME_CACHE_MS = 3 * 60 * 1000;
+const realtimeCache = new Map();
+function getRealtime(dateStr) {
+    const hit = realtimeCache.get(dateStr);
+    if (hit && Date.now() - hit.at < REALTIME_CACHE_MS) return hit.p;
     const p = (async () => {
         const res = await fetch(`${DR.realtimeUrl}?from_date=${dateStr}&to_date=${dateStr}`, { headers: { "cache-control": "no-store" } });
         if (!res.ok) throw new Error(`realtime HTTP ${res.status}`);
         return res.json();
     })();
-    rtNho.set(dateStr, { at: Date.now(), p });
-    p.catch(() => { if (rtNho.get(dateStr) && rtNho.get(dateStr).p === p) rtNho.delete(dateStr); });
+    realtimeCache.set(dateStr, { at: Date.now(), p });
+    p.catch(() => { if (realtimeCache.get(dateStr) && realtimeCache.get(dateStr).p === p) realtimeCache.delete(dateStr); });
     return p;
 }
 
 // Tin nhắn Pancake + đơn POS theo page của một nước một ngày (/api/talpha/pancake-messages). camps:
 // campaign Meta cùng ngày — gửi kèm tên page của camp nước đó (camp tạo hôm nay chưa kịp sync).
-async function fetchPancakeNuoc(m, ngay, camps) {
-    if (!MG.url) throw new Error("thiếu moiGio.url trong config");
-    const trang = [...new Set((camps || [])
-        .filter((c) => campaignMarket(c.campaign_name).market === NUOC[m].key)
-        .map((c) => trangCuaCamp(c.campaign_name)).filter(Boolean))];
-    const q = new URLSearchParams({ market: m, date: ngay, ...(trang.length ? { trang: trang.join("|") } : {}) });
-    const res = await fetch(`${MG.url}?${q}`, { headers: { "cache-control": "no-store" } });
+async function fetchPancakeMarket(m, date, camps) {
+    if (!HOURLY_CFG.url) throw new Error("thiếu moiGio.url trong config");
+    const pages = [...new Set((camps || [])
+        .filter((c) => campaignMarket(c.campaign_name).market === MARKETS[m].key)
+        .map((c) => pageOfCampaign(c.campaign_name)).filter(Boolean))];
+    const q = new URLSearchParams({ market: m, date: date, ...(pages.length ? { trang: pages.join("|") } : {}) });
+    const res = await fetch(`${HOURLY_CFG.url}?${q}`, { headers: { "cache-control": "no-store" } });
     const j = await res.json().catch(() => ({}));
     if (!res.ok || j.error) throw new Error(j.error || `pancake-messages HTTP ${res.status}`);
     return j;
@@ -166,114 +166,114 @@ async function fetchPancakeNuoc(m, ngay, camps) {
 // một lần rồi gửi lại — phiên web của Zalo hay rớt khi Zalo đổi máy chủ.
 let zalo = null;           // require("./zalo") muộn: --dry-run chạy được cả khi chưa cài zca-js
 let api = null;
-let nhomNuoc = {};         // mã nước → nhóm "ADS + VẬN ĐƠN <nước>"; thiếu = không gửi gì cho nước đó
-let dichVu = false;        // chạy dịch vụ thì mỗi lần đăng nhập đều bật lại bộ nhận lệnh
+let marketGroups = {};         // mã nước → nhóm "ADS + VẬN ĐƠN <nước>"; thiếu = không gửi gì cho nước đó
+let serviceMode = false;        // chạy dịch vụ thì mỗi lần đăng nhập đều bật lại bộ nhận lệnh
 
-async function ketNoi() {
+async function connect() {
     if (!zalo) zalo = require("./zalo");
     if (!api) {
-        api = await zalo.dangNhap();
+        api = await zalo.login();
         log("Đã đăng nhập Zalo.");
-        if (dichVu) batDauNghe(api);
+        if (serviceMode) startListener(api);
     }
     return api;
 }
 
-async function guiMot(text, nhom) {
+async function sendOne(text, group) {
     if (DRY) {
-        const phan = chiaTin(toZalo(text), CFG.maxChars || 1800);
-        phan.forEach((p, i) => {
-            const dam = p.styles.filter((s) => s.st === "b").map((s) => p.msg.slice(s.start, s.start + s.len));
-            console.log(`\n──── tin${nhom ? ` → "${nhom.name}"` : ""}${phan.length > 1 ? ` (phần ${i + 1}/${phan.length})` : ""} · ${p.msg.length} ký tự ────\n${p.msg}`);
-            if (dam.length) console.log(`   [chữ đậm: ${dam.join(" | ")}]`);
+        const parts = splitMessage(toZalo(text), CFG.maxChars || 1800);
+        parts.forEach((p, i) => {
+            const boldParts = p.styles.filter((s) => s.st === "b").map((s) => p.msg.slice(s.start, s.start + s.len));
+            console.log(`\n──── tin${group ? ` → "${group.name}"` : ""}${parts.length > 1 ? ` (phần ${i + 1}/${parts.length})` : ""} · ${p.msg.length} ký tự ────\n${p.msg}`);
+            if (boldParts.length) console.log(`   [chữ đậm: ${boldParts.join(" | ")}]`);
         });
-        return phan.length;
+        return parts.length;
     }
-    if (!nhom) throw new Error("chưa có nhóm nhận tin — chạy `node pair.js --tu-nhan`");
+    if (!group) throw new Error("chưa có nhóm nhận tin — chạy `node pair.js --tu-nhan`");
     const opts = { maxChars: CFG.maxChars, sendGapMs: CFG.sendGapMs };
     // ketNoi() TRƯỚC rồi mới đọc zalo.guiNhom: viết gộp `zalo.guiNhom(await ketNoi(), …)`
     // thì JS đọc zalo.guiNhom trước khi ketNoi() kịp nạp module.
-    let a = await ketNoi();
+    let a = await connect();
     try {
-        return await zalo.guiNhom(a, nhom.id, text, opts);
+        return await zalo.sendToGroup(a, group.id, text, opts);
     } catch (e) {
         log("Gửi lỗi, đăng nhập lại rồi thử một lần nữa:", e.message);
         api = null;
-        a = await ketNoi();
-        return zalo.guiNhom(a, nhom.id, text, opts);
+        a = await connect();
+        return zalo.sendToGroup(a, group.id, text, opts);
     }
 }
 
 // Mọi lần gửi xếp MỘT hàng: hai người gõ lệnh cùng lúc, hay lệnh rơi đúng lúc tin 8h30
 // đang gửi, thì loạt sau đợi loạt trước — không xen tin của hai loạt vào nhau.
-let hangGui = Promise.resolve();
-function lanLuot(fn) {
-    const p = hangGui.then(fn);
-    hangGui = p.catch(() => {});
+let sendQueue = Promise.resolve();
+function enqueue(fn) {
+    const p = sendQueue.then(fn);
+    sendQueue = p.catch(() => {});
     return p;
 }
 
 /** Gửi lần lượt. Trả số tin đã gửi được; hỏng giữa chừng thì dừng và ném lỗi kèm số đó. */
-async function guiLoat(texts, nhom) {
-    let da = 0;
+async function sendBatch(texts, group) {
+    let sentCount = 0;
     for (const t of texts.filter(Boolean)) {
-        if (da > 0 && !DRY) await sleep(CFG.sendGapMs || 4000);
-        try { await guiMot(t, nhom); }
-        catch (e) { e.daGui = da; throw e; }
-        da++;
+        if (sentCount > 0 && !DRY) await sleep(CFG.sendGapMs || 4000);
+        try { await sendOne(t, group); }
+        catch (e) { e.daGui = sentCount; throw e; }
+        sentCount++;
     }
-    return da;
+    return sentCount;
 }
 
 // Nhóm của nước m; dry-run không cần nhóm thật (chỉ in) — đặt tên giả để dòng in ghi rõ nước.
-const nhomCua = (m) => nhomNuoc[m] || (DRY ? { id: "", name: `ADS + VẬN ĐƠN ${m} (in thử)` } : null);
+const groupOf = (m) => marketGroups[m] || (DRY ? { id: "", name: `ADS + VẬN ĐƠN ${m} (in thử)` } : null);
 
 // Mốc giữa ngày → kiểu tin: trước 16h là TRƯA, trước 20h là CHIỀU, còn lại TỐI.
-const kieuMoc = (hhmm) => (toMin(hhmm) < 16 * 60 ? "trua" : toMin(hhmm) < 20 * 60 ? "chieu" : "toi");
+const slotKind = (hhmm) => (toMin(hhmm) < 16 * 60 ? "trua" : toMin(hhmm) < 20 * 60 ? "chieu" : "toi");
 // Khoá số đã báo của một mốc một nước (state.soMoc) — để mai cùng giờ so ▲▼.
-const khoaSoMoc = (m, moc) => `${m}|${moc}`;
+const slotNumbersKey = (m, slotTime) => `${m}|${slotTime}`;
 
 // kieu: "sang" (08:30, kết quả hôm qua) · "trua" / "chieu" (13:00 / 18:00) · "toi" (22:00,
 //       kết quả hôm nay) · "" (gõ tay / đính chính).
-async function dungBaoCao(m, ngay, homNay, label, staleCoSan, kieu = "", moc = "") {
-    const n = NUOC[m];
-    const stale = staleCoSan === undefined ? await fetchStale() : staleCoSan;
-    const gio = vnHHMM(), today = vnDateStr();
-    const nuoc = `${n.flag} ${n.ten.toUpperCase()}`;
-    let tieuDe, nguon, them = {};
-    if (kieu === "sang") {
-        tieuDe = `☀️ ADS ${nuoc} · SÁNG ${ddmm(today)} · KẾT QUẢ ${ddmm(ngay)}`;
-        nguon = "Số chốt từ vòng ghi file TỔNG TEAM" + (stale && stale.lastOkTs ? ` · sync ${gioCua(stale.lastOkTs)} ✓` : "");
-    } else if (kieu === "trua" || kieu === "chieu") {
-        tieuDe = `${kieu === "trua" ? "🌤 ADS" : "🌇 ADS"} ${nuoc} · ${kieu === "trua" ? "TRƯA" : "CHIỀU"} ${ddmm(ngay)} · KẾT QUẢ TỚI ${moc || gio}`;
-        nguon = "Số đang chạy" + (stale && stale.lastOkTs ? ` · sync ${gioCua(stale.lastOkTs)} ✓` : "")
+async function buildReport(m, date, isToday, label, knownStale, kind = "", slotTime = "") {
+    const n = MARKETS[m];
+    const stale = knownStale === undefined ? await fetchStale() : knownStale;
+    const nowTime = vnHHMM(), today = vnDateStr();
+    const marketTitle = `${n.flag} ${n.ten.toUpperCase()}`;
+    let title, sourceLine, extra = {};
+    if (kind === "sang") {
+        title = `☀️ ADS ${marketTitle} · SÁNG ${ddmm(today)} · KẾT QUẢ ${ddmm(date)}`;
+        sourceLine = "Số chốt từ vòng ghi file TỔNG TEAM" + (stale && stale.lastOkTs ? ` · sync ${formatHHMM(stale.lastOkTs)} ✓` : "");
+    } else if (kind === "trua" || kind === "chieu") {
+        title = `${kind === "trua" ? "🌤 ADS" : "🌇 ADS"} ${marketTitle} · ${kind === "trua" ? "TRƯA" : "CHIỀU"} ${ddmm(date)} · KẾT QUẢ TỚI ${slotTime || nowTime}`;
+        sourceLine = "Số đang chạy" + (stale && stale.lastOkTs ? ` · sync ${formatHHMM(stale.lastOkTs)} ✓` : "")
             + " · ngày chưa chốt, còn lên tiếp";
         // So với CÙNG MỐC hôm qua (số bot đã báo lúc đó, state.json → soMoc). Chưa có thì
         // không ▲▼ — so 13:00 với cả ngày hôm qua thì chữ nào cũng ▼ nửa, báo động giả.
-        const cu = (loadState().soMoc || {})[khoaSoMoc(m, moc)];
-        them = { khongSoCaNgay: true, soCungGio: cu && cu.ngay === homQua(ngay) ? { so: cu.so, nhan: `${moc} hôm qua` } : null };
-    } else if (kieu === "toi") {
-        tieuDe = `🌙 ADS ${nuoc} · TỐI ${ddmm(ngay)} · KẾT QUẢ HÔM NAY`;
-        nguon = `Số tới ${gio} · ngày chưa chốt, còn lên nhẹ`;
-    } else if (homNay) {
-        tieuDe = `📊 ADS ${nuoc} · HÔM NAY ${ddmm(ngay)} · ${gio}`;
-        nguon = "Số đang chạy, chưa chốt ngày";
+        const previous = (loadState().soMoc || {})[slotNumbersKey(m, slotTime)];
+        extra = { khongSoCaNgay: true, soCungGio: previous && previous.ngay === dayBefore(date) ? { so: previous.so, nhan: `${slotTime} hôm qua` } : null };
+    } else if (kind === "toi") {
+        title = `🌙 ADS ${marketTitle} · TỐI ${ddmm(date)} · KẾT QUẢ HÔM NAY`;
+        sourceLine = `Số tới ${nowTime} · ngày chưa chốt, còn lên nhẹ`;
+    } else if (isToday) {
+        title = `📊 ADS ${marketTitle} · HÔM NAY ${ddmm(date)} · ${nowTime}`;
+        sourceLine = "Số đang chạy, chưa chốt ngày";
     } else {
-        tieuDe = `📊 ADS ${nuoc} · ${ddmm(ngay)}`;
-        nguon = "Số từ vòng ghi file TỔNG TEAM";
+        title = `📊 ADS ${marketTitle} · ${ddmm(date)}`;
+        sourceLine = "Số từ vòng ghi file TỔNG TEAM";
     }
     // Nhật: Meta không báo tin nhắn → số mess lấy từ Pancake. Lỗi thì giữ số Meta và nói rõ.
     if (MESS_PANCAKE.includes(m)) {
         try {
-            const rt = await layRealtime(ngay);
-            const mt = messThayTuPancake(await fetchPancakeNuoc(m, ngay, rt.campaigns), rt.campaigns);
-            if (mt) { them.messThay = mt; nguon += " · tin nhắn đếm từ Pancake"; }
-            else nguon += " · ⚠️ chưa đếm được tin nhắn Pancake";
-        } catch (e) { log(`Pancake ${m} lỗi — tin dùng số mess Meta:`, e.message); nguon += " · ⚠️ chưa đếm được tin nhắn Pancake"; }
+            const rt = await getRealtime(date);
+            const mt = messFromPancake(await fetchPancakeMarket(m, date, rt.campaigns), rt.campaigns);
+            if (mt) { extra.messThay = mt; sourceLine += " · tin nhắn đếm từ Pancake"; }
+            else sourceLine += " · ⚠️ chưa đếm được tin nhắn Pancake";
+        } catch (e) { log(`Pancake ${m} lỗi — tin dùng số mess Meta:`, e.message); sourceLine += " · ⚠️ chưa đếm được tin nhắn Pancake"; }
     }
-    return buildBaoCaoNuoc(DR, ngay, {
-        nuoc: m, docBan, layRealtime, intraday: homNay, label: label || (homNay ? slotLabel(gio) : undefined),
-        stale, log, tieuDe, nguon, ...them,
+    return buildMarketReport(DR, date, {
+        nuoc: m, docBan: readMonthlyReport, layRealtime: getRealtime, intraday: isToday, label: label || (isToday ? slotLabel(nowTime) : undefined),
+        stale, log, tieuDe: title, nguon: sourceLine, ...extra,
     });
 }
 
@@ -282,23 +282,23 @@ async function dungBaoCao(m, ngay, homNay, label, staleCoSan, kieu = "", moc = "
 // trong nhóm là người ta HỎI số lúc này, không sinh tin đính chính.
 // nho: mốc tự gửi đúng giờ mới nhớ số (gửi tay `--moc 13:00` lúc 15h thì số 15h không được
 // thành "số 13:00 hôm qua" của ngày mai).
-function guiBaoCao(m, ngay, { homNay = false, label, theoDoi, kieu = "", moc = "", nho = true } = {}) {
-    const nhom = nhomCua(m);
-    if (!nhom) return Promise.reject(new Error(`chưa có nhóm ADS + VẬN ĐƠN ${m} — chạy \`node pair.js --tu-nhan\``));
-    return lanLuot(async () => {
-        const r = await dungBaoCao(m, ngay, homNay, label, undefined, kieu, moc);
-        const n = await guiLoat([r.tinGop], nhom);
-        if (moc && homNay && nho && !DRY) {
+function sendReport(m, date, { homNay: isToday = false, label, theoDoi: trackKey, kieu: kind = "", moc: slotTime = "", nho: remember = true } = {}) {
+    const group = groupOf(m);
+    if (!group) return Promise.reject(new Error(`chưa có nhóm ADS + VẬN ĐƠN ${m} — chạy \`node pair.js --tu-nhan\``));
+    return enqueue(async () => {
+        const r = await buildReport(m, date, isToday, label, undefined, kind, slotTime);
+        const n = await sendBatch([r.tinGop], group);
+        if (slotTime && isToday && remember && !DRY) {
             // Mốc giữa ngày mới đã ra thì đính chính của mốc giữa ngày TRƯỚC cùng ngày, CÙNG NƯỚC,
             // thành thừa: tin mới nhất (vừa gửi) mới là tin người ta đang đọc.
             markState((s) => {
-                for (const [k, p] of Object.entries(s.dinhChinh || {})) if (p && p.intraday && p.ngay === ngay && p.nuoc === m) delete s.dinhChinh[k];
+                for (const [k, p] of Object.entries(s.dinhChinh || {})) if (p && p.intraday && p.ngay === date && p.nuoc === m) delete s.dinhChinh[k];
             });
             // Nhớ số đã báo mốc này để mai cùng giờ so ▲▼. Số chưa đủ thì không nhớ — so với
             // số thiếu là ▲ giả.
-            if (!r.chuaDu) markState((s) => { (s.soMoc = s.soMoc || {})[khoaSoMoc(m, moc)] = { ngay, so: r.so }; });
+            if (!r.chuaDu) markState((s) => { (s.soMoc = s.soMoc || {})[slotNumbersKey(m, slotTime)] = { ngay: date, so: r.so }; });
         }
-        if (theoDoi && r.chuaDu && !DRY) xepDinhChinh(theoDoi, r, ngay, homNay, m);
+        if (trackKey && r.chuaDu && !DRY) queueCorrection(trackKey, r, date, isToday, m);
         return { n, ghiChu: `tin ads ${m} (${n} tin, ${r.nguoi.length} người trong bảng)`, chuaDu: r.chuaDu };
     });
 }
@@ -306,37 +306,37 @@ function guiBaoCao(m, ngay, { homNay = false, label, theoDoi, kieu = "", moc = "
 // ─── Tin MỖI GIỜ (Nhật, 09/10/2026) ───
 // Ads Meta trực tiếp + tin nhắn Pancake + đơn POS, theo page. Nhớ tổng lần trước (state.gioTruoc)
 // để in "(+N) thêm trong giờ qua". Meta hay Pancake hỏng thì tin vẫn đi, ghi rõ phần thiếu.
-async function dungTinGio(m) {
-    const ngay = vnDateStr();
-    let camps = [], loiCamp = "";
-    try { camps = (await layRealtime(ngay)).campaigns || []; } catch (e) { loiCamp = e.message; }
+async function buildHourly(m) {
+    const date = vnDateStr();
+    let camps = [], campError = "";
+    try { camps = (await getRealtime(date)).campaigns || []; } catch (e) { campError = e.message; }
     let pk = null;
-    try { pk = await fetchPancakeNuoc(m, ngay, camps); } catch (e) { log(`pancake-messages ${m} lỗi:`, e.message); }
-    if (!pk && loiCamp) throw new Error(`Meta: ${loiCamp} · Pancake/đơn cũng lỗi`);
-    return buildTinGio({ n: NUOC[m], ngay, gio: vnHHMM(), pk, camps, loiCamp,
+    try { pk = await fetchPancakeMarket(m, date, camps); } catch (e) { log(`pancake-messages ${m} lỗi:`, e.message); }
+    if (!pk && campError) throw new Error(`Meta: ${campError} · Pancake/đơn cũng lỗi`);
+    return buildHourlyDigest({ n: MARKETS[m], ngay: date, gio: vnHHMM(), pk, camps, loiCamp: campError,
         truoc: ((loadState().gioTruoc || {})[m]) || null });
 }
 
-function guiTinGio(m, nho = true) {
-    const nhom = nhomCua(m);
-    if (!nhom) return Promise.reject(new Error(`chưa có nhóm ADS + VẬN ĐƠN ${m}`));
-    return lanLuot(async () => {
-        const r = await dungTinGio(m);
-        const n = await guiLoat([r.text], nhom);
-        if (nho && !DRY) markState((s) => { (s.gioTruoc = s.gioTruoc || {})[m] = { ngay: vnDateStr(), tong: r.tong }; });
+function sendHourly(m, remember = true) {
+    const group = groupOf(m);
+    if (!group) return Promise.reject(new Error(`chưa có nhóm ADS + VẬN ĐƠN ${m}`));
+    return enqueue(async () => {
+        const r = await buildHourly(m);
+        const n = await sendBatch([r.text], group);
+        if (remember && !DRY) markState((s) => { (s.gioTruoc = s.gioTruoc || {})[m] = { ngay: vnDateStr(), tong: r.tong }; });
         return { n, ghiChu: `tin mỗi giờ ${m} (${r.tong.mess} mess, ${r.tong.don} đơn)` };
     });
 }
 
 // Các mốc mỗi giờ của hôm nay: HH:<phut> từ `tu` tới `den`, bỏ giờ đã có bản tin thường.
-function mocMoiGio() {
-    const phut = String(Number.isFinite(Number(MG.phut)) ? Number(MG.phut) : 5).padStart(2, "0");
-    const coBanTin = new Set(INTRADAY_SLOTS.map((x) => x.split(":")[0].padStart(2, "0")));
+function hourlySlots() {
+    const minute = String(Number.isFinite(Number(HOURLY_CFG.phut)) ? Number(HOURLY_CFG.phut) : 5).padStart(2, "0");
+    const reportHours = new Set(INTRADAY_SLOTS.map((x) => x.split(":")[0].padStart(2, "0")));
     const out = [];
-    for (let h = Number(MG.tu ?? 7); h <= Number(MG.den ?? 23); h++) {
+    for (let h = Number(HOURLY_CFG.tu ?? 7); h <= Number(HOURLY_CFG.den ?? 23); h++) {
         const hh = String(h).padStart(2, "0");
-        if (MG.boGioCoBanTin !== false && coBanTin.has(hh)) continue;
-        out.push(`${hh}:${phut}`);
+        if (HOURLY_CFG.boGioCoBanTin !== false && reportHours.has(hh)) continue;
+        out.push(`${hh}:${minute}`);
     }
     return out;
 }
@@ -348,35 +348,35 @@ function mocMoiGio() {
 // Tin sáng lưu danh sách khách phải gọi/nhắn vào state.json để tin tối chấm "đã lấy chưa".
 
 // kieu: "sang" · "toi" · "" (gõ /vandon trong ngày — khuôn tin sáng, đề giờ lúc gõ).
-async function dungTinVanDon(m, kieu) {
+async function buildShipmentDigest(m, kind) {
     const today = vnDateStr();
-    const d = await fetchVanDon(VD, today, fetch, m);
-    const base = { today, maxGoi: VD.maxGap, maxMoiToi: VD.maxMoiToi, quotaWarn: VD.quotaWarn, phuTrach: VD.phuTrach,
+    const d = await fetchShipments(SHIPMENT_CFG, today, fetch, m);
+    const base = { today, maxGoi: SHIPMENT_CFG.maxGap, maxMoiToi: SHIPMENT_CFG.maxMoiToi, quotaWarn: SHIPMENT_CFG.quotaWarn, phuTrach: SHIPMENT_CFG.phuTrach,
         // Sổ nhắc: khách Đài đã được nhắn những ngày nào — để nhắc lại khách chưa lấy (30/09/2026).
         soNhac: (loadState().vanDonNhac || {})[m] || {} };
-    if (kieu === "toi") {
-        const sang = (loadState().vanDonSang || {})[m];
-        return { text: buildVanDonToi(d, { ...base, sangNay: sang && sang.ngay === today ? sang : null }) };
+    if (kind === "toi") {
+        const morningState = (loadState().vanDonSang || {})[m];
+        return { text: buildShipmentEvening(d, { ...base, sangNay: morningState && morningState.ngay === today ? morningState : null }) };
     }
-    const tieuDe = kieu === "sang" ? undefined : `📦 VẬN ĐƠN ${NUOC[m].ten.toUpperCase()} · ${vnHHMM()} ${ddmm(today)}`;
-    return buildVanDonSang(d, { ...base, tieuDe });
+    const title = kind === "sang" ? undefined : `📦 VẬN ĐƠN ${MARKETS[m].ten.toUpperCase()} · ${vnHHMM()} ${ddmm(today)}`;
+    return buildShipmentMorning(d, { ...base, tieuDe: title });
 }
 
-function guiVanDon(m, kieu = "sang") {
-    const nhom = nhomCua(m);
-    if (!nhom) return Promise.reject(new Error(`chưa có nhóm ADS + VẬN ĐƠN ${m} — chạy \`node pair.js --tu-nhan\``));
-    return lanLuot(async () => {
-        const r = await dungTinVanDon(m, kieu);
-        const n = await guiLoat([r.text], nhom);
-        if (kieu === "sang" && !DRY) {
-            const nay = vnDateStr();
+function sendShipmentDigest(m, kind = "sang") {
+    const group = groupOf(m);
+    if (!group) return Promise.reject(new Error(`chưa có nhóm ADS + VẬN ĐƠN ${m} — chạy \`node pair.js --tu-nhan\``));
+    return enqueue(async () => {
+        const r = await buildShipmentDigest(m, kind);
+        const n = await sendBatch([r.text], group);
+        if (kind === "sang" && !DRY) {
+            const todayStr = vnDateStr();
             markState((s) => {
-                (s.vanDonSang = s.vanDonSang || {})[m] = { ngay: nay, goi: r.goi || [], moiToi: r.moiToi || [], nhacLai: r.nhacLai || [], sapGiao: r.sapGiao || [] };
+                (s.vanDonSang = s.vanDonSang || {})[m] = { ngay: todayStr, goi: r.goi || [], moiToi: r.moiToi || [], nhacLai: r.nhacLai || [], sapGiao: r.sapGiao || [] };
                 // Chỉ ghi sổ sau khi GỬI THẬT: khách có câu soạn sẵn trong tin sáng nay = đã nhắn thêm một lần.
-                (s.vanDonNhac = s.vanDonNhac || {})[m] = ghiSoNhac(s.vanDonNhac[m], r.daNhan, nay);
+                (s.vanDonNhac = s.vanDonNhac || {})[m] = recordNudges(s.vanDonNhac[m], r.daNhan, todayStr);
             });
         }
-        return { n, ghiChu: `tin vận đơn ${m} ${kieu || "gõ tay"} (${n} tin)` };
+        return { n, ghiChu: `tin vận đơn ${m} ${kind || "gõ tay"} (${n} tin)` };
     });
 }
 
@@ -384,102 +384,102 @@ function guiVanDon(m, kieu = "sang") {
 // Sỹ Anh chốt 22/09/2026. Tin tạm vẫn gửi (giữ khung giờ), bot NHỚ số đã báo; vòng rà sau
 // thấy sync đã chạy đủ số thì gửi thêm một tin nói rõ lệch bao nhiêu — vào đúng nhóm nước đó.
 // Ghi vào state.json nên pm2 restart / máy chủ reboot giữa lúc chờ vẫn không mất lịch.
-function xepDinhChinh(khoa, r, ngay, homNay, m) {
-    const cho = { ngay, nuoc: m, intraday: !!homNay, label: r.label, luc: Date.now(), so: r.so };
-    cho.hanTs = hanDinhChinh(cho, DC_GIO);
-    markState((s) => { (s.dinhChinh = s.dinhChinh || {})[khoa] = cho; });
-    log(`Tin ${m} "${r.label}" gửi khi số CHƯA ĐỦ — chờ vòng sync đủ số để đính chính (hạn ${new Date(cho.hanTs).toISOString()}).`);
+function queueCorrection(entryKey, r, date, isToday, m) {
+    const pending = { ngay: date, nuoc: m, intraday: !!isToday, label: r.label, luc: Date.now(), so: r.so };
+    pending.hanTs = correctionDeadline(pending, CORRECTION_DEADLINE_HOURS);
+    markState((s) => { (s.dinhChinh = s.dinhChinh || {})[entryKey] = pending; });
+    log(`Tin ${m} "${r.label}" gửi khi số CHƯA ĐỦ — chờ vòng sync đủ số để đính chính (hạn ${new Date(pending.hanTs).toISOString()}).`);
 }
 
 // goiTay: chạy `--dinh-chinh` — người gọi đã chọn gửi lúc này nên giờ yên không chặn (Sỹ Anh
 // 11/10/2026: tin 22:00 SỐ CHƯA ĐỦ, sync đủ lúc 23:22 — chờ tới 7h thì tin giữa ngày đã hết hạn).
 // chiNuoc: chỉ đính chính nước đó. Dry-run chỉ IN, không xoá lịch chờ.
-async function ratDinhChinh({ goiTay = false, chiNuoc = null } = {}) {
-    const cho = loadState().dinhChinh || {};
-    const khoa = Object.keys(cho).filter((k) => !chiNuoc || (cho[k] && cho[k].nuoc === chiNuoc));
-    if (!khoa.length) { if (goiTay) log("Không có tin nào đang chờ đính chính."); return; }   // không hỏi sync-health
+async function checkCorrections({ goiTay: manual = false, chiNuoc: onlyMarket = null } = {}) {
+    const allPending = loadState().dinhChinh || {};
+    const pendingKeys = Object.keys(allPending).filter((k) => !onlyMarket || (allPending[k] && allPending[k].nuoc === onlyMarket));
+    if (!pendingKeys.length) { if (manual) log("Không có tin nào đang chờ đính chính."); return; }   // không hỏi sync-health
     const stale = await fetchStale();
-    for (const k of khoa) {
-        const p = cho[k];
-        const xoa = () => { if (!DRY) markState((s) => { if (s.dinhChinh) delete s.dinhChinh[k]; }); };
-        const nhom = p && nhomCua(p.nuoc);
+    for (const k of pendingKeys) {
+        const p = allPending[k];
+        const dropPending = () => { if (!DRY) markState((s) => { if (s.dinhChinh) delete s.dinhChinh[k]; }); };
+        const group = p && groupOf(p.nuoc);
         // Lịch chờ của tin gộp cũ (trước 08/10/2026, không gắn nước) — nhóm đó đã bỏ.
-        if (!p || !NUOC[p.nuoc] || !nhom) { xoa(); log(`Bỏ chờ đính chính "${k}" — không có nhóm nước để gửi.`); continue; }
-        const act = canDinhChinh(p, stale);
-        if (!act) { if (goiTay) log(`${p.nuoc} "${p.label}": sync chưa có vòng đủ số nào sau tin cũ — chưa đính chính được.`); continue; }
-        if (act === "het-han") { xoa(); log(`Bỏ chờ đính chính ${p.nuoc} "${p.label}" — quá hạn mà số vẫn chưa đủ.`); continue; }
-        if (!goiTay && inQuietHours()) return;      // 23h–7h: không đánh thức nhóm, vòng sau gửi
+        if (!p || !MARKETS[p.nuoc] || !group) { dropPending(); log(`Bỏ chờ đính chính "${k}" — không có nhóm nước để gửi.`); continue; }
+        const act = correctionAction(p, stale);
+        if (!act) { if (manual) log(`${p.nuoc} "${p.label}": sync chưa có vòng đủ số nào sau tin cũ — chưa đính chính được.`); continue; }
+        if (act === "het-han") { dropPending(); log(`Bỏ chờ đính chính ${p.nuoc} "${p.label}" — quá hạn mà số vẫn chưa đủ.`); continue; }
+        if (!manual && inQuietHours()) return;      // 23h–7h: không đánh thức nhóm, vòng sau gửi
         try {
-            await lanLuot(async () => {
-                const r = await dungBaoCao(p.nuoc, p.ngay, p.intraday, p.label, stale);
-                await guiLoat([buildTinDinhChinh({
-                    tin: r.tinGop, soCu: p.so, soMoi: r.so, label: `${NUOC[p.nuoc].flag} ${p.label}`, luc: p.luc, intraday: p.intraday,
-                })], nhom);
+            await enqueue(async () => {
+                const r = await buildReport(p.nuoc, p.ngay, p.intraday, p.label, stale);
+                await sendBatch([buildCorrectionMessage({
+                    tin: r.tinGop, soCu: p.so, soMoi: r.so, label: `${MARKETS[p.nuoc].flag} ${p.label}`, luc: p.luc, intraday: p.intraday,
+                })], group);
             });
-            xoa();
+            dropPending();
             log(`${DRY ? "In thử" : "Đã gửi"} đính chính ${p.nuoc} "${p.label}".`);
         } catch (e) {
-            if (e.daGui > 0) { xoa(); log(`Đính chính ${p.nuoc} "${p.label}" gửi được một phần — không gửi lại:`, e.message); }
+            if (e.daGui > 0) { dropPending(); log(`Đính chính ${p.nuoc} "${p.label}" gửi được một phần — không gửi lại:`, e.message); }
             else log(`Đính chính ${p.nuoc} "${p.label}" lỗi — vòng sau thử lại:`, e.message);
         }
     }
 }
 
 // ─── Lệnh trong nhóm ───
-const lanCuoi = new Map();     // chữ lệnh → lúc nhận; cùng lệnh trong 60 giây thì bỏ (bấm gửi hai lần)
+const lastCommandAt = new Map();     // chữ lệnh → lúc nhận; cùng lệnh trong 60 giây thì bỏ (bấm gửi hai lần)
 
-const tinHuongDan = (m) => huongDanNuoc({
-    nuoc: NUOC[m], at: DAILY_AT, mocAds: INTRADAY_SLOTS.join(" · "), nguoi: NGUOI,
-    moiGio: MG_MARKETS.includes(m) ? mocMoiGio() : null,
-    vanDon: VD_MARKETS.includes(m) ? { at: VD_AT, toi: VD_TOI, nguon: NGUON_NUOC[m] } : null,
+const helpMessage = (m) => marketHelpMessage({
+    nuoc: MARKETS[m], at: DAILY_AT, mocAds: INTRADAY_SLOTS.join(" · "), nguoi: MARKETER_LIST,
+    moiGio: HOURLY_MARKETS.includes(m) ? hourlySlots() : null,
+    vanDon: SHIPMENT_MARKETS.includes(m) ? { at: SHIPMENT_AT, toi: SHIPMENT_EVENING_AT, nguon: SHIPMENT_SOURCES[m] } : null,
 });
 
 // m: nước của nhóm lệnh được gõ (null = dòng lệnh, dùng --nuoc hoặc mọi nước). Mọi lệnh chỉ
 // trả số của ĐÚNG nước đó: nhóm Nhật không thấy số Đài, nhóm UAE không thấy SĐT khách Singapore.
-async function lamLenh(text, ai = "dòng lệnh", m = null) {
-    const lenh = docLenh(text, { today: vnDateStr(), nguoi: NGUOI });
-    if (!lenh) return false;
-    const nuoc = m ? [m] : (argAfter("--nuoc") ? [argAfter("--nuoc").toUpperCase()] : CAC_NUOC);
-    const khoa = `${m || "cli"}:${String(text).trim().toLowerCase()}`;
-    if (Date.now() - (lanCuoi.get(khoa) || 0) < 60000) { log(`Bỏ lệnh lặp "${khoa}" từ ${ai}.`); return true; }
-    lanCuoi.set(khoa, Date.now());
-    log(`Lệnh "${String(text).trim()}" từ ${ai}${m ? ` (nhóm ${m})` : ""}.`);
+async function runCommand(text, sender = "dòng lệnh", m = null) {
+    const command = parseCommand(text, { today: vnDateStr(), nguoi: MARKETER_LIST });
+    if (!command) return false;
+    const markets = m ? [m] : (argAfter("--nuoc") ? [argAfter("--nuoc").toUpperCase()] : MARKET_CODES);
+    const entryKey = `${m || "cli"}:${String(text).trim().toLowerCase()}`;
+    if (Date.now() - (lastCommandAt.get(entryKey) || 0) < 60000) { log(`Bỏ lệnh lặp "${entryKey}" từ ${sender}.`); return true; }
+    lastCommandAt.set(entryKey, Date.now());
+    log(`Lệnh "${String(text).trim()}" từ ${sender}${m ? ` (nhóm ${m})` : ""}.`);
 
-    for (const x of nuoc) {
-        if (!NUOC[x]) { log(`Bỏ nước lạ ${x}.`); continue; }
-        const nhom = nhomCua(x);
-        if (!nhom) { log(`Bỏ ${x}: chưa có nhóm.`); continue; }
-        await lanLuot(async () => {
+    for (const x of markets) {
+        if (!MARKETS[x]) { log(`Bỏ nước lạ ${x}.`); continue; }
+        const group = groupOf(x);
+        if (!group) { log(`Bỏ ${x}: chưa có nhóm.`); continue; }
+        await enqueue(async () => {
             try {
-                if (lenh.loi) { await guiMot(`⚠️ ${lenh.loi}`, nhom); return; }
-                if (lenh.lenh === "trogiup") { await guiMot(tinHuongDan(x), nhom); return; }
-                if (lenh.lenh === "gio") {
-                    if (!MG_MARKETS.includes(x)) { await guiMot(`ℹ️ ${NUOC[x].ten} chưa bật tin mỗi giờ — gõ /baocao để xem số hôm nay.`, nhom); return; }
+                if (command.loi) { await sendOne(`⚠️ ${command.loi}`, group); return; }
+                if (command.lenh === "trogiup") { await sendOne(helpMessage(x), group); return; }
+                if (command.lenh === "gio") {
+                    if (!HOURLY_MARKETS.includes(x)) { await sendOne(`ℹ️ ${MARKETS[x].ten} chưa bật tin mỗi giờ — gõ /baocao để xem số hôm nay.`, group); return; }
                     // Gõ tay không ghi "lần trước": giữ mốc (+N) của tin tự gửi đúng giờ.
-                    await guiLoat([(await dungTinGio(x)).text], nhom);
+                    await sendBatch([(await buildHourly(x)).text], group);
                     return;
                 }
-                if (lenh.lenh === "vandon") {
-                    if (!VD_MARKETS.includes(x)) { await guiMot(`ℹ️ ${NUOC[x].ten} chưa theo dõi vận đơn — làm khi có đơn và biết hãng giao.`, nhom); return; }
-                    await guiLoat([(await dungTinVanDon(x, "")).text], nhom);
+                if (command.lenh === "vandon") {
+                    if (!SHIPMENT_MARKETS.includes(x)) { await sendOne(`ℹ️ ${MARKETS[x].ten} chưa theo dõi vận đơn — làm khi có đơn và biết hãng giao.`, group); return; }
+                    await sendBatch([(await buildShipmentDigest(x, "")).text], group);
                     return;
                 }
-                if (lenh.lenh === "canhbao") {
-                    const nay = vnDateStr();
-                    await guiMot(buildCanhBaoNuoc((await layRealtime(nay)).campaigns, CFG, x, nay), nhom);
+                if (command.lenh === "canhbao") {
+                    const todayStr = vnDateStr();
+                    await sendOne(buildMarketAlert((await getRealtime(todayStr)).campaigns, CFG, x, todayStr), group);
                     return;
                 }
-                const r = await dungBaoCao(x, lenh.ngay, lenh.homNay);
-                const tin = lenh.loc === "team" ? r.teamMessage : lenh.loc ? r.tinNguoi(lenh.loc) : r.tinGop;
-                log(`Đã trả lệnh ở ${x}: ${await guiLoat([tin], nhom)} tin.`);
+                const r = await buildReport(x, command.ngay, command.homNay);
+                const reply = command.loc === "team" ? r.teamMessage : command.loc ? r.tinNguoi(command.loc) : r.tinGop;
+                log(`Đã trả lệnh ở ${x}: ${await sendBatch([reply], group)} tin.`);
             } catch (e) {
                 log(`Lệnh lỗi (${x}):`, e.message);
                 if (e.daGui > 0) return;                   // gửi được một phần rồi — không chen tin lỗi vào giữa
-                const bao = lenh.lenh === "vandon" ? `⚠️ Chưa lấy được danh sách vận đơn lúc này (${e.message}). Lát nữa gõ lại.`
+                const errorReply = command.lenh === "vandon" ? `⚠️ Chưa lấy được danh sách vận đơn lúc này (${e.message}). Lát nữa gõ lại.`
                     : /Sheet chưa có dòng/.test(e.message)
-                        ? `⚠️ Sheet chưa có số ngày ${ddmm(lenh.ngay)} — vòng ghi Sheet chạy mỗi giờ phút 20, lát nữa gõ lại.`
+                        ? `⚠️ Sheet chưa có số ngày ${ddmm(command.ngay)} — vòng ghi Sheet chạy mỗi giờ phút 20, lát nữa gõ lại.`
                         : `⚠️ Chưa lấy được số lúc này (${e.message}). Lát nữa gõ lại.`;
-                try { await guiMot(bao, nhom); } catch (e2) { log("Không gửi được tin báo lỗi:", e2.message); }
+                try { await sendOne(errorReply, group); } catch (e2) { log("Không gửi được tin báo lỗi:", e2.message); }
             }
         });
     }
@@ -488,41 +488,41 @@ async function lamLenh(text, ai = "dòng lệnh", m = null) {
 
 // Chỉ nghe ĐÚNG các nhóm nước. Nick phụ còn ở các nhóm COD có người của đối tác, và ở nhóm cũ
 // (BÁO CÁO ADS, VẬN ĐƠN …) — gõ /baocao ở đó bot im, không lộ số ra ngoài.
-function xuLyTin(msg) {
+function handleMessage(msg) {
     if (!zalo || msg.type !== zalo.ThreadType.Group) return;
-    const m = Object.keys(nhomNuoc).find((x) => nhomNuoc[x] && nhomNuoc[x].id === msg.threadId) || null;
+    const m = Object.keys(marketGroups).find((x) => marketGroups[x] && marketGroups[x].id === msg.threadId) || null;
     if (!m) return;
     const text = typeof msg.data.content === "string" ? msg.data.content : "";
     if (!text.trim().startsWith("/")) return;
-    lamLenh(text, msg.data.dName || msg.data.uidFrom, m).catch((e) => log("Lỗi xử lý lệnh:", e.message));
+    runCommand(text, msg.data.dName || msg.data.uidFrom, m).catch((e) => log("Lỗi xử lý lệnh:", e.message));
 }
 
 // Bộ nhận lệnh gắn với MỘT phiên đăng nhập. Đăng nhập lại là thay bộ mới. Bộ nghe bị Zalo
 // đóng hẳn (thường do mở Zalo Web/PC bằng nick phụ) thì đợi rồi đăng nhập lại, đợi dài dần
 // để không giành phiên qua lại với người đang dùng Zalo Web.
-const DOI_DAU = 10 * 60 * 1000, DOI_TOI_DA = 2 * 60 * 60 * 1000;
-let nghe = null;
-let doiHoiPhuc = DOI_DAU;
+const RETRY_INITIAL_MS = 10 * 60 * 1000, RETRY_MAX_MS = 2 * 60 * 60 * 1000;
+let listener = null;
+let retryDelay = RETRY_INITIAL_MS;
 
-function batDauNghe(a) {
-    const cu = nghe;
-    nghe = null;
-    if (cu) { try { cu.stop(); } catch { /* bộ cũ đã chết */ } }
-    const moi = zalo.batNghe(a, {
-        onMessage: xuLyTin,
+function startListener(a) {
+    const previous = listener;
+    listener = null;
+    if (previous) { try { previous.stop(); } catch { /* bộ cũ đã chết */ } }
+    const latest = zalo.startListening(a, {
+        onMessage: handleMessage,
         log,
         onClosed: (l, code, reason) => {
-            if (l !== nghe) return;                     // bộ cũ vừa bị thay — không phải sự cố
-            nghe = null;
+            if (l !== listener) return;                     // bộ cũ vừa bị thay — không phải sự cố
+            listener = null;
             api = null;
-            const doi = doiHoiPhuc;
-            doiHoiPhuc = Math.min(doiHoiPhuc * 2, DOI_TOI_DA);
-            log(`Bộ nhận lệnh bị đóng (mã ${code}${reason ? ", " + reason : ""}) — thường do mở Zalo Web/PC bằng nick phụ. Đăng nhập lại sau ${Math.round(doi / 60000)}'.`);
-            setTimeout(() => { if (!api) ketNoi().catch((e) => log("Đăng nhập lại lỗi:", e.message)); }, doi);
+            const delay = retryDelay;
+            retryDelay = Math.min(retryDelay * 2, RETRY_MAX_MS);
+            log(`Bộ nhận lệnh bị đóng (mã ${code}${reason ? ", " + reason : ""}) — thường do mở Zalo Web/PC bằng nick phụ. Đăng nhập lại sau ${Math.round(delay / 60000)}'.`);
+            setTimeout(() => { if (!api) connect().catch((e) => log("Đăng nhập lại lỗi:", e.message)); }, delay);
         },
     });
-    moi.on("connected", () => { doiHoiPhuc = DOI_DAU; });
-    nghe = moi;
+    latest.on("connected", () => { retryDelay = RETRY_INITIAL_MS; });
+    listener = latest;
 }
 
 // ─── Mốc tự gửi ───
@@ -531,196 +531,196 @@ function batDauNghe(a) {
 // bù). Dựng tin hỏng (Sheet chưa có dòng, dashboard lỗi) → CHƯA đánh dấu, vòng sau thử lại
 // trong cửa sổ. Gửi được ít nhất một tin rồi mới hỏng → vẫn đánh dấu, để không gửi lặp.
 // quaGioYen: mốc mà chính lịch đã đặt trong giờ yên (tin mỗi giờ tới 23:05) — gửi luôn, không chờ.
-async function chayMoc(khoa, moc, cuaSo, lamViec, { quaGioYen = false } = {}) {
+async function runSlot(entryKey, slotTime, windowMin, job, { quaGioYen: ignoreQuietHours = false } = {}) {
     const today = vnDateStr();
-    const act = slotAction(moc, vnHHMM(), (loadState().moc || {})[khoa], today, cuaSo);
+    const act = slotAction(slotTime, vnHHMM(), (loadState().moc || {})[entryKey], today, windowMin);
     if (!act) return;
-    const danhDau = () => markState((s) => { (s.moc = s.moc || {})[khoa] = today; });
-    if (act === "skip") { danhDau(); log(`Bỏ mốc ${khoa} hôm nay (quá cửa sổ ${cuaSo}', bây giờ ${vnHHMM()}).`); return; }
-    if (!quaGioYen && inQuietHours()) return;
+    const markDone = () => markState((s) => { (s.moc = s.moc || {})[entryKey] = today; });
+    if (act === "skip") { markDone(); log(`Bỏ mốc ${entryKey} hôm nay (quá cửa sổ ${windowMin}', bây giờ ${vnHHMM()}).`); return; }
+    if (!ignoreQuietHours && inQuietHours()) return;
     try {
-        const r = await lamViec();
-        danhDau();
-        log(`Đã gửi mốc ${khoa}: ${r.ghiChu}.`);
+        const r = await job();
+        markDone();
+        log(`Đã gửi mốc ${entryKey}: ${r.ghiChu}.`);
     } catch (e) {
-        if (e.daGui > 0) danhDau();
-        log(`Mốc ${khoa} lỗi${e.daGui > 0 ? ` sau ${e.daGui} tin — không gửi lại` : " — vòng sau thử lại"}:`, e.message);
+        if (e.daGui > 0) markDone();
+        log(`Mốc ${entryKey} lỗi${e.daGui > 0 ? ` sau ${e.daGui} tin — không gửi lại` : " — vòng sau thử lại"}:`, e.message);
     }
 }
 
 // Một mốc chạy lần lượt mọi nước (ads trước); 08:30 và 22:00 xong ads mới tới vận đơn — trong
 // một nhóm, tin ads luôn đứng trước tin vận đơn cùng mốc.
-async function ratMoc() {
-    const hq = homQua(vnDateStr());
-    const coNhom = CAC_NUOC.filter((m) => nhomNuoc[m]);
-    for (const m of coNhom) {
-        await chayMoc(`ads:${m}:sang`, DAILY_AT, Number(DR.atCatchUpMinutes || 210),
-            () => guiBaoCao(m, hq, { theoDoi: `sang:${m}:${hq}`, kieu: "sang" }));
+async function checkSlots() {
+    const yesterday = dayBefore(vnDateStr());
+    const marketsWithGroup = MARKET_CODES.filter((m) => marketGroups[m]);
+    for (const m of marketsWithGroup) {
+        await runSlot(`ads:${m}:sang`, DAILY_AT, Number(DR.atCatchUpMinutes || 210),
+            () => sendReport(m, yesterday, { theoDoi: `sang:${m}:${yesterday}`, kieu: "sang" }));
     }
     // Vận đơn: dashboard lỗi thì vòng 5' sau thử lại, quá catchUpMinutes thì bỏ hôm đó. Khoá
     // "vandon:<nước>" giữ như trước 08/10/2026 — hôm đổi nhóm không gửi lại tin đã gửi sáng nay.
-    for (const m of VD_MARKETS.filter((x) => nhomNuoc[x])) {
-        if (VD_AT) await chayMoc(`vandon:${m}`, VD_AT, Number(VD.catchUpMinutes || 180), () => guiVanDon(m, "sang"));
+    for (const m of SHIPMENT_MARKETS.filter((x) => marketGroups[x])) {
+        if (SHIPMENT_AT) await runSlot(`vandon:${m}`, SHIPMENT_AT, Number(SHIPMENT_CFG.catchUpMinutes || 180), () => sendShipmentDigest(m, "sang"));
     }
     for (const slot of INTRADAY_SLOTS) {
-        const nay = vnDateStr();
-        for (const m of coNhom) {
-            await chayMoc(`ads:${m}:${slot}`, slot, Number(DR.intradayCatchUpMinutes || 60),
-                () => guiBaoCao(m, nay, { homNay: true, label: slotLabel(slot), theoDoi: `${slot}:${m}:${nay}`, kieu: kieuMoc(slot), moc: slot }));
+        const todayStr = vnDateStr();
+        for (const m of marketsWithGroup) {
+            await runSlot(`ads:${m}:${slot}`, slot, Number(DR.intradayCatchUpMinutes || 60),
+                () => sendReport(m, todayStr, { homNay: true, label: slotLabel(slot), theoDoi: `${slot}:${m}:${todayStr}`, kieu: slotKind(slot), moc: slot }));
         }
     }
-    for (const m of VD_MARKETS.filter((x) => nhomNuoc[x])) {
-        if (VD_TOI) await chayMoc(`vandon_toi:${m}`, VD_TOI, Number(VD.toiCatchUpMinutes || 60), () => guiVanDon(m, "toi"));
+    for (const m of SHIPMENT_MARKETS.filter((x) => marketGroups[x])) {
+        if (SHIPMENT_EVENING_AT) await runSlot(`vandon_toi:${m}`, SHIPMENT_EVENING_AT, Number(SHIPMENT_CFG.toiCatchUpMinutes || 60), () => sendShipmentDigest(m, "toi"));
     }
     // Tin mỗi giờ: trễ quá catchUpMinutes thì bỏ giờ đó (bot vừa bật lại lúc 15:20 không bắn
     // lại 7 giờ đã qua — slotAction trả "skip" cho các giờ cũ). Mốc 23:05 rơi vào giờ yên
     // (23h–7h) nên đêm 09/10 và 10/10/2026 đều bị chặn tới quá cửa sổ rồi bỏ → quaGioYen.
-    for (const m of MG_MARKETS.filter((x) => nhomNuoc[x])) {
-        for (const moc of mocMoiGio()) await chayMoc(`gio:${m}:${moc}`, moc, Number(MG.catchUpMinutes || 40), () => guiTinGio(m), { quaGioYen: true });
+    for (const m of HOURLY_MARKETS.filter((x) => marketGroups[x])) {
+        for (const slotTime of hourlySlots()) await runSlot(`gio:${m}:${slotTime}`, slotTime, Number(HOURLY_CFG.catchUpMinutes || 40), () => sendHourly(m), { quaGioYen: true });
     }
 }
 
-async function giuPhien() {
+async function keepSessionAlive() {
     if (!api) return;
-    try { await api.keepAlive(); zalo.luuPhien(api); }
+    try { await api.keepAlive(); zalo.saveSession(api); }
     catch (e) { log("keepAlive lỗi — lần gửi tới sẽ đăng nhập lại:", e.message); api = null; }
 }
 
-async function gioiThieuNeuMoi() {
-    for (const m of CAC_NUOC) {
-        const nhom = nhomNuoc[m];
-        if (!nhom || (loadState().gioiThieu || {})[nhom.id]) continue;
-        await lanLuot(() => guiMot(tinHuongDan(m), nhom));
-        markState((s) => { (s.gioiThieu = s.gioiThieu || {})[nhom.id] = new Date().toISOString(); });
-        log(`Đã gửi tin giới thiệu vào nhóm "${nhom.name}".`);
+async function introduceNewGroups() {
+    for (const m of MARKET_CODES) {
+        const group = marketGroups[m];
+        if (!group || (loadState().gioiThieu || {})[group.id]) continue;
+        await enqueue(() => sendOne(helpMessage(m), group));
+        markState((s) => { (s.gioiThieu = s.gioiThieu || {})[group.id] = new Date().toISOString(); });
+        log(`Đã gửi tin giới thiệu vào nhóm "${group.name}".`);
     }
 }
 
-function docCacNhom() {
-    nhomNuoc = Object.fromEntries(CAC_NUOC.map((m) => [m, zalo.docNhomNuoc(m)]).filter(([, g]) => g));
+function loadGroups() {
+    marketGroups = Object.fromEntries(MARKET_CODES.map((m) => [m, zalo.readMarketGroup(m)]).filter(([, g]) => g));
 }
 
 // Nước chưa có file nhóm → tìm trong các nhóm nick phụ đang ở, theo đúng mẫu tên "ADS + VẬN ĐƠN
 // <nước>" (rules.nuocTuTenNhom). Một nước khớp hai nhóm trở lên thì KHÔNG đoán.
-async function tuNhanNhom() {
-    const thieu = CAC_NUOC.filter((m) => !nhomNuoc[m]);
-    if (!thieu.length) return;
-    let ds;
-    try { ds = await zalo.danhSachNhom(await ketNoi()); }
+async function autoAssignGroups() {
+    const missing = MARKET_CODES.filter((m) => !marketGroups[m]);
+    if (!missing.length) return;
+    let allGroups;
+    try { allGroups = await zalo.listGroups(await connect()); }
     catch (e) { log("Không đọc được danh sách nhóm để tự nhận:", e.message); return; }
-    const { chon, trung, thieu: van } = chonNhomTheoTen(ds, thieu);
-    for (const [m, g] of Object.entries(chon)) {
-        zalo.ghiNhomNuoc(m, g, "tu-nhan");
+    const { chon: picked, trung: ambiguous, thieu: stillMissing } = pickGroupsByName(allGroups, missing);
+    for (const [m, g] of Object.entries(picked)) {
+        zalo.saveMarketGroup(m, g, "tu-nhan");
         log(`Tự nhận nhóm ${m}: "${g.name}" (${g.id}).`);
     }
-    for (const [m, xs] of Object.entries(trung)) log(`${m}: ${xs.length} nhóm cùng mẫu tên — không tự chọn (${xs.map((g) => g.id).join(", ")}). Chọn tay: node pair.js --chon-nuoc <id> --nuoc ${m}`);
-    for (const m of van) log(`${m}: nick phụ chưa ở nhóm "ADS + VẬN ĐƠN ${NUOC[m].ten.toUpperCase()}" — chưa gửi gì cho ${m}.`);
-    docCacNhom();
+    for (const [m, xs] of Object.entries(ambiguous)) log(`${m}: ${xs.length} nhóm cùng mẫu tên — không tự chọn (${xs.map((g) => g.id).join(", ")}). Chọn tay: node pair.js --chon-nuoc <id> --nuoc ${m}`);
+    for (const m of stillMissing) log(`${m}: nick phụ chưa ở nhóm "ADS + VẬN ĐƠN ${MARKETS[m].ten.toUpperCase()}" — chưa gửi gì cho ${m}.`);
+    loadGroups();
 }
 
-async function chayDichVu() {
-    dichVu = true;
+async function runService() {
+    serviceMode = true;
     log(`Dashboard base: ${CFG.dashboardBaseUrl}${process.env.TALPHA_DASHBOARD_URL ? " (env TALPHA_DASHBOARD_URL)" : ""}`);
     zalo = require("./zalo");
     // Đăng nhập hỏng / chưa ghép: KHÔNG thoát — pm2 sẽ khởi động lại liên tục và che mất lỗi
     // thật. Đứng chờ, 10' thử lại một lần.
     for (;;) {
-        docCacNhom();
-        try { await ketNoi(); await tuNhanNhom(); }
+        loadGroups();
+        try { await connect(); await autoAssignGroups(); }
         catch (e) { log("Đăng nhập Zalo lỗi:", e.message); }
-        if (api && Object.keys(nhomNuoc).length) break;
+        if (api && Object.keys(marketGroups).length) break;
         if (api) log("Chưa có nhóm nước nào — thêm nick phụ vào nhóm \"ADS + VẬN ĐƠN <nước>\" rồi đợi, hoặc chạy `node pair.js --tu-nhan`.");
         await sleep(10 * 60 * 1000);
     }
-    for (const m of CAC_NUOC) {
-        const g = nhomNuoc[m];
+    for (const m of MARKET_CODES) {
+        const g = marketGroups[m];
         if (g) log(`Nhóm ${m} "${g.name}" (${g.id}) · ads ${[DAILY_AT, ...INTRADAY_SLOTS].join(" + ")}`
-            + (VD_MARKETS.includes(m) ? ` · vận đơn ${[VD_AT, VD_TOI].filter(Boolean).join(" + ") || "(tắt)"}` : " · chưa có vận đơn")
+            + (SHIPMENT_MARKETS.includes(m) ? ` · vận đơn ${[SHIPMENT_AT, SHIPMENT_EVENING_AT].filter(Boolean).join(" + ") || "(tắt)"}` : " · chưa có vận đơn")
             + " · nghe lệnh.");
         else log(`Chưa có nhóm ${m} — không gửi gì cho ${m}.`);
     }
 
-    try { await gioiThieuNeuMoi(); } catch (e) { log("Tin giới thiệu lỗi:", e.message); }
+    try { await introduceNewGroups(); } catch (e) { log("Tin giới thiệu lỗi:", e.message); }
 
-    let dangRa = false;                 // không để hai vòng rà chồng nhau khi một vòng gửi lâu
-    const vongMoc = async () => {
-        if (dangRa) return;
-        dangRa = true;
+    let scanning = false;                 // không để hai vòng rà chồng nhau khi một vòng gửi lâu
+    const tick = async () => {
+        if (scanning) return;
+        scanning = true;
         try {
             // Nhóm nào còn thiếu thì mỗi vòng thử tự nhận lại — Sỹ Anh thêm nick vào nhóm là vòng sau tự gửi.
-            if (CAC_NUOC.some((m) => !nhomNuoc[m])) { await tuNhanNhom(); await gioiThieuNeuMoi(); }
-            await ratMoc(); await ratDinhChinh();
+            if (MARKET_CODES.some((m) => !marketGroups[m])) { await autoAssignGroups(); await introduceNewGroups(); }
+            await checkSlots(); await checkCorrections();
         }
         catch (e) { log("Vòng rà lỗi:", e.message); }
-        finally { dangRa = false; }
+        finally { scanning = false; }
     };
-    await vongMoc();
-    setInterval(vongMoc, 5 * 60 * 1000);
-    setInterval(giuPhien, 60 * 60 * 1000);
+    await tick();
+    setInterval(tick, 5 * 60 * 1000);
+    setInterval(keepSessionAlive, 60 * 60 * 1000);
 
     // Thị trường nhập ở /admin → Thị trường đổi (thêm, sửa, tắt nước): luật nạp lúc khởi động đã cũ.
     // Thoát lúc KHÔNG đang gửi để pm2 dựng lại bot với luật mới (04/11/2026, xem thi_truong.js).
-    const mocThiTruong = vanTayDaNap();
+    const marketFingerprint = getLoadedFingerprint();
     setInterval(async () => {
-        if (dangRa) return;
-        const moi = await layVanTay();
-        if (moi === null || moi === mocThiTruong) return;
+        if (scanning) return;
+        const latest = await fetchOverridesFingerprint();
+        if (latest === null || latest === marketFingerprint) return;
         log("Thị trường nhập trên trang đã đổi — khởi động lại để nạp luật mới.");
         process.exit(0);
     }, 60 * 1000);
 }
 
 async function main() {
-    const lenh = argAfter("--lenh");
-    if (lenh || ["--report", "--vandon", "--moc", "--gio", "--dinh-chinh"].some((a) => ARGS.includes(a))) {
-        if (!DRY) { zalo = require("./zalo"); docCacNhom(); }
-        const nuoc = argAfter("--nuoc") ? [argAfter("--nuoc").toUpperCase()] : null;
-        if (nuoc && !NUOC[nuoc[0]]) throw new Error(`--nuoc lạ: ${nuoc[0]} (có: ${CAC_NUOC.join(", ")})`);
+    const command = argAfter("--lenh");
+    if (command || ["--report", "--vandon", "--moc", "--gio", "--dinh-chinh"].some((a) => ARGS.includes(a))) {
+        if (!DRY) { zalo = require("./zalo"); loadGroups(); }
+        const markets = argAfter("--nuoc") ? [argAfter("--nuoc").toUpperCase()] : null;
+        if (markets && !MARKETS[markets[0]]) throw new Error(`--nuoc lạ: ${markets[0]} (có: ${MARKET_CODES.join(", ")})`);
         if (ARGS.includes("--dinh-chinh")) {
             // --dinh-chinh [--nuoc SG]: gửi ngay các tin đính chính đang chờ (state.json), bỏ qua giờ yên.
-            await ratDinhChinh({ goiTay: true, chiNuoc: nuoc ? nuoc[0] : null });
+            await checkCorrections({ goiTay: true, chiNuoc: markets ? markets[0] : null });
         } else if (ARGS.includes("--gio")) {
             // --gio [--nuoc JP]: gửi ngay tin mỗi giờ (không ghi mốc "lần trước").
-            for (const m of (nuoc || MG_MARKETS)) {
-                if (!nhomCua(m)) { log(`Bỏ ${m}: chưa có nhóm.`); continue; }
-                const r = await guiTinGio(m, false);
+            for (const m of (markets || HOURLY_MARKETS)) {
+                if (!groupOf(m)) { log(`Bỏ ${m}: chưa có nhóm.`); continue; }
+                const r = await sendHourly(m, false);
                 log(`${DRY ? "In thử" : "Đã gửi"} ${r.ghiChu}.`);
             }
         } else if (ARGS.includes("--vandon")) {
             // --vandon [sang|toi] [--nuoc SG]: gửi ngay (mặc định: khuôn sáng, mọi nước có vận đơn).
-            const kieu = ["sang", "toi"].includes(argAfter("--vandon")) ? argAfter("--vandon") : "sang";
-            for (const m of (nuoc || VD_MARKETS)) {
-                if (!VD_MARKETS.includes(m)) { log(`Bỏ ${m}: chưa theo dõi vận đơn.`); continue; }
-                if (!nhomCua(m)) { log(`Bỏ ${m}: chưa có nhóm.`); continue; }
-                await guiVanDon(m, kieu);
-                log(`${DRY ? "In thử" : "Đã gửi"} tin vận đơn ${m} (${kieu}).`);
+            const kind = ["sang", "toi"].includes(argAfter("--vandon")) ? argAfter("--vandon") : "sang";
+            for (const m of (markets || SHIPMENT_MARKETS)) {
+                if (!SHIPMENT_MARKETS.includes(m)) { log(`Bỏ ${m}: chưa theo dõi vận đơn.`); continue; }
+                if (!groupOf(m)) { log(`Bỏ ${m}: chưa có nhóm.`); continue; }
+                await sendShipmentDigest(m, kind);
+                log(`${DRY ? "In thử" : "Đã gửi"} tin vận đơn ${m} (${kind}).`);
             }
         } else if (ARGS.includes("--moc")) {
             // --moc 13:00: gửi ngay tin của một mốc giữa ngày (khuôn trưa/chiều/tối), số hôm nay.
-            const moc = /^\d{1,2}:\d{2}$/.test(argAfter("--moc")) ? argAfter("--moc") : (INTRADAY_SLOTS[0] || "13:00");
-            const nay = vnDateStr();
-            for (const m of (nuoc || CAC_NUOC)) {
-                if (!nhomCua(m)) { log(`Bỏ ${m}: chưa có nhóm.`); continue; }
-                const r = await guiBaoCao(m, nay, { homNay: true, label: slotLabel(moc), theoDoi: `${moc}:${m}:${nay}`, kieu: kieuMoc(moc), moc, nho: false });
-                log(`${DRY ? "In thử" : "Đã gửi"} mốc ${moc}: ${r.ghiChu}.`);
+            const slotTime = /^\d{1,2}:\d{2}$/.test(argAfter("--moc")) ? argAfter("--moc") : (INTRADAY_SLOTS[0] || "13:00");
+            const todayStr = vnDateStr();
+            for (const m of (markets || MARKET_CODES)) {
+                if (!groupOf(m)) { log(`Bỏ ${m}: chưa có nhóm.`); continue; }
+                const r = await sendReport(m, todayStr, { homNay: true, label: slotLabel(slotTime), theoDoi: `${slotTime}:${m}:${todayStr}`, kieu: slotKind(slotTime), moc: slotTime, nho: false });
+                log(`${DRY ? "In thử" : "Đã gửi"} mốc ${slotTime}: ${r.ghiChu}.`);
             }
-        } else if (lenh) {
-            if (!(await lamLenh(lenh, "dòng lệnh", null))) log(`"${lenh}" không phải lệnh của bot.`);
+        } else if (command) {
+            if (!(await runCommand(command, "dòng lệnh", null))) log(`"${command}" không phải lệnh của bot.`);
         } else {
-            const ngay = /^\d{4}-\d{2}-\d{2}$/.test(argAfter("--report")) ? argAfter("--report") : homQua(vnDateStr());
-            for (const m of (nuoc || CAC_NUOC)) {
-                if (!nhomCua(m)) { log(`Bỏ ${m}: chưa có nhóm.`); continue; }
-                const r = await guiBaoCao(m, ngay, { theoDoi: `report:${m}:${ngay}` });
-                log(`${DRY ? "In thử" : "Đã gửi"} báo cáo ${m} ngày ${ngay}: ${r.ghiChu}.`
+            const date = /^\d{4}-\d{2}-\d{2}$/.test(argAfter("--report")) ? argAfter("--report") : dayBefore(vnDateStr());
+            for (const m of (markets || MARKET_CODES)) {
+                if (!groupOf(m)) { log(`Bỏ ${m}: chưa có nhóm.`); continue; }
+                const r = await sendReport(m, date, { theoDoi: `report:${m}:${date}` });
+                log(`${DRY ? "In thử" : "Đã gửi"} báo cáo ${m} ngày ${date}: ${r.ghiChu}.`
                     + (r.chuaDu ? " SỐ CHƯA ĐỦ — bot dịch vụ sẽ tự gửi tin đính chính khi sync đủ số." : ""));
             }
         }
         return true;
     }
-    await chayDichVu();
+    await runService();
     return false;
 }
 
 main()
-    .then((motLan) => { if (motLan) setTimeout(() => process.exit(0), 1000); })
+    .then((oneShot) => { if (oneShot) setTimeout(() => process.exit(0), 1000); })
     .catch((e) => { log("LỖI:", e.message); process.exit(1); });

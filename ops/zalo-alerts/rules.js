@@ -8,40 +8,40 @@
 const fs = require("fs");
 const path = require("path");
 
-const { phuLuat, docPhu } = require("./thi_truong");
+const { applyMarketOverrides, loadMarketOverrides } = require("./thi_truong");
 
 const RULES_FILE = path.join(__dirname, "..", "..", "config", "talpha_rules.json");
 // Đã phủ thị trường nhập ở /admin → Thị trường (04/11/2026, xem thi_truong.js) — nước thêm, sửa,
 // tắt trên trang tới bot ngay lần khởi động sau.
-const RULES = phuLuat(JSON.parse(fs.readFileSync(RULES_FILE, "utf8")), docPhu());
+const RULES = applyMarketOverrides(JSON.parse(fs.readFileSync(RULES_FILE, "utf8")), loadMarketOverrides());
 
-const khongGhiChu = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => !k.startsWith("_")));
+const withoutNotes = (o) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => !k.startsWith("_")));
 
 // Key marketer → tên hiển thị, ĐÚNG thứ tự khai trong JSON — cũng là thứ tự tin riêng.
-const MARKETERS = khongGhiChu(RULES.marketers);
+const MARKETERS = withoutNotes(RULES.marketers);
 const DISPLAY = Object.fromEntries(Object.entries(MARKETERS).map(([k, v]) => [k, v.display || k]));
-const THU_TU = Object.keys(MARKETERS).map((k) => DISPLAY[k]);
+const MARKETER_ORDER = Object.keys(MARKETERS).map((k) => DISPLAY[k]);
 // Người đã nghỉ: không có tin riêng, không vào bảng xếp hạng (khối unassign_marketers).
 const UNASSIGN = new Set(RULES.unassign_marketers || []);
 
 // File TỔNG TEAM có thêm tab theo NƯỚC từ 15/09/2026 ("Đài Loan", "Singapore"…), nằm lẫn
 // với tab marketer. Tab nào trùng tên hiển thị (hoặc key) của một nước là tab nước.
-const TAB_NUOC = new Set(Object.entries(khongGhiChu(RULES.markets)).flatMap(([key, v]) => [key, v.display || key]));
+const MARKET_TABS = new Set(Object.entries(withoutNotes(RULES.markets)).flatMap(([key, v]) => [key, v.display || key]));
 // Tab nước → cờ, theo thứ tự khai trong markets (Đài, Singapore, UAE) — dòng "theo nước" của tin ads.
-const CO_NUOC = Object.entries(khongGhiChu(RULES.markets)).map(([key, v]) => ({ key, tab: v.display || key, flag: v.flag || "" }));
+const MARKET_FLAGS = Object.entries(withoutNotes(RULES.markets)).map(([key, v]) => ({ key, tab: v.display || key, flag: v.flag || "" }));
 
 // Mã nước (mã shop: TW, SG, AE, JP) → { key: khoá trong markets, ten, flag, sapChay, daTat }. Nhóm
 // Zalo "ADS + VẬN ĐƠN <nước>" (08/10/2026) đặt theo mã này. sapChay = nước chưa có shop POS (Nhật lúc
 // mở) — chỉ có tiền ads + tin nhắn, tin không in đơn / doanh số / %ads. daTat (04/11/2026) = nước đã
 // tắt — bot không tự gửi tin gì cho nước đó nữa (bot.js lọc khỏi mọi lịch).
-const NUOC = Object.fromEntries(Object.entries(khongGhiChu(RULES.markets))
+const MARKETS = Object.fromEntries(Object.entries(withoutNotes(RULES.markets))
     .filter(([, v]) => v && typeof v === "object" && v.shop_label)
     .map(([key, v]) => {
-        const ma = String(v.shop_label).toUpperCase();
-        return [ma, { ma, key, ten: v.display || key, flag: v.flag || "", sapChay: v.status === "sap_chay", daTat: v.status === "da_tat" }];
+        const code = String(v.shop_label).toUpperCase();
+        return [code, { ma: code, key, ten: v.display || key, flag: v.flag || "", sapChay: v.status === "sap_chay", daTat: v.status === "da_tat" }];
     }));
 
-const CAMP_TOKENS = khongGhiChu(RULES.camp_marketer_tokens);
+const CAMP_TOKENS = withoutNotes(RULES.camp_marketer_tokens);
 const CAMP_MARKETS = Object.fromEntries((RULES.camp_market_tokens || []).map((t) => [t, RULES.market_aliases[t]]));
 const PRIMARY_MARKET = RULES.primary_market || null;
 
@@ -61,7 +61,7 @@ function normCampMarketer(s) {
  * "TW/THUONG/VN/TEST/Trang Sức Vàng Thái/…" vào tin của Thái vì tên trang có chữ "Thái",
  * trong khi Sheet tính cho Thương.
  */
-function chuCamp(cn) {
+function campaignOwner(cn) {
     const p = String(cn || "").split("/").map((x) => x.trim());
     const mi = p.findIndex((s) => s.toUpperCase() in CAMP_MARKETS);
     if (mi >= 0) return mi + 1 < p.length ? normCampMarketer(p[mi + 1]) : null;
@@ -102,29 +102,29 @@ function isTestCampaign(cn) {
  *   SG/LOC/PHI/075 - SETTS01/…            → 🇸🇬 075 - SETTS01
  *   TW/THUONG/VN/TEST/BaloDaGiaTot/0709   → TEST · BaloDaGiaTot
  */
-function tenNganCamp(name) {
+function shortCampaignName(name) {
     const p = String(name || "").split("/").map((s) => s.trim()).filter(Boolean);
     const mi = p.findIndex((s) => normCampMarketer(s) !== null);
-    let sp = mi >= 0 ? p[mi + 2] : undefined;
-    let trang = mi >= 0 ? p[mi + 3] : undefined;
-    if (!sp) { sp = p[2] || p[1] || p[0] || String(name || ""); trang = undefined; }
-    if (/^test$/i.test(sp) && trang) sp = `TEST · ${trang}`;
+    let product = mi >= 0 ? p[mi + 2] : undefined;
+    let pageName = mi >= 0 ? p[mi + 3] : undefined;
+    if (!product) { product = p[2] || p[1] || p[0] || String(name || ""); pageName = undefined; }
+    if (/^test$/i.test(product) && pageName) product = `TEST · ${pageName}`;
 
     const { market, source } = campaignMarket(name);
-    const co = source !== "mac_dinh" && market !== PRIMARY_MARKET ? (RULES.markets[market] || {}).flag : "";
-    const ngan = sp.length > 38 ? sp.slice(0, 38) + "…" : sp;
-    return co ? `${co} ${ngan}` : ngan;
+    const flag = source !== "mac_dinh" && market !== PRIMARY_MARKET ? (RULES.markets[market] || {}).flag : "";
+    const truncated = product.length > 38 ? product.slice(0, 38) + "…" : product;
+    return flag ? `${flag} ${truncated}` : truncated;
 }
 
 /** Tên page để SO KHỚP — ≡ chuanTenPage (dashboard-ui/src/lib/talpha/pancake.ts) và normalize_page_name
  *  (talpha_rules.py): bỏ kiểu chữ trang trí (𝑱𝒂𝒑𝒂𝒏 → japan), hoa thường, dấu câu, khoảng trắng thừa. */
-function chuanTenPage(s) {
+function normalizePageName(s) {
     return String(s || "").normalize("NFKC").toLowerCase()
         .replace(/[^\p{L}\p{N}_]+/gu, " ").trim().replace(/\s+/g, " ");
 }
 
 /** Ô TÊN PAGE trong tên campaign (NƯỚC/MARKETER/TỆP/SẢNPHẨM/TRANG/NGÀY) — ≡ trangCuaCamp bên TS. */
-function trangCuaCamp(cn) {
+function pageOfCampaign(cn) {
     const p = String(cn || "").split("/").map((x) => x.trim());
     const mi = p.findIndex((s) => s.toUpperCase() in CAMP_MARKETS);
     const k = mi >= 0 ? mi + 1 : p.slice(0, 2).findIndex((s) => normCampMarketer(s));
@@ -138,16 +138,16 @@ function trangCuaCamp(cn) {
  * mẫu → null, bot không tự nhận nhóm đó. Nước đọc theo market_aliases (TAIWAN, SGP, JAPAN…) hoặc
  * tên hiển thị / mã shop.
  */
-function nuocTuTenNhom(ten) {
-    const bo = String(ten || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[đĐ]/g, "D").toUpperCase();
-    const m = /^\s*ADS\s*\+\s*VAN\s*DON\s+(.+?)\s*$/.exec(bo);
+function marketFromGroupName(groupName) {
+    const normalized = String(groupName || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[đĐ]/g, "D").toUpperCase();
+    const m = /^\s*ADS\s*\+\s*VAN\s*DON\s+(.+?)\s*$/.exec(normalized);
     if (!m) return null;
-    const duoi = m[1].replace(/\s+/g, " ");
-    const boDauTen = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[đĐ]/g, "D").toUpperCase();
-    for (const [tok, key] of Object.entries(khongGhiChu(RULES.market_aliases))) {
-        if (boDauTen(tok) === duoi) return Object.values(NUOC).find((n) => n.key === key)?.ma || null;
+    const marketPart = m[1].replace(/\s+/g, " ");
+    const stripDiacritics = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[đĐ]/g, "D").toUpperCase();
+    for (const [tok, key] of Object.entries(withoutNotes(RULES.market_aliases))) {
+        if (stripDiacritics(tok) === marketPart) return Object.values(MARKETS).find((n) => n.key === key)?.ma || null;
     }
-    const n = Object.values(NUOC).find((x) => boDauTen(x.ten) === duoi || x.ma === duoi || boDauTen(x.key) === duoi);
+    const n = Object.values(MARKETS).find((x) => stripDiacritics(x.ten) === marketPart || x.ma === marketPart || stripDiacritics(x.key) === marketPart);
     return n ? n.ma : null;
 }
 
@@ -157,48 +157,48 @@ function nuocTuTenNhom(ten) {
  * `node pair.js --chon-nuoc <id> --nuoc <mã>`.
  * @returns { chon: {TW: nhóm…}, trung: {TW: [nhóm…]}, thieu: [mã…] }
  */
-function chonNhomTheoTen(dsNhom, cacNuoc) {
-    const theoNuoc = {};
-    for (const g of dsNhom || []) {
-        const m = nuocTuTenNhom(g.name);
-        if (m && cacNuoc.includes(m)) (theoNuoc[m] = theoNuoc[m] || []).push(g);
+function pickGroupsByName(groups, marketCodes) {
+    const byMarket = {};
+    for (const g of groups || []) {
+        const m = marketFromGroupName(g.name);
+        if (m && marketCodes.includes(m)) (byMarket[m] = byMarket[m] || []).push(g);
     }
-    const chon = {}, trung = {}, thieu = [];
-    for (const m of cacNuoc) {
-        const xs = theoNuoc[m] || [];
-        if (xs.length === 1) chon[m] = xs[0];
-        else if (xs.length > 1) trung[m] = xs;
-        else thieu.push(m);
+    const picked = {}, ambiguous = {}, missing = [];
+    for (const m of marketCodes) {
+        const xs = byMarket[m] || [];
+        if (xs.length === 1) picked[m] = xs[0];
+        else if (xs.length > 1) ambiguous[m] = xs;
+        else missing.push(m);
     }
-    return { chon, trung, thieu };
+    return { chon: picked, trung: ambiguous, thieu: missing };
 }
 
 // ── Ai cầm nước nào (Sỹ Anh chốt 10/10/2026) — ≡ credited_marketer bên talpha_rules.py ──
 // Số một người chạy LẤN sang nước của team khác (camp cũ chưa đổi tên) tính cho người cầm nước đó.
-const NUOC_CUA_NGUOI = {};
-for (const t of Object.values(khongGhiChu((RULES.access || {}).teams))) {
+const MARKETS_BY_MARKETER = {};
+for (const t of Object.values(withoutNotes((RULES.access || {}).teams))) {
     if (!t || typeof t !== "object") continue;
-    for (const nv of t.members || []) for (const m of t.markets || []) (NUOC_CUA_NGUOI[nv] = NUOC_CUA_NGUOI[nv] || new Set()).add(m);
+    for (const member of t.members || []) for (const m of t.markets || []) (MARKETS_BY_MARKETER[member] = MARKETS_BY_MARKETER[member] || new Set()).add(m);
 }
-const NGUOI_CAM = Object.fromEntries(Object.entries(khongGhiChu(RULES.markets)).filter(([, v]) => v && v.nguoi_cam).map(([k, v]) => [k, v.nguoi_cam]));
+const MARKET_OWNERS = Object.fromEntries(Object.entries(withoutNotes(RULES.markets)).filter(([, v]) => v && v.nguoi_cam).map(([k, v]) => [k, v.nguoi_cam]));
 // Người đã ngừng chạy (marketers.*.ngung_chay_tu — Thương từ 01/10/2026, Sỹ Anh chốt 03/11/2026):
 // từ ngày đó số mang tên họ tính cho người cầm nước. Không truyền ngày = số hiện tại.
-const NGUNG_CHAY = Object.fromEntries(Object.entries(MARKETERS).filter(([, v]) => v && v.ngung_chay_tu).map(([k, v]) => [k, v.ngung_chay_tu]));
-function nguoiTinhSo(key, marketKey, ngay) {
-    const tu = NGUNG_CHAY[key];
-    if (tu && (!ngay || String(ngay).slice(0, 10) >= tu)) return NGUOI_CAM[marketKey] || key;
-    const nuoc = NUOC_CUA_NGUOI[key];
-    if (!nuoc || nuoc.has(marketKey)) return key;
-    return NGUOI_CAM[marketKey] || key;
+const STOPPED_SINCE = Object.fromEntries(Object.entries(MARKETERS).filter(([, v]) => v && v.ngung_chay_tu).map(([k, v]) => [k, v.ngung_chay_tu]));
+function creditedMarketer(key, marketKey, date) {
+    const since = STOPPED_SINCE[key];
+    if (since && (!date || String(date).slice(0, 10) >= since)) return MARKET_OWNERS[marketKey] || key;
+    const ownMarkets = MARKETS_BY_MARKETER[key];
+    if (!ownMarkets || ownMarkets.has(marketKey)) return key;
+    return MARKET_OWNERS[marketKey] || key;
 }
 /** Chủ camp SAU khi chuyển số lấn nước — dùng cho mọi chỗ gom camp theo người. */
-function chuTinhSo(cn) {
-    const k = chuCamp(cn);
-    return k ? nguoiTinhSo(k, campaignMarket(cn).market) : null;
+function creditedCampaignOwner(cn) {
+    const k = campaignOwner(cn);
+    return k ? creditedMarketer(k, campaignMarket(cn).market) : null;
 }
 
 module.exports = {
-    NUOC, nuocTuTenNhom, chonNhomTheoTen, chuanTenPage, trangCuaCamp, nguoiTinhSo, chuTinhSo,
-    RULES, MARKETERS, DISPLAY, THU_TU, UNASSIGN, PRIMARY_MARKET, TAB_NUOC, CO_NUOC,
-    chuCamp, normCampMarketer, campaignMarket, isTestCampaign, tenNganCamp,
+    MARKETS, marketFromGroupName, pickGroupsByName, normalizePageName, pageOfCampaign, creditedMarketer, creditedCampaignOwner,
+    RULES, MARKETERS, DISPLAY, MARKETER_ORDER, UNASSIGN, PRIMARY_MARKET, MARKET_TABS, MARKET_FLAGS,
+    campaignOwner, normCampMarketer, campaignMarket, isTestCampaign, shortCampaignName,
 };

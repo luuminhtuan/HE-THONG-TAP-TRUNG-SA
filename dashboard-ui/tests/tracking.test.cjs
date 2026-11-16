@@ -234,7 +234,7 @@ t("chạm trần mỗi lượt thì cắt, đơn ở cửa hàng lên trước",
 });
 
 console.log("── 17TRACK: gói miễn phí — chỉ đơn có cảnh báo, không quá quota ──");
-const coCanhBao = () => [
+const withAlerts = () => [
     // sắp bị trả về (gấp): 17TRACK xuất kho 9 ngày trước, 3 ngày đi đường → quá hạn
     reg({ track17_code: "73N00000001", status: "AvailableForPickup", source: "doi_tac", ship_date: shipDaysAgo(9) }),
     // giao hỏng (cảnh báo)
@@ -245,25 +245,25 @@ const coCanhBao = () => [
     reg({ track17_code: "73N00000004", status: "AvailableForPickup", source: "doi_tac", ship_date: shipDaysAgo(3) }),
 ];
 t("scope canh_bao: chỉ đơn Gấp/Cảnh báo, bỏ đơn đang đi và đơn chỉ là nhắc", () => {
-    const p = T.planRegister(coCanhBao(), NOW, { scope: "canh_bao" });
+    const p = T.planRegister(withAlerts(), NOW, { scope: "canh_bao" });
     assert.deepStrictEqual(p.pick.map((s) => s.track17_code).sort(), ["73N00000001", "73N00000002"]);
 });
 t("scope tat_ca: mọi đơn chưa kết thúc", () => {
-    assert.strictEqual(T.planRegister(coCanhBao(), NOW, { scope: "tat_ca" }).pick.length, 4);
+    assert.strictEqual(T.planRegister(withAlerts(), NOW, { scope: "tat_ca" }).pick.length, 4);
 });
 t("không bao giờ gửi quá quota còn lại — đơn gấp lên trước", () => {
-    const p = T.planRegister(coCanhBao(), NOW, { scope: "canh_bao", quotaRemain: 1 });
+    const p = T.planRegister(withAlerts(), NOW, { scope: "canh_bao", quotaRemain: 1 });
     assert.deepStrictEqual(p.pick.map((s) => s.track17_code), ["73N00000001"]);
     assert.strictEqual(p.over_cap, 1);
     assert.strictEqual(p.quota_limited, true);
 });
 t("hết quota thì không gửi mã nào", () => {
-    const p = T.planRegister(coCanhBao(), NOW, { scope: "canh_bao", quotaRemain: 0 });
+    const p = T.planRegister(withAlerts(), NOW, { scope: "canh_bao", quotaRemain: 0 });
     assert.strictEqual(p.pick.length, 0);
     assert.strictEqual(p.quota_limited, true);
 });
 t("không hỏi được quota (null) thì chỉ cắt theo trần mỗi lượt", () => {
-    const p = T.planRegister(coCanhBao(), NOW, { scope: "canh_bao", quotaRemain: null });
+    const p = T.planRegister(withAlerts(), NOW, { scope: "canh_bao", quotaRemain: null });
     assert.strictEqual(p.pick.length, 2);
     assert.strictEqual(p.quota_limited, false);
 });
@@ -272,12 +272,12 @@ t("rules: theo dõi hết đơn, không chia nhịp → tat_ca (Sỹ Anh chốt 
 });
 
 console.log("── 17TRACK: tu_dong — đơn cảnh báo lấy hết, đơn thường chia nhịp theo tháng ──");
-const nhieuThuong = (n) => Array.from({ length: n }, (_, i) =>
+const manyNormal = (n) => Array.from({ length: n }, (_, i) =>
     reg({ track17_code: `73N9${String(i).padStart(7, "0")}`, status: "InTransit" }));
 t("đơn cảnh báo lấy hết, đơn thường chỉ lấy (còn − giữ lại) ÷ số ngày còn lại", () => {
     // 2 đơn cảnh báo + 50 đơn thường; quota tổng 200, còn 100, còn 5 ngày, giữ lại 10% = 20
     // → nhịp = floor((100 − 2 − 20) / 5) = 15 đơn thường.
-    const p = T.planRegister([...coCanhBao(), ...nhieuThuong(50)], NOW,
+    const p = T.planRegister([...withAlerts(), ...manyNormal(50)], NOW,
         { scope: "tu_dong", quotaRemain: 100, quotaTotal: 200, daysLeft: 5 });
     const codes = p.pick.map((s) => s.track17_code);
     assert.ok(codes.includes("73N00000001") && codes.includes("73N00000002"), "đơn cảnh báo phải có");
@@ -286,17 +286,17 @@ t("đơn cảnh báo lấy hết, đơn thường chỉ lấy (còn − giữ l�
     assert.strictEqual(p.quota_limited, false, "chia nhịp không phải hết quota");
 });
 t("đơn cảnh báo đứng trước dù quota ít", () => {
-    const p = T.planRegister([...nhieuThuong(10), ...coCanhBao()], NOW,
+    const p = T.planRegister([...manyNormal(10), ...withAlerts()], NOW,
         { scope: "tu_dong", quotaRemain: 2, quotaTotal: 200, daysLeft: 5 });
     assert.deepStrictEqual(p.pick.map((s) => s.track17_code).sort(), ["73N00000001", "73N00000002"]);
 });
 t("quota không đủ cho đơn cảnh báo → báo hết quota", () => {
-    const p = T.planRegister(coCanhBao(), NOW, { scope: "tu_dong", quotaRemain: 1, quotaTotal: 200, daysLeft: 5 });
+    const p = T.planRegister(withAlerts(), NOW, { scope: "tu_dong", quotaRemain: 1, quotaTotal: 200, daysLeft: 5 });
     assert.strictEqual(p.pick.length, 1);
     assert.strictEqual(p.quota_limited, true);
 });
 t("không hỏi được quota → chỉ đăng ký đơn cảnh báo (mù quota không đốt vào đơn thường)", () => {
-    const p = T.planRegister([...coCanhBao(), ...nhieuThuong(20)], NOW, { scope: "tu_dong", quotaRemain: null });
+    const p = T.planRegister([...withAlerts(), ...manyNormal(20)], NOW, { scope: "tu_dong", quotaRemain: null });
     assert.strictEqual(p.pick.length, 2);
 });
 t("số ngày còn lại trong tháng tính theo giờ Việt Nam", () => {
@@ -412,8 +412,8 @@ t("đổi trạng thái thì lấy mốc 17TRACK, không lấy lúc đồng bộ
     assert.strictEqual(m.status_since, daysAgo(1));
 });
 t("mốc ở tương lai thì bỏ, dùng lúc đồng bộ", () => {
-    const tuongLai = new Date(NOW.getTime() + 3 * 86400000).toISOString();
-    const m = T.mergeStatus(undefined, { status: "AvailableForPickup", status_time: tuongLai }, NOW);
+    const future = new Date(NOW.getTime() + 3 * 86400000).toISOString();
+    const m = T.mergeStatus(undefined, { status: "AvailableForPickup", status_time: future }, NOW);
     assert.strictEqual(m.status_since, NOW.toISOString());
 });
 t("không đổi trạng thái thì giữ mốc cũ dù 17TRACK gửi mốc khác", () => {
@@ -599,24 +599,24 @@ t("chia mã cho khoá còn nhiều quota trước, khoá không rõ quota thì k
 // Lô sau hỏng thì lô trước (đã trừ quota) vẫn phải về tay bên gọi để ghi sổ —
 // không thì lượt sau đem đăng ký lại ở một khoá KHÁC, tốn quota hai lần.
 (async () => {
-    const goc = global.fetch;
-    let lan = 0;
+    const originalFetch = global.fetch;
+    let calls = 0;
     global.fetch = async (_url, init) => {
-        lan++;
+        calls++;
         const body = JSON.parse(init.body);
-        if (lan === 1) {
+        if (calls === 1) {
             return { ok: true, status: 200, json: async () => ({ code: 0, data: { accepted: body.map((x) => ({ number: x.number, carrier: 190456 })), rejected: [] } }) };
         }
         return { ok: false, status: 429, json: async () => ({}) };
     };
     try {
-        const so = Array.from({ length: 45 }, (_, i) => `73N8${String(i).padStart(7, "0")}`);
-        await assert.rejects(K.register({ id: "k", label: "khoá 1", key: "x" }, so), (e) => {
+        const trackingCodes = Array.from({ length: 45 }, (_, i) => `73N8${String(i).padStart(7, "0")}`);
+        await assert.rejects(K.register({ id: "k", label: "khoá 1", key: "x" }, trackingCodes), (e) => {
             assert.strictEqual(e.code, 429);
             assert.strictEqual(e.partial.accepted.length, 40, "lô đầu 40 mã đã đăng ký phải còn");
             return true;
         });
         pass++; console.log("  ✓ lô sau hỏng vẫn trả về phần đã đăng ký (e.partial)");
-    } finally { global.fetch = goc; }
+    } finally { global.fetch = originalFetch; }
     console.log(`\n${pass} phép thử — tất cả đạt.`);
 })().catch((e) => { console.error(e); process.exit(1); });

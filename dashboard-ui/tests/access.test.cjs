@@ -101,9 +101,9 @@ t("cod-actions: Thương ghi được 'đã nhắn NAZA', không ghi được ti
         assert.ok(!A.canWriteCodAction(thuong, k, v), `${k}/${v}`);
         assert.ok(A.canWriteCodAction(sanh, k, v), `${k}/${v}`);
     }
-    const leaderDai = A.accessForUser({ id: "5", name: "Leader Đài", role: "leader", teams: ["dong_a"] });
-    assert.ok(A.canWriteCodAction(leaderDai, "bank") && A.canWriteCodAction(leaderDai, "done", "bo_qua"));
-    assert.ok(A.checkApi(leaderDai, "/api/talpha/cod-recon", q("")).ok);
+    const taiwanLeader = A.accessForUser({ id: "5", name: "Leader Đài", role: "leader", teams: ["dong_a"] });
+    assert.ok(A.canWriteCodAction(taiwanLeader, "bank") && A.canWriteCodAction(taiwanLeader, "done", "bo_qua"));
+    assert.ok(A.checkApi(taiwanLeader, "/api/talpha/cod-recon", q("")).ok);
     assert.ok(!A.checkApi(loc, "/api/talpha/cod-actions", q("")).ok);          // Lộc vẫn không đụng sổ Đài
 });
 

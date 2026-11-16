@@ -104,8 +104,8 @@ t("campaign lạc quy ước → không đoán MARKETER, nhưng thị trường 
 console.log("── Thị trường ──");
 t("bốn nước đang bán — Nhật mở 08/10/2026, nối shop POS 09/10/2026", () => {
     assert.deepStrictEqual(Object.keys(R.RULES.markets), ["Taiwan", "Singapore", "UAE", "Japan"]);
-    const dangBan = Object.entries(R.RULES.markets).filter(([, v]) => v.status === "dang_ban").map(([k]) => k);
-    assert.deepStrictEqual(dangBan, ["Taiwan", "Singapore", "UAE", "Japan"]);
+    const activeMarkets = Object.entries(R.RULES.markets).filter(([, v]) => v.status === "dang_ban").map(([k]) => k);
+    assert.deepStrictEqual(activeMarkets, ["Taiwan", "Singapore", "UAE", "Japan"]);
     assert.strictEqual(R.RULES.markets.Japan.shop_id, "1022115860");
     assert.strictEqual(R.posMoneyDivisor("JP"), 1);
 });
@@ -114,21 +114,21 @@ t("camp JP/… tính về Nhật, không rơi về Đài", () => {
     assert.strictEqual(R.campaignMarket("TW/THƯƠNG/PHI/042/Japan Prime Leather/6-10").market, "Taiwan");
 });
 t("mỗi nước có shop thì có mốc ngày tính đơn hợp lệ", () => {
-    for (const [ten, v] of Object.entries(R.RULES.markets)) {
+    for (const [marketKey, v] of Object.entries(R.RULES.markets)) {
         if (v.orders_from == null) continue;
-        assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(v.orders_from), `${ten}: orders_from phải dạng YYYY-MM-DD`);
+        assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(v.orders_from), `${marketKey}: orders_from phải dạng YYYY-MM-DD`);
     }
     // Singapore có 54 đơn là bản sao đơn Đài tạo trước 14/09 — mốc này là thứ chặn đếm hai lần.
     assert.strictEqual(R.RULES.markets.Singapore.orders_from, "2026-09-14");
 });
 t("nước đang bán hoặc đã tắt phải khai đủ shop, tỷ giá, số chia", () => {
-    for (const [ten, v] of Object.entries(R.RULES.markets)) {
-        assert.ok(["dang_ban", "sap_chay", "da_tat"].includes(v.status || "dang_ban"), `${ten}: status lạ ${v.status}`);
+    for (const [marketKey, v] of Object.entries(R.RULES.markets)) {
+        assert.ok(["dang_ban", "sap_chay", "da_tat"].includes(v.status || "dang_ban"), `${marketKey}: status lạ ${v.status}`);
         // Nước đã tắt: đơn cũ vẫn trong báo cáo, cần tỷ giá + số chia như lúc còn bán.
         if (v.status !== "dang_ban" && v.status !== "da_tat") continue;
-        assert.ok(String(v.shop_id || "").trim(), `${ten}: thiếu shop_id`);
-        assert.ok(v.rate_vnd > 0, `${ten}: thiếu tỷ giá`);
-        assert.ok(Number.isInteger(v.pos_money_divisor) && v.pos_money_divisor > 0, `${ten}: thiếu số chia`);
+        assert.ok(String(v.shop_id || "").trim(), `${marketKey}: thiếu shop_id`);
+        assert.ok(v.rate_vnd > 0, `${marketKey}: thiếu tỷ giá`);
+        assert.ok(Number.isInteger(v.pos_money_divisor) && v.pos_money_divisor > 0, `${marketKey}: thiếu số chia`);
     }
 });
 t("số chia của Đài là 1, không phải 100", () => {
@@ -193,7 +193,7 @@ t("thật sự không có ai thì marketer trả null, KHÔNG đoán bừa", () 
 
 console.log("── Chuẩn đặt tên campaign ──");
 // THỊTRƯỜNG/MARKETER/TỆPKHÁCH/SANPHAM/TENTRANG/NGAY
-const CHUAN = [
+const STANDARD_NAMES = [
     ["TW/LOC/PHI/042-BLACK/TaiwanPrimeLeather/2808", "Loc",    "PHI"],
     ["TW/SANH/INDO/SET-KIM-CUONG/LuxeGold/0109",     "SAnh",   "INDO"],
     ["TW/THAI/VN/040-VONGVANG1/Lumora/1908",         "Thai",   "VN"],
@@ -202,7 +202,7 @@ const CHUAN = [
     ["TW/THANG/INDO/036-BROWN/TaiwanSavings/2808",   "Thang",  "INDO"],
 ];
 t("6 marketer × 4 tệp khách đọc đúng theo chuẩn 6 ô", () => {
-    for (const [name, key, aud] of CHUAN) {
+    for (const [name, key, aud] of STANDARD_NAMES) {
         assert.strictEqual(R.parseCampaign(name)[0], "Taiwan", `thị trường của ${name}`);
         assert.strictEqual(R.parseCampaign(name)[1], key, `marketer của ${name}`);
         assert.strictEqual(R.parseAudience(name), aud, `tệp khách của ${name}`);
@@ -294,13 +294,13 @@ t("TEST ở ô mã sản phẩm = đang thử, KHÁC với quên ghi mã", () =>
     assert.strictEqual(R.isProductTesting("TW/LOC/PHI/SET-KIM-CUONG/LuxeGold/2808"), false);
 });
 t("win rồi thay TEST bằng mã thật — số ô không đổi", () => {
-    const sau = "TW/THƯƠNG/VN/058-BALO-DA/Balo Da Giá Tốt/7-9";
-    assert.strictEqual(R.parseProductCode(sau), "058");
-    assert.strictEqual(R.isProductTesting(sau), false);
-    assert.strictEqual(R.isTestCampaign(sau), false);
+    const after = "TW/THƯƠNG/VN/058-BALO-DA/Balo Da Giá Tốt/7-9";
+    assert.strictEqual(R.parseProductCode(after), "058");
+    assert.strictEqual(R.isProductTesting(after), false);
+    assert.strictEqual(R.isTestCampaign(after), false);
     // Marketer và tệp khách giữ nguyên — số lịch sử không gãy.
-    assert.strictEqual(R.parseCampaign(sau)[1], "Thuong");
-    assert.strictEqual(R.parseAudience(sau), "VN");
+    assert.strictEqual(R.parseCampaign(after)[1], "Thuong");
+    assert.strictEqual(R.parseAudience(after), "VN");
 });
 t("TEST ở ô cuối vẫn nhận, không bắt phải đổi chỗ", () => {
     assert.strictEqual(R.isProductTesting("TW/LOC/PHI/042-BLACK/Trang/2808/TEST"), true);
@@ -366,10 +366,10 @@ t("thông tin nước cho giao diện: mã, ký hiệu tiền, trạng thái, m�
     assert.strictEqual(R.MARKETS_PUBLIC.primary, "Taiwan");
 });
 t("giá vốn quy từ TỆ × cost_rate_rmb_vnd, không dùng giá VND cũ", () => {
-    const tyGia = R.RULES.cost_rate_rmb_vnd;
-    assert.strictEqual(tyGia, 3860);
+    const exchangeRate = R.RULES.cost_rate_rmb_vnd;
+    assert.strictEqual(exchangeRate, 3860);
     const p = R.RULES.products["002"];
-    assert.strictEqual(R.costPriceVnd("002"), Math.round(p.cost_price_rmb * tyGia));
+    assert.strictEqual(R.costPriceVnd("002"), Math.round(p.cost_price_rmb * exchangeRate));
     assert.strictEqual(R.costPriceVnd("khong-co-ma-nay"), null);
 });
 t("ba nước đều miễn luật campaign test", () => {

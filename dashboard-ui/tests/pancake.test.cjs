@@ -5,7 +5,7 @@ const assert = require("assert");
 const P = require("../.test-build/pancake.js");
 
 let ok = 0;
-const t = (ten, fn) => { try { fn(); ok++; console.log("  ✓", ten); } catch (e) { console.error("  ✗", ten); throw e; } };
+const t = (name, fn) => { try { fn(); ok++; console.log("  ✓", name); } catch (e) { console.error("  ✗", name); throw e; } };
 
 console.log("── Pancake: tin nhắn theo page ──");
 t("tên page chuẩn hoá — kiểu chữ trang trí, hoa thường, dấu câu", () => {
@@ -74,11 +74,11 @@ const B = require("../.test-build/market-monthly-report.js");
 t("bản số theo nước: tháng trong khoảng, gom mess Nhật theo người trong khoảng ngày", () => {
     assert.deepStrictEqual(B.monthsInRange("2026-09-28", "2026-11-02"), ["2026-09", "2026-10", "2026-11"]);
     assert.deepStrictEqual(B.monthsInRange("2026-12-30", "2027-01-02"), ["2026-12", "2027-01"]);
-    const ban = { thang: "2026-10", nuoc: {
+    const report = { thang: "2026-10", nuoc: {
         Japan: { "2026-10-11": { SAnh: { mess: 56 }, Thang: { mess: 30 } }, "2026-10-12": { SAnh: { mess: 10 } }, "2026-10-13": { SAnh: { mess: 99 } } },
         Taiwan: { "2026-10-12": { Thuong: { mess: 40 } } },
     } };
-    assert.deepStrictEqual(B.sumMessByPerson([ban], "2026-10-11", "2026-10-12", ["Japan"]), { tong: 96, theoNguoi: { SAnh: 66, Thang: 30 } });
-    assert.deepStrictEqual(B.sumMessByPerson([ban], "2026-10-11", "2026-10-12", []), { tong: 0, theoNguoi: {} }, "người xem không thấy Nhật → 0");
+    assert.deepStrictEqual(B.sumMessByPerson([report], "2026-10-11", "2026-10-12", ["Japan"]), { tong: 96, theoNguoi: { SAnh: 66, Thang: 30 } });
+    assert.deepStrictEqual(B.sumMessByPerson([report], "2026-10-11", "2026-10-12", []), { tong: 0, theoNguoi: {} }, "người xem không thấy Nhật → 0");
 });
 console.log(`${ok} phép thử Pancake qua.`);

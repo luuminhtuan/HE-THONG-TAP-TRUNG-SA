@@ -15,16 +15,16 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 
-const CHI_O_FILE_PHU = new Set(["tokens", "team"]);
-const laKhoi = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+const OVERRIDE_ONLY_FIELDS = new Set(["tokens", "team"]);
+const isPlainObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 
 /** Route trả phần phủ + dấu vân tay (dashboard đọc bảng market_overrides). */
-const urlPhu = () => `${require("./config").dashboardBaseUrl}/api/talpha/market-config?overrides=1`;
+const overridesUrl = () => `${require("./config").dashboardBaseUrl}/api/talpha/market-config?overrides=1`;
 
 /** Dấu vân tay của phần phủ đã nạp lúc khởi động — null nếu không hỏi được dashboard. */
-let vanTayLucNap = null;
+let loadedFingerprint = null;
 
-function docFilePhu(p) {
+function readOverrides(p) {
     if (!fs.existsSync(p)) return null;
     try {
         return JSON.parse(fs.readFileSync(p, "utf8"));
@@ -36,26 +36,26 @@ function docFilePhu(p) {
 
 /** Phần phủ, hoặc null nếu chưa ai nhập. Không hỏi được dashboard thì KÊU và chạy bằng luật gốc —
  *  không làm sập bot; theoDoiThiTruong (bot.js) thấy vân tay khác là tự khởi động lại để nạp đủ. */
-function docPhu() {
-    if (process.env.TALPHA_THI_TRUONG) return docFilePhu(process.env.TALPHA_THI_TRUONG);
+function loadMarketOverrides() {
+    if (process.env.TALPHA_THI_TRUONG) return readOverrides(process.env.TALPHA_THI_TRUONG);
     try {
-        const out = execFileSync(process.execPath, [path.join(__dirname, "fetch_sync.js"), urlPhu()],
+        const out = execFileSync(process.execPath, [path.join(__dirname, "fetch_sync.js"), overridesUrl()],
             { timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] });
         const j = JSON.parse(out.toString("utf8"));
-        vanTayLucNap = typeof j.van_tay === "string" ? j.van_tay : null;
-        const phu = j.phu || null;
-        return phu && laKhoi(phu.markets) && Object.keys(phu.markets).length ? phu : null;
+        loadedFingerprint = typeof j.van_tay === "string" ? j.van_tay : null;
+        const overrides = j.phu || null;
+        return overrides && isPlainObject(overrides.markets) && Object.keys(overrides.markets).length ? overrides : null;
     } catch (e) {
-        const lyDo = (e && e.stderr && e.stderr.toString().trim()) || (e && e.message) || e;
-        console.error(`thi_truong: không lấy được thị trường nhập trên trang từ dashboard (${lyDo}) — chạy bằng luật gốc`);
+        const reason = (e && e.stderr && e.stderr.toString().trim()) || (e && e.message) || e;
+        console.error(`thi_truong: không lấy được thị trường nhập trên trang từ dashboard (${reason}) — chạy bằng luật gốc`);
         return null;
     }
 }
 
 /** Dấu vân tay phần phủ hiện tại trên dashboard, hoặc null nếu không hỏi được. */
-async function layVanTay() {
+async function fetchOverridesFingerprint() {
     try {
-        const r = await fetch(urlPhu(), { signal: AbortSignal.timeout(25_000) });
+        const r = await fetch(overridesUrl(), { signal: AbortSignal.timeout(25_000) });
         if (!r.ok) return null;
         const j = await r.json();
         return typeof j.van_tay === "string" ? j.van_tay : null;
@@ -69,37 +69,37 @@ async function layVanTay() {
  * cùng tên, ô không nhắc tới giữ nguyên. Mã campaign đang thuộc nước KHÁC không bị giành. Nước có
  * `team` thì chỉ nằm ở đúng team đó.
  */
-function phuLuat(luat, phu) {
-    const out = JSON.parse(JSON.stringify(luat));
+function applyMarketOverrides(rules, overrides) {
+    const out = JSON.parse(JSON.stringify(rules));
     out.markets = out.markets || {};
     out.market_aliases = out.market_aliases || {};
     out.camp_market_tokens = out.camp_market_tokens || [];
     const teams = (out.access && out.access.teams) || {};
-    for (const [key, khoi] of Object.entries((phu && phu.markets) || {})) {
-        if (key.startsWith("_") || !laKhoi(khoi)) continue;
-        const moi = laKhoi(out.markets[key]) ? { ...out.markets[key] } : {};
-        for (const [k, v] of Object.entries(khoi)) if (!CHI_O_FILE_PHU.has(k)) moi[k] = v;
-        out.markets[key] = moi;
+    for (const [key, block] of Object.entries((overrides && overrides.markets) || {})) {
+        if (key.startsWith("_") || !isPlainObject(block)) continue;
+        const merged = isPlainObject(out.markets[key]) ? { ...out.markets[key] } : {};
+        for (const [k, v] of Object.entries(block)) if (!OVERRIDE_ONLY_FIELDS.has(k)) merged[k] = v;
+        out.markets[key] = merged;
 
-        for (const t of Array.isArray(khoi.tokens) ? khoi.tokens : []) {
+        for (const t of Array.isArray(block.tokens) ? block.tokens : []) {
             const T = String(t).trim().toUpperCase();
             if (!T) continue;
-            const cua = out.market_aliases[T];
-            if (cua && cua !== key) continue;
+            const ownerKey = out.market_aliases[T];
+            if (ownerKey && ownerKey !== key) continue;
             out.market_aliases[T] = key;
             if (!out.camp_market_tokens.includes(T)) out.camp_market_tokens.push(T);
         }
 
-        const team = typeof khoi.team === "string" ? khoi.team : null;
-        if (team && laKhoi(teams[team])) {
-            for (const [tk, t] of Object.entries(teams)) {
-                if (!laKhoi(t)) continue;
-                const ds = Array.isArray(t.markets) ? t.markets : [];
-                t.markets = tk === team ? (ds.includes(key) ? ds : [...ds, key]) : ds.filter((m) => m !== key);
+        const team = typeof block.team === "string" ? block.team : null;
+        if (team && isPlainObject(teams[team])) {
+            for (const [teamKey, t] of Object.entries(teams)) {
+                if (!isPlainObject(t)) continue;
+                const teamMarkets = Array.isArray(t.markets) ? t.markets : [];
+                t.markets = teamKey === team ? (teamMarkets.includes(key) ? teamMarkets : [...teamMarkets, key]) : teamMarkets.filter((m) => m !== key);
             }
         }
     }
     return out;
 }
 
-module.exports = { phuLuat, docPhu, layVanTay, vanTayDaNap: () => vanTayLucNap };
+module.exports = { applyMarketOverrides, loadMarketOverrides, fetchOverridesFingerprint, vanTayDaNap: () => loadedFingerprint };

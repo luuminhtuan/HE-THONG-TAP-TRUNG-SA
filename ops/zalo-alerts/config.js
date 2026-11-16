@@ -29,21 +29,21 @@ function absolutize(v) {
 // daily_report.js, van_don.js…) tự mang chìa, không phải sửa từng chỗ. Đọc file mỗi lượt:
 // bot khởi động trước dashboard vẫn có chìa từ lượt sau.
 const TOKEN_FILE = path.join(__dirname, "..", "..", "data", ".internal_token");
-function chiaNoiBo() {
+function readInternalToken() {
     try { return fs.readFileSync(TOKEN_FILE, "utf8").trim(); } catch { return ""; }
 }
-const fetchGoc = globalThis.fetch;
-if (typeof fetchGoc === "function" && !fetchGoc.__talphaChia) {
-    const fetchCoChia = (input, init = {}) => {
+const originalFetch = globalThis.fetch;
+if (typeof originalFetch === "function" && !originalFetch.__talphaChia) {
+    const fetchWithToken = (input, init = {}) => {
         const url = typeof input === "string" ? input : (input && input.url) || String(input);
-        const chia = url.startsWith(BASE) ? chiaNoiBo() : "";
-        if (!chia) return fetchGoc(input, init);
+        const token = url.startsWith(BASE) ? readInternalToken() : "";
+        if (!token) return originalFetch(input, init);
         const headers = new Headers(init.headers || (input && typeof input === "object" && input.headers) || {});
-        if (!headers.has("x-talpha-token")) headers.set("x-talpha-token", chia);
-        return fetchGoc(input, { ...init, headers });
+        if (!headers.has("x-talpha-token")) headers.set("x-talpha-token", token);
+        return originalFetch(input, { ...init, headers });
     };
-    fetchCoChia.__talphaChia = true;
-    globalThis.fetch = fetchCoChia;
+    fetchWithToken.__talphaChia = true;
+    globalThis.fetch = fetchWithToken;
 }
 
 const CFG = { ...raw, dashboardBaseUrl: BASE };
