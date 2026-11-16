@@ -10,17 +10,17 @@
 // dashboard-ui/.env.khoa.local), MÃ HOÁ bằng pgcrypto với chìa TALPHA_ENCRYPTION_KEY: bản sao lưu
 // database hay câu SQL đọc nhầm bảng chỉ thấy chuỗi đã mã hoá; hai vai chỉ đọc của /api/query và
 // "CEO hỏi" không được đọc bảng này. Khoá trên trang thắng biến môi trường (.env.local):
-//   • Dashboard nạp bảng một lần (lượt đọc đầu), nạp lại ngay sau mỗi lần lưu và mỗi 5 phút.
+//   • Dashboard nạp bảng lúc khởi động (startup-data.ts), nạp lại ngay sau mỗi lần lưu và mỗi 5 phút.
 //   • Sync, vòng ghi báo cáo, danh mục SP, lịch Docker đọc bảng lúc bắt đầu mỗi việc
 //     (sync/core/credentials.py) → có hiệu lực từ lần chạy kế tiếp.
 //
-// Code cần khoá thì gọi docKhoa(), đừng đọc process.env thẳng.
+// Code cần khoá thì gọi getCredential(), đừng đọc process.env thẳng.
 // ═══════════════════════════════════════════════════════════════════
 import fs from "fs";
 import yaml from "js-yaml";
 import { query } from "@/lib/db";
 import { TALPHA_YAML } from "./config-path";
-import { CREDENTIALS_SQL, ENCRYPTION_KEY_VAR, getEncryptionKey, getStartupData, type StoredCredentialRow } from "./startup-data";
+import { CREDENTIALS_SQL, ENCRYPTION_KEY_VAR, getEncryptionKey, takeStartupCredentials, type StoredCredentialRow } from "./startup-data";
 import { DISABLED_MARKETS, MESS_PANCAKE, RULES, SHOP2MKT, SHOP_POS } from "./rules";
 import { maskCredential } from "./credential-utils";
 import { META_TOKEN_VARS } from "./ad-account-rules";
@@ -33,7 +33,13 @@ const RETRY_AFTER_ERROR_MS = 30_000;
 
 type CredentialRecord = Omit<StoredCredentialRow, "name">;
 
-let cache: { map: Map<string, CredentialRecord>; loadedAt: number } | null = null;
+type CredentialCache = { map: Map<string, CredentialRecord>; loadedAt: number };
+// Bộ đệm nằm trên globalThis (16/11/2026): module bị nạp lại (dev hot-reload, lớp bundle khác) dùng chung bản mới
+// nhất thay vì mỗi bản giữ một bộ đệm riêng — có bản còn trả khoá cũ sau khi đã lưu khoá mới.
+const CACHE_SLOT = Symbol.for("talpha.credentialsCache");
+type CacheHolder = { [CACHE_SLOT]?: CredentialCache };
+const getCache = (): CredentialCache | undefined => (globalThis as CacheHolder)[CACHE_SLOT];
+const setCache = (c: CredentialCache) => { (globalThis as CacheHolder)[CACHE_SLOT] = c; };
 let errorAt = 0;
 let refreshing = false;
 let warnedMissingKey = false;
@@ -45,7 +51,7 @@ async function refreshCache(): Promise<void> {
     const encryptionKey = getEncryptionKey();
     if (!encryptionKey || !process.env.DATABASE_URL) return;
     const rows = await query<StoredCredentialRow>(CREDENTIALS_SQL, { encryptionKey });
-    cache = { map: toMap(rows), loadedAt: Date.now() };
+    setCache({ map: toMap(rows), loadedAt: Date.now() });
 }
 
 function refreshInBackground(): void {
@@ -59,6 +65,7 @@ function refreshInBackground(): void {
 /** Khoá trong kho: nạp SẴN lúc khởi động (startup-data.ts, bất đồng bộ — không còn chặn event loop như
  *  execFileSync trước 16/11/2026), sau đó làm mới nền mỗi 5 phút. */
 function storedCredentials(): Map<string, CredentialRecord> {
+    const cache = getCache();
     if (cache) {
         if (Date.now() - cache.loadedAt > REFRESH_INTERVAL_MS) refreshInBackground();
         return cache.map;
@@ -71,10 +78,11 @@ function storedCredentials(): Map<string, CredentialRecord> {
         }
         return new Map();
     }
-    const startup = getStartupData();
-    if (startup?.credentials) {
-        cache = { map: toMap(startup.credentials), loadedAt: startup.loadedAt };
-        return cache.map;
+    const startup = takeStartupCredentials();       // nhận MỘT lần, bản rõ không còn nằm ở startup-data
+    if (startup) {
+        const adopted = { map: toMap(startup.rows), loadedAt: startup.loadedAt };
+        setCache(adopted);
+        return adopted.map;
     }
     // Lúc khởi động không đọc được (kho lỗi) — thử lại nền; lượt này dùng khoá trong .env.local.
     refreshInBackground();

@@ -21,13 +21,17 @@ types.setTypeParser(1114, (v) => v.replace(" ", "T"));          // timestamp
 
 let pool: Pool | null = null;
 
+// Hạn chờ một kết nối (mở mới, hoặc chờ chỗ trống khi pool đầy). Không đặt thì kho nhận kết nối mà không trả lời
+// làm request treo mãi — lúc khởi động là cả dashboard không mở cửa (16/11/2026).
+const CONNECTION_TIMEOUT_MS = 15_000;
+
 function getPool(): Pool {
     if (pool) return pool;
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("chưa đặt DATABASE_URL — xem docs/POSTGRES.md");
     // TimeZone UTC: CURRENT_DATE trong câu SQL là ngày UTC như BigQuery; ngày giờ VN tính bằng
     // AT TIME ZONE 'Asia/Ho_Chi_Minh' ở chỗ cần.
-    pool = new Pool({ connectionString: url, max: 10, options: "-c TimeZone=UTC" });
+    pool = new Pool({ connectionString: url, max: 10, options: "-c TimeZone=UTC", connectionTimeoutMillis: CONNECTION_TIMEOUT_MS });
     pool.on("error", (e) => console.error("Postgres pool:", e.message));
     return pool;
 }
@@ -95,7 +99,9 @@ function getReadOnlyPool(role: ReadOnlyRole): Pool {
     const u = new URL(baseUrl);
     u.username = role;
     u.password = mk;
-    const newPool = new Pool({ connectionString: u.toString(), max: 5, options: "-c TimeZone=UTC" });
+    const newPool = new Pool({
+        connectionString: u.toString(), max: 5, options: "-c TimeZone=UTC", connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
+    });
     newPool.on("error", (e) => console.error(`Postgres ${role}:`, e.message));
     readOnlyPools.set(role, newPool);
     return newPool;

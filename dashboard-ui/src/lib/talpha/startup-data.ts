@@ -22,12 +22,19 @@ export type StoredCredentialRow = {
 };
 
 type StartupData = {
-    /** null = chưa ai nhập thị trường trên trang (hoặc kho lỗi — đã kêu ra log). */
+    /** null = chưa ai nhập thị trường trên trang, HOẶC đọc lỗi (xem marketOverridesFailed). */
     marketOverrides: MarketOverridesFile | null;
-    /** null = không đọc được bảng khoá (thiếu chìa / kho lỗi) — credentials.ts tự thử lại nền. */
+    /** true = kho lỗi / quá hạn lúc khởi động → đang chạy bằng luật gốc; startup-recovery.ts thử lại nền. */
+    marketOverridesFailed: boolean;
+    /** null = không đọc được bảng khoá (thiếu chìa / kho lỗi) — credentials.ts tự thử lại nền. Bản rõ của
+     *  khoá: credentials.ts nhận MỘT lần (takeStartupCredentials) rồi xoá khỏi đây. */
     credentials: StoredCredentialRow[] | null;
     loadedAt: number;
 };
+
+/** Hạn chờ kho lúc khởi động. Next chờ register() xong mới nhận request — kho treo (nhận kết nối mà không trả
+ *  lời) thì không có hạn là dashboard đứng ở "Starting…" mãi (16/11/2026). */
+const PRIME_TIMEOUT_MS = 15_000;
 
 const SLOT = Symbol.for("talpha.startupData");
 type Holder = { [SLOT]?: StartupData };
@@ -42,14 +49,29 @@ export function getStartupData(): StartupData | undefined {
     return (globalThis as Holder)[SLOT];
 }
 
-async function loadMarketOverrides(query: QueryFn): Promise<MarketOverridesFile | null> {
+/** Đọc lỗi lúc khởi động — instrumentation.ts bật startup-recovery.ts để thử lại và tự khởi động lại. */
+export function startupMarketOverridesFailed(): boolean {
+    return getStartupData()?.marketOverridesFailed === true;
+}
+
+/** Bảng khoá đọc lúc khởi động — trả MỘT lần rồi xoá khỏi globalThis để bản rõ không nằm đó suốt đời tiến trình. */
+export function takeStartupCredentials(): { rows: StoredCredentialRow[]; loadedAt: number } | null {
+    const startup = getStartupData();
+    if (!startup?.credentials) return null;
+    const taken = { rows: startup.credentials, loadedAt: startup.loadedAt };
+    startup.credentials = null;
+    return taken;
+}
+
+async function loadMarketOverrides(query: QueryFn): Promise<{ overrides: MarketOverridesFile | null; failed: boolean }> {
     try {
         const rows = await query<{ market_key: string; settings: Record<string, unknown> }>(
             "SELECT market_key, settings FROM market_overrides ORDER BY market_key");
-        return rows.length ? { markets: Object.fromEntries(rows.map((r) => [r.market_key, r.settings])) } : null;
+        const overrides = rows.length ? { markets: Object.fromEntries(rows.map((r) => [r.market_key, r.settings])) } : null;
+        return { overrides, failed: false };
     } catch (e) {
-        console.error("rules: KHÔNG đọc được market_overrides — chạy bằng luật gốc, bỏ qua thị trường nhập trên trang:", e);
-        return null;
+        console.error("rules: KHÔNG đọc được market_overrides — tạm chạy bằng luật gốc, thử lại nền:", e);
+        return { overrides: null, failed: true };
     }
 }
 
@@ -67,12 +89,24 @@ async function loadCredentials(query: QueryFn): Promise<StoredCredentialRow[] | 
     }
 }
 
-/** Nạp một lần lúc khởi động. Không có DATABASE_URL (máy chưa chuyển Postgres, phép thử) thì để trống. */
-export async function primeStartupData(query: QueryFn): Promise<void> {
+/** Nạp một lần lúc khởi động, tối đa timeoutMs. Không có DATABASE_URL (máy chưa chuyển Postgres, phép thử) thì
+ *  để trống. Quá hạn = coi như đọc lỗi: luật gốc + khoá .env.local, thử lại nền. */
+export async function primeStartupData(query: QueryFn, timeoutMs: number = PRIME_TIMEOUT_MS): Promise<void> {
     if (!process.env.DATABASE_URL) {
-        (globalThis as Holder)[SLOT] = { marketOverrides: null, credentials: null, loadedAt: Date.now() };
+        (globalThis as Holder)[SLOT] = { marketOverrides: null, marketOverridesFailed: false, credentials: null, loadedAt: Date.now() };
         return;
     }
-    const [marketOverrides, credentials] = await Promise.all([loadMarketOverrides(query), loadCredentials(query)]);
-    (globalThis as Holder)[SLOT] = { marketOverrides, credentials, loadedAt: Date.now() };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), timeoutMs); });
+    const loaded = await Promise.race([Promise.all([loadMarketOverrides(query), loadCredentials(query)]), timedOut]);
+    clearTimeout(timer);
+    if (!loaded) {
+        console.error(`startup: kho không trả lời sau ${timeoutMs / 1000} giây — tạm chạy bằng luật gốc + khoá .env.local, thử lại nền`);
+        (globalThis as Holder)[SLOT] = { marketOverrides: null, marketOverridesFailed: true, credentials: null, loadedAt: Date.now() };
+        return;
+    }
+    const [markets, credentials] = loaded;
+    (globalThis as Holder)[SLOT] = {
+        marketOverrides: markets.overrides, marketOverridesFailed: markets.failed, credentials, loadedAt: Date.now(),
+    };
 }
