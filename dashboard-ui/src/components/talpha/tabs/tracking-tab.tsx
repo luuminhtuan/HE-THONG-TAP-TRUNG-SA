@@ -49,7 +49,7 @@ function storeDisplayName(s: Shipment): string {
 
 /**
  * Tin báo khách ra lấy hàng — TIẾNG ANH để gửi khách, kèm bản TIẾNG VIỆT cho sale đọc
- * hiểu. CÙNG CÂU CHỮ với bot Zalo (ops/zalo-alerts/van_don.js → tinKhachDai).
+ * hiểu. CÙNG CÂU CHỮ với bot Zalo (ops/zalo-alerts/shipment_alerts.js → tinKhachDai).
  *
  * Sale không phải tự gõ — gõ tay mỗi ngày vài chục tin là vừa chậm vừa sai tên cửa
  * hàng. Chỉ điền được khi có tên cửa hàng; thiếu thì trả null chứ KHÔNG soạn tin cụt,

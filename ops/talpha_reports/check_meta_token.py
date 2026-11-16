@@ -107,7 +107,7 @@ def main():
             print("   ✅ không bao giờ hết hạn")
     print()
 
-    # Sync kéo MỌI TKQC token đọc được (sync/core/tkqc.py, 04/11/2026) — thử đúng danh sách đó.
+    # Sync kéo MỌI TKQC token đọc được (sync/core/ad_accounts.py, 04/11/2026) — thử đúng danh sách đó.
     ok, ds = get("me/adaccounts", access_token=tok, fields="account_id,name,currency", limit=200)
     if not ok:
         print(f"❌ Không đọc được danh sách TKQC: {ds.get('message','')[:150]}")

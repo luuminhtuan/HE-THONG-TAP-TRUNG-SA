@@ -22,7 +22,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from sync.core.tkqc import write_ad_account_directory, initial_account_type  # noqa: E402
+from sync.core.ad_accounts import write_ad_account_directory, initial_account_type  # noqa: E402
 
 RULES = json.loads((ROOT / "config" / "talpha_rules.json").read_text(encoding="utf-8"))
 
@@ -101,12 +101,12 @@ class TestAdAccountDirectory:
 
 class TestMultipleTokens:
     def test_tokens_in_priority_order_skip_blank(self):
-        from sync.core.tkqc import meta_tokens
+        from sync.core.ad_accounts import meta_tokens
         env = {"TALPHA_META_ACCESS_TOKEN_3": "c", "TALPHA_META_ACCESS_TOKEN": "a", "TALPHA_META_ACCESS_TOKEN_2": " "}
         assert meta_tokens(env) == [("TALPHA_META_ACCESS_TOKEN", "a"), ("TALPHA_META_ACCESS_TOKEN_3", "c")]
 
     def test_account_belongs_to_first_token_that_sees_it(self, pg, monkeypatch):
-        from sync.core import tkqc as T
+        from sync.core import ad_accounts as T
         accounts_by_token = {"moi": [_meta("1", "Hồ Lý 11"), _meta("2", "Dùng chung")],
                 "cu": [_meta("2", "Dùng chung"), _meta("3", "XT ANTALO 03", st=2)]}
         monkeypatch.setattr(T, "list_token_ad_accounts", lambda tok: accounts_by_token[tok])
@@ -116,7 +116,7 @@ class TestMultipleTokens:
             "1": "TALPHA_META_ACCESS_TOKEN", "2": "TALPHA_META_ACCESS_TOKEN", "3": "TALPHA_META_ACCESS_TOKEN_2"}
 
     def test_one_dead_token_still_fetches_others(self, pg, monkeypatch):
-        from sync.core import tkqc as T
+        from sync.core import ad_accounts as T
 
         def fake_fetch(tok):
             if tok == "chet":

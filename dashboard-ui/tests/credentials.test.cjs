@@ -1,4 +1,4 @@
-// node tests/khoa.test.cjs (chạy qua npm test — tsc dựng .test-build trước)
+// node tests/credentials.test.cjs (chạy qua npm test — tsc dựng .test-build trước)
 // Khoá kết nối nhập ở /admin (04/11/2026; lưu ở bảng api_credentials từ 15/11/2026): soát khoá
 // vừa dán và cách che khoá khi hiện trên trang.
 const assert = require("assert");

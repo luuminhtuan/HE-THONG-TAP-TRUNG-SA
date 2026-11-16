@@ -30,12 +30,12 @@ const path = require("path");
 const CFG = require("./config");
 const { buildMarketReport, buildCorrectionMessage, buildMarketAlert } = require("./daily_report");
 const { parseCommand, marketHelpMessage, dayBefore } = require("./commands");
-const { buildShipmentMorning, buildShipmentEvening, fetchShipments, recordNudges } = require("./van_don");
+const { buildShipmentMorning, buildShipmentEvening, fetchShipments, recordNudges } = require("./shipment_alerts");
 const { slotAction, toMin, correctionAction, correctionDeadline } = require("./schedule");
 const { toZalo, splitMessage } = require("./zalo_text");
 const { MARKETERS, DISPLAY, MARKETS, pickGroupsByName, pageOfCampaign, campaignMarket } = require("./rules");
-const { buildHourlyDigest, messFromPancake } = require("./tin_gio");
-const { fetchOverridesFingerprint, vanTayDaNap: getLoadedFingerprint } = require("./thi_truong");
+const { buildHourlyDigest, messFromPancake } = require("./hourly_digest");
+const { fetchOverridesFingerprint, vanTayDaNap: getLoadedFingerprint } = require("./market_config");
 
 const DIR = __dirname;
 const STATE_FILE = path.join(DIR, "state.json");
@@ -659,7 +659,7 @@ async function runService() {
     setInterval(keepSessionAlive, 60 * 60 * 1000);
 
     // Thị trường nhập ở /admin → Thị trường đổi (thêm, sửa, tắt nước): luật nạp lúc khởi động đã cũ.
-    // Thoát lúc KHÔNG đang gửi để pm2 dựng lại bot với luật mới (04/11/2026, xem thi_truong.js).
+    // Thoát lúc KHÔNG đang gửi để pm2 dựng lại bot với luật mới (04/11/2026, xem market_config.js).
     const marketFingerprint = getLoadedFingerprint();
     setInterval(async () => {
         if (scanning) return;

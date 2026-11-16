@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from sync.core.tk_loi import split_failed_accounts  # noqa: E402
+from sync.core.failed_accounts import split_failed_accounts  # noqa: E402
 
 SA01 = {"name": "SA ANTALO 01", "id": "act_2201353496727281", "mat_quyen": True}
 ANTALO1 = {"name": "ANTALO 1 - CHẠY ĐÀI", "id": "act_191133507087352", "mat_quyen": True}

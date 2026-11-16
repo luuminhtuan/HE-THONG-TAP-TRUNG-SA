@@ -5,7 +5,7 @@
 #   mở http://localhost:3200/admin             # → Khoá kết nối: dán token Meta, key POS từng nước
 #   docker compose run --rm sync               # kéo số ngay, không chờ đầu giờ
 #   docker compose run --rm migrate dem        # số dòng từng bảng
-#   docker compose logs -f lich                # xem các việc nền chạy
+#   docker compose logs -f scheduler                # xem các việc nền chạy
 #   docker compose --profile zalo up -d zalo   # bot Zalo (ghép nick trước: xem docs/POSTGRES.md)
 #
 # MÁY THỬ / MÁY NỘI BỘ: dashboard bỏ đăng nhập (DASHBOARD_PUBLIC) và mật khẩu Postgres là mặc định.
@@ -102,10 +102,10 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
-  # Lịch việc nền — thay systemd timer của máy chủ (ops/docker/lich.py).
-  lich:
+  # Lịch việc nền — thay systemd timer của máy chủ (ops/docker/scheduler.py).
+  scheduler:
     <<: *python
-    command: ["python", "ops/docker/lich.py"]
+    command: ["python", "ops/docker/scheduler.py"]
     depends_on:
       migrate:
         condition: service_completed_successfully

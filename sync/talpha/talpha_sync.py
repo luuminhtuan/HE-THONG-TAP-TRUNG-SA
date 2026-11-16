@@ -35,13 +35,13 @@ load_credentials_to_env()
 
 # ── sync/core imports ────────────────────────────────────────────
 from sync.core.business_rules import STATUS_CATEGORY_MAP, convert_order_currency, pos_shops_from_markets
-from sync.core.thi_truong import load_rules
+from sync.core.market_config import load_rules
 from sync.core import pg_writer
 from sync.core.pos_client import PoscakeClient, PosFetchError
 from sync.core.partner_sheet import normalize_rows, read_sheet
 from sync.core.meta_client import MetaAdsClient, MetaFetchError
-from sync.core.tkqc import meta_tokens, ad_accounts_to_fetch
-from sync.core.tk_loi import split_failed_accounts
+from sync.core.ad_accounts import meta_tokens, ad_accounts_to_fetch
+from sync.core.failed_accounts import split_failed_accounts
 
 # ── Config ───────────────────────────────────────────────────────
 FB_TOKEN = (
@@ -61,7 +61,7 @@ def _pos_shops():
     thì sớm muộn cũng lệch nhau — nay chỉ còn một chỗ khai là config.
 
     Luật dựng danh sách (nước sắp chạy, nước đã tắt) ở pos_shops_from_markets — có test. Luật đã
-    phủ thị trường nhập ở /admin → Thị trường (sync/core/thi_truong.py, 04/11/2026).
+    phủ thị trường nhập ở /admin → Thị trường (sync/core/market_config.py, 04/11/2026).
     """
     return pos_shops_from_markets(load_rules(repo=PROJECT_DIR).get("markets") or {})
 
@@ -98,7 +98,7 @@ def _pg():
     return _pg_conn
 
 # ── TKQC: MỌI tài khoản token đọc được (04/11/2026) ──────────────
-# Không còn danh sách gõ tay ở talpha.yaml — xem sync/core/tkqc.py. Hỏi một lần mỗi vòng chạy.
+# Không còn danh sách gõ tay ở talpha.yaml — xem sync/core/ad_accounts.py. Hỏi một lần mỗi vòng chạy.
 _ad_accounts_cache = None
 
 def _ad_accounts() -> list:
@@ -372,7 +372,7 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
 
     today = until or datetime.utcnow().strftime('%Y-%m-%d')
     since = since or (datetime.utcnow() - timedelta(days=days_back)).strftime('%Y-%m-%d')
-    # Mỗi TKQC đọc bằng token đầu tiên thấy nó (nhiều BM / app — sync/core/tkqc.py).
+    # Mỗi TKQC đọc bằng token đầu tiên thấy nó (nhiều BM / app — sync/core/ad_accounts.py).
     client_by_token = {}
 
     fields = (
@@ -448,7 +448,7 @@ def sync_fb_ads(days_back: int = 1, since: str = None, until: str = None) -> tup
 
     if failed:
         # 28/10/2026 (Sỹ Anh): TK nào chết thì kệ nó, vẫn ghi Sheet bằng các TK còn lại — chỉ chặn
-        # khi KHÔNG TK nào đọc được (token chết / app bị chặn). Xem sync/core/tk_loi.py. Dòng
+        # khi KHÔNG TK nào đọc được (token chết / app bị chặn). Xem sync/core/failed_accounts.py. Dòng
         # "TKQC BỎ QUA …" dưới đây được daily_guarded.sh bóc thành nhãn TKQC_BO_QUA để bot Zalo
         # báo tên — đừng đổi chữ.
         skipped, blocked = split_failed_accounts(failed, len(_ad_accounts()))

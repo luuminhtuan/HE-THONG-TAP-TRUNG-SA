@@ -28,7 +28,7 @@ PRIVATE_TABLES = ("app_documents", "market_overrides", "market_monthly_reports",
 
 
 def _rules() -> dict:
-    from sync.core.thi_truong import load_rules
+    from sync.core.market_config import load_rules
     return load_rules(str(RULES_FILE), str(REPO))
 
 

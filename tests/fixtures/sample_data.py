@@ -3,8 +3,8 @@ Dữ liệu MẪU cho Postgres trên máy thử — hình dạng như thật (4 
 dòng hàng nối danh mục SP, đủ các trạng thái) để chạy thử dashboard, view và báo cáo khi chưa nhập
 khoá Meta / POS. KHÔNG phải số thật.
 
-  DATABASE_URL=postgresql://talpha:talpha@127.0.0.1:5433/talpha python3 tests/fixtures/du_lieu_mau.py
-  (hoặc: docker compose run --rm --entrypoint python migrate tests/fixtures/du_lieu_mau.py)
+  DATABASE_URL=postgresql://talpha:talpha@127.0.0.1:5433/talpha python3 tests/fixtures/sample_data.py
+  (hoặc: docker compose run --rm --entrypoint python migrate tests/fixtures/sample_data.py)
 
 Chỉ ghi vào database đang trống đơn — có đơn rồi (đã kéo số thật) thì dừng, không trộn số giả vào.
 Ghi qua đúng đường sync ghi (pg_writer), nên bảng _raw / bảng sạch y như sau một vòng sync.

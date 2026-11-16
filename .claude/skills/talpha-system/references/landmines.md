@@ -98,6 +98,6 @@ không có bản chép runtime.
 
 ## 6. Lộ trình tối ưu đã đề xuất
 
-Xem `docs/proposals/AUDIT_HE_THONG_2026-07-29.md` phần 3 (P0 quick-fix / P1 hợp nhất
+Xem `docs/proposals/SYSTEM_AUDIT_2026-07-29.md` phần 3 (P0 quick-fix / P1 hợp nhất
 nguồn sự thật / P2 nền tảng). Ưu tiên: rules file dùng chung → attribution chung →
 hợp nhất 2 bản sync → sync health alert.

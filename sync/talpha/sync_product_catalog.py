@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from sync.core import pg_writer  # noqa: E402
 from sync.core.business_rules import pos_shops_from_markets  # noqa: E402
 from sync.core.pg import get_connection  # noqa: E402
-from sync.core.thi_truong import load_rules  # noqa: E402
+from sync.core.market_config import load_rules  # noqa: E402
 
 # Trên máy chủ khoá POS do systemd nạp (talpha-catalog.service đọc dashboard-ui/.env.local).
 # Chạy tay ở máy dev thì đọc .env cạnh script hoặc theo cwd.

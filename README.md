@@ -29,7 +29,7 @@ tự động (mọi TKQC các token Meta đọc được).
 | Báo cáo tháng | `ops/talpha_reports/format_all.py` → bảng `bao_cao_tab` (+ file Google Sheet nếu có khoá Google) |
 | Bot Zalo | `ops/zalo-alerts/` — mỗi nước một nhóm, tin ads + vận đơn |
 | Luật nghiệp vụ | `config/talpha_rules.json` — tỷ giá, số chia tiền POS, marketer, phí 3PL, giá vốn, phân quyền |
-| Việc nền | Docker: `ops/docker/lich.py`. Production: systemd timer trên VPS |
+| Việc nền | Docker: `ops/docker/scheduler.py`. Production: systemd timer trên VPS |
 
 ## Chạy
 

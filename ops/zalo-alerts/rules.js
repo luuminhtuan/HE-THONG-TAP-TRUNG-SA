@@ -8,10 +8,10 @@
 const fs = require("fs");
 const path = require("path");
 
-const { applyMarketOverrides, loadMarketOverrides } = require("./thi_truong");
+const { applyMarketOverrides, loadMarketOverrides } = require("./market_config");
 
 const RULES_FILE = path.join(__dirname, "..", "..", "config", "talpha_rules.json");
-// Đã phủ thị trường nhập ở /admin → Thị trường (04/11/2026, xem thi_truong.js) — nước thêm, sửa,
+// Đã phủ thị trường nhập ở /admin → Thị trường (04/11/2026, xem market_config.js) — nước thêm, sửa,
 // tắt trên trang tới bot ngay lần khởi động sau.
 const RULES = applyMarketOverrides(JSON.parse(fs.readFileSync(RULES_FILE, "utf8")), loadMarketOverrides());
 

@@ -30,7 +30,7 @@
 //     về kho hải ngoại 30 ngày miễn phí — như Đài, không gửi lại là mất.
 // "Hàng hoàn còn hạn lưu kho" được liệt kê riêng: gửi lại cho khách mới thì gỡ được giá vốn.
 //
-// Hàm THUẦN — không đọc file, không gọi mạng (tests/lai-lo.test.cjs). Nạp số thật ở
+// Hàm THUẦN — không đọc file, không gọi mạng (tests/income-statement.test.cjs). Nạp số thật ở
 // lib/talpha/income-statement-sources.ts, ráp ở app/api/talpha/income-statement/route.ts.
 // ═══════════════════════════════════════════════════════════════════
 

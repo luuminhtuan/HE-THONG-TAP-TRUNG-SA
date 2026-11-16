@@ -1,11 +1,11 @@
 """
 Thị trường nhập ở /admin → Thị trường (04/11/2026) — phủ lên config/talpha_rules.json.
 
-Chạy: TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/test_thi_truong_phu.py -q
+Chạy: TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/test_market_overrides.py -q
 
 Canh ba chỗ làm sai số nếu trượt:
   • bản Python phủ khác bản dashboard / bot → Sheet, view và dashboard ra ba con số khác nhau
-    (bộ dữ liệu chung tests/fixtures/thi_truong_phu.json);
+    (bộ dữ liệu chung tests/fixtures/market_overrides.json);
   • nước thêm trên trang không vào CASE tỷ giá / số chia của view Postgres → doanh thu nước đó ra 0
     trên mọi tab đọc view (ELSE 0.0), hoặc luật đổi mà view không dựng lại;
   • vòng ghi Sheet đọc luật gốc, bỏ qua nước mới → Sheet thiếu cả một nước.
@@ -19,9 +19,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from sync.core.business_rules import pos_shops_from_markets  # noqa: E402
-from sync.core.thi_truong import load_market_overrides, apply_market_overrides  # noqa: E402
+from sync.core.market_config import load_market_overrides, apply_market_overrides  # noqa: E402
 
-FIXTURE = json.loads((ROOT / "tests" / "fixtures" / "thi_truong_phu.json").read_text(encoding="utf-8"))
+FIXTURE = json.loads((ROOT / "tests" / "fixtures" / "market_overrides.json").read_text(encoding="utf-8"))
 
 THAILAND = {"markets": {"Thailand": {
     "shop_label": "TH", "shop_id": "123456", "currency": "THB", "currency_symbol": "฿",

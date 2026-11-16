@@ -1,7 +1,7 @@
-// node van_don.test.js   (không gọi mạng, không cần cài zca-js)
+// node shipment_alerts.test.js   (không gọi mạng, không cần cài zca-js)
 // Số liệu dưới đây là số DỰNG cho test, không phải đơn thật.
 const assert = require("assert");
-const { buildShipmentMorning, buildShipmentEvening, fetchShipments, recordNudges, priorNudges, pickupCode, dayEvents, twCustomerMessage } = require("./van_don");
+const { buildShipmentMorning, buildShipmentEvening, fetchShipments, recordNudges, priorNudges, pickupCode, dayEvents, twCustomerMessage } = require("./shipment_alerts");
 const { toZalo, splitMessage } = require("./zalo_text");
 
 let ok = 0;

@@ -12,11 +12,14 @@ Meta đọc được (bảng `tkqc`, `/admin` → TKQC), chạy chung cho mọi 
 ## Chạy
 
 ```bash
-docker compose up -d                    # Postgres + dashboard http://localhost:3200 + lịch việc nền
+docker compose up -d --remove-orphans   # Postgres + dashboard http://localhost:3200 + lịch việc nền (service scheduler)
 cd dashboard-ui && npm test             # phép thử logic đối soát, vận đơn, sổ đơn
 DATABASE_URL=postgresql://talpha:talpha@127.0.0.1:5433/talpha \
   TALPHA_RULES="$PWD/config/talpha_rules.json" python3 -m pytest tests/   # rule nghiệp vụ + cách ghi số
 ```
+
+**Service lịch đổi tên `lich` → `scheduler` (16/11/2026).** Lần đầu chạy bản này PHẢI có `--remove-orphans`:
+thiếu nó thì container `talpha-lich-1` cũ vẫn chạy cạnh `scheduler` mới — hai lịch cùng kéo số mỗi giờ.
 
 Trên máy Mac **phải** truyền `TALPHA_RULES`: loader Python ưu tiên
 `~/talpha_reports/talpha_rules.json` — bản của hệ thống cũ (GCC) còn nằm trên Mac — nên chạy
@@ -66,11 +69,11 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
 * **Lãi lỗ đủ mọi khoản** (Kế toán → Lãi lỗ, 04/11/2026): `lib/talpha/income-statement.ts` (hàm thuần, có
   test) + `income-statement-sources.ts` (kiện thật từng nước) → `/api/talpha/income-statement`. Đây là nơi trả lời
   "lãi thật bao nhiêu"; tab P&L của mục Báo cáo chỉ là số tạm tính.
-* **Sync**: `sync/talpha/talpha_sync.py` + `sync/core/`. Docker: lịch `ops/docker/lich.py` (cùng giờ các
+* **Sync**: `sync/talpha/talpha_sync.py` + `sync/core/`. Docker: lịch `ops/docker/scheduler.py` (cùng giờ các
   systemd timer của VPS).
 * **TKQC tự động** (04/11/2026): mỗi vòng sync hỏi Meta mọi token (Khoá kết nối: `TALPHA_META_ACCESS_TOKEN`,
   `_2`, `_3` — nhiều BM / app) thấy TKQC nào, ghi bảng `tkqc`, kéo chi tiêu của TẤT CẢ vào `fb_ads_tat_ca`
-  (`sync/core/tkqc.py` ↔ `lib/talpha/ad-accounts.ts`). `fb_ads_data` / `fb_adset_data` / `fb_campaign_data` là VIEW
+  (`sync/core/ad_accounts.py` ↔ `lib/talpha/ad-accounts.ts`). `fb_ads_data` / `fb_adset_data` / `fb_campaign_data` là VIEW
   chỉ gồm TKQC loại vao_bao_cao (`talpha_rules.json → tkqc_loai`) — đọc tên cũ là tự đúng. Đổi loại ở
   `/admin` → TKQC, có tác dụng ngay. **Đừng ghi thẳng vào `fb_ads_data`** — nó là view.
   `talpha.yaml → ad_account_ids` chỉ còn là lịch sử (toàn dòng chú thích). `ops/talpha_reports/ad_accounts.json`
@@ -92,8 +95,8 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   ghi log khoá này (`lib/talpha/gemini-key.ts`).
 * **Thị trường trên trang** (04/11/2026): `/admin` → Thị trường thêm nước, sửa tỷ giá, tắt / bật nước.
   Lưu ở bảng `market_overrides` (15/11/2026), PHỦ lên `talpha_rules.json` ở cả dashboard
-  (`lib/talpha/market-config.ts`), sync / Sheet / view (`sync/core/thi_truong.py`) và bot
-  (`ops/zalo-alerts/thi_truong.js`) — ba bản chạy chung `tests/fixtures/thi_truong_phu.json`, sửa
+  (`lib/talpha/market-config.ts`), sync / Sheet / view (`sync/core/market_config.py`) và bot
+  (`ops/zalo-alerts/market_config.js`) — ba bản chạy chung `tests/fixtures/market_overrides.json`, sửa
   luật phủ thì sửa cả ba. Shop POS sinh từ `markets` (`talpha.yaml → poscake` không còn ai đọc).
   Chỉ nước `dang_ban` được kéo đơn / gọi POS; `da_tat` giữ lịch sử. Lưu xong dashboard và bot tự
   khởi động lại (pm2 / docker); vòng sync đầu giờ tự dựng lại view khi tỷ giá / số chia đổi.
@@ -108,7 +111,7 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
 * **Người dùng thấy và tự chạy cập nhật số** (15/11/2026): đèn "Cập nhật lúc…" + nút "Cập nhật ngay" trên
   thanh đầu (`components/talpha/refresh-status.tsx` ↔ `/api/talpha/refresh`). Lịch Docker ghi mỗi lượt vào
   `job_runs` và nhặt yêu cầu ở `refresh_requests` (`sync/core/job_log.py`). Thêm việc nền mới thì chạy qua
-  `run_and_log()` của `ops/docker/lich.py` để nó hiện lên đèn.
+  `run_and_log()` của `ops/docker/scheduler.py` để nó hiện lên đèn.
 
 ## Nguyên tắc cứng — vi phạm là số sai hoặc mất dữ liệu
 
@@ -159,8 +162,8 @@ live, gom đơn theo giờ VN vs timezone từng TKQC. Đừng "fix cho khớp" 
 | `DASHBOARD_MAP.md` | Bản đồ nghiệp vụ — đọc trước tiên |
 | `docs/TALPHA_METRIC_RULES.md` | Source of truth về công thức chỉ số |
 | `docs/DEPLOY_VPS.md` | Dựng và cập nhật máy chủ |
-| `docs/DOI_SOAT_COD.md` | Nghiệp vụ đối soát COD |
-| `docs/CHUAN_DAT_TEN_CAMPAIGN.md` | Quy ước đặt tên campaign (quyết định gán marketer) |
+| `docs/COD_RECONCILIATION.md` | Nghiệp vụ đối soát COD |
+| `docs/CAMPAIGN_NAMING.md` | Quy ước đặt tên campaign (quyết định gán marketer) |
 | `ops/pm2/README.md` | pm2 và systemd timer |
 | `ops/talpha_reports/README.md` | Đường ống báo cáo Google Sheets |
 | `docs/POSTGRES.md` | Kho số Postgres, chạy bằng docker compose, bảng dịch SQL BigQuery → Postgres |

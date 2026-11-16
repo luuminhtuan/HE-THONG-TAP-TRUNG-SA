@@ -1,7 +1,7 @@
-// node tin_gio.test.js — tin MỖI GIỜ + số mess Pancake (Nhật, Sỹ Anh yêu cầu 09/10/2026).
+// node hourly_digest.test.js — tin MỖI GIỜ + số mess Pancake (Nhật, Sỹ Anh yêu cầu 09/10/2026).
 // Số dưới đây là số DỰNG theo đúng dạng /api/talpha/pancake-messages và /api/talpha/realtime trả về.
 const assert = require("assert");
-const { mergeByPage, messFromPancake, buildHourlyDigest } = require("./tin_gio");
+const { mergeByPage, messFromPancake, buildHourlyDigest } = require("./hourly_digest");
 const { buildMarketReport } = require("./daily_report");
 const { MARKETS } = require("./rules");
 const { toZalo } = require("./zalo_text");
@@ -80,7 +80,7 @@ const CAMPS = [
     });
 
     await t("chi tiết camp (12/10/2026): nhãn gọn, chia mess theo click, nhóm QC, phần tăng giờ qua", () => {
-        const { campaignLabel, adsetLabel, splitMessByCampaign } = require("./tin_gio");
+        const { campaignLabel, adsetLabel, splitMessByCampaign } = require("./hourly_digest");
         assert.strictEqual(campaignLabel("JAPAN/ANH/PHI/Birstone/Veloura Collection Gold/10-10"), "PHI/Birstone/10-10");
         assert.strictEqual(campaignLabel("JAPAN/THANG/PHI/042/𝑷𝒓𝒊𝒎𝒆 𝑳𝒆𝒂𝒕𝒉𝒆𝒓 𝑱𝒂𝒑𝒂𝒏/10-12"), "PHI/042/10-12");
         assert.strictEqual(adsetLabel("JP/THANG/PHI/042/𝑷𝒓𝒊𝒎𝒆 𝑳𝒆𝒂𝒕𝒉𝒆𝒓 𝑱𝒂𝒑𝒂𝒏/12-10 VD2 - Bản sao"), "12-10 VD2 - Bản sao");
@@ -138,5 +138,5 @@ const CAMPS = [
         assert.strictEqual(creditedMarketer("Quynh", "Taiwan"), "Quynh");
     });
 
-    console.log(`tin_gio.test.js: ${ok}/${ok} PASS`);
+    console.log(`hourly_digest.test.js: ${ok}/${ok} PASS`);
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -84,7 +84,7 @@ cd ~/talpha_reports && GOOGLE_APPLICATION_CREDENTIALS=runtime/bigquery_key.json 
 
 ## 7. Vị trí log
 
-Nhánh `kho-postgres`: `docker compose logs -f lich` (việc nền), `docker compose logs -f dashboard`,
+Nhánh `kho-postgres`: `docker compose logs -f scheduler` (việc nền), `docker compose logs -f dashboard`,
 `ops/talpha_reports/daily_YYYYMMDD.log` (vòng báo cáo), bảng `job_runs` (đèn "Cập nhật lúc…").
 
 Production (VPS):

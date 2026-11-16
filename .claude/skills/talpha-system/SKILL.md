@@ -36,7 +36,7 @@ File tải lên   ────────► /api/talpha/{cod-recon, ads-recon,
 | Thành phần | Production (VPS) | Nhánh `kho-postgres` (docker compose) |
 |---|---|---|
 | Dashboard | `/opt/talpha`, pm2 `talpha-dashboard` cổng 3000 | service `dashboard`, http://localhost:3200 |
-| Sync | systemd `talpha-sync.timer` → `sync/talpha/talpha_sync.py` | service `lich` (`ops/docker/lich.py`) cùng giờ |
+| Sync | systemd `talpha-sync.timer` → `sync/talpha/talpha_sync.py` | service `lich` (`ops/docker/scheduler.py`) cùng giờ |
 | Báo cáo tháng | systemd `talpha-report.timer` → `/root/talpha_reports/daily_guarded.sh` | `lich` → `ops/talpha_reports/daily_guarded.sh` trong repo |
 | Bot Zalo | pm2 `talpha-zalo-alerts`, mỗi nước một nhóm | service `zalo` (tuỳ chọn) |
 | Bot WhatsApp | **Đã xoá 30/10/2026** (chưa từng chạy trên VPS) | — |
@@ -90,8 +90,8 @@ Văn bản đầy đủ: `docs/TALPHA_METRIC_RULES.md`.
    `fb_ads_data` / `fb_adset_data` / `fb_campaign_data` là **VIEW** chỉ gồm loại "vào báo cáo"
    (`talpha_rules.json → tkqc_loai`). Đừng ghi thẳng vào view. TKQC không nằm trong token nào đọc
    được = thiếu spend âm thầm. (Production BigQuery vẫn theo danh sách khai tay.)
-7. **Luật thị trường có BA bản đọc** (TS `lib/talpha/market-config.ts`, Python `sync/core/thi_truong.py`,
-   bot `ops/zalo-alerts/thi_truong.js`) chạy chung fixture `tests/fixtures/thi_truong_phu.json` —
+7. **Luật thị trường có BA bản đọc** (TS `lib/talpha/market-config.ts`, Python `sync/core/market_config.py`,
+   bot `ops/zalo-alerts/market_config.js`) chạy chung fixture `tests/fixtures/market_overrides.json` —
    sửa luật phủ thì sửa cả ba.
 8. **Bẫy Unicode tên**: POS lưu "Chu Thuý" (sắc trên Y) ≠ "Thúy" — match bằng `"THU"`.
 9. **Nhật không có số tin nhắn trên Meta** (luật Nhật) — mess Nhật đếm từ Pancake.
@@ -108,6 +108,6 @@ Thêm TKQC, chữa số thiếu, re-sync tay, xử lý lock kẹt, vị trí log
 - `docs/TALPHA_METRIC_RULES.md` — rule chỉ số + quy trình chẩn đoán (source of truth)
 - `docs/POSTGRES.md` — kho số Postgres, docker compose, bảng dịch SQL BigQuery → Postgres
 - `docs/DEPLOY_VPS.md` — dựng và cập nhật máy chủ (production)
-- `docs/DOI_SOAT_COD.md` — nghiệp vụ đối soát COD
-- `docs/CHUAN_DAT_TEN_CAMPAIGN.md` — quy ước tên campaign (quyết định gán marketer)
+- `docs/COD_RECONCILIATION.md` — nghiệp vụ đối soát COD
+- `docs/CAMPAIGN_NAMING.md` — quy ước tên campaign (quyết định gán marketer)
 - `docs/ZALO_BOT.md` — bot Zalo

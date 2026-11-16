@@ -25,7 +25,7 @@ def load_markets():
     sys.path.insert(0, ROOT)
     from sync.core.credentials import load_credentials_to_env   # key POS nhập ở /admin → Khoá kết nối
     load_credentials_to_env()
-    from sync.core.thi_truong import load_rules
+    from sync.core.market_config import load_rules
     return load_rules(repo=ROOT).get("markets") or {}
 
 

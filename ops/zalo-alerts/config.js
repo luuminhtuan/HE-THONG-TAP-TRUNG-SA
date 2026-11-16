@@ -26,7 +26,7 @@ function absolutize(v) {
 // API dashboard nay đòi đăng nhập; bot không đăng nhập mà gửi header x-talpha-token, chìa
 // đọc từ data/.internal_token (dashboard tự sinh lần đầu cần, cùng máy). Gói fetch ở ĐÂY —
 // mọi file đều require config.js trước khi gọi — để MỌI lượt gọi tới dashboard (bot.js,
-// daily_report.js, van_don.js…) tự mang chìa, không phải sửa từng chỗ. Đọc file mỗi lượt:
+// daily_report.js, shipment_alerts.js…) tự mang chìa, không phải sửa từng chỗ. Đọc file mỗi lượt:
 // bot khởi động trước dashboard vẫn có chìa từ lượt sau.
 const TOKEN_FILE = path.join(__dirname, "..", "..", "data", ".internal_token");
 function readInternalToken() {

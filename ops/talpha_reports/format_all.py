@@ -31,7 +31,7 @@ if KEY and not FILE_SET:
     # KHÔNG ghi Sheet, KHÔNG lùi về file tháng khác — số vẫn ghi vào Postgres cho dashboard + bot.
     print(f"CANH BAO: CHUA CO BO FILE THANG {_T.month}/{_T.year} — KHONG GHI SHEET. {FILE_SET_SOURCE}")
     print(f"    Tao thu muc 'Tháng {_T.month}' trong BÁO CÁO ADS ANTALO + file 'TỔNG TEAM THÁNG {_T.month}' va file tung nguoi "
-          f"(hoac chay Apps Script tao_thang_moi.gs), share thu muc goc cho service account.")
+          f"(hoac chay Apps Script create_month_files.gs), share thu muc goc cho service account.")
 WRITE_SHEET=bool(KEY and FILE_SET)
 FROM=_T.replace(day=1).isoformat(); TO=_T.isoformat()  # đầu tháng -> hôm nay (tháng cũ: -> cuối tháng)
 # ── RULE CHUNG: đọc từ talpha_rules.json qua loader (golden-test 29/07 = 100% khớp bản cũ).

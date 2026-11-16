@@ -52,7 +52,7 @@ deploy là `ops/deploy/from-mac.sh`.
 ## Job theo giờ không nằm trong pm2
 
 Việc chạy nền trên máy chủ là **systemd timer**, không phải pm2. Máy chủ chạy bản BigQuery của
-`main`; nhánh `kho-postgres` (Postgres) chạy các việc này bằng lịch `ops/docker/lich.py` trong
+`main`; nhánh `kho-postgres` (Postgres) chạy các việc này bằng lịch `ops/docker/scheduler.py` trong
 docker compose, cùng giờ.
 
 | Timer | Làm gì | Xem |

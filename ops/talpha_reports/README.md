@@ -4,7 +4,7 @@ Bản version-control của các script chạy ở `/root/talpha_reports/` trên
 **SỬA Ở ĐÂY (repo)** → chạy `./deploy_runtime.sh --yes` để đẩy sang runtime.
 KHÔNG sửa tay file trong `/root/talpha_reports/`.
 
-Nhánh `kho-postgres` chạy bằng docker compose: lịch `ops/docker/lich.py` gọi thẳng
+Nhánh `kho-postgres` chạy bằng docker compose: lịch `ops/docker/scheduler.py` gọi thẳng
 `ops/talpha_reports/daily_guarded.sh` **trong repo** (không có bản chép runtime), log ở
 `ops/talpha_reports/daily_<ngày>.log`.
 
@@ -49,7 +49,7 @@ khác nhau cùng ghi một bộ bảng mỗi giờ, bản nào chạy sau thì �
 | `check_meta_token.py` | Kiểm token Meta TRƯỚC khi tin vào Sheet. Exit 0 = mọi TKQC đọc được |
 | `report_files.py` | **Bộ file của TỪNG THÁNG** (01/10/2026): khai tay `report_files/YYYY-MM.json`, không có thì quét thư mục "Tháng N" trên Drive. Tháng tính theo giờ VN |
 | `new_month_files.py` | Soát bộ file một tháng trên Drive (`python3 new_month_files.py 2026-10`) — đủ file chưa, file nào sai tên/.xlsx. CHỈ ĐỌC |
-| `tao_thang_moi.gs` | Apps Script chạy bằng tài khoản chủ thư mục: share thư mục gốc cho service account, chép khuôn tháng trước sang "Tháng N", tự chạy ngày 25 |
+| `create_month_files.gs` | Apps Script chạy bằng tài khoản chủ thư mục: share thư mục gốc cho service account, chép khuôn tháng trước sang "Tháng N", tự chạy ngày 25 |
 | `deploy_runtime.sh` | Deploy MỘT CHIỀU repo → runtime (checksum diff, backup, giữ lock) |
 | `snapshot_cron.sh` | Gọi `/api/talpha/sync-inventory` để làm tươi `inventory_snapshot` — dự phòng cho tab Kho. Mỗi giờ phút :40 (`talpha-snapshot.timer` trên VPS, `lich` trong docker) |
 | `catalog_cron.sh` | Đồng bộ danh mục sản phẩm từ POS — 05:10 mỗi ngày (`talpha-catalog.timer`) |
@@ -70,7 +70,7 @@ sáng → từ 07:22 cả 16 file "Tháng 9" bị xoá sạch tab, ghi số thá
 `TALPHA_REPORT_MONTH=2026-09 python format_all.py` (giữ `.lock` như vòng chạy).
 
 **Tháng mới:** service account không tạo được file (quota Drive = 0), nên file do người tạo —
-chạy Apps Script `tao_thang_moi.gs` (chép khuôn tháng trước, tự chạy ngày 25), hoặc tạo tay
+chạy Apps Script `create_month_files.gs` (chép khuôn tháng trước, tự chạy ngày 25), hoặc tạo tay
 theo mẫu dưới. Thư mục gốc phải share **Editor** cho
 `talpha-dashboard@cty-507710.iam.gserviceaccount.com`. Soát: `python3 new_month_files.py 2026-10`.
 
@@ -116,14 +116,14 @@ Soát bố cục bằng số thật mà không ghi gì: `TALPHA_FORMAT_DRY=1 pyt
 * **Bộ shadow-run** `shadow_month.py` · `shadow_run.sh` · `compare_shadow.py` (11/09/2026)
   — dựng để đối chiếu engine mới với engine cũ trước khi cutover. Cutover xong rồi.
 * **5 file launchd `.plist`** (11/09/2026) — hạ tầng đã chuyển sang systemd trên VPS
-  (docker compose: `ops/docker/lich.py`).
+  (docker compose: `ops/docker/scheduler.py`).
 * **`team_report.py`** — không còn trong repo.
 
 ## Lưu ý
 
 * `format_all.parse_camp` tìm tên thị trường ở BẤT KỲ vị trí nào rồi lấy marketer ô kế
   tiếp → xử lý được tiền tố lạ (`Tặng/`, `LADI/`). Campaign chuẩn:
-  `Thị trường / Marketer / SP / ad_id / ...` — xem `docs/CHUAN_DAT_TEN_CAMPAIGN.md`.
+  `Thị trường / Marketer / SP / ad_id / ...` — xem `docs/CAMPAIGN_NAMING.md`.
 * Marketer chưa map bị loại khỏi báo cáo — đúng ý, không phải lỗi.
 * Sheet gom đơn theo VN+7; spend theo timezone từng TKQC → **từng ngày lệch, cả tháng
   khớp**. Không phải bug.

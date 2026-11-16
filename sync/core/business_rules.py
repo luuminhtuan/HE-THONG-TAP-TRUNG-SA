@@ -23,8 +23,8 @@ from typing import Optional
 # phân ISO 4217. Shop Đài lưu NGUYÊN TWD (cod=950 ⇒ 950 TWD) → 1; shop GCC cũ lưu minor
 # units (cod=9900 ⇒ 99,00 SAR) → 100. Trước 20/08 mọi nơi chia 100 ⇒ tiền Đài tụt 100 lần.
 def _load_markets() -> dict:
-    # Đã phủ thị trường nhập ở /admin → Thị trường (04/11/2026) — xem sync/core/thi_truong.py.
-    from sync.core.thi_truong import load_rules
+    # Đã phủ thị trường nhập ở /admin → Thị trường (04/11/2026) — xem sync/core/market_config.py.
+    from sync.core.market_config import load_rules
     return {k: v for k, v in (load_rules().get("markets") or {}).items() if isinstance(v, dict)}
 
 

@@ -28,7 +28,7 @@ cho chính máy đó (127.0.0.1). Đưa ra ngoài thì phải bật đăng nhậ
 
 | Lệnh | Việc |
 |:--|:--|
-| `docker compose logs -f lich` | xem các việc nền chạy |
+| `docker compose logs -f scheduler` | xem các việc nền chạy |
 | `docker compose logs -f dashboard` | log dashboard |
 | `docker compose run --rm migrate dem` | số dòng từng bảng + lần sync gần nhất |
 | `docker compose run --rm migrate view --ep` | dựng lại bộ view ngay |
@@ -45,7 +45,7 @@ cổng thì: `PG_PORT=5434 DASHBOARD_PORT=3300 docker compose up -d`.
 | `db` | Postgres 17 |
 | `migrate` | chạy mỗi lần `up`: bảng còn thiếu (`db/migrations/`) + dựng lại view nếu luật đổi |
 | `dashboard` | Next.js (`next dev`) ở cổng 3200 |
-| `lich` | việc nền, giờ Việt Nam (`ops/docker/lich.py`) — cùng giờ systemd timer của máy chủ |
+| `lich` | việc nền, giờ Việt Nam (`ops/docker/scheduler.py`) — cùng giờ systemd timer của máy chủ |
 | `zalo` (tuỳ chọn) | bot Zalo: `docker compose --profile zalo run --rm zalo node pair.js` để ghép nick, rồi `docker compose --profile zalo up -d zalo` |
 
 Lịch việc nền: :00 mỗi giờ kéo đơn POS + chi tiêu Meta · :20 dựng báo cáo tháng · :40 chụp tồn kho dự
@@ -126,7 +126,7 @@ DATABASE_URL=postgresql://talpha:talpha@127.0.0.1:5433/talpha \
 
 Phần chạy trên Postgres dựng một schema tạm rồi xoá — không đụng bảng thật. Dữ liệu mẫu để thử giao diện
 khi chưa có khoá (4 nước, 40 ngày, KHÔNG phải số thật — chỉ ghi vào database đang trống):
-`docker compose run --rm --entrypoint python migrate tests/fixtures/du_lieu_mau.py`. Xoá đi trước khi nhập
+`docker compose run --rm --entrypoint python migrate tests/fixtures/sample_data.py`. Xoá đi trước khi nhập
 khoá thật: `docker compose down -v && docker compose up -d`.
 
 ## Còn lại
@@ -143,12 +143,12 @@ khoá thật: `docker compose down -v && docker compose up -d`.
 | Bảng | Thay cho | Đọc / ghi ở |
 |:--|:--|:--|
 | `app_documents` | `data/<kho>.json` — sao kê COD, việc đối soát, thanh toán QC, vận đơn, chi phí vận hành | `lib/talpha/store.ts` |
-| `market_overrides` | `data/thi_truong.json` | `lib/talpha/market-store.ts`, `rules.ts`, `sync/core/thi_truong.py`, bot qua `/api/talpha/market-config?overrides=1` |
+| `market_overrides` | `data/thi_truong.json` | `lib/talpha/market-store.ts`, `rules.ts`, `sync/core/market_config.py`, bot qua `/api/talpha/market-config?overrides=1` |
 | `market_monthly_reports` | `data/bao_cao_nuoc/<tháng>.json` | `format_all.py` ghi; `lib/talpha/market-monthly-report.ts`, bot qua `/api/talpha/market-report` |
 | `users` | `config/users.json` / `USERS_JSON` | `lib/users.ts` |
 | `api_credentials` | `dashboard-ui/.env.khoa.local` — MÃ HOÁ (pgcrypto) bằng `TALPHA_ENCRYPTION_KEY` | `lib/talpha/credentials.ts`, `sync/core/credentials.py` |
 | `file_imports` | — sổ file cũ nào đã chép vào kho | `sync/core/file_import.py` |
-| `job_runs` · `refresh_requests` | — (migration 0007) sổ lượt việc nền + yêu cầu "Cập nhật ngay" | `ops/docker/lich.py` qua `sync/core/job_log.py`; dashboard đọc ở `/api/talpha/refresh` |
+| `job_runs` · `refresh_requests` | — (migration 0007) sổ lượt việc nền + yêu cầu "Cập nhật ngay" | `ops/docker/scheduler.py` qua `sync/core/job_log.py`; dashboard đọc ở `/api/talpha/refresh` |
 
 Bước `migrate` chép mỗi file cũ vào kho MỘT lần (không ghi đè dòng đã có, không xoá file) — chép lần
 hai sẽ làm sống lại thứ người dùng đã xoá trên trang. Sau đó file cũ chỉ còn là bản lưu.

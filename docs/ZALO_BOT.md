@@ -181,7 +181,7 @@ Lệnh lỗi → bot trả một dòng `⚠️ Chưa lấy được số lúc n�
 * `keepAlive` mỗi giờ và lưu lại cookie mới vào `.zalo_session.json`.
 
 **Thị trường đổi** (`/admin` → Thị trường): mỗi 60 giây bot so vân tay `market_overrides`
-(`thi_truong.js`, qua `/api/talpha/market-config?overrides=1`). Khác lúc khởi động và **không** đang gửi →
+(`market_config.js`, qua `/api/talpha/market-config?overrides=1`). Khác lúc khởi động và **không** đang gửi →
 `process.exit(0)` để pm2 / Docker dựng lại bot với luật mới.
 
 **Chạy tay** (thêm `--dry-run` để chỉ in, không đăng nhập, không gửi):

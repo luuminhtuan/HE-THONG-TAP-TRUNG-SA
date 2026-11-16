@@ -41,7 +41,7 @@ meta_ads:
   # (act_1120860290875442, giờ Los Angeles, 0đ — TK mồi, không chạy).
   #
   # TỪ 28/10/2026 (Sỹ Anh: "tkqc nào die thì kệ nó"): TK đọc lỗi nào — chết, mất quyền, lỗi mạng —
-  # sync cũng TỰ BỎ QUA, vẫn ghi Sheet bằng các TK còn lại, bot Zalo nhắc tên TK (sync/core/tk_loi.py).
+  # sync cũng TỰ BỎ QUA, vẫn ghi Sheet bằng các TK còn lại, bot Zalo nhắc tên TK (sync/core/failed_accounts.py).
   # Chỉ chặn vòng ghi khi KHÔNG TK nào đọc được (token chết / app bị chặn). TK chết hẳn thì bỏ id
   # dưới đây cho khỏi bị nhắc mỗi tin. (Luật cũ 30/09 chặn cả vòng khi TK đang tiêu tiền mà chết.)
   #
@@ -51,7 +51,7 @@ meta_ads:
   #   act_2201353496727281  SA ANTALO 01 — Meta KHOÁ 14/10, chi lần cuối 13/10
   #   act_1005930495298028  SL ANTALO 01 — Meta khoá, chi lần cuối 02/10
   #   act_845959551784078   Xinh Mi Nguyen — chưa có camp, mất quyền 14/10
-  # Hai cái đầu 7 ngày qua có tiêu tiền nên tk_loi CHẶN: từ vòng 14:23 ngày 14/10 mọi vòng
+  # Hai cái đầu 7 ngày qua có tiêu tiền nên failed_accounts CHẶN: từ vòng 14:23 ngày 14/10 mọi vòng
   # sync rc=1, Sheet đứng ở số 13:24 ngày 14/10 (tin Zalo 13:00 ngày 15/10 báo "sync đứng 23 giờ
   # 37 phút"). Cả hai đã chết hẳn (khoá / nợ) nên không tiêu thêm được — bỏ ra KHÔNG thiếu số,
   # chi tiêu cũ (tháng 10: Taiwan 5 5,84 tr · SA ANTALO 01 7,76 tr) vẫn nằm trong fb_ads_data.
@@ -103,7 +103,7 @@ meta_ads:
   # mặt trong mọi báo cáo chỉ là danh sách này.
   # ── KHÔNG CÒN AI ĐỌC (04/11/2026) ── Danh sách TKQC nay TỰ ĐỘNG: mỗi vòng sync hỏi Meta token đọc được
   # TKQC nào (/me/adaccounts), kéo chi tiêu của tất cả; loại từng TK (vào báo cáo hay không) chọn ở
-  # /admin → TKQC. Xem sync/core/tkqc.py. Danh sách dưới giữ làm lịch sử các TK đã qua.
+  # /admin → TKQC. Xem sync/core/ad_accounts.py. Danh sách dưới giữ làm lịch sử các TK đã qua.
   ad_account_ids:
     # - "act_256210853826298"   # Sỹ Anh Taiwan 4 — BỎ 03/11/2026 (token app mới không thấy; chi lần cuối 22/10)
     # - "act_620354173588998"   # ANTALO 4 - CHẠY VPCS + THUẾ — BỎ 28/10/2026 (Meta vô hiệu hoá, token mới không thấy)

@@ -1,5 +1,5 @@
 """
-sync/core/tkqc.py — danh bạ TKQC tự động (04/11/2026).
+sync/core/ad_accounts.py — danh bạ TKQC tự động (04/11/2026).
 
 Trước: danh sách TKQC gõ tay ở config/projects/talpha.yaml. Token đổi, BM đổi, TK chết / TK mới là phải
 sửa file rồi deploy — 28/10 và 03/11/2026 đều mất nửa ngày chi tiêu vì danh sách lệch với token.

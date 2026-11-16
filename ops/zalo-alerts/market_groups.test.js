@@ -1,4 +1,4 @@
-// node nhom_nuoc.test.js   (không gọi mạng, không cần cài zca-js)
+// node market_groups.test.js   (không gọi mạng, không cần cài zca-js)
 // Mỗi nước một nhóm "ADS + VẬN ĐƠN <nước>" (Sỹ Anh chốt 08/10/2026). Số dưới đây là số DỰNG.
 const assert = require("assert");
 const { buildMarketReport, buildMarketAlert } = require("./daily_report");
@@ -173,5 +173,5 @@ const noNetworkFetch = async (url) => { throw new Error(`không được gọi m
         assert.ok(tw.includes("/vandon") && tw.includes("xếp hạng từng người"));
     });
 
-    console.log(`nhom_nuoc.test.js: ${ok}/${ok} PASS`);
+    console.log(`market_groups.test.js: ${ok}/${ok} PASS`);
 })().catch((e) => { console.error(e); process.exit(1); });

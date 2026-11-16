@@ -98,7 +98,7 @@ Cột "Deploy" trong `references/sections.md`.
   `ops/talpha_reports/*`) = **CHƯA XONG**, không được báo done. Thao tác cụ thể theo
   `talpha-system` → `references/runbook.md`.
 - **Nhánh `kho-postgres`**: chưa có máy chủ — "deploy" là `docker compose up -d` (đổi
-  `requirements.txt` thì `docker compose build lich`), bản chạy đọc thẳng code trong repo.
+  `requirements.txt` thì `docker compose build scheduler`), bản chạy đọc thẳng code trong repo.
   **Đừng đưa nhánh này lên `main` rồi deploy khi VPS chưa có Postgres.**
 
 ## Báo cáo cuối phiên — theo đúng mẫu

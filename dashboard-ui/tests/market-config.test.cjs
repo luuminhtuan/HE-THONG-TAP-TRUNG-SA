@@ -1,4 +1,4 @@
-// node tests/thi-truong.test.cjs (chạy qua npm test — tsc dựng .test-build trước)
+// node tests/market-config.test.cjs (chạy qua npm test — tsc dựng .test-build trước)
 // Thị trường nhập ở /admin → Thị trường (04/11/2026): phủ lên talpha_rules.json, và soát nước nhập
 // trên trang. Bộ dữ liệu phủ dùng chung với bản Python và bản bot — ba bản phải ra cùng kết quả.
 const assert = require("assert");
@@ -9,7 +9,7 @@ const R = require("../.test-build/rules.js");
 
 let ok = 0;
 const t = (name, fn) => { try { fn(); ok++; console.log("  ✓", name); } catch (e) { console.error("  ✗", name); throw e; } };
-const FIXTURE = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "tests", "fixtures", "thi_truong_phu.json"), "utf8"));
+const FIXTURE = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "tests", "fixtures", "market_overrides.json"), "utf8"));
 const withoutNotes = (d) => Object.fromEntries(Object.entries(d).filter(([k]) => !k.startsWith("_")));
 
 console.log("── Thị trường: phủ lên luật gốc ──");

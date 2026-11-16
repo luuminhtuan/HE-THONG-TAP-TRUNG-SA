@@ -10,7 +10,7 @@ Lệnh ngoài danh sách "được chạy" thì hỏi trước.
 - `git status`, `git diff`, `git log`, `git branch`, `git show`, `git worktree list`
 
 ### Docker — xem và bật
-- `docker compose ps`, `docker compose logs -f lich | dashboard | db`
+- `docker compose ps`, `docker compose logs -f scheduler | dashboard | db`
 - `docker compose up -d` (bật Postgres + dashboard http://localhost:3200 + lịch việc nền)
 - `docker compose restart lich` (chạy ngay một vòng kéo số + dựng báo cáo)
 - `docker compose run --rm migrate dem` (số dòng từng bảng + lần sync gần nhất)

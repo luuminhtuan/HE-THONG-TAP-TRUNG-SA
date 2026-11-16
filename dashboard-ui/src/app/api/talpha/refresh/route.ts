@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // đăng nhập đều xem và bấm được (API_RULES: tabs "*").
 //
 //   GET   → đang cập nhật không, số mới tới lúc nào, vòng báo cáo gần nhất, TKQC / shop đọc lỗi
-//   POST  → ghi yêu cầu "Cập nhật ngay"; lịch việc nền (ops/docker/lich.py) nhặt trong ~15 giây, kéo
+//   POST  → ghi yêu cầu "Cập nhật ngay"; lịch việc nền (ops/docker/scheduler.py) nhặt trong ~15 giây, kéo
 //           số rồi dựng báo cáo (1–3 phút). Đang có yêu cầu chờ / đang chạy thì không ghi thêm.
 
 /** Vừa cập nhật xong thì chờ chừng này mới cho bấm lại — Meta, POS giới hạn số lượt gọi. */

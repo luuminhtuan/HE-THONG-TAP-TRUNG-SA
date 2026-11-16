@@ -1,5 +1,5 @@
 /**
- * Loại TKQC — luật thuần (04/11/2026), cùng luật với sync/core/tkqc.py → initial_account_type. Khai ở
+ * Loại TKQC — luật thuần (04/11/2026), cùng luật với sync/core/ad_accounts.py → initial_account_type. Khai ở
  * talpha_rules.json → tkqc_loai. Chỉ loại vao_bao_cao mới vào báo cáo (view fb_ads_data).
  */
 import { RULES } from "./rules";
@@ -13,7 +13,7 @@ export type AdAccountConfig = {
 };
 
 /** Nhiều token Meta (TKQC ở nhiều BM / app). Thứ tự = ưu tiên: TK đọc bằng token ĐẦU TIÊN thấy nó.
- *  Cùng danh sách với sync/core/tkqc.py → BIEN_TOKEN. */
+ *  Cùng danh sách với sync/core/ad_accounts.py → BIEN_TOKEN. */
 export const META_TOKEN_VARS = ["TALPHA_META_ACCESS_TOKEN", "TALPHA_META_ACCESS_TOKEN_2", "TALPHA_META_ACCESS_TOKEN_3"];
 
 export const AD_ACCOUNT_CFG: AdAccountConfig = (RULES as unknown as { tkqc_loai?: AdAccountConfig }).tkqc_loai || {};

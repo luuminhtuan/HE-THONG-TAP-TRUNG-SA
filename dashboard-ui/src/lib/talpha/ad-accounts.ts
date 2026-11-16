@@ -1,5 +1,5 @@
 /**
- * Danh bạ TKQC tự động (04/11/2026) — bản dashboard của sync/core/tkqc.py.
+ * Danh bạ TKQC tự động (04/11/2026) — bản dashboard của sync/core/ad_accounts.py.
  *
  * Không còn danh sách TKQC gõ tay (talpha.yaml → ad_account_ids, ops/talpha_reports/ad_accounts.json).
  * Mỗi vòng sync hỏi Meta token đọc được TKQC nào, ghi vào bảng tkqc và kéo chi tiêu của TẤT CẢ vào

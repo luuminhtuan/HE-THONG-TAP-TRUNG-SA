@@ -20,7 +20,7 @@ with open(RULES_PATH, encoding="utf-8") as _f:
 
 def _with_market_overrides(rules):
     """Phủ thị trường nhập ở /admin → Thị trường (04/11/2026) lên luật vừa đọc — CÙNG hàm với sync
-    (sync/core/thi_truong.py của repo). Bản chép runtime trên máy chủ tìm repo qua TALPHA_REPO
+    (sync/core/market_config.py của repo). Bản chép runtime trên máy chủ tìm repo qua TALPHA_REPO
     (systemd đặt /opt/talpha). Không tìm thấy repo thì KÊU và chạy bằng luật gốc."""
     import sys
     here = os.path.dirname(os.path.abspath(__file__))
@@ -31,7 +31,7 @@ def _with_market_overrides(rules):
         repo = talpha_paths.repo_dir()
         if repo not in sys.path:
             sys.path.insert(0, repo)
-        from sync.core.thi_truong import load_market_overrides, apply_market_overrides
+        from sync.core.market_config import load_market_overrides, apply_market_overrides
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  talpha_rules: không nạp được thị trường nhập trên trang ({e}) — dùng luật gốc", file=sys.stderr)
         return rules
@@ -291,7 +291,7 @@ def attribute_order(pos_marketer=None, ad_id=None, adid_owner=None):
 
 
 # ═══ SẢN PHẨM + PAGE CỦA CAMPAIGN, VÀ GÁN ĐƠN → SẢN PHẨM THEO PAGE ═══════════════════
-# Chuẩn tên (docs/CHUAN_DAT_TEN_CAMPAIGN.md): NƯỚC/MARKETER/TỆPKHÁCH/MÃSANPHAM/TENTRANG/NGAY.
+# Chuẩn tên (docs/CAMPAIGN_NAMING.md): NƯỚC/MARKETER/TỆPKHÁCH/MÃSANPHAM/TENTRANG/NGAY.
 # Tên cũ bỏ ô nước: MARKETER/TỆPKHÁCH/MÃSANPHAM/TENTRANG/NGAY. Hai kiểu cùng một luật:
 # SẢN PHẨM = ô thứ HAI sau ô marketer, TÊN TRANG = ô thứ ba (ô ngay sau marketer là tệp khách).
 # Cùng luật với tenNganCamp của bot Zalo (ops/zalo-alerts/rules.js).

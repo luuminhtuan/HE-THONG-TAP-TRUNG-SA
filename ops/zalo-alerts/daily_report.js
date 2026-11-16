@@ -117,7 +117,7 @@ function errorReason(error) {
 }
 
 // TK đọc lỗi (chết, mất quyền, lỗi mạng): sync BỎ QUA nó, vẫn ghi Sheet bằng các TK còn lại
-// (Sỹ Anh chốt 28/10/2026: "tkqc nào die thì kệ nó", sync/core/tk_loi.py). Không phải "SỐ CHƯA
+// (Sỹ Anh chốt 28/10/2026: "tkqc nào die thì kệ nó", sync/core/failed_accounts.py). Không phải "SỐ CHƯA
 // ĐỦ" — chỉ nhắc tên để gỡ TK chết khỏi danh sách sync.
 function skippedAccountsNote(stale) {
     const skippedAccounts = stale && stale.loi && stale.loi.bo_qua;

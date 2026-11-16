@@ -135,7 +135,7 @@ Cách chạy:
 5. Giờ im (23h–7h) thì đợi, không đánh thức nhóm giữa đêm.
 
 **TKQC mất quyền nhưng không tiêu tiền (30/09/2026).** Sync bỏ qua TK mất quyền mà 7 ngày
-không chi đồng nào (`sync/core/tk_loi.py`), vòng vẫn OK nên tin KHÔNG mang "SỐ CHƯA ĐỦ" — chỉ
+không chi đồng nào (`sync/core/failed_accounts.py`), vòng vẫn OK nên tin KHÔNG mang "SỐ CHƯA ĐỦ" — chỉ
 thêm dòng `ℹ️ TKQC mất quyền đọc, đã bỏ qua…` nêu tên để người ta cấp lại quyền hoặc gỡ TK.
 Tên lấy từ `/api/talpha/sync-health → fetch_errors.bo_qua` (nhãn `TKQC_BO_QUA` trong
 `daily_guarded.sh`).
@@ -231,8 +231,8 @@ Chạy thử từ máy Mac: `TALPHA_DASHBOARD_URL=http://139.180.131.21:3000 nod
 | `commands.js` | Đọc lệnh gõ trong nhóm (hàm thuần, có test) |
 | `pair.js` | Ghép nick bằng QR, chọn nhóm |
 | `zalo.js` | Phiên, gửi, nghe tin qua zca-js |
-| `daily_report.js` · `van_don.js` | Dựng nội dung tin (hàm thuần, có test) — `buildBaoCaoNuoc` là tin ads một nước |
-| `tin_gio.js` | Tin mỗi giờ + số mess Pancake (ghép camp · page · đơn theo tên page; hàm thuần, có test) |
+| `daily_report.js` · `shipment_alerts.js` | Dựng nội dung tin (hàm thuần, có test) — `buildBaoCaoNuoc` là tin ads một nước |
+| `hourly_digest.js` | Tin mỗi giờ + số mess Pancake (ghép camp · page · đơn theo tên page; hàm thuần, có test) |
 | `ads_alerts.js` | Cảnh báo ads gộp mọi nước (qua `/api/talpha/ads-alerts`) — bot không dùng từ 08/10/2026, giữ lại cùng test |
 | `zalo_text.js` | Chữ đậm/nghiêng → style Zalo, chia tin dài |
 | `rules.js` | Đọc `config/talpha_rules.json` — thiếu file là dừng, không dùng bảng dự phòng. `NUOC`, `nuocTuTenNhom`: mã nước ↔ tên nhóm |

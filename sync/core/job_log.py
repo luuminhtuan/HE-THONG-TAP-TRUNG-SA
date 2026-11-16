@@ -1,7 +1,7 @@
 """
 Sổ lượt chạy việc nền + yêu cầu "Cập nhật ngay" (15/11/2026, migration 0007).
 
-  job_runs          lịch (ops/docker/lich.py) ghi mỗi lượt: bắt đầu → xong / hỏng, ai chạy, mấy dòng log cuối
+  job_runs          lịch (ops/docker/scheduler.py) ghi mỗi lượt: bắt đầu → xong / hỏng, ai chạy, mấy dòng log cuối
   refresh_requests  dashboard ghi yêu cầu khi người dùng bấm "Cập nhật ngay"; lịch nhặt rồi chạy
 
 Dashboard đọc hai bảng này (/api/talpha/refresh) để hiện "Đang cập nhật…" / "Cập nhật lúc 18:57".

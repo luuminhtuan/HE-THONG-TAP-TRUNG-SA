@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sync.core import credentials as credentials_mod  # noqa: E402
 from sync.core.credentials import read_credentials, save_credential, load_credentials_to_env  # noqa: E402
 from sync.core.file_import import import_all, parse_credentials_file  # noqa: E402
-from sync.core.thi_truong import read_market_overrides_from_db  # noqa: E402
+from sync.core.market_config import read_market_overrides_from_db  # noqa: E402
 
 
 @pytest.fixture

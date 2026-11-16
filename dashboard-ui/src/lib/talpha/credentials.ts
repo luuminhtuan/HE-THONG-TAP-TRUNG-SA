@@ -129,7 +129,7 @@ export function listCredentials(): CredentialDef[] {
         loai: "meta",
     }];
     // Token phụ (tuỳ chọn): TKQC nằm ở BM / app khác mà token chính không thấy. Mỗi TK đọc bằng token
-    // ĐẦU TIÊN thấy nó (lib/talpha/ad-accounts.ts, sync/core/tkqc.py).
+    // ĐẦU TIÊN thấy nó (lib/talpha/ad-accounts.ts, sync/core/ad_accounts.py).
     META_TOKEN_VARS.slice(1).forEach((credentialName, i) => out.push({
         ten: credentialName,
         nhan: `Token Meta ${i + 2} — BM / app khác (tuỳ chọn)`,

@@ -1,5 +1,5 @@
 {
-  "_note": "Một bộ dữ liệu cho CẢ BA bản phủ thị trường lên talpha_rules.json: TypeScript (dashboard-ui/src/lib/talpha/market-config.ts), Python (sync/core/thi_truong.py), bot (ops/zalo-alerts/thi_truong.js). Ba bản phải ra CÙNG kết quả — sửa luật phủ ở một bản thì sửa cả ba và chạy cả ba bộ test.",
+  "_note": "Một bộ dữ liệu cho CẢ BA bản phủ thị trường lên talpha_rules.json: TypeScript (dashboard-ui/src/lib/talpha/market-config.ts), Python (sync/core/market_config.py), bot (ops/zalo-alerts/market_config.js). Ba bản phải ra CÙNG kết quả — sửa luật phủ ở một bản thì sửa cả ba và chạy cả ba bộ test.",
   "luat": {
     "markets": {
       "_note": "ghi chú — không phải nước",

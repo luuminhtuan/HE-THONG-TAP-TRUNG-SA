@@ -5,8 +5,8 @@
 // trên trang nằm ở bảng PHỦ market_overrides trong Postgres (15/11/2026 — trước đó file
 // data/thi_truong.json). Bot không nối Postgres: hỏi dashboard GET /api/talpha/market-config?overrides=1 bằng
 // chìa nội bộ. Bản này cho bot; bản dashboard ở dashboard-ui/src/lib/talpha/market-config.ts, bản Python
-// ở sync/core/thi_truong.py. Ba bản phải ra CÙNG kết quả — bộ dữ liệu chung
-// tests/fixtures/thi_truong_phu.json (thi_truong.test.js).
+// ở sync/core/market_config.py. Ba bản phải ra CÙNG kết quả — bộ dữ liệu chung
+// tests/fixtures/market_overrides.json (market_config.test.js).
 //
 // Bot đọc luật một lần lúc khởi động; dấu vân tay phần phủ đổi thì bot.js tự thoát để pm2 / docker
 // dựng lại (xem theoDoiThiTruong ở đó). TALPHA_THI_TRUONG (chỉ test) trỏ vào một FILE phủ.
