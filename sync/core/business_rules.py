@@ -10,8 +10,11 @@ Dùng trong:
   - SQL queries trong dashboard đều phải khớp với logic ở đây
 """
 import json
-import os
 from typing import Optional
+
+# Tách 16/11/2026 (file vượt 300 dòng) — nhập lại để tên cũ trong business_rules vẫn dùng được.
+from sync.core.order_currency import ITEM_MONEY_FIELDS, ORDER_MONEY_FIELDS, convert_order_currency  # noqa: F401
+from sync.core.pos_shops import pos_shops_from_markets  # noqa: F401
 
 # ─── R2 · R1b · R3: Thị trường — ĐỌC TỪ config/talpha_rules.json → markets ──────
 # Trước 15/09/2026 ba bảng dưới gõ cứng đúng một nước (TW). Mở thêm Singapore, UAE mà
@@ -52,53 +55,7 @@ DEFAULT_MONEY_DIVISOR = 100  # shop mới chưa khai: giữ mặc định minor 
 MARKET_NAMES: dict[str, str] = {v["shop_label"]: market_name for market_name, v in _MARKETS.items()}
 
 
-# ─── Nước không kéo đơn: đã tắt, sắp chạy (04/11/2026) ───────────────────────
-# CHỈ nước "dang_ban" được kéo đơn mới. "da_tat" = ngừng kéo nhưng GIỮ tỷ giá, số chia và mọi đơn
-# cũ; "sap_chay" = có thể đã khai shop (thêm ở /admin → Thị trường) nhưng chưa bán.
-# Shop không kéo VẪN ở trong danh sách, chỉ mang cờ keo=False: mỗi vòng sync dựng lại bảng đơn
-# sạch CHỈ từ những shop có trong danh sách (bq_writer._loc_shop) — bỏ shop khỏi danh sách là đơn
-# cũ của nước đó biến khỏi báo cáo ngay vòng sau.
-
-
-def pos_shops_from_markets(markets: dict, env=None) -> list[dict]:
-    """Danh sách shop POS từ config/talpha_rules.json → markets.
-
-    Nước "sắp chạy" chưa có shop POS: bỏ qua, KHÔNG đưa vào danh sách. Để shop_id rỗng lọt vào
-    là bộ lọc shop_ids của bảng đơn coi như "không lọc" — đơn shop Đài cũ 408074608 quay lại báo
-    cáo. `or ""`: shop_id khai null (JSON) thì str(None) ra chữ "None" — lọt qua đây rồi làm bộ
-    lọc shop_ids nổ "shop_id phải là dãy số", hỏng cả vòng sync (08/10/2026, Nhật mở khi chưa có
-    shop: Sheet đứng từ 13:20).
-
-    Nước đã tắt / sắp chạy có shop VẪN có mặt, mang `keo=False` — xem ghi chú trên.
-    """
-    env = os.environ if env is None else env
-    out = []
-    for market_name, m in (markets or {}).items():
-        if not isinstance(m, dict):
-            continue
-        label = m.get("shop_label", "")
-        if not label:
-            continue
-        sid = str(m.get("shop_id") or "").strip()
-        if not sid:
-            print(f"[pos] {market_name} ({label}): chưa có shop POS — chưa kéo đơn")
-            continue
-        out.append({
-            "key": env.get(f"TALPHA_POSCAKE_{label}_KEY", ""),
-            "label": label,
-            "shop_id": sid,
-            "currency": m.get("currency", ""),
-            # Để quy đơn VND về tiền của shop — xem _drop_foreign_currency.
-            "rate_vnd": m.get("rate_vnd"),
-            "pos_money_divisor": m.get("pos_money_divisor") or 1,
-            "divisor_confirmed": m.get("pos_money_divisor_confirmed", True),
-            # Mốc NGÀY TẠO đơn (giờ VN) bắt đầu tính. Singapore có 54 đơn là bản sao đơn
-            # Đài được tạo sẵn trước khi mở — kéo về là đơn Đài bị đếm hai lần.
-            "orders_from": m.get("orders_from"),
-            "trang_thai": m.get("status") or "dang_ban",
-            "keo": (m.get("status") or "dang_ban") == "dang_ban",
-        })
-    return out
+# ─── Nước không kéo đơn: đã tắt, sắp chạy — pos_shops_from_markets ở sync/core/pos_shops.py ──────
 
 # Poscake status_name → (category, sub_category)
 STATUS_CATEGORY_MAP: dict[str, tuple[str, str]] = {
@@ -162,50 +119,7 @@ def revenue_vnd(cod_raw: float, shop_label: str) -> float:
     return to_vnd(calc_revenue_local(cod_raw, shop_label), shop_label)
 
 
-# ─── R2b: Đơn ghi bằng VND nằm trong shop TWD ───────────────────────────────
-# Shop POS "TAIWAN SỸ ANH" (1022091930) giữ 340 đơn lịch sử ghi bằng VND bên cạnh đơn
-# TWD — cả đơn đầu tháng 9. Mọi nơi đọc bảng đơn đều nhân `cod` với tỷ giá shop (800)
-# vì tin đó là TWD. Để nguyên thì đơn 730.000đ hoá 584 TRIỆU doanh thu; bỏ đi thì mất
-# luôn số đơn cả tuần đầu tháng. Nên quy về tiền của shop NGAY Ở CỬA VÀO: chia cho
-# tỷ giá, để phép nhân phía sau trả lại đúng số VND ban đầu.
-ORDER_MONEY_FIELDS = (
-    "total_price", "shipping_fee", "cod", "total_discount", "partner_fee",
-    "return_fee", "surcharge", "money_to_collect",
-)
-# Tiền BÁN trên từng dòng hàng, cùng loại tiền với đơn. Giá nhập (avg_imported_price)
-# là dữ liệu sản phẩm của shop, không theo loại tiền của đơn — không đụng tới.
-ITEM_MONEY_FIELDS = ("retail_price", "discount_each_product", "total_discount", "same_price_discount")
-
-
-def convert_order_currency(order: dict, items: list[dict], shop_currency: str,
-                         rate_vnd: Optional[float], divisor: int = 1) -> Optional[tuple[dict, list[dict]]]:
-    """Đưa một đơn về loại tiền của shop. Trả (đơn, items) đã quy đổi, hoặc None nếu phải bỏ.
-
-    - Đơn cùng loại tiền với shop (hoặc không ghi loại tiền): trả nguyên.
-    - Đơn VND trong shop có tỷ giá VND: chia mọi khoản tiền cho tỷ giá rồi NHÂN số chia
-      của shop, đổi nhãn sang tiền của shop. Phía sau lấy `cod ÷ số chia × tỷ giá` nên ra
-      lại đúng số VND gốc — kể cả shop lưu tiền theo đơn vị nhỏ (Singapore: số chia 100).
-    - Loại tiền khác, hoặc shop không có tỷ giá VND: None — không đoán tỷ giá.
-    """
-    want = (shop_currency or "").upper()
-    cur = (order.get("order_currency") or want).upper()
-    if not want or cur == want:
-        return order, items
-    if cur != "VND" or not rate_vnd or rate_vnd <= 0:
-        return None
-    new_order = dict(order)
-    for k in ORDER_MONEY_FIELDS:
-        if new_order.get(k) is not None:
-            new_order[k] = round(float(new_order[k] or 0) / rate_vnd * (divisor or 1), 4)
-    new_order["order_currency"] = want
-    new_items = []
-    for it in items:
-        x = dict(it)
-        for k in ITEM_MONEY_FIELDS:
-            if x.get(k) is not None:
-                x[k] = round(float(x[k] or 0) / rate_vnd * (divisor or 1), 4)
-        new_items.append(x)
-    return new_order, new_items
+# ─── R2b: Đơn ghi bằng VND nằm trong shop TWD — convert_order_currency ở sync/core/order_currency.py ─
 
 
 # ─── R3: Market ─────────────────────────────────────────────────────────────

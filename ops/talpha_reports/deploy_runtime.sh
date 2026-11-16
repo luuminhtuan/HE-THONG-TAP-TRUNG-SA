@@ -24,6 +24,13 @@ PAIRS=(
   "ops/talpha_reports/talpha_paths.py|talpha_paths.py"
   "ops/talpha_reports/format_all.py|format_all.py"
   "ops/talpha_reports/talpha_rules.py|talpha_rules.py"
+  # Tách 16/11/2026 khỏi format_all.py / talpha_rules.py — thiếu file nào là vòng ghi Sheet chết ở dòng import.
+  "ops/talpha_reports/campaign_pages.py|campaign_pages.py"
+  "ops/talpha_reports/order_rules.py|order_rules.py"
+  "ops/talpha_reports/report_data.py|report_data.py"
+  "ops/talpha_reports/report_tables.py|report_tables.py"
+  "ops/talpha_reports/report_store.py|report_store.py"
+  "ops/talpha_reports/sheet_writer.py|sheet_writer.py"
   "config/talpha_rules.json|talpha_rules.json"
   "ops/talpha_reports/sync_month.py|sync_month.py"
   "ops/talpha_reports/daily_guarded.sh|daily_guarded.sh"

@@ -3,7 +3,11 @@
 # Nguồn data: config/talpha_rules.json (repo) / ~/talpha_reports/talpha_rules.json (runtime)
 # Consumer: format_all.py (+ script báo cáo khác). Sửa rule → sửa JSON, không sửa file này.
 # ═══════════════════════════════════════════════════════════════════
-import os, re, json, unicodedata
+import importlib
+import json
+import os
+import re
+import sys
 
 _CANDIDATES = [
     os.environ.get("TALPHA_RULES", ""),
@@ -235,11 +239,8 @@ def cost_price_vnd(sku):
     e = PRODUCT_COSTS.get(str(sku or "").strip())
     return e["cost_price_vnd"] if e else None
 
-# ═══════════════════════════════════════════════════════════════════
-# GÁN MARKETER — RULE CEO 3 BẬC (nguồn duy nhất, mọi consumer gọi hàm này)
-#   1. Tag marketer trong POS  →  2. ad_id → chủ campaign  →  3. "(không gán)"
-# Đơn không gán được KHÔNG bị bỏ lặng lẽ — luôn rơi vào bậc 3 để còn thấy trên báo cáo.
-# ═══════════════════════════════════════════════════════════════════
+# ═══ GÁN MARKETER — RULE CEO 3 BẬC: parse_campaign · build_adid_owner · attribute_order ở order_rules.py
+# Đơn không gán được KHÔNG bị bỏ lặng lẽ — luôn rơi vào "(không gán)" để còn thấy trên báo cáo.
 UNASSIGNED = "(không gán)"
 
 # ═══ NGƯỜI ĐÃ NGHỈ — dồn hết về "(không gán)" (khối unassign_marketers trong JSON) ═══
@@ -253,265 +254,28 @@ def bucket_nv(nv):
     """Key marketer → key ô báo cáo. Người đã nghỉ (UNASSIGN) → "(không gán)"."""
     return UNASSIGNED if nv in UNASSIGN else nv
 
-def parse_campaign(cn):
-    """campaign_name → (thị trường, key marketer). Quy ước tên: '… / <Thị trường> / <Marketer> / …'
-    — tìm ô ĐẦU TIÊN là tên thị trường (bỏ qua tiền tố Tặng//LADI/), marketer là ô ngay SAU."""
-    p = [x.strip() for x in (cn or "").split("/")]
-    mi = next((i for i, s in enumerate(p) if s.upper() in MARKETS), None)
-    if mi is None:
-        return None, None
-    return MARKETS[p[mi].upper()], (norm_nv(p[mi + 1]) if mi + 1 < len(p) else None)
 
-def build_adid_owner(rows):
-    """[(ad_id, campaign_name), …] → {ad_id: key marketer} — bảng tra cho BẬC 2."""
-    out = {}
-    for ad_id, cn in rows:
-        if not ad_id:
-            continue
-        _mkt, nv = parse_campaign(cn)
-        # Người đã nghỉ KHÔNG vào bảng tra: bậc 2 mà trả về họ thì đơn không tag lại
-        # chui ngược vào ô của họ, đúng thứ vừa bỏ đi.
-        if nv and nv not in UNASSIGN:
-            out[str(ad_id)] = nv
-    return out
-
-def attribute_order(pos_marketer=None, ad_id=None, adid_owner=None):
-    """Gán 1 đơn về marketer theo rule CEO. Trả (key, nguồn):
-       ('Loc', 'pos_tag') | ('Loc', 'ad_id') | ('(không gán)', 'unassigned')."""
-    nv = norm_pos_nv(pos_marketer)
-    if nv:
-        # Đã nghỉ → "(không gán)" NGAY, không rơi xuống bậc 2: tag POS là bằng chứng
-        # đơn này của họ, để fallback ad_id đẩy sang người khác là gán sai người.
-        return (UNASSIGNED, "unassigned") if nv in UNASSIGN else (nv, "pos_tag")
-    if ad_id and adid_owner:
-        nv = adid_owner.get(str(ad_id))
-        if nv:
-            return nv, "ad_id"
-    return UNASSIGNED, "unassigned"
+# ═══ TÊN DỜI SANG MODULE RIÊNG (16/11/2026 — file vượt 300 dòng) ═══════════════════════════════
+#   campaign_pages.py — sản phẩm / page của camp, nối đơn → camp theo nguồn đơn, tên tab theo page;
+#   order_rules.py    — gán đơn → marketer 3 bậc, đơn trống.
+# Hai module đó đọc luật ĐÃ NẠP ở trên (MARKETS, norm_nv…) nên không nhập lại ở đầu file được (vòng
+# import). `from talpha_rules import parse_camp_product` vẫn chạy: Python hỏi __getattr__ dưới đây
+# (PEP 562), nó nạp module chứa tên đó lúc cần. Nạp luật lại (test phủ thị trường) vẫn ra luật mới
+# cho mọi hằng ở trên; các hàm dời đi thì đọc bản talpha_rules chính (tên module "talpha_rules").
+_MOVED = {
+    **dict.fromkeys(("parse_camp_product", "normalize_page_name", "build_page_index", "find_campaign_by_page",
+                     "camp_page_cells", "build_page_tab_names", "order_tab_name"), "campaign_pages"),
+    **dict.fromkeys(("parse_campaign", "build_adid_owner", "attribute_order",
+                     "is_empty_order", "sql_is_empty_order"), "order_rules"),
+}
 
 
-# ═══ SẢN PHẨM + PAGE CỦA CAMPAIGN, VÀ GÁN ĐƠN → SẢN PHẨM THEO PAGE ═══════════════════
-# Chuẩn tên (docs/CAMPAIGN_NAMING.md): NƯỚC/MARKETER/TỆPKHÁCH/MÃSANPHAM/TENTRANG/NGAY.
-# Tên cũ bỏ ô nước: MARKETER/TỆPKHÁCH/MÃSANPHAM/TENTRANG/NGAY. Hai kiểu cùng một luật:
-# SẢN PHẨM = ô thứ HAI sau ô marketer, TÊN TRANG = ô thứ ba (ô ngay sau marketer là tệp khách).
-# Cùng luật với tenNganCamp của bot Zalo (ops/zalo-alerts/rules.js).
-#
-# 16/09/2026 sửa hai lỗi đọc ô của format_all.py:
-#   · tên có ô nước lấy ô NGAY SAU marketer làm sản phẩm → ra tệp khách: file Lộc có tab
-#     "PHI" 4,98tr và "INDO" 1,64tr tiền ads, không phải sản phẩm nào;
-#   · tên có số page lấy ô SAU con số làm sản phẩm — kiểu GCC cũ số page đứng trước tên
-#     trang, nay đứng sau → ra NGÀY: file Thắng có tab "4-9 TEST", file Thương có tab "7-9".
-def parse_camp_product(cn):
-    """Tên campaign → (sản phẩm, tên trang, page_id). Không nhận ra marketer → (None, None, None)."""
-    p = [x.strip() for x in (cn or "").split("/")]
-    mi = next((i for i, s in enumerate(p) if s.upper() in MARKETS), None)
-    if mi is not None:
-        k = mi + 1
-    else:
-        k = next((i for i, s in enumerate(p[:2]) if norm_nv(s)), None)
-        if k is None:
-            return None, None, None
-    sp = p[k + 2] if len(p) > k + 2 else ""
-    page = p[k + 3] if len(p) > k + 3 else ""
-    # Số page (6+ chữ số) ở bất kỳ ô nào sau marketer — kiểu GCC cũ đứng trước tên trang,
-    # kiểu hiện tại đứng sau. Ngày "2808" chỉ 4 số nên không lẫn.
-    page_id = next((s.replace(" ", "") for s in p[k + 1:] if NUMID.match(s.replace(" ", ""))), None)
-    if page_id and NUMID.match(sp.replace(" ", "")):
-        sp = page                                   # kiểu GCC: số page chiếm ô sản phẩm → sản phẩm là tên trang (luồng cũ)
-    if sp.upper() == "TEST":
-        sp = f"TEST · {page}" if page else "TEST"  # camp thử: tách theo trang, không dồn chung một tab "TEST"
-    return (sp or "(khác)"), (page or None), page_id
-
-
-def normalize_page_name(s):
-    """Tên page để SO KHỚP: bỏ kiểu chữ trang trí (𝑻𝒂𝒊𝒘𝒂𝒏 → taiwan), hoa thường, dấu câu,
-    khoảng trắng thừa. POS và tên camp thường cùng kiểu chữ, nhưng gõ tay thì không chắc."""
-    s = unicodedata.normalize("NFKC", str(s or "")).casefold()
-    return " ".join(re.sub(r"[^\w]+", " ", s).split())
-
-
-def build_page_index(ad_rows):
-    """[(campaign_name, ngày 'YYYY-MM-DD', tiền), …] → chỉ mục page để khớp NGUỒN ĐƠN của POS.
-
-    Trả {"trang": {tên page chuẩn: {camp: {ngày: tiền}}},
-         "o_khac": {ô khác sau marketer: {camp: {ngày: tiền}}}}.
-    "o_khac" đỡ tên camp đặt lệch ô — tên page nằm ở ô sản phẩm, kiểu
-    TW/THAI/PHI/Jewelry GJ International - TW - 05/09 (10 đơn tháng 9)."""
-    page, other_cells = {}, {}
-    for cn, date, spend in ad_rows:
-        p = [x.strip() for x in (cn or "").split("/")]
-        mi = next((i for i, x in enumerate(p) if x.upper() in MARKETS), None)
-        k = mi + 1 if mi is not None else next((i for i, x in enumerate(p[:2]) if norm_nv(x)), None)
-        if k is None:
-            continue
-        _sp, camp_page_name, _pid = parse_camp_product(cn)
-        targets = [(page, normalize_page_name(camp_page_name))] if camp_page_name else []
-        targets += [(other_cells, normalize_page_name(x)) for x in p[k + 1:] if x]
-        for table, key in targets:
-            if key:
-                spend_by_date = table.setdefault(key, {}).setdefault(cn, {})
-                spend_by_date[str(date)] = spend_by_date.get(str(date), 0) + (spend or 0)
-    return {"trang": page, "o_khac": other_cells}
-
-
-def find_campaign_by_page(page_name, date, page_index, ad_campaign=None, market=None):
-    """NGUỒN ĐƠN của POS (tên page) → campaign. Luật Sỹ Anh chốt 17/09/2026:
-    đơn lấy từ POS → cột "Nguồn đơn" → khớp ô tên page trong tên camp Meta → ra camp đó →
-    ra sản phẩm, marketer, tiền ads.
-
-    Thứ tự khớp, dừng ở bậc đầu tiên có kết quả:
-      dung_ten  ô tên page trong camp TRÙNG tên nguồn đơn;
-      dau_ten   ô tên page BẮT ĐẦU bằng tên nguồn đơn (ngày viết kiểu 05/09 dính vào tên page);
-      lech_o    tên page nằm ở ô khác của tên camp (trùng, hoặc là phần đầu).
-    Page có NHIỀU camp: camp là quảng cáo của chính đơn nếu nằm trong số đó; không thì camp
-    tiêu tiền trên page vào NGÀY đơn về, thiếu thì ngày có tiền gần nhất TRƯỚC đó (một page
-    có thể chuyển từ camp người này sang người khác giữa tháng — 𝐁𝐢𝐲𝐚𝐲𝐚 𝐓𝐖: Thắng rồi Thương);
-    vẫn không có thì camp tiêu nhiều nhất trên page.
-    `nuoc` (tên chuẩn, vd "Taiwan"): chỉ nhận camp CÙNG NƯỚC với shop của đơn — một page có
-    thể chạy camp ở cả Đài lẫn Singapore; đơn Đài #381 từng bị nối vào camp Singapore của Lộc
-    (17/09/2026). Bậc nào chỉ khớp camp nước khác thì coi như không khớp, xuống bậc sau.
-    Trả (campaign_name, cách khớp) · (None, "khong_co_nguon") · (None, "khong_khop")."""
-    p = normalize_page_name(page_name)
-    if not p:
-        return None, "khong_co_nguon"
-    prefix = p + " "
-    tiers = (
-        ("dung_ten", [page_index["trang"].get(p, {})]),
-        ("dau_ten", [v for k, v in page_index["trang"].items() if k.startswith(prefix)]),
-        ("lech_o", [page_index["o_khac"].get(p, {})] + [v for k, v in page_index["o_khac"].items() if k.startswith(prefix)]),
-    )
-    for match_type, group in tiers:
-        candidates = {}
-        for d in group:
-            for cn, ngay_tien in d.items():
-                g = candidates.setdefault(cn, {})
-                for nd, t in ngay_tien.items():
-                    g[nd] = max(g.get(nd, 0), t)
-        if market:
-            candidates = {cn: v for cn, v in candidates.items() if campaign_market(cn)[0] == market}
-        if candidates:
-            break
-    else:
-        return None, "khong_khop"
-    if len(candidates) == 1:
-        return next(iter(candidates)), match_type
-    if ad_campaign in candidates:
-        return ad_campaign, match_type
-    date = str(date)
-    spend_dates = sorted({nd for v in candidates.values() for nd, t in v.items() if t > 0 and nd <= date})
-    if spend_dates:
-        nd = spend_dates[-1]
-        return max(candidates, key=lambda cn: (candidates[cn].get(nd, 0), cn)), match_type
-    return max(candidates, key=lambda cn: (sum(candidates[cn].values()), cn)), match_type
-
-
-# ═══ TÊN TAB THEO PAGE (Sỹ Anh chốt 17/09/2026) ═══════════════════════════════════════
-# File báo cáo riêng của từng người: MỖI PAGE MỘT TAB, đặt theo tên page — không theo mã sản
-# phẩm nữa (mã sản phẩm hay bị gõ mỗi camp một kiểu: "042" và "042 - BLACK" thành hai tab).
-# Tên tab lấy theo cách viết TRÊN POS (cột Nguồn đơn) để tiền ads của camp và đơn của page rơi
-# đúng cùng một tab; page chưa có đơn nào trên POS thì lấy tên ghi trong camp.
-_DATE_LIKE = re.compile(r"[\d\s./\-]*(\s*vd\s*\d*)?(\s*test)?", re.I)
-_DATE_SUFFIX = re.compile(r"\s*-\s*\d{1,2}\s*$")
-
-
-def camp_page_cells(cn):
-    """(tên page ghi trong camp, [các ô sau marketer]). Ô tên page trống, là NGÀY hay số page
-    — tên page bị viết vào ô sản phẩm, kiểu TW/THAI/PHI/Jewelry GJ International - TW - 05/09,
-    hoặc kiểu GCC số page đứng trước tên — thì lấy ô sản phẩm. Không nhận ra marketer → (None, [])."""
-    p = [x.strip() for x in (cn or "").split("/")]
-    mi = next((i for i, s in enumerate(p) if s.upper() in MARKETS), None)
-    k = mi + 1 if mi is not None else next((i for i, s in enumerate(p[:2]) if norm_nv(s)), None)
-    if k is None:
-        return None, []
-    sp = p[k + 2] if len(p) > k + 2 else ""
-    page = p[k + 3] if len(p) > k + 3 else ""
-    not_a_name = lambda x: not x or _DATE_LIKE.fullmatch(x) or NUMID.match(x.replace(" ", ""))
-    if not_a_name(page):
-        page = "" if (not_a_name(sp) or sp.upper() == "TEST") else sp
-    return (page or None), [x for x in p[k + 1:] if x]
-
-
-def build_page_tab_names(pos_page_names, campaign_names):
-    """Bảng tên tab theo page.
-    ten_page_pos: tên page trong bảng đơn POS (lặp lại được — chọn cách viết gặp nhiều nhất).
-    ten_camp: tên các campaign cần xếp tab.
-    Trả (pos_ten {tên chuẩn: tên tab}, camp_tab {campaign: tên tab hoặc None}).
-
-    Camp → page POS theo cùng thứ tự khớp với tim_camp_theo_page: trùng tên → tên page trong camp
-    BẮT ĐẦU bằng tên POS (ngày dính vào) → tên POS nằm ở ô khác; nhiều tên POS cùng khớp thì lấy
-    tên DÀI nhất (cụ thể nhất). Camp không khớp page POS nào: dùng tên trong camp, các biến thể
-    chỉ khác đuôi ("LuxeGold Jewelry - 27" / "LuxeGold Jewelry") gộp về tên ngắn nhất."""
-    counts = {}
-    for t in pos_page_names:
-        k = normalize_page_name(t)
-        if k:
-            d = counts.setdefault(k, {})
-            d[str(t).strip()] = d.get(str(t).strip(), 0) + 1
-    pos_names = {k: max(d.items(), key=lambda x: (x[1], x[0]))[0] for k, d in counts.items()}
-
-    def match_pos_name(text):
-        if text in pos_names:
-            return text
-        candidates = [k for k in pos_names if text.startswith(k + " ")]
-        return max(candidates, key=len) if candidates else None
-
-    camp_tab, unmatched = {}, {}
-    for cn in dict.fromkeys(campaign_names):
-        page, cells = camp_page_cells(cn)
-        if page is None and not cells:
-            camp_tab[cn] = None
-            continue
-        k = match_pos_name(normalize_page_name(page)) if page else None
-        for o in ([] if k else cells):
-            k = match_pos_name(normalize_page_name(o))
-            if k:
-                break
-        if k:
-            camp_tab[cn] = pos_names[k]
-        elif page:
-            # "DD/MM" viết trong tên camp bị dấu / cắt đôi, nửa ngày dính vào đuôi tên page.
-            page = _DATE_SUFFIX.sub("", page) or page
-            unmatched.setdefault(normalize_page_name(page), page)
-            camp_tab[cn] = ("__le__", normalize_page_name(page))
-        else:
-            camp_tab[cn] = None
-    canonical = {}
-    for k in sorted(unmatched, key=len):                       # ngắn trước: tên gốc trước biến thể dính đuôi
-        canonical[k] = next((canonical[g] for g in canonical if k.startswith(g + " ")), unmatched[k])
-    for cn, v in camp_tab.items():
-        if isinstance(v, tuple):
-            camp_tab[cn] = canonical[v[1]]
-    return pos_names, camp_tab
-
-
-def order_tab_name(page_name, pos_name):
-    """Tên tab của một đơn = tên page trên POS (cách viết chuẩn trong bảng); không có nguồn → None."""
-    k = normalize_page_name(page_name)
-    return pos_name.get(k, str(page_name).strip()) if k else None
-
-
-# ═══ ĐƠN TRỐNG — KHÔNG TÍNH VÀO SỐ ĐƠN (Sỹ Anh chốt 17/09/2026) ═══════════════════════════════
-# Đơn không có sản phẩm nào VÀ tổng tiền = 0 VÀ cod = 0. Tháng 9 shop Đài: đơn có tag marketer trên
-# POS đều có tiền, đơn KHÔNG tag đều là đơn trống (Lộc 16 đơn thật + 45 đơn trống; Thương 11 + 19;
-# Thái 2 + 18; Thắng 1 + 4). Đếm cả vào là số đơn thổi lên ~4 lần, CPO và tỷ lệ chốt đẹp giả —
-# ngày 15/09 Lộc ra 3 đơn trong khi POS 2 (đơn #381 trống, không tag, gán theo page).
-# Đơn được điền sản phẩm sau đó thì vòng sync kế tiếp tự tính lại. Doanh thu không đổi (đơn trống 0 đồng).
-def is_empty_order(total_quantity, total_price, cod):
-    """True khi đơn không sản phẩm, tổng tiền 0, cod 0. Ô trống/None coi như 0."""
-    def to_number(x):
-        s = str(x).strip() if x is not None else ""
-        try:
-            return float(s) if s and s.lower() != "none" else 0.0
-        except ValueError:
-            return None
-    q, p, c = to_number(total_quantity), to_number(total_price), to_number(cod)
-    return q == 0 and p == 0 and c == 0
-
-
-def sql_is_empty_order(table=""):
-    """Cùng điều kiện la_don_trong, viết bằng SQL Postgres cho bảng sale_order (total_quantity là
-    chuỗi: không phải số thì coi như 0, đừng để ép kiểu làm chết cả câu)."""
-    t = f"{table}." if table else ""
-    return (f"(COALESCE(CASE WHEN btrim({t}total_quantity) ~ '^-?[0-9]+(\\.[0-9]+)?$' "
-            f"THEN btrim({t}total_quantity)::float8 END, 0) = 0 "
-            f"AND COALESCE({t}total_price, 0) = 0 AND COALESCE({t}cod, 0) = 0)")
+def __getattr__(name: str):
+    """Tên đã dời sang campaign_pages.py / order_rules.py → lấy từ đó (nạp lười, xem trên)."""
+    module = _MOVED.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:   # module dời đi nằm cạnh file này (repo lẫn bản chép runtime)
+        sys.path.insert(0, here)
+    return getattr(importlib.import_module(module), name)
