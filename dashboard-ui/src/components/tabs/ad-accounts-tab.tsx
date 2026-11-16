@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 // TKQC (04/11/2026) — danh bạ TỰ ĐỘNG: mọi TKQC token Meta đọc được, sync kéo chi tiêu của tất cả.
 // Không còn thêm / xoá TKQC bằng tay. Mỗi TK một LOẠI; chỉ loại "vào báo cáo" mới cộng vào số các tab,
-// báo cáo tháng và bot. Đổi loại có tác dụng ngay. Luật: talpha_rules.json → tkqc_loai, lib/talpha/ad-accounts.ts.
+// báo cáo tháng và bot. Đổi loại có tác dụng ngay. Luật: talpha_rules.json → ad_account_categories, lib/talpha/ad-accounts.ts.
 
 type AccountType = { code: string; name: string; include_in_report: boolean };
 type AccountRow = {

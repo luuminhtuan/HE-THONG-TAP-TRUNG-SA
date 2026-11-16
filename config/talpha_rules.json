@@ -748,7 +748,7 @@
       ]
     },
     "ad_accounts": {
-      "_mo_ta": "Roster TKQC hợp lệ = danh bạ TKQC tự động (bảng tkqc, /admin → TKQC, 04/11/2026). roster_file không còn ai đọc.",
+      "_mo_ta": "Roster TKQC hợp lệ. Dashboard: danh bạ TKQC tự động (bảng ad_accounts, /admin → TKQC, 04/11/2026). Bản dòng lệnh ads-reconciliation-cli: ĐỌC roster_file — xoá file đó là CLI tắt kiểm TKQC lạ và 2 phép thử e2e hỏng.",
       "strict": true,
       "roster_file": "ops/talpha_reports/ad_accounts.json",
       "extra_allowed": [],

@@ -21,10 +21,22 @@ import {
 const DEPLOYMENT_MODE = (process.env.NEXT_PUBLIC_DEPLOYMENT_MODE || "talpha").toLowerCase();
 const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME || "ANTALO";
 
+/** Chỉ quay về trang TRONG dashboard sau khi đăng nhập. callbackUrl trỏ ra site khác (link lừa gửi kèm
+ *  /login?callbackUrl=https://…) thì về trang mặc định (16/11/2026). */
+function safeCallbackUrl(raw: string | null, fallback: string): string {
+    if (!raw) return fallback;
+    if (raw.startsWith("/") && !raw.startsWith("//") && !raw.startsWith("/\\")) return raw;
+    try {
+        const u = new URL(raw);
+        if (typeof window !== "undefined" && u.origin === window.location.origin) return u.pathname + u.search + u.hash;
+    } catch { /* không phải URL đầy đủ */ }
+    return fallback;
+}
+
 function LoginForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const callbackUrl = searchParams.get("callbackUrl") || `/${DEPLOYMENT_MODE}`;
+    const callbackUrl = safeCallbackUrl(searchParams.get("callbackUrl"), `/${DEPLOYMENT_MODE}`);
 
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");

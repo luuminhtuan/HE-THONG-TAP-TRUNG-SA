@@ -75,7 +75,10 @@ def test_connections():
 # ═══════════════════════════════════════════════════════════════════
 
 
-def main():
+def main() -> int:
+    """Một vòng kéo số. Trả 1 khi cả một bước (view, đơn POS, chi tiêu, ngân sách) hỏng — lịch Docker / systemd ghi
+    lượt đó là lỗi, đèn "Cập nhật lúc…" thấy được (trước 16/11/2026 luôn trả 0). TKQC / shop lẻ đọc lỗi KHÔNG tính:
+    bước vẫn chạy xong, sync_health báo riêng từng cái."""
     parser = argparse.ArgumentParser(description='TALPHA Full Sync v3')
     parser.add_argument('--ads',    action='store_true', help='Ads only')
     parser.add_argument('--orders', action='store_true', help='Orders only')
@@ -90,7 +93,7 @@ def main():
 
     if args.test:
         test_connections()
-        return
+        return 0
 
     start    = datetime.now()
     run_all  = not (args.ads or args.orders)
@@ -191,7 +194,8 @@ def main():
             requests.post(DISCORD_WEBHOOK, json={'embeds': [embed]}, timeout=10)
         except Exception:
             pass
+    return 1 if results['errors'] else 0
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

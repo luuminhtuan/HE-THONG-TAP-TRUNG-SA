@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 
 const STORE = "cod_actions";
 
-/** Việc kế toán (tiền về, hỏi/bỏ qua khoản lệch, huỷ) chỉ leader + giám đốc — xem ghiCodDuoc. */
+/** Việc kế toán (tiền về, hỏi/bỏ qua khoản lệch, huỷ) chỉ leader + giám đốc — xem canWriteCodAction. */
 const forbidden = () => NextResponse.json(
     { error: "Việc này thuộc mục Kế toán — chỉ leader của nước và giám đốc được ghi" }, { status: 403 });
 

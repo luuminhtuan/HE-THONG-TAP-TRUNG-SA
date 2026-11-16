@@ -14,6 +14,33 @@ function canAccessDeployment(projects: string[]): boolean {
     return projects.includes("*") || projects.includes(DEPLOYMENT_PROJECT);
 }
 
+// ─── Chặn dò mật khẩu (16/11/2026) ───
+// Route nằm dưới /api/auth/* nên ai cũng gọi thẳng được (proxy.ts mở cho đăng nhập). Gọi qua NextAuth thì IP luôn là
+// máy chủ, nên đếm theo TÊN ĐĂNG NHẬP: sai quá MAX_FAILURES lần trong FAILURE_WINDOW_MS thì từ chối tới hết cửa sổ.
+const MAX_FAILURES = 10;
+const FAILURE_WINDOW_MS = 15 * 60_000;
+const failures = new Map<string, { count: number; firstAt: number }>();
+
+function isLocked(username: string): boolean {
+    const f = failures.get(username);
+    if (!f) return false;
+    if (Date.now() - f.firstAt > FAILURE_WINDOW_MS) {
+        failures.delete(username);
+        return false;
+    }
+    return f.count >= MAX_FAILURES;
+}
+
+function recordFailure(username: string): void {
+    const f = failures.get(username);
+    if (!f || Date.now() - f.firstAt > FAILURE_WINDOW_MS) failures.set(username, { count: 1, firstAt: Date.now() });
+    else f.count++;
+}
+
+// Tên không tồn tại vẫn so bcrypt với một băm giả — trả lời cùng thời gian, không lộ tên nào có thật.
+let dummyHash: Promise<string> | null = null;
+const getDummyHash = () => (dummyHash ??= bcrypt.hash("talpha-khong-co-tai-khoan-nay", 10));
+
 // ─── Validate credentials (called from NextAuth authorize callback) ───
 export async function POST(req: Request) {
     try {
@@ -30,10 +57,19 @@ export async function POST(req: Request) {
             return NextResponse.json(null, { status: 500 });
         }
 
-        const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-        if (!user) {
+        const username = String(email).toLowerCase();
+        if (isLocked(username)) {
+            return NextResponse.json({ error: "Thử sai quá nhiều lần — đợi 15 phút rồi thử lại" }, { status: 429 });
+        }
+        const user = users.find((u) => u.email.toLowerCase() === username);
+        // Kiểm mật khẩu TRƯỚC mọi thông báo riêng (chờ duyệt, không có quyền): chưa đúng mật khẩu thì câu trả lời
+        // như nhau cho tên có thật lẫn tên bịa.
+        const passwordMatch = await bcrypt.compare(String(password), user ? user.password : await getDummyHash());
+        if (!user || !passwordMatch) {
+            recordFailure(username);
             return NextResponse.json(null, { status: 401 });
         }
+        failures.delete(username);
 
         // Kiểm tra tài khoản đang chờ duyệt
         if (user.status === "pending") {
@@ -41,11 +77,6 @@ export async function POST(req: Request) {
                 { error: "Tài khoản đang chờ duyệt" },
                 { status: 403 }
             );
-        }
-
-        const passwordMatch = await bcrypt.compare(password, user.password);
-        if (!passwordMatch) {
-            return NextResponse.json(null, { status: 401 });
         }
 
         // TALPHA-only: chặn tài khoản hợp lệ nhưng không có quyền vào deployment này

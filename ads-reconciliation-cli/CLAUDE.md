@@ -41,8 +41,8 @@ Thư mục này giữ: bản dòng lệnh, kho kỳ trên đĩa, file mẫu, tes
 ## Kiểm tra sau khi sửa
 
 ```bash
-npm test                                        # 51 phép thử ở đây
-cd ../dashboard-ui && npm test  # thêm 27 phép thử phía dashboard (tests/ads-recon.test.cjs)
+npm test                                        # 52 phép thử ở đây
+cd ../dashboard-ui && npm test  # thêm 29 phép thử phía dashboard (tests/ads-recon.test.cjs)
 ```
 
 Hai bộ test chạy trên **cùng một engine**. Sửa engine mà chỉ chạy một bên là

@@ -12,7 +12,7 @@ tới lúc COMMIT). Gọi ở `python -m sync.core.pg migrate` và đầu mỗi 
 nên xoá dựng lại không mất gì.
 
   python -m sync.core.pg view          # dựng lại nếu luật đổi
-  python -m sync.core.pg view --in     # in SQL đã sinh, không chạy
+  python -m sync.core.pg view --ep     # dựng lại dù luật không đổi
 """
 import hashlib
 import re

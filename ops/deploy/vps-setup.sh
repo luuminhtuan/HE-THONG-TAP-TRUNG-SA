@@ -65,7 +65,10 @@ fi
 # ─────────────────────────────────────────────────────────────────────────
 say "3/8 · Node.js $NODE_MAJOR"
 need_node=1
-if command -v node >/dev/null 2>&1 && [ "$(node -v | cut -c2- | cut -d. -f1)" -ge "$NODE_MAJOR" ]; then
+# Cần ≥ 22.18, không chỉ ≥ 22: bản dòng lệnh đối soát QC (ads-reconciliation-cli) và phép thử tests/ads-recon
+# nạp thẳng engine .ts — Node chỉ tự bỏ kiểu từ 22.18. Máy đang 22.0–22.17 thì cài lại bản 22 mới nhất.
+if command -v node >/dev/null 2>&1 && node -e 'const [a, b] = process.versions.node.split(".").map(Number);
+    process.exit(a > 22 || (a === 22 && b >= 18) ? 0 : 1)'; then
     need_node=0
 fi
 if [ "$need_node" = 1 ]; then

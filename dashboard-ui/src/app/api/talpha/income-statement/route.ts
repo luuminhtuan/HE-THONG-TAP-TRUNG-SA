@@ -98,7 +98,7 @@ export async function GET(req: NextRequest) {
                     },
                 };
             } catch (e: any) {
-                console.error(`lai-lo ${m.code}:`, e?.message || e);
+                console.error(`income-statement ${m.code}:`, e?.message || e);
                 // Không đọc được kiện của nước này: không bịa doanh thu — lãi để null ở giao diện.
                 return {
                     ...base, nguon: "", co_so: [], loi: e?.message || String(e), ty_le: null, tk: null, cho_len_3pl: null,
@@ -162,7 +162,7 @@ export async function GET(req: NextRequest) {
             nuoc_ban: activeMarkets.map((m) => ({ code: m.code, ten: m.display })),
         });
     } catch (e: any) {
-        console.error("lai-lo:", e?.message || e);
+        console.error("income-statement:", e?.message || e);
         return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
     }
 }

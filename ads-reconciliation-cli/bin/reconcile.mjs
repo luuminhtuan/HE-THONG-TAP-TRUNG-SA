@@ -11,8 +11,17 @@
  */
 import { readdirSync, statSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { runReconciliation, loadConfig, ROOT } from "../src/run.mjs";
-import { sendAlerts, toCsv, fmtVND } from "../src/engine.mjs";
+
+// Engine là TypeScript nạp thẳng (dashboard-ui/src/lib/talpha/ads-recon/*.ts) — Node chỉ tự bỏ kiểu từ 22.18
+// (nhánh 22) / 23.6. Node cũ hơn báo ERR_UNKNOWN_FILE_EXTENSION khó hiểu, nên kiểm TRƯỚC khi nạp engine.
+const [nodeMajor, nodeMinor] = process.versions.node.split(".").map(Number);
+if (!(nodeMajor > 23 || (nodeMajor === 23 && nodeMinor >= 6) || (nodeMajor === 22 && nodeMinor >= 18))) {
+    console.error(`Cần Node ≥ 22.18 (đang chạy ${process.versions.node}) — engine đối soát là TypeScript, ` +
+        "Node cũ hơn không nạp được file .ts. Cài Node mới hơn rồi chạy lại.");
+    process.exit(1);
+}
+const { runReconciliation, loadConfig, ROOT } = await import("../src/run.mjs");
+const { sendAlerts, toCsv, fmtVND } = await import("../src/engine.mjs");
 
 const C = process.stdout.isTTY
     ? { red: "\x1b[31m", yellow: "\x1b[33m", dim: "\x1b[2m", bold: "\x1b[1m", green: "\x1b[32m", off: "\x1b[0m" }

@@ -162,7 +162,7 @@ Sinh lại file mẫu: `python3 data/samples/make_samples.py`
 src/engine.mjs        cầu nối tới engine dùng chung trong repo dashboard
 src/run.mjs           đọc đĩa · lưu kỳ · nhớ kỳ trước (phần engine cố tình không làm)
 bin/reconcile.mjs     dòng lệnh (lối tắt: ./reconcile)
-tests/                51 phép thử — chạy trên chính engine dùng chung
+tests/                52 phép thử — chạy trên chính engine dùng chung
 data/inbox/           thả file tuần này vào đây
 data/periods/<tuần>/  result.json + sources/ (bản sao các file gốc)
 data/samples/         file mẫu đã gài sẵn đủ loại lệch

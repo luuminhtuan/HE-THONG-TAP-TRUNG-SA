@@ -40,10 +40,10 @@ repos:
       # Từ 16/11/2026 mọi file đều trong ngưỡng (đợt tái cấu trúc đã tách các file lớn) —
       # hook này giữ cho file không phình lại.
       - id: check-file-length
-        name: "Độ dài file (300 Python / 500 TS)"
+        name: "Độ dài file (300 Python / 500 TS / 500 JS)"
         language: python
         entry: python scripts/hooks/check_file_length.py
-        types_or: [python, ts, tsx]
+        types_or: [python, ts, tsx, javascript]
         pass_filenames: true
 
       # 2. Không commit file .env thật

@@ -15,8 +15,10 @@ export const PERIODS_DIR = join(ROOT, "data", "periods");
 export const RULES_FILE = join(REPO_ROOT, "config", "talpha_rules.json");
 
 const RESULT_FILE = "result.json";
-// Kỳ chạy trước khi đổi tên (16/11/2026) lưu "ket-qua.json" — vẫn đọc làm lịch sử nếu ai chép sang.
+// Kỳ chạy trước khi đổi tên (16/11/2026) lưu "ket-qua.json" trong data/ky — thư mục cũ của bản dòng lệnh
+// (doi-soat-chi-phi-qc/, ngoài git nên đổi tên thư mục là nó nằm lại) vẫn đọc làm lịch sử để so tuần trước.
 const LEGACY_RESULT_FILE = "ket-qua.json";
+const LEGACY_PERIODS_DIRS = [join(ROOT, "data", "ky"), join(REPO_ROOT, "doi-soat-chi-phi-qc", "data", "ky")];
 
 /** Luật nằm chung trong talpha_rules.json → khối ads_settlement. */
 export function loadConfig(path = RULES_FILE) {
@@ -38,15 +40,21 @@ function loadRoster(cfg) {
  * Các kỳ đã đối soát, cũ → mới. Lọc kỳ cũ hơn kỳ đang chạy để so tăng/giảm
  * không bị ngược chiều khi chạy lại một kỳ cũ.
  */
-export function loadHistory(excludePeriod = null) {
-    if (!existsSync(PERIODS_DIR)) return [];
+export function loadHistory(excludePeriod = null, dirs = [PERIODS_DIR, ...LEGACY_PERIODS_DIRS]) {
+    // Kỳ nào có ở nhiều thư mục thì lấy ở thư mục đứng trước (thư mục mới thắng thư mục cũ).
+    const found = new Map();
+    for (const dir of dirs) {
+        if (!existsSync(dir)) continue;
+        for (const d of readdirSync(dir)) {
+            if (found.has(d) || (excludePeriod && d >= excludePeriod)) continue;
+            const f = [RESULT_FILE, LEGACY_RESULT_FILE].map((n) => join(dir, d, n)).find(existsSync);
+            if (f) found.set(d, f);
+        }
+    }
     const out = [];
-    for (const d of readdirSync(PERIODS_DIR).sort()) {
-        if (excludePeriod && d >= excludePeriod) continue;
-        const f = [RESULT_FILE, LEGACY_RESULT_FILE].map((n) => join(PERIODS_DIR, d, n)).find(existsSync);
-        if (!f) continue;
+    for (const d of [...found.keys()].sort()) {
         try {
-            const j = JSON.parse(readFileSync(f, "utf8"));
+            const j = JSON.parse(readFileSync(found.get(d), "utf8"));
             out.push({ ky: j.ky, chay_luc: j.chay_luc, summary: j.summary, files: j.files });
         } catch { /* kỳ hỏng thì bỏ qua, không được làm chết lượt chạy mới */ }
     }

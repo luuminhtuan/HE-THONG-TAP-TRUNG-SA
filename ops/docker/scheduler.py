@@ -64,7 +64,7 @@ def read_env_file(path: str) -> dict:
 def build_env() -> dict:
     env = dict(os.environ)
     # .env.local trước, Khoá kết nối (bảng api_credentials) sau — khoá nhập trên trang thắng (như
-    # docKhoa của dashboard).
+    # getCredential() của dashboard).
     for k, v in read_env_file(os.path.join(REPO, "dashboard-ui/.env.local")).items():
         if k not in ("DATABASE_URL", "TALPHA_READONLY_PASSWORD", "TALPHA_DOC_PASSWORD", "TALPHA_ENCRYPTION_KEY"):   # compose quyết định
             env[k] = v

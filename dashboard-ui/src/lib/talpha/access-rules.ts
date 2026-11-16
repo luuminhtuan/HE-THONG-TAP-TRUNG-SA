@@ -180,7 +180,7 @@ export const API_RULES: Record<string, ApiRule> = {
     "/api/query": { tabs: ["marketing", "ad-health", "customers", "market-intel"] },
 
     // Sổ đơn / Tiền COD về / vận đơn — mỗi lượt gọi là MỘT nước. cod-actions mở cho Sổ đơn
-    // để ghi "đã nhắn NAZA"; việc kế toán trong đó route tự chặn thêm bằng ghiCodDuoc().
+    // để ghi "đã nhắn NAZA"; việc kế toán trong đó route tự chặn thêm bằng canWriteCodAction().
     "/api/talpha/order-ledger": { tabs: ["order-ledger", "cod-recon"], market: "TW" },
     "/api/talpha/order-ledger/market": { tabs: ["order-ledger"], market: "param" },
     "/api/talpha/cod-recon": { tabs: ["cod-recon"], market: "TW" },

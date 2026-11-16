@@ -193,7 +193,10 @@ export async function computeOrderCosts(from: string, to: string, shopFilter?: (
                    i.product_name, i.variation_name, i.barcode, COALESCE(i.quantity, 0) AS qty
             FROM don
             LEFT JOIN order_items i
-                   ON i.order_id = don.id AND i.shop_id = don.shop_id`,
+                   ON i.order_id = don.id AND i.shop_id = don.shop_id
+            -- Thứ tự cố định: thứ tự dòng quyết định thứ tự danh sách trả về và tên SP thiếu giá vốn lấy từ dòng
+            -- nào — không ORDER BY thì mỗi lần / mỗi máy một kiểu (16/11/2026).
+            ORDER BY don.shop, don.id, i.product_name, i.variation_name, i.barcode`,
         { from, to, tz: POS_TIMEZONE },
     );
 

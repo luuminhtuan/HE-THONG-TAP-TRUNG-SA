@@ -475,5 +475,5 @@ const morning = (d, o = {}) => buildShipmentMorning(d, { today: TODAY, nowTs: NO
         assert.ok(m.includes("🔁 2 KHÁCH NHẮC LẠI → 1 đã lấy (1.499 NT$) · 1 còn chờ, sáng mai nhắc tiếp"), m);
     });
 
-    console.log(`van_don: ${ok} phép thử — tất cả đạt.`);
+    console.log(`shipment_alerts.test.js: ${ok} phép thử — tất cả đạt.`);
 })().catch((e) => { console.error(e.message); process.exit(1); });

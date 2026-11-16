@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
     }
     const fingerprintBefore = overridesFingerprint(await readOverrides());
     await saveMarketOverride(n.key, overrideFromInput(n, readBaseRules()), actor);
-    // Chỉ đổi key (thông tin nước y nguyên) → khỏi khởi động lại: docKhoa đã nạp lại key mới.
+    // Chỉ đổi key (thông tin nước y nguyên) → khỏi khởi động lại: getCredential() đã nạp lại key mới.
     const changed = overridesFingerprint(await readOverrides()) !== fingerprintBefore;
     return NextResponse.json({ ok: true, luu_key: !!newPosKey, khoi_dong_lai: changed ? scheduleRestart() : "khong_can", ...(await listMarkets()) });
 }
@@ -190,6 +190,6 @@ export async function DELETE(req: NextRequest) {
     }
     await saveMarketOverride(key, null, actor);
     if (n.shop_label) await saveCredential(posKeyName(n.shop_label), null, "");
-    console.log(`[thi-truong] ${actor} xoá nước ${key} (${n.shop_label || "chưa có mã shop"}) — chưa có đơn, chưa có chi tiêu`);
+    console.log(`[market-config] ${actor} xoá nước ${key} (${n.shop_label || "chưa có mã shop"}) — chưa có đơn, chưa có chi tiêu`);
     return NextResponse.json({ ok: true, da_xoa: n.display || key, khoi_dong_lai: scheduleRestart(), ...(await listMarkets()) });
 }

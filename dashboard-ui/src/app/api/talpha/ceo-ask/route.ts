@@ -233,7 +233,7 @@ async function runAgent(ai: GoogleGenAI, model: string, question: string, from: 
 
 export async function POST(request: Request) {
     // Khoá riêng của trình duyệt (header) thắng khoá mặc định. Khoá mặc định nhập ở Quản trị → Khoá kết
-    // nối → tab Gemini (bảng api_credentials, 15/11/2026); docKhoa còn đọc GEMINI_API_KEY trong .env.local.
+    // nối → tab Gemini (bảng api_credentials, 15/11/2026); getCredential() còn đọc GEMINI_API_KEY trong .env.local.
     const browserKey = (request.headers.get(GEMINI_KEY_HEADER) || "").trim();
     if (browserKey && !isValidGeminiKey(browserKey)) {
         return NextResponse.json({ error: `Khoá Gemini riêng trên trình duyệt này không đúng dạng — ${CHANGE_KEY_HINT.trinh_duyet}.` }, { status: 400 });

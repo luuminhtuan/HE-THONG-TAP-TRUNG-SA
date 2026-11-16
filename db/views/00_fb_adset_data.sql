@@ -2,7 +2,7 @@
 -- fb_adset_data — chi tiêu của các TKQC thuộc loại VÀO BÁO CÁO (04/11/2026)
 -- ═══════════════════════════════════════════════════════════════════
 -- Sync kéo chi tiêu của MỌI TKQC token đọc được vào fb_adset_all. View này chỉ giữ TKQC có loại
--- vao_bao_cao = true (talpha_rules.json → tkqc_loai; loại từng TKQC ở bảng ad_accounts, đổi ở /admin → TKQC).
+-- include_in_report = true (talpha_rules.json → ad_account_categories; loại từng TKQC ở bảng ad_accounts, đổi ở /admin → TKQC).
 -- Mọi chỗ đọc fb_adset_data — dashboard, báo cáo tháng, bot, view phân tích — tự bỏ TKQC ngoài báo cáo.
 -- TKQC chưa có trong bảng ad_accounts (chưa vòng sync nào thấy) tính theo loại mặc định.
 -- ═══════════════════════════════════════════════════════════════════

@@ -14,7 +14,7 @@ export interface YamlConfig {
 }
 
 // Resolve ${ENV_VAR} placeholders in the YAML so secrets (Meta token, Poscake keys) stay out
-// of the YAML. docKhoa: khoá nhập ở /admin → Khoá kết nối trước, rồi .env.local.
+// of the YAML. getCredential(): khoá nhập ở /admin → Khoá kết nối trước, rồi .env.local.
 function resolveEnvPlaceholders(raw: string): string {
     return raw.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name) => {
         const val = getCredential(name);

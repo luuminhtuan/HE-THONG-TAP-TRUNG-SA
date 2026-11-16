@@ -1,7 +1,7 @@
 // /admin → TKQC (04/11/2026): danh bạ TKQC tự động — mọi TKQC token Meta đọc được, chi tiêu 7 / 30 ngày,
 // loại của từng TK (vào báo cáo hay không). Thay trang TKQC Manager cũ (ghi ad_accounts.json mà sync không
 // đọc). Chỉ giám đốc (access-rules → API_RULES).
-//   GET                         danh bạ + các loại khai trong talpha_rules.json → tkqc_loai
+//   GET                         danh bạ + các loại khai trong talpha_rules.json → ad_account_categories
 //   POST {account_id, category, note?}  đổi loại — có tác dụng ngay ở mọi báo cáo
 //   POST {action: "scan"}       hỏi Meta ngay bằng token đang lưu (khỏi chờ vòng sync đầu giờ)
 import { NextRequest, NextResponse } from "next/server";

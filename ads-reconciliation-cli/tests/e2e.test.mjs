@@ -155,3 +155,25 @@ test("tải nhầm cùng một file hai lần thì bỏ bản trùng, KHÔNG đ�
     assert.equal(split.summary.at_risk, single.summary.at_risk);
     assert.ok(split.alerts.some((a) => a.code === "TRUNG_GIUA_FILE"), "phải nói ra là đã bỏ dòng trùng");
 });
+
+test("lịch sử kỳ đọc cả thư mục cũ data/ky (ket-qua.json), thư mục mới thắng khi trùng kỳ", async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { loadHistory } = await import("../src/run.mjs");
+    const base = mkdtempSync(join(tmpdir(), "ky-"));
+    const fresh = join(base, "periods"), legacy = join(base, "ky");
+    const put = (dir, period, file, bankTotal) => {
+        mkdirSync(join(dir, period), { recursive: true });
+        writeFileSync(join(dir, period, file), JSON.stringify({ ky: period, summary: { bank_total: bankTotal } }));
+    };
+    put(legacy, "2026-W40", "ket-qua.json", 1);
+    put(legacy, "2026-W41", "ket-qua.json", 2);
+    put(fresh, "2026-W41", "result.json", 20);
+    put(fresh, "2026-W42", "result.json", 30);
+    try {
+        const h = loadHistory("2026-W42", [fresh, legacy]);
+        assert.deepEqual(h.map((x) => [x.ky, x.summary.bank_total]), [["2026-W40", 1], ["2026-W41", 20]]);
+    } finally {
+        rmSync(base, { recursive: true, force: true });
+    }
+});

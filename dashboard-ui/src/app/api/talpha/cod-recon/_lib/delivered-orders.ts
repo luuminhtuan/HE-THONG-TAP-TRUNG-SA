@@ -26,7 +26,8 @@ export async function loadDeliveredOrders(from: string, to: string): Promise<Pos
                 ON v.shop_id = o.shop_id AND v.order_id = o.id
          WHERE v.order_date BETWEEN @from::date AND @to::date
            AND v.status_category = 'GIAO_THANH_CONG'
-           AND COALESCE(o.cod, 0) > 0`,
+           AND COALESCE(o.cod, 0) > 0
+         ORDER BY v.order_date, v.order_uid`,   // thứ tự dòng đối soát cố định giữa các lần / các máy
         { from, to },
     );
 

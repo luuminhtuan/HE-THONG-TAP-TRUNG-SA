@@ -30,6 +30,6 @@ export async function POST(req: NextRequest) {
     if (!POS_KEY_PATTERN.test(keyName) && !listCredentials().some((d) => d.ten === keyName)) {
         return NextResponse.json({ error: `Không có khoá tên ${keyName}` }, { status: 400 });
     }
-    console.log(`[khoa] ${a.email || a.name || "?"} xem khoá ${keyName}`);
+    console.log(`[credentials] ${a.email || a.name || "?"} xem khoá ${keyName}`);
     return NextResponse.json({ ten: keyName, gia_tri: getCredential(keyName) }, { headers: { "Cache-Control": "no-store" } });
 }
