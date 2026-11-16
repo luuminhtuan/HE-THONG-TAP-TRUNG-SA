@@ -5,7 +5,7 @@ import { readStoreFresh, updateStore } from "@/lib/talpha/store";
 import { MAX_UPLOAD_BYTES, tooBigMessage } from "@/lib/talpha/upload-limit";
 import {
     ingestDocs, reconcileRows, readAnySheets, detectKind, toCsv, sendAlerts,
-    addRowsToStore, removeSourceFile, summarizeSources,
+    addRowsToStore, removeSourceFile, summarizeSources, rosterFromAdAccounts,
     type AdsSettlementConfig, type BankRow, type FbRow, type HistoryEntry, type PdfPasswordError,
     type ReconResult, type Roster, type SourceDoc,
 } from "@/lib/talpha/ads-recon/recon";
@@ -50,16 +50,28 @@ function cfg(): AdsSettlementConfig {
     return c;
 }
 
-/** Roster TKQC = danh bạ TKQC tự động (bảng tkqc, 04/11/2026 — trước đó file ad_accounts.json gõ tay):
+/** Roster TKQC = danh bạ TKQC tự động (bảng ad_accounts, 04/11/2026 — trước đó file ad_accounts.json gõ tay):
  *  mọi TKQC token từng thấy, kể cả loại ngoài báo cáo — vẫn là TK của công ty, thẻ trả cho nó không "lạ".
- *  Kho số lỗi thì engine tự bỏ qua kiểm tra TKQC lạ, không chết. Giữ dạng {projects: {…: {accounts}}}. */
-async function roster(): Promise<Roster | null> {
+ *  Kho số lỗi thì engine tự bỏ qua kiểm tra TKQC lạ, không chết. Giữ dạng {projects: {…: {accounts}}}.
+ *  `bankRows` (lúc đối soát): TKQC có chi tiêu trong khoảng ngày sao kê là "đang chạy" — engine dựa vào đó
+ *  báo thiếu bản kê của TK nào. Đọc chi tiêu lỗi thì vẫn trả roster, chỉ không biết TK nào đang chạy. */
+async function roster(bankRows?: BankRow[]): Promise<Roster | null> {
+    let accounts: { account_id: string; name: string | null }[];
     try {
-        const rows = await query<{ account_id: string; name: string | null }>("SELECT account_id, name FROM ad_accounts");
-        return { projects: { ad_accounts: { accounts: rows.map((r) => ({ id: `act_${r.account_id}`, name: r.name || r.account_id })) } } };
+        accounts = await query<{ account_id: string; name: string | null }>("SELECT account_id, name FROM ad_accounts");
     } catch {
         return null;
     }
+    const dates = (bankRows || []).map((r) => r.date).filter(Boolean).sort();
+    let spentIds: string[] = [];
+    if (dates.length) {
+        try {
+            spentIds = (await query<{ account_id: string }>(
+                "SELECT DISTINCT account_id FROM fb_ads_all WHERE spend > 0 AND date BETWEEN @from::date AND @to::date",
+                { from: dates[0], to: dates[dates.length - 1] })).map((r) => r.account_id);
+        } catch { /* giữ roster, bỏ phần "đang chạy" */ }
+    }
+    return rosterFromAdAccounts(accounts, spentIds);
 }
 
 /** act_xxx → tên người đọc được, lấy từ roster. */
@@ -210,7 +222,7 @@ export async function POST(req: NextRequest) {
         const reconRun = reconcileRows(
             { ...doc2.fb, rows: updatedRowStore.fb },
             { ...doc2.bank, rows: updatedRowStore.bank },
-            c, { roster: await roster(), history: previousStore.periods as HistoryEntry[] });
+            c, { roster: await roster(updatedRowStore.bank), history: previousStore.periods as HistoryEntry[] });
 
         const result: Period = {
             ...reconRun, nap: importStats, nguon: sources,

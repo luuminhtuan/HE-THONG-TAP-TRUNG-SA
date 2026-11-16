@@ -242,6 +242,7 @@ export { addRowsToStore, removeSourceFile, summarizeSources, fbRowKey, bankRowKe
 export type { SourceSummary } from "./storage.ts";
 export type { PdfPasswordError } from "./pdf.ts";
 export { detectKind } from "./ingest.ts";
+export { rosterFromAdAccounts } from "./rules.ts";
 export { toCsv } from "./csv.ts";
 export { buildMessage, sendAlerts } from "./notify.ts";
 export { fmtVND } from "./normalize.ts";

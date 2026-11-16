@@ -59,6 +59,20 @@ function activeAdAccounts(rosterJson: Roster | null | undefined): { id: string; 
     return out;
 }
 
+/** Roster từ danh bạ TKQC tự động (bảng ad_accounts) — dùng cho route dashboard. TKQC có chi tiêu trong kỳ
+ *  sao kê thẻ (`spentIds`) là "active": thẻ bị trừ cho nó nên phải có bản kê, kể cả TK Meta đã khoá sau khi
+ *  chi. Thiếu `status` là activeAdAccounts() rỗng → cảnh báo THIEU_BAN_KE_TKQC không bao giờ bật (trước 16/11/2026). */
+export function rosterFromAdAccounts(
+    accounts: { account_id: string; name: string | null }[], spentIds: Iterable<string>,
+): Roster {
+    const spent = new Set([...spentIds].map(stripActPrefix));
+    return { projects: { ad_accounts: { accounts: accounts.map((r) => ({
+        id: `act_${stripActPrefix(r.account_id)}`,
+        name: r.name || r.account_id,
+        status: spent.has(stripActPrefix(r.account_id)) ? "active" : "inactive",
+    })) } } };
+}
+
 /** Nội dung sao kê, hoặc tên TKQC với dòng chi phí. */
 const rowText = (r: TxnRow) => (r.src === "bank" ? r.desc : r.account_name) || "";
 

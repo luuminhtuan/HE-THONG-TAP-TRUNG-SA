@@ -108,6 +108,28 @@ const ROSTER = { projects: { talpha: { accounts: [{ id: "act_ok" }] } } };
         assert.strictEqual(a.severity, "critical");
         assert.ok(a.title.includes("act_la"));
     });
+    t("roster từ bảng ad_accounts: TKQC có chi tiêu trong kỳ là đang chạy", () => {
+        const roster = E.rosterFromAdAccounts(
+            [{ account_id: "111", name: "TK Một" }, { account_id: "222", name: null }, { account_id: "333", name: "TK Ba" }],
+            ["111", "act_222"]);
+        assert.deepStrictEqual(roster.projects.ad_accounts.accounts, [
+            { id: "act_111", name: "TK Một", status: "active" },
+            { id: "act_222", name: "222", status: "active" },
+            { id: "act_333", name: "TK Ba", status: "inactive" },
+        ]);
+    });
+    t("roster dashboard: TK có chi tiêu mà thiếu bản kê thì báo THIEU_BAN_KE_TKQC", () => {
+        // Trước 16/11/2026 route dựng roster không có status → cảnh báo này không bao giờ bật trên dashboard.
+        const accounts = [{ account_id: "111", name: "TK Một" }, { account_id: "222", name: "TK Hai" }];
+        const fb = [fbRow("T1", "01/09/2026", 5000000, "act_111")];
+        const bank = [bankRow("01/09/2026", 5000000), bankRow("02/09/2026", 9000000, "FACEBK *Y VISA*4281", "FT2")];
+        const missing = run(fb, bank, { roster: E.rosterFromAdAccounts(accounts, ["111", "222"]) });
+        const a = missing.alerts.find((x) => x.code === "THIEU_BAN_KE_TKQC");
+        assert.ok(a, "phải báo thiếu bản kê");
+        assert.ok(a.detail.includes("TK Hai") && a.title.includes("1/2"));
+        const idle = run(fb, bank, { roster: E.rosterFromAdAccounts(accounts, ["111"]) });
+        assert.ok(!idle.alerts.some((x) => x.code === "THIEU_BAN_KE_TKQC"), "TK không chi trong kỳ thì không cần bản kê");
+    });
     t("ngân hàng trừ dư ngoài dung sai thì tách ra thành phí ẩn", () => {
         const r = run([fbRow("T1", "02/09/2026", 15000000)], [bankRow("02/09/2026", 15450000)]);
         const a = r.alerts.find((x) => x.code === "PHI_AN");

@@ -85,7 +85,7 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   tự đúng. Đổi loại ở `/admin` → TKQC, có tác dụng ngay. **Đừng ghi thẳng vào `fb_ads_data`** — nó là view.
   `talpha.yaml → ad_account_ids` chỉ còn là lịch sử (toàn dòng chú thích). `ops/talpha_reports/ad_accounts.json`
   CHỈ còn bản dòng lệnh đối soát quảng cáo đọc (roster bắt TKQC lạ, `ads_settlement.ad_accounts.roster_file`) —
-  dashboard lấy roster từ bảng `ad_accounts`.
+  dashboard lấy roster từ bảng `ad_accounts` (TK có chi tiêu trong kỳ sao kê thẻ = "đang chạy", để báo thiếu bản kê).
 * **Đăng nhập + phân quyền theo team** (05/10/2026): NextAuth v5 (`lib/auth.ts`); người dùng
   qua `lib/users.ts` (bảng `users`, mỗi người `role` + `teams`). Luật ở
   `talpha_rules.json → access`, đọc qua `lib/talpha/access-rules.ts` (có test). Cửa chặn chung:
