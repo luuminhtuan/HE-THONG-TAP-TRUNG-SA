@@ -73,7 +73,9 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   (`sync/core/tkqc.py` ↔ `lib/talpha/tkqc.ts`). `fb_ads_data` / `fb_adset_data` / `fb_campaign_data` là VIEW
   chỉ gồm TKQC loại vao_bao_cao (`talpha_rules.json → tkqc_loai`) — đọc tên cũ là tự đúng. Đổi loại ở
   `/admin` → TKQC, có tác dụng ngay. **Đừng ghi thẳng vào `fb_ads_data`** — nó là view.
-  `talpha.yaml → ad_account_ids` và `ad_accounts.json` không còn ai đọc.
+  `talpha.yaml → ad_account_ids` chỉ còn là lịch sử (toàn dòng chú thích). `ops/talpha_reports/ad_accounts.json`
+  CHỈ còn bản dòng lệnh đối soát quảng cáo đọc (roster bắt TKQC lạ, `ads_settlement.ad_accounts.roster_file`) —
+  dashboard lấy roster từ bảng `tkqc`.
 * **Đăng nhập + phân quyền theo team** (05/10/2026): NextAuth v5 (`lib/auth.ts`); người dùng
   qua `lib/users.ts` (bảng `users`, mỗi người `role` + `teams`). Luật ở
   `talpha_rules.json → access`, đọc qua `lib/talpha/access-rules.ts` (có test). Cửa chặn chung:
