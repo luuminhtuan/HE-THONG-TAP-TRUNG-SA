@@ -1,6 +1,7 @@
 // Chạy MỘT câu SQL rồi in kết quả JSON ra stdout — cho lib/talpha/db-sync.ts gọi bằng
 // execFileSync khi dashboard cần số trong kho NGAY lúc nạp code (luật thị trường, khoá kết nối),
 // chỗ không await được. Đầu vào (stdin): {"sql": "...", "params": [...]}. Lỗi → exit 1, lý do ở stderr.
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- CommonJS chạy bằng node thuần
 const { Client } = require("pg");
 
 let vao = "";

@@ -53,6 +53,8 @@ export function nhanNapGon(n?: NhapBangDon | null): string | null {
 /** `anMaTrung`: không nhắc mã vận đơn trùng ở đây — Sổ đơn đã có khung "việc cần sửa" nói rồi. */
 export default function ThanhNhapBangDon({ n, gioCanhBao = 24, anMaTrung }: { n?: NhapBangDon | null; gioCanhBao?: number; anMaTrung?: boolean }) {
     if (!n) return null;
+    // Cố ý đọc giờ lúc vẽ: nhãn "nạp cách đây bao lâu" phải tính lại mỗi lần tab vẽ lại.
+    // eslint-disable-next-line react-hooks/purity
     const gio = n.luc ? (Date.now() - Date.parse(n.luc)) / GIO : Infinity;
     const cu = !n.luc || gio > gioCanhBao;
 

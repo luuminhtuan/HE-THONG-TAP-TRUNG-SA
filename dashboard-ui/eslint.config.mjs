@@ -19,7 +19,24 @@ const config = [
     },
     ...nextCoreWebVitals,
     ...nextTypescript,
+    // Mỗi khối luật phải giới hạn `files` ĐÚNG như khối khai plugin của nó: khối không có `files` áp cả
+    // cho file .cjs (scripts/sync-query.cjs) — nơi plugin react-hooks / @typescript-eslint không được nạp —
+    // và ESLint dừng hẳn với "could not find plugin" (lint hỏng tới 16/11/2026 vì vậy).
     {
+        files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
+        rules: {
+            // Gọi setState ngay trong effect — hạ xuống CẢNH BÁO.
+            //
+            // Hai chỗ dính: `theme-provider` đọc chủ đề từ localStorage sau khi
+            // mount, và tab Kho bật cờ "đang tải" trước khi fetch. Cả hai là mẫu
+            // React quen thuộc và đang chạy đúng; viết lại cho hết cảnh báo
+            // (useSyncExternalStore, useReducer) là một việc riêng, có rủi ro
+            // nhấp nháy giao diện, không phải điều kiện để merge sửa đổi khác.
+            "react-hooks/set-state-in-effect": "warn",
+        },
+    },
+    {
+        files: ["**/*.ts", "**/*.tsx"],
         rules: {
             // `any` hạ xuống CẢNH BÁO, không chặn.
             //
@@ -29,15 +46,6 @@ const config = [
             // Để mức "error" thì lint đỏ ngay từ dòng đầu và không ai chạy nữa,
             // thành ra mất luôn cả những lỗi thật mà nó bắt được.
             "@typescript-eslint/no-explicit-any": "warn",
-
-            // Gọi setState ngay trong effect — hạ xuống CẢNH BÁO.
-            //
-            // Hai chỗ dính: `theme-provider` đọc chủ đề từ localStorage sau khi
-            // mount, và tab Kho bật cờ "đang tải" trước khi fetch. Cả hai là mẫu
-            // React quen thuộc và đang chạy đúng; viết lại cho hết cảnh báo
-            // (useSyncExternalStore, useReducer) là một việc riêng, có rủi ro
-            // nhấp nháy giao diện, không phải điều kiện để merge sửa đổi khác.
-            "react-hooks/set-state-in-effect": "warn",
 
             // Biến/tham số mở đầu bằng _ là CỐ Ý bỏ: `const { password: _bo, ...rest }`
             // để loại mật khẩu khỏi phản hồi, hay `(_props)` khi component không dùng prop.
