@@ -36,8 +36,8 @@ File tải lên   ────────► /api/talpha/{cod-recon, ads-recon,
 | Thành phần | Production (VPS) | Nhánh `kho-postgres` (docker compose) |
 |---|---|---|
 | Dashboard | `/opt/talpha`, pm2 `talpha-dashboard` cổng 3000 | service `dashboard`, http://localhost:3200 |
-| Sync | systemd `talpha-sync.timer` → `sync/talpha/talpha_sync.py` | service `lich` (`ops/docker/scheduler.py`) cùng giờ |
-| Báo cáo tháng | systemd `talpha-report.timer` → `/root/talpha_reports/daily_guarded.sh` | `lich` → `ops/talpha_reports/daily_guarded.sh` trong repo |
+| Sync | systemd `talpha-sync.timer` → `sync/talpha/talpha_sync.py` | service `scheduler` (`ops/docker/scheduler.py`) cùng giờ |
+| Báo cáo tháng | systemd `talpha-report.timer` → `/root/talpha_reports/daily_guarded.sh` | `scheduler` → `ops/talpha_reports/daily_guarded.sh` trong repo |
 | Bot Zalo | pm2 `talpha-zalo-alerts`, mỗi nước một nhóm | service `zalo` (tuỳ chọn) |
 | Bot WhatsApp | **Đã xoá 30/10/2026** (chưa từng chạy trên VPS) | — |
 | Máy Mac | Chỉ là máy dev. Không pm2, không launchd, không cron | |
@@ -86,9 +86,9 @@ Văn bản đầy đủ: `docs/TALPHA_METRIC_RULES.md`.
    miễn phí: KHÔNG streaming, KHÔNG DML — chỉ LOAD JOB.
 5. **Vòng báo cáo không ghi khi sync hỏng** (chốt 03/09). Giữ số cũ đúng hơn là ghi đè bằng số
    thiếu — spend nằm ở mẫu số nên Sheet sai theo hướng **đẹp giả**.
-6. **TKQC (nhánh Postgres)**: tự động — mọi TKQC các token Meta đọc được vào bảng `tkqc`;
+6. **TKQC (nhánh Postgres)**: tự động — mọi TKQC các token Meta đọc được vào bảng `ad_accounts`;
    `fb_ads_data` / `fb_adset_data` / `fb_campaign_data` là **VIEW** chỉ gồm loại "vào báo cáo"
-   (`talpha_rules.json → tkqc_loai`). Đừng ghi thẳng vào view. TKQC không nằm trong token nào đọc
+   (`talpha_rules.json → ad_account_categories`). Đừng ghi thẳng vào view. TKQC không nằm trong token nào đọc
    được = thiếu spend âm thầm. (Production BigQuery vẫn theo danh sách khai tay.)
 7. **Luật thị trường có BA bản đọc** (TS `lib/talpha/market-config.ts`, Python `sync/core/market_config.py`,
    bot `ops/zalo-alerts/market_config.js`) chạy chung fixture `tests/fixtures/market_overrides.json` —

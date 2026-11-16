@@ -8,7 +8,7 @@ Nhánh `kho-postgres` chạy bằng docker compose: lịch `ops/docker/scheduler
 `ops/talpha_reports/daily_guarded.sh` **trong repo** (không có bản chép runtime), log ở
 `ops/talpha_reports/daily_<ngày>.log`.
 
-## Vòng chạy (mỗi giờ phút :20 — systemd `talpha-report.timer` trên VPS, `lich` trong docker)
+## Vòng chạy (mỗi giờ phút :20 — systemd `talpha-report.timer` trên VPS, service `scheduler` trong docker)
 
 1. `daily_guarded.sh` — dọn lock kẹt (>45'), chặn chạy dày (<50' bỏ qua), gọi 2 bước dưới
 2. `sync_month.py` — kéo lại tháng hiện tại từ POS + Meta vào kho số (production: BigQuery; nhánh
@@ -42,8 +42,10 @@ khác nhau cùng ghi một bộ bảng mỗi giờ, bản nào chạy sau thì �
 | `talpha_paths.py` | MỘT chỗ giải đường dẫn (reports · runtime · repo · khoá Google `bigquery_key.json`) |
 | `daily_guarded.sh` | Vòng chạy mỗi giờ: lock, guard, health |
 | `sync_month.py` | Kéo lại tháng hiện tại; cửa sổ theo NGÀY TẠO đơn (`TALPHA_ORDER_WINDOW_DAYS`, mặc định 30) |
-| `format_all.py` | Sinh báo cáo Sheets; `parse_camp` map campaign → (thị trường, marketer, sản phẩm) |
-| `talpha_rules.py` | Đọc `config/talpha_rules.json` — rule dùng chung phía Python |
+| `format_all.py` | Sinh báo cáo tháng (điểm chạy `main()`); `parse_camp` map campaign → (thị trường, marketer, sản phẩm) |
+| `report_data.py` · `report_tables.py` · `report_store.py` · `sheet_writer.py` | Phần việc của `format_all.py` (tách 16/11/2026): đọc số + gom ô · dựng bảng · ghi `monthly_report_tabs` / `market_monthly_reports` · ghi Google Sheet |
+| `talpha_rules.py` | Đọc `config/talpha_rules.json` — rule dùng chung phía Python; luật page / campaign ở `campaign_pages.py`, luật đơn (gán marketer, đơn trống) ở `order_rules.py` |
+| `pancake_mess.py` | Tin nhắn theo page từ Pancake cho nước Meta không báo số tin nhắn (Nhật) |
 | `report_health.py` | Chống sync "chết câm" (từng kẹt số cũ cả tuần 22–29/06) |
 | `report_account_health.py` | Health theo TỪNG TKQC/shop — bắt lỗi âm thầm khi một mục rơi khỏi sync mà vòng vẫn rc=0 |
 | `check_meta_token.py` | Kiểm token Meta TRƯỚC khi tin vào Sheet. Exit 0 = mọi TKQC đọc được |
@@ -51,10 +53,10 @@ khác nhau cùng ghi một bộ bảng mỗi giờ, bản nào chạy sau thì �
 | `new_month_files.py` | Soát bộ file một tháng trên Drive (`python3 new_month_files.py 2026-10`) — đủ file chưa, file nào sai tên/.xlsx. CHỈ ĐỌC |
 | `create_month_files.gs` | Apps Script chạy bằng tài khoản chủ thư mục: share thư mục gốc cho service account, chép khuôn tháng trước sang "Tháng N", tự chạy ngày 25 |
 | `deploy_runtime.sh` | Deploy MỘT CHIỀU repo → runtime (checksum diff, backup, giữ lock) |
-| `snapshot_cron.sh` | Gọi `/api/talpha/sync-inventory` để làm tươi `inventory_snapshot` — dự phòng cho tab Kho. Mỗi giờ phút :40 (`talpha-snapshot.timer` trên VPS, `lich` trong docker) |
+| `snapshot_cron.sh` | Gọi `/api/talpha/sync-inventory` để làm tươi `inventory_snapshot` — dự phòng cho tab Kho. Mỗi giờ phút :40 (`talpha-snapshot.timer` trên VPS, `scheduler` trong docker) |
 | `catalog_cron.sh` | Đồng bộ danh mục sản phẩm từ POS — 05:10 mỗi ngày (`talpha-catalog.timer`) |
 | `report_files/YYYY-MM.json` | Bộ file KHAI TAY của một tháng (hiện chỉ tháng 9/2026): `{grand, files: {nước: {key marketer: ID}}, test}` |
-| `ad_accounts.json` | Roster TKQC cho bản dòng lệnh đối soát chi phí quảng cáo (`ads_settlement.ad_accounts.roster_file`). Dashboard nhánh `kho-postgres` lấy roster từ bảng `tkqc` (TKQC tự động) |
+| `ad_accounts.json` | Roster TKQC cho bản dòng lệnh đối soát chi phí quảng cáo (`ads_settlement.ad_accounts.roster_file`). Dashboard nhánh `kho-postgres` lấy roster từ bảng `ad_accounts` (TKQC tự động) |
 
 ## Mỗi tháng MỘT thư mục (01/10/2026)
 

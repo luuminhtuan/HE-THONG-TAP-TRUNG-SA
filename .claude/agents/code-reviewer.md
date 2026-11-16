@@ -35,7 +35,7 @@ trước khi review. Lỗi làm số sai hoặc mất dữ liệu quan trọng h
 - [ ] Ghi bảng hai tầng qua `pg_writer.py`: raw chỉ thêm, bảng sạch dựng lại trong một transaction.
 - [ ] Không ghi thẳng vào `fb_ads_data` / `fb_adset_data` / `fb_campaign_data` (là VIEW).
 - [ ] Migration: chỉ thêm file mới; không sửa / đổi tên file đã chạy.
-- [ ] Bảng riêng mới (dữ liệu người dùng nhập) đã thêm vào `pg_view.py → BANG_RIENG`.
+- [ ] Bảng riêng mới (dữ liệu người dùng nhập) đã thêm vào `pg_view.py → PRIVATE_TABLES`.
 
 ### Postgres — số sai không báo lỗi (🟡)
 
@@ -47,8 +47,8 @@ trước khi review. Lỗi làm số sai hoặc mất dữ liệu quan trọng h
 
 - [ ] Route API mới đã khai trong `API_RULES` (`lib/talpha/access-rules.ts`).
 - [ ] Route gộp nhiều nước tự lọc theo `getAccess()`.
-- [ ] SQL do trình duyệt / AI viết chạy bằng `queryChiDoc` (vai chỉ đọc), không bằng `query()`.
-- [ ] Khoá đọc qua `docKhoa()` (TS) / `load_credentials_to_env()` (Python) — không đọc `process.env` thẳng cho khoá,
+- [ ] SQL do trình duyệt / AI viết chạy bằng `queryReadOnly` (vai chỉ đọc), không bằng `query()`.
+- [ ] Khoá đọc qua `getCredential()` (TS) / `load_credentials_to_env()` (Python) — không đọc `process.env` thẳng cho khoá,
       không in khoá ra log, không commit `.env*`, `bigquery_key.json`, `data/`.
 
 ### Cấu trúc và quy ước (🟢)
@@ -56,6 +56,8 @@ trước khi review. Lỗi làm số sai hoặc mất dữ liệu quan trọng h
 - [ ] `.py` ≤ 300 dòng, `.ts/.tsx` ≤ 500 dòng.
 - [ ] Logic nghiệp vụ là hàm thuần trong `lib/talpha/` hoặc `sync/core/`, có test.
 - [ ] Đường dẫn cấu hình qua `lib/talpha/config-path.ts`, không ghép `process.cwd()`.
+- [ ] Không `execFileSync` / truy vấn đồng bộ lúc nạp module — luật phủ thị trường + khoá nạp sẵn lúc khởi động
+      (`instrumentation.ts` → `lib/talpha/startup-data.ts`; bot: `primeMarketOverrides()` trước khi nạp `rules.js`).
 - [ ] Code mới đặt tên tiếng Anh; nhãn giao diện, thông báo cho người dùng, tin bot, chú thích nghiệp vụ tiếng Việt.
 - [ ] Slug URL người dùng thấy không đổi.
 - [ ] Python: type hint cho hàm public, không `except:` trần.

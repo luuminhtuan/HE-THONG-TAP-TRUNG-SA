@@ -52,7 +52,7 @@ UPDATE app_documents SET name = 'operating_expenses' WHERE name = 'chi_phi_van_h
 
 -- Vai CHỈ ĐỌC tên tiếng Anh. TẠO MỚI cạnh vai cũ (talpha_doc, talpha_doc_nuoc), KHÔNG đổi tên: vai là đối
 -- tượng của cả cụm Postgres, đổi tên là mọi bản code cũ đang nối cùng cụm (và phép thử chạy migration
--- trong schema tạm) gãy ngay. pg.py đặt mật khẩu đăng nhập cho vai mới từ TALPHA_DOC_PASSWORD; pg_view.py
+-- trong schema tạm) gãy ngay. pg.py đặt mật khẩu đăng nhập cho vai mới từ TALPHA_READONLY_PASSWORD; pg_view.py
 -- cấp/thu quyền cho cả hai cặp. Vai cũ bỏ ở một migration sau, khi không còn bản nào dùng.
 DO $$
 BEGIN

@@ -67,7 +67,7 @@ Mỗi file `.xlsx` có **đúng ba sheet**, và cả ba đều cần:
 
 ⚠️ **Tên cột phí đổi nghĩa giữa các file.** File cũ: `速递运费` = phí ship,
 `快递运费` = phí thao tác (NAZA đặt nhầm tên). Từ kỳ 11/09: `快递运费` = phí ship,
-`操作费` = phí thao tác. Bộ đọc (`cotPhi` trong `naza-statement.ts`) ưu tiên
+`操作费` = phí thao tác. Bộ đọc (`feeColumns` trong `naza-statement-cells.ts`) ưu tiên
 `操作费` nếu có — đọc theo tên cũ thì kỳ 11/09 ra 0 dòng phí.
 
 ⚠️ **Tên cột mã vận đơn ở sheet COD cũng đổi.** Kỳ 05/10, 12/10, 16/10/2026 NAZA ghi
@@ -77,7 +77,7 @@ dòng mất mã vận đơn, không ghép được đơn: ô "Còn phải gửi 
 104.992 NT$ (≈79 tr)** trong khi thật là **22 đơn · 22.078 NT$ (≈16 tr)**, khung "Đòi tiền NAZA"
 báo ~86 đơn thay vì 9 (Sỹ Anh hỏi 26/10/2026). Đã sửa hai lớp: `运单号` thêm vào
 `cod_settlement.header_anchors.tracking`; dòng COD nào vẫn trống mã thì lấy theo `原单号` ở
-sheet PHÍ (`dienMaVanDonTuPhi` — lúc đọc file và lúc đọc kho, tra phí của MỌI kỳ, nên kho đã lưu
+sheet PHÍ (`fillTrackingFromFees` trong `naza-statement.ts` — lúc đọc file và lúc đọc kho, tra phí của MỌI kỳ, nên kho đã lưu
 tự lành, không phải tải lại file).
 
 ⚠️ **Sheet COD và sheet PHÍ là hai tập đơn khác nhau**, không phải hai cột của
@@ -316,7 +316,7 @@ giống Đài"). Sổ dựng ở `lib/talpha/cod-market-ledger.ts` (có test, s�
 * Σ bốn ô (đã gửi về · còn phải gửi · chưa giao xong · ngân hàng) + "Cách tính". Còn phải gửi ước đi
   đúng luồng NAZA kỳ gần nhất: COD × tỷ giá S$→¥ × (1 − phí thu hộ thật) − phí giao trung bình cho
   đơn chưa bị trừ phí, × tỷ giá ¥→đ. Chưa có kỳ NAZA thì lùi về `markets.*.rate_vnd`.
-* ① Việc hôm nay (khối `KhoiViec` dùng chung với Đài): trả lệch · đơn lạ · phí cao hơn bảng giá ·
+* ① Việc hôm nay (khối `TasksSection` dùng chung với Đài, `tabs/cod-recon/tasks-section.tsx`): trả lệch · đơn lạ · phí cao hơn bảng giá ·
   nhập tiền về · tiền về lệch · thiếu sao kê kỳ mới. "Đã hỏi NAZA" / "Bỏ qua" ghi **cả nhóm** một lần
   bấm (`done_keys`).
 * ② Bảng các kỳ: phải nhận · **thực nhận** (nhập số ngân hàng, kho `cod_actions_<sg|ae>` trong `app_documents`,
@@ -327,7 +327,7 @@ giống Đài"). Sổ dựng ở `lib/talpha/cod-market-ledger.ts` (có test, s�
   2 kg đầu + 2,8¥/0,1 kg chặng đầu + 3¥ đóng gói, **phí thu hộ** ≤ 4% tối thiểu 8¥, tiền hàng).
   Thật: kỳ 24/09 NAZA tính chặng đầu 7¥ cho kiện 0,2 kg (bằng giá hàng đặc thù 3,5¥/0,1 kg) — dư
   1,4¥ × 12 đơn; kỳ 05/10 đúng bảng 36/36 đơn, thu hộ 3,0%.
-* ④ Tỷ giá (`KhoiTyGia` dùng chung) — hiện khi có từ 2 kỳ có tỷ giá.
+* ④ Tỷ giá (`FxSection` dùng chung) — hiện khi có từ 2 kỳ có tỷ giá.
 
 Kho tải trước bản này chưa lưu sheet TỔNG → màn nhắc tải lại file (thay bản cũ). Chưa làm: cột
 tiền về ở Sổ đơn Singapore / UAE; so tiền hàng Sing với file tiền hàng (chưa có tab Sing). UAE chưa

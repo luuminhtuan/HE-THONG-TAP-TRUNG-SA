@@ -13,7 +13,7 @@
 // - Sync đang đứng thì tin vẫn gửi ĐÚNG KHUNG GIỜ (mang dòng "SỐ CHƯA ĐỦ") và bot NHỚ số đã
 //   báo; vòng sync nào lấy đủ số thì tự gửi thêm MỘT tin ĐÍNH CHÍNH vào đúng nhóm nước đó
 //   (Sỹ Anh chốt 22/09/2026). Lịch chờ nằm trong state.json → restart không mất.
-// Nguồn số: data/bao_cao_nuoc/<tháng>.json (format_all.py ghi cùng lúc file TỔNG TEAM),
+// Nguồn số: bảng market_monthly_reports qua /api/talpha/market-report (format_all.py ghi cùng lúc file TỔNG TEAM),
 // realtime = Meta + POS live (chi tiết camp), tracking = vận đơn, sync-health = tuổi số. Gửi
 // bằng nick Zalo PHỤ (zca-js) — xem README.md.
 //

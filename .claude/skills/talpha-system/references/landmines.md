@@ -5,7 +5,7 @@
 >
 > **Đọc trước:** phần lớn file viết lúc audit 29/07/2026 — thời BigQuery, sáu shop GCC, bot WhatsApp,
 > máy Mac còn chạy runtime. Nay: production (`main`, VPS) vẫn BigQuery; nhánh `kho-postgres`
-> (04/11/2026) là Postgres + docker compose, TKQC tự động (bảng `tkqc`), dữ liệu người dùng nhập ở
+> (04/11/2026) là Postgres + docker compose, TKQC tự động (bảng `ad_accounts`), dữ liệu người dùng nhập ở
 > bảng `app_documents`, khoá kết nối ở bảng `api_credentials` (mã hoá). Bot WhatsApp đã xoá
 > 30/10/2026 — bot Zalo thay. Mục nào không ghi "nay" là **chưa soát lại sau khi chuyển Postgres**.
 
@@ -13,7 +13,7 @@
 
 | Rule | Các nơi định nghĩa | Trạng thái lệch (29/07) |
 |---|---|---|
-| 14 TKQC — **nay (nhánh `kho-postgres`): tự động, bảng `tkqc`, đổi loại ở `/admin` → TKQC; `talpha.yaml → ad_account_ids` chỉ còn là lịch sử; `ops/talpha_reports/ad_accounts.json` chỉ bản dòng lệnh đối soát QC đọc** | `config/projects/talpha.yaml` (14) · `sync/core/meta_client.py` (14) · `runtime/config/ad_accounts.json` (14) · `ops/talpha_reports/ad_accounts.json` (14) · `realtime/route.ts` ACCOUNT_NAMES (14) · `ads-command-center/page.tsx` ACCOUNT_NAMES (~~11~~ → **đã fix 14, 29/07**) · runtime fallback hard-code (**10**) | vẫn phải sửa đủ mọi chỗ khi thêm TKQC |
+| 14 TKQC — **nay (nhánh `kho-postgres`): tự động, bảng `ad_accounts`, đổi loại ở `/admin` → TKQC; `talpha.yaml → ad_account_ids` chỉ còn là lịch sử; `ops/talpha_reports/ad_accounts.json` chỉ bản dòng lệnh đối soát QC đọc** | `config/projects/talpha.yaml` (14) · `sync/core/meta_client.py` (14) · `runtime/config/ad_accounts.json` (14) · `ops/talpha_reports/ad_accounts.json` (14) · `realtime/route.ts` ACCOUNT_NAMES (14) · `ads-command-center/page.tsx` ACCOUNT_NAMES (~~11~~ → **đã fix 14, 29/07**) · runtime fallback hard-code (**10**) | vẫn phải sửa đủ mọi chỗ khi thêm TKQC |
 | Tỷ giá | **Nguồn chuẩn từ 29/07: `config/talpha_rules.json`** (7 thị trường có TW) — format_all + realtime + ads-alerts đọc từ đây. CÒN LỆCH: `talpha.yaml` §12 (không TW), `src/lib/constants.ts` (USD 25500), `utils.ts` client (không TW → tab BQ đơn TW nhân nhầm 6850), view `01_vw_fb_ads_std.sql` (/7010 cứng) — dọn ở P2 | |
 | Gán marketer | ~~7 bản lệch nhau~~ → **HỢP NHẤT 29/07 (P1)**: 1 nguồn data `config/talpha_rules.json` + 3 loader (`ops/talpha_reports/talpha_rules.py`, `dashboard-ui/src/lib/talpha/rules.ts`, `ops/whatsapp-alerts/rules.js` — nay bot Zalo `ops/zalo-alerts/rules.js`). Golden-test 502 camp + 18 tên POS = 100% khớp bản cũ. Sửa rule = sửa JSON, đừng thêm map inline. Còn sót: `bq-queries.ts` (dead code) | |
 | Status GTC | `sync/core/business_rules.py` · runtime sync · `format_all.py` · `realtime/route.ts` · `constants.ts` | |

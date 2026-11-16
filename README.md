@@ -29,15 +29,18 @@ tự động (mọi TKQC các token Meta đọc được).
 | Báo cáo tháng | `ops/talpha_reports/format_all.py` → bảng `monthly_report_tabs` (+ file Google Sheet nếu có khoá Google) |
 | Bot Zalo | `ops/zalo-alerts/` — mỗi nước một nhóm, tin ads + vận đơn |
 | Luật nghiệp vụ | `config/talpha_rules.json` — tỷ giá, số chia tiền POS, marketer, phí 3PL, giá vốn, phân quyền |
-| Việc nền | Docker: `ops/docker/scheduler.py`. Production: systemd timer trên VPS |
+| Việc nền | Docker: service `scheduler` (`ops/docker/scheduler.py`). Production: systemd timer trên VPS |
 
 ## Chạy
 
 Cần Docker Desktop.
 
 ```bash
-docker compose up -d        # Postgres + dashboard http://localhost:3200 + lịch việc nền
+docker compose up -d --remove-orphans   # Postgres + dashboard http://localhost:3200 + lịch việc nền
 ```
+
+`--remove-orphans` bắt buộc lần đầu chạy bản sau 16/11/2026: service lịch đổi tên `lich` → `scheduler`, thiếu
+cờ này thì container lịch cũ vẫn chạy song song và kéo số hai lần mỗi giờ.
 
 Mở http://localhost:3200/admin → **Khoá kết nối**: dán token Meta, key POS từng nước. Máy gọi thử
 khoá rồi mới lưu (mã hoá trong Postgres); việc nền tự kéo số từ giờ kế tiếp. Chi tiết:

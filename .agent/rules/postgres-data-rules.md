@@ -32,7 +32,7 @@ paths:
   Đừng gõ số đó vào file view. Đầu mỗi vòng sync tự dựng lại khi SQL sinh ra đổi.
 - Bảng dữ liệu người dùng nhập (`app_documents`, `market_overrides`, `market_monthly_reports`,
   `users`, `api_credentials`…) bị REVOKE khỏi vai chỉ đọc. Thêm bảng riêng mới → thêm vào
-  `pg_view.py → BANG_RIENG`.
+  `pg_view.py → PRIVATE_TABLES`.
 
 ## 3. Ra số sai mà KHÔNG báo lỗi — soát từng câu
 
@@ -59,7 +59,8 @@ paths:
 
 - Dashboard đọc qua `lib/db.ts`: `query(sql, { ten })`, tham số viết `@ten`.
 - Câu SQL dựng ở trình duyệt hoặc do AI viết (`/api/query`, Hỏi AI) chạy bằng vai **CHỈ ĐỌC**
-  (`queryChiDoc`, migration 0003) — đừng chạy chúng bằng `query()`.
+  (`queryReadOnly`, vai `talpha_readonly` / `talpha_readonly_market` — migration 0003, tên mới từ 0008) — đừng
+  chạy chúng bằng `query()`.
 - Python nối kho qua `sync/core/pg.py` (`get_connection()`).
 
 ## 6. Chẩn đoán số sai

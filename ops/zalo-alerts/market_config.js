@@ -9,7 +9,7 @@
 // tests/fixtures/market_overrides.json (market_config.test.js).
 //
 // Bot đọc luật một lần lúc khởi động; dấu vân tay phần phủ đổi thì bot.js tự thoát để pm2 / docker
-// dựng lại (xem theoDoiThiTruong ở đó). TALPHA_MARKET_OVERRIDES_FILE (chỉ test) trỏ vào một FILE phủ.
+// dựng lại (vòng soát vân tay trong runService ở bot_main.js). TALPHA_MARKET_OVERRIDES_FILE (chỉ test) trỏ vào một FILE phủ.
 //
 // Phần phủ hỏi dashboard BẤT ĐỒNG BỘ: điểm chạy (bot.js, pair.js) gọi primeMarketOverrides() TRƯỚC khi
 // require module đọc luật (rules.js đọc đồng bộ lúc được require). Trước 16/11/2026 chỗ này gọi
@@ -39,7 +39,7 @@ function readOverrides(p) {
 }
 
 /** Phần phủ, hoặc null nếu chưa ai nhập. Không hỏi được dashboard thì KÊU và chạy bằng luật gốc —
- *  không làm sập bot; theoDoiThiTruong (bot.js) thấy vân tay khác là tự khởi động lại để nạp đủ. */
+ *  không làm sập bot; vòng soát vân tay trong runService (bot_main.js) thấy vân tay khác là tự khởi động lại để nạp đủ. */
 async function primeMarketOverrides() {
     if (process.env.TALPHA_MARKET_OVERRIDES_FILE) return;
     try {

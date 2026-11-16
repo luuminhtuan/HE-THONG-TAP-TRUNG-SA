@@ -102,9 +102,9 @@ Cùng máy chủ với dashboard, gọi `http://localhost:3000`:
 * **Số đầu bài** mọi tin: `/api/talpha/sheet-report` — đọc bảng `monthly_report_tabs`, nơi `format_all.py`
   ghi các tab **TỔNG TEAM THÁNG n** cùng lúc với file Google Sheet CEO xem. Tin và Sheet không lệch được.
 * **Chi tiết từng campaign**: `/api/talpha/realtime` (Meta + POS live). Chủ campaign tính
-  **đúng luật của Sheet** (`rules.js → chuCamp`), nên cộng lại khớp số đầu bài. Route lỗi thì
+  **đúng luật của Sheet** (`rules.js → campaignOwner`), nên cộng lại khớp số đầu bài. Route lỗi thì
   tin vẫn đi, chỉ thiếu phần campaign.
-* **`/canhbao`**: `/api/talpha/realtime` (Meta + POS live) — `buildCanhBaoNuoc` bắt camp đốt tiền không ra tin nhắn.
+* **`/canhbao`**: `/api/talpha/realtime` (Meta + POS live) — `buildMarketAlert` bắt camp đốt tiền không ra tin nhắn.
 * **Tuổi số**: `/api/talpha/sync-health` — sync đứng thì tin tự in `⚠️ SỐ CHƯA ĐỦ`.
 
 ## Gửi tạm rồi tự đính chính (22/09/2026)
@@ -227,15 +227,19 @@ Chạy thử từ máy Mac: `TALPHA_DASHBOARD_URL=http://139.180.131.21:3000 nod
 
 | File | Việc |
 |---|---|
-| `bot.js` | Lịch gửi, nghe lệnh, đăng nhập, gửi |
+| `bot.js` | Điểm chạy (16/11/2026): nạp luật phủ thị trường (`market_config.js`, hỏi dashboard) rồi gọi `bot_main.js` |
+| `bot_main.js` · `bot_slots.js` | Thân bot: dịch vụ + chạy tay theo cờ dòng lệnh; vòng rà mốc tự gửi |
+| `bot_config.js` · `bot_sources.js` | Hằng từ `config.json` / luật, `state.json`, giờ VN; hỏi số của dashboard |
+| `bot_session.js` · `bot_reports.js` · `bot_commands.js` | Phiên Zalo + hàng gửi + nhóm; dựng + gửi từng loại tin; chạy lệnh gõ |
 | `commands.js` | Đọc lệnh gõ trong nhóm (hàm thuần, có test) |
 | `pair.js` | Ghép nick bằng QR, chọn nhóm |
 | `zalo.js` | Phiên, gửi, nghe tin qua zca-js |
-| `daily_report.js` · `shipment_alerts.js` | Dựng nội dung tin (hàm thuần, có test) — `buildBaoCaoNuoc` là tin ads một nước |
+| `daily_report.js` · `shipment_alerts.js` | Dựng nội dung tin (hàm thuần, có test) — `buildMarketReport` là tin ads một nước. Phần việc tách ra `daily_report_*.js` (tin một nước, camp, tuổi số, đính chính…) và `shipment_*.js` (chia đơn, khối khách, câu nhắn khách) |
 | `hourly_digest.js` | Tin mỗi giờ + số mess Pancake (ghép camp · page · đơn theo tên page; hàm thuần, có test) |
 | `ads_alerts.js` | Cảnh báo ads gộp mọi nước (qua `/api/talpha/ads-alerts`) — bot không dùng từ 08/10/2026, giữ lại cùng test |
 | `zalo_text.js` | Chữ đậm/nghiêng → style Zalo, chia tin dài |
-| `rules.js` | Đọc `config/talpha_rules.json` — thiếu file là dừng, không dùng bảng dự phòng. `NUOC`, `nuocTuTenNhom`: mã nước ↔ tên nhóm |
+| `rules.js` | Đọc `config/talpha_rules.json` (+ phần phủ thị trường) — thiếu file là dừng, không dùng bảng dự phòng. `MARKETS`, `marketFromGroupName`: mã nước ↔ tên nhóm |
+| `market_config.js` | Phần phủ thị trường nhập ở `/admin` (hỏi `/api/talpha/market-config?overrides=1`), soát vân tay mỗi 60 giây |
 | `schedule.js` | "Mốc này gửi bây giờ không" — chép từ bot WhatsApp |
 
 ```bash

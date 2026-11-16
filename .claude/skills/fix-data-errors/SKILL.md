@@ -26,7 +26,7 @@ Skill này dành cho việc **chưa biết vì sao số sai** — phần lớn c
 |---|---|---|
 | Kho số | BigQuery `cty-507710.TALPHA_Dataset` (VPS, nhánh `main`) | Postgres `DATABASE_URL` (`docker compose up -d`) |
 | Query | Standard SQL, bảng có tiền tố dataset | Postgres — dịch theo bảng trong `docs/POSTGRES.md` |
-| Log vòng chạy | `/root/talpha_reports/daily_<ngày>.log`, `journalctl -u talpha-sync` | `docker compose logs lich`, `ops/talpha_reports/daily_<ngày>.log` |
+| Log vòng chạy | `/root/talpha_reports/daily_<ngày>.log`, `journalctl -u talpha-sync` | `docker compose logs scheduler`, `ops/talpha_reports/daily_<ngày>.log` |
 
 Sổ lỗi trong `references/open-issues.md` đo thời BigQuery (tháng 8/2026). Phép "Đo lại" đã có bản
 Postgres đi kèm; mục nào ghi **chưa soát lại sau khi chuyển Postgres** thì đo lại trước khi tin.

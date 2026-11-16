@@ -49,7 +49,7 @@ async function fetchMarketNumbers(cfg, dateStr, n, opts, f) {
         for (const r of perMarketer) for (const k of METRIC_KEYS) team[k] += Number(r[k] || 0);
         return { team: withRates(team), nguoi: perMarketer, khongGan: ng[kg] ? withRates({ ...emptyNumbers(), ...ng[kg] }) : null, nguon: "ban" };
     }
-    if (marketReportStale && opts.log) opts.log(`bao_cao_nuoc/${dateStr.slice(0, 7)}.json cũ hơn vòng ghi Sheet — đọc tab nước của TỔNG TEAM`);
+    if (marketReportStale && opts.log) opts.log(`market-report ${dateStr.slice(0, 7)} cũ hơn vòng ghi Sheet — đọc tab nước của TỔNG TEAM`);
     const sheet = await fetchSheetReport(cfg, dateStr, f);
     const r = (sheet.marketers || []).find((x) => x.tab === n.ten || x.tab === n.key);
     const team = emptyNumbers();

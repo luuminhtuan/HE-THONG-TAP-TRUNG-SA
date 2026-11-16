@@ -18,7 +18,7 @@
 | Runtime sync `~/talpha_reports/runtime/sync/` | Đã gộp 11/09/2026 — chỉ còn `sync/talpha/talpha_sync.py` |
 | launchd / plist trên Mac | Production: systemd timer trên VPS. Nhánh `kho-postgres`: lịch `ops/docker/scheduler.py` |
 | Bot WhatsApp `ops/whatsapp-alerts/`, pm2 `talpha-wa-alerts` | Đã xoá 30/10/2026 — cảnh báo đi qua bot Zalo `ops/zalo-alerts/` |
-| Danh sách 14 TKQC khai tay (`talpha.yaml`, `ad_accounts.json`, `ACCOUNT_NAMES`) | Nhánh `kho-postgres`: TKQC tự động — bảng `tkqc`, `/admin` → TKQC, route `/api/talpha/ad-accounts` |
+| Danh sách 14 TKQC khai tay (`talpha.yaml`, `ad_accounts.json`, `ACCOUNT_NAMES`) | Nhánh `kho-postgres`: TKQC tự động — bảng `ad_accounts`, `/admin` → TKQC, route `/api/talpha/ad-accounts` |
 | `/api/ad-accounts` | Nhánh `kho-postgres`: `/api/talpha/ad-accounts` |
 | `dashboard-ui/config/projects/talpha.yaml` (bản chép) | Đã xoá 11/09/2026 — chỉ còn `config/projects/talpha.yaml` |
 | `cty-507710.TALPHA_Dataset.<bảng>` | Nhánh `kho-postgres`: bảng cùng tên trong Postgres (`fb_ads_data` nay là VIEW) |

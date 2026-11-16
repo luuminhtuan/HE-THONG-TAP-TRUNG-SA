@@ -71,7 +71,7 @@ def parse_camp(cn):
         if idx is None: return None,None,None
         nv=norm_nv(p[idx]); mkt=PRIMARY_MARKET
     # Sản phẩm = ô thứ HAI sau marketer (ô ngay sau là tệp khách) — cả tên có lẫn không có ô
-    # nước. Xem camp_san_pham trong talpha_rules.py: hai lỗi đọc ô sửa 16/09/2026 nằm ở đó.
+    # nước. Xem parse_camp_product trong campaign_pages.py: hai lỗi đọc ô sửa 16/09/2026 nằm ở đó.
     prod=parse_camp_product(cn)[0] or "(khác)"
     return mkt,nv,prod
 

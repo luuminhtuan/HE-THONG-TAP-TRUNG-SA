@@ -15,7 +15,7 @@ description: >-
 
 TALPHA = vận hành + BI cho đội ANTALO bán trang sức/mỹ phẩm qua FB Ads + chat-sale + COD ở
 **bốn nước**: Đài Loan, Singapore, UAE (từ 15/09/2026) và Nhật Bản (mở 08/10/2026). Mỗi nước một
-shop POS Poscake; TKQC Meta tự động (bảng `tkqc`). Dashboard Next.js 16 + báo cáo tháng
+shop POS Poscake; TKQC Meta tự động (bảng `ad_accounts`). Dashboard Next.js 16 + báo cáo tháng
 (`format_all.py`, bảng `monthly_report_tabs` + Google Sheet nếu có khoá) + bot Zalo mỗi nước một nhóm.
 **Hai bản đang song song**: nhánh `kho-postgres` (04/11/2026) — kho số Postgres, chạy bằng
 `docker compose up -d`; còn **production = nhánh `main` trên VPS `139.180.131.21` VẪN chạy BigQuery**

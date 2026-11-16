@@ -9,12 +9,18 @@ số lấy **từ đâu**, và xử lý thế nào khi số chưa đủ hay Zalo
 Bot là một tiến trình Node (`ops/zalo-alerts/bot.js`) gửi tin ads + vận đơn vào nhóm Zalo của từng
 nước và trả lời lệnh gõ trong nhóm. **Bot không tự tính số** — mọi con số đều hỏi API của dashboard.
 
+Từ 16/11/2026 `bot.js` chỉ là điểm chạy: nạp luật phủ thị trường (`market_config.js → primeMarketOverrides()`,
+hỏi dashboard bằng `fetch`) rồi gọi `bot_main.js`. Thân bot chia theo việc: `bot_config.js` (hằng, cờ dòng lệnh,
+`state.json`), `bot_sources.js` (hỏi dashboard), `bot_session.js` (phiên Zalo, hàng gửi, nhóm), `bot_reports.js`
+(dựng + gửi từng loại tin), `bot_commands.js` (lệnh gõ), `bot_slots.js` (vòng rà mốc). Tin ads ở
+`daily_report.js` + `daily_report_*.js`, tin vận đơn ở `shipment_alerts.js` + `shipment_*.js`.
+
 ```
             mỗi 5'                       HTTP + header x-talpha-token
  bot.js ── vòng rà ──► dựng tin ───────────────────────────────► dashboard (Next.js)
    │                     │                                          │
    │                     │  market-report · sheet-report            ├─ Postgres: market_monthly_reports,
-   │                     │  realtime · pancake-nuoc                 │            monthly_report_tabs, sync_health…
+   │                     │  realtime · pancake-messages             │            monthly_report_tabs, sync_health…
    │                     │  tracking · sync-health                  └─ gọi thẳng Meta / POS / Pancake /
    │                     ▼                                             17TRACK / WeShip
    └──── zca-js ────► nhóm Zalo "ADS + VẬN ĐƠN <nước>"
@@ -31,7 +37,7 @@ nước và trả lời lệnh gõ trong nhóm. **Bot không tự tính số** �
 | Bộ nhớ | `state.json` (cạnh `bot.js`) |
 
 Dùng vòng rà thay cho hẹn giờ vì pm2 restart lúc 08:29 là mất sạch hẹn giờ. Mọi lần gửi xếp chung
-**một hàng** (`lanLuot`): lệnh gõ trúng lúc tin 08:30 đang đi thì đợi, không xen vào giữa.
+**một hàng** (`bot_session.js → enqueue`): lệnh gõ trúng lúc tin 08:30 đang đi thì đợi, không xen vào giữa.
 
 ## 2. Nhóm Zalo
 
@@ -39,12 +45,12 @@ Mỗi nước một nhóm `ADS + VẬN ĐƠN <nước>` (TAIWAN · SGP · UAE ·
 vận đơn của nước đó chung một nhóm; nhóm nào chỉ thấy số nước mình.
 
 * **Tự nhận nhóm theo tên** lúc khởi động, và mỗi vòng 5' nếu còn nước thiếu nhóm. Tên nhóm được bỏ
-  dấu, viết hoa rồi so với tên nước, mã nước và `market_aliases` (`rules.js → nuocTuTenNhom`).
+  dấu, viết hoa rồi so với tên nước, mã nước và `market_aliases` (`rules.js → marketFromGroupName`).
 * **Một nước khớp ≥ 2 nhóm thì không đoán**, chỉ ghi log → chọn tay `node pair.js --chon-nuoc <id> --nuoc TW`.
 * Nhóm đã nhận lưu ở `zalo_group_nuoc_<mã>.json`. Nick phụ phải nằm sẵn trong nhóm.
 * Lần đầu vào một nhóm, bot gửi **một** tin hướng dẫn lệnh (`state.json → gioiThieu`, restart không gửi lại).
 * **Chỉ nghe 4 nhóm nước.** Nick phụ còn ở nhóm COD có người đối tác và nhóm cũ — gõ lệnh ở đó bot im.
-* Nước `da_tat` bị lọc khỏi mọi lịch gửi dù `config.json` còn ghi tên.
+* Nước `disabled` (đã tắt) bị lọc khỏi mọi lịch gửi dù `config.json` còn ghi tên.
 
 ## 3. Lịch gửi trong ngày (giờ VN)
 
@@ -58,7 +64,7 @@ vận đơn của nước đó chung một nhóm; nhóm nào chỉ thấy số n
 | 22:00, sau ads | Vận đơn tối | TW, SG, AE, JP | chấm danh sách khách của tin sáng | 60' |
 | HH:05, 07:05 → 23:05, trừ 13h · 18h · 22h | Tin mỗi giờ | JP | hôm nay, "(+N)" thêm trong giờ qua | 40' |
 
-Luật của mỗi mốc (`schedule.js → slotAction`, `bot.js → chayMoc`):
+Luật của mỗi mốc (`schedule.js → slotAction`, `bot_slots.js → runSlot`):
 
 1. **Chưa tới giờ, hoặc hôm nay đã gửi** → bỏ qua. Mốc đã gửi ghi theo từng mốc × từng nước ở
    `state.json → moc` (`ads:TW:sang`, `vandon:SG`, `ads:AE:13:00`, `vandon_toi:TW`, `gio:JP:09:05`).
@@ -81,7 +87,7 @@ mốc tự gửi đúng giờ và số đã đủ mới được nhớ — gửi
 | Ads — khi bảng trên thiếu, hoặc cũ hơn vòng OK gần nhất quá 45' | Cùng số đầu tin, **không có xếp hạng người** (tin ghi rõ) | `/api/talpha/sheet-report?date=` → bảng `monthly_report_tabs`, tab nước của TỔNG TEAM |
 | Ads — chi tiết camp | Mọi camp của nước đó, tên đầy đủ, theo marketer, tiêu nhiều trước. Lỗi thì tin vẫn đi, thiếu phần camp | `/api/talpha/realtime` (Meta + POS gọi thẳng). Một lượt dùng chung cho mọi nước trong 3', lọc nước theo tên camp |
 | Ads Nhật — số mess | Thay số mess của Meta (Meta không báo tin nhắn ở Nhật) | `/api/talpha/pancake-messages` |
-| Tin mỗi giờ (JP) | Ads · tin nhắn · bình luận mới · SĐT · đơn · doanh số **theo page**, "(+N)" so giờ trước | `realtime` + `pancake-nuoc`; tổng giờ trước ở `state.json → gioTruoc` |
+| Tin mỗi giờ (JP) | Ads · tin nhắn · bình luận mới · SĐT · đơn · doanh số **theo page**, "(+N)" so giờ trước | `realtime` + `pancake-messages`; tổng giờ trước ở `state.json → gioTruoc` |
 | Vận đơn sáng | Hôm qua (đã lấy, mới tới, bắt đầu hoàn); @Thương; khách phải gọi / nhắn (tên, SĐT, cửa hàng, mã lấy hàng, hạn, **câu nhắn soạn sẵn**); nhắc lại khách chưa lấy; sắp giao; nên huỷ; hỏi đối tác; đơn lệch | `/api/talpha/tracking?market=&from=<60 ngày trước>&to=<hôm nay>` — **cùng route màn Theo dõi vận đơn**, cùng luật cảnh báo `buildAlerts` |
 | Vận đơn tối | Khách phải gọi sáng nay: đã lấy (cứu bao nhiêu tiền) / chưa lấy / bị trả về; khách mới tới đã lấy chưa; số cả ngày | `tracking` + danh sách sáng ở `state.json → vanDonSang` |
 | `/canhbao` | Camp của nước tiêu ≥ 300.000đ mà 0 tin nhắn (tối đa 12 camp) | `/api/talpha/realtime` |
@@ -99,14 +105,14 @@ Vận đơn theo nước:
 * 17TRACK lỗi / sắp hết quota (< 200 mã) / từ chối đăng ký mã → đầu tin tự có dòng cảnh báo, để sale
   không gọi nhầm khách đã lấy hàng.
 
-Tin dài quá 1.800 ký tự tự chia thành nhiều tin, cách nhau 4 giây (`zalo_text.js → chiaTin`).
+Tin dài quá 1.800 ký tự tự chia thành nhiều tin, cách nhau 4 giây (`zalo_text.js → splitMessage`).
 
 ## 5. Số chưa đủ → gửi tạm rồi tự đính chính
 
 Luật chốt 22/09/2026: **sync đứng thì vẫn gửi đúng khung giờ** (có nhãn "SỐ CHƯA ĐỦ"), **sync đủ số thì
 tự gửi thêm một tin đính chính**.
 
-**Khi nào tin bị coi là "chưa đủ"** (`daily_report.js → canhBaoSoCu`). "Vòng OK" = dòng `sync_health`
+**Khi nào tin bị coi là "chưa đủ"** (`daily_report_stale.js → buildStaleWarning`). "Vòng OK" = dòng `sync_health`
 có `ok` (sync_rc 0 **và** format_rc 0 — đã ghi được báo cáo):
 
 | Loại tin | Chưa đủ khi |
@@ -118,7 +124,7 @@ có `ok` (sync_rc 0 **và** format_rc 0 — đã ghi được báo cáo):
 
 1. Gửi tin tạm. Thấy cờ `chuaDu` → ghi `state.json → dinhChinh[khoá]` = `{ngay, nuoc, intraday, label, luc, so, hanTs}`.
    Ghi ra file nên pm2 restart / máy chủ reboot giữa lúc chờ không mất lịch.
-2. Mỗi vòng 5', `ratDinhChinh` hỏi `sync-health` rồi `canDinhChinh`:
+2. Mỗi vòng 5', `checkCorrections` (`bot_reports.js`) hỏi `sync-health` rồi `correctionAction` (`schedule.js`):
    * tin ngày đã qua: **gửi** khi có vòng OK sau khi hết ngày đó;
    * tin giữa ngày: **gửi** khi có vòng OK chạy sau lúc gửi tin tạm.
 3. Tin `🔄 ĐÍNH CHÍNH — <nhãn>` liệt kê chỗ lệch (Tiền ads · Đơn · Doanh số · Mess: cũ → mới) rồi đính kèm
@@ -145,8 +151,8 @@ Thêm:
 |---|---|
 | `state.json → moc` theo mốc × nước × ngày | Bắn lại cùng mốc sau restart |
 | `markState`: đọc lại file ngay trước khi ghi một thay đổi nhỏ | Vòng này ghi đè mất khoá vòng kia vừa ghi |
-| Cờ `dangRa` | Hai vòng rà chồng nhau khi một vòng gửi lâu |
-| Hàng gửi chung `lanLuot` | Tin của hai loạt (lệnh + mốc tự gửi) xen vào nhau |
+| Cờ `scanning` (`bot_main.js`) | Hai vòng rà chồng nhau khi một vòng gửi lâu |
+| Hàng gửi chung `enqueue` | Tin của hai loạt (lệnh + mốc tự gửi) xen vào nhau |
 | Gửi được một phần rồi hỏng → coi như đã gửi | Gửi lại cả loạt; không chen tin báo lỗi vào giữa |
 | Cùng lệnh, cùng nhóm, trong 60 giây → bỏ | Bấm gửi hai lần |
 | `gioiThieu` theo id nhóm | Tin hướng dẫn lặp mỗi lần restart |
@@ -215,13 +221,13 @@ hoặc báo cáo chưa có số; gõ `/baocao` mà không thấy dòng `Lệnh "
 
 * **Danh sách nước của bot đang gõ cứng trong `config.json`**: `nhomNuoc.markets`, `vanDon.markets`,
   `moiGio.markets`, `nhomNuoc.messPancake` (TW, SG, AE, JP). Thêm nước mới ở `/admin` → Thị trường thì bot
-  **chưa** gửi gì cho nước đó — phải thêm mã vào các danh sách này (nước `da_tat` thì tự lọc).
+  **chưa** gửi gì cho nước đó — phải thêm mã vào các danh sách này (nước `disabled` thì tự lọc).
 * `ops/zalo-alerts/.gitignore` có `.zalo_session.json`, `state.json`, `zalo_group.json`, `zalo_group_vandon*.json`
   nhưng **chưa có `zalo_group_nuoc_*.json`** (file nhóm kiểu mới từ 08/10/2026) — `git add` cả thư mục là dính.
 * Hàm dựng tin là hàm thuần, có test: `cd ops/zalo-alerts && npm test` (không gọi mạng, không đăng nhập).
   `require("./bot")` là đăng nhập Zalo luôn — logic cần test thì tách ra file riêng như `schedule.js`.
 * Giờ VN phải dùng `hourCycle: "h23"` — `hour12: false` trả "24" lúc nửa đêm (bot cũ từng bắn tin 8h lúc 0h05).
 * Chú thích trong code còn lệch ở mấy chỗ (README đã sửa 16/11/2026):
-  * Chú thích đầu `bot.js` và log trong `daily_report.js → soMotNuoc` còn nhắc `data/bao_cao_nuoc/<tháng>.json`
+  * Chú thích đầu `bot.js` và log trong `daily_report_market.js → fetchMarketNumbers` còn nhắc `data/bao_cao_nuoc/<tháng>.json`
     — nay là bảng `market_monthly_reports`.
-  * Chú thích `commands.js` ghi `/canhbao` có "chi tiêu bất thường" — `buildCanhBaoNuoc` chỉ bắt camp đốt tiền.
+  * Chú thích `commands.js` ghi `/canhbao` có "chi tiêu bất thường" — `buildMarketAlert` chỉ bắt camp đốt tiền.

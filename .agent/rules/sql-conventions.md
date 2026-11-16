@@ -28,8 +28,9 @@ Luật an toàn dữ liệu và bẫy ra số sai: `postgres-data-rules.md` (đ�
 
 ## Đặt tên
 
-- Bảng, cột, view, hàm: `snake_case` tiếng Anh, chữ thường. Bảng/cột cũ tên Việt (`tkqc`,
-  `monthly_report_tabs`…) đổi bằng migration mới, không sửa tay.
+- Bảng, cột, view, hàm: `snake_case` tiếng Anh, chữ thường. Bảng/cột tên Việt cũ đã đổi hết ở migration
+  0008 (`tkqc` → `ad_accounts`, `bao_cao_tab` → `monthly_report_tabs`…, bảng đủ ở `docs/POSTGRES.md`); muốn
+  đổi tên nữa thì viết migration mới, không sửa tay.
 - Cột tiền ghi rõ đơn vị ở đuôi: `revenue_vnd`, `cost_price_rmb`.
 - Alias cột trong SELECT cũng `snake_case` (Postgres hạ chữ thường alias không nháy).
 

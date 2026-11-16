@@ -11,8 +11,9 @@ Lệnh ngoài danh sách "được chạy" thì hỏi trước.
 
 ### Docker — xem và bật
 - `docker compose ps`, `docker compose logs -f scheduler | dashboard | db`
-- `docker compose up -d` (bật Postgres + dashboard http://localhost:3200 + lịch việc nền)
-- `docker compose restart lich` (chạy ngay một vòng kéo số + dựng báo cáo)
+- `docker compose up -d` (bật Postgres + dashboard http://localhost:3200 + lịch việc nền); lần đầu chạy bản sau
+  16/11/2026 thì `docker compose up -d --remove-orphans` (service lịch đổi tên `lich` → `scheduler`, bỏ container cũ)
+- `docker compose restart scheduler` (chạy ngay một vòng kéo số + dựng báo cáo)
 - `docker compose run --rm migrate dem` (số dòng từng bảng + lần sync gần nhất)
 - `docker ps`, `docker logs <container>`
 

@@ -13,8 +13,8 @@
 
 | Mã | Lỗi | Mức | Trạng thái | Nhánh Postgres |
 |---|---|---|---|---|
-| X1 | Smart Stop cắt cụt `sale_order` mỗi vòng sync | 🔴 | **ĐÓNG 04/08** (3 chu kỳ verify) | Cơ chế mang sang: `ghi_don` (raw chỉ thêm + dựng lại) |
-| X2 | `fb_ads_data` xoá sạch tháng cũ khi sang tháng mới | 🔴 | **ĐÓNG 05/08** (T5-T7 khớp Meta 0,00%) | Cơ chế mang sang: `ghi_ads` vào `fb_ads_all_raw`; `fb_ads_data` nay là VIEW |
+| X1 | Smart Stop cắt cụt `sale_order` mỗi vòng sync | 🔴 | **ĐÓNG 04/08** (3 chu kỳ verify) | Cơ chế mang sang: `write_orders` (raw chỉ thêm + dựng lại) |
+| X2 | `fb_ads_data` xoá sạch tháng cũ khi sang tháng mới | 🔴 | **ĐÓNG 05/08** (T5-T7 khớp Meta 0,00%) | Cơ chế mang sang: `write_ads` vào `fb_ads_all_raw`; `fb_ads_data` nay là VIEW |
 | X3 | `order_items` thiếu giá + phủ 61% → COGS chỉ 20,7% | 🟡 | ĐANG MỞ | Chưa soát lại sau khi chuyển Postgres (04/11/2026) |
 | X4 | `product_catalog` bẩn — tên SP lọt vào cột `sku` | 🟡 | XỬ LÝ Ở TẦNG VIEW (E2, `00_vw_product_catalog_std.sql`) — bảng thô vẫn giữ sku gốc | Chưa soát lại sau khi chuyển Postgres (04/11/2026) |
 | X5 | `vw_orders_std.cogs_vnd` luôn = 0 (2 đường COGS) | ⚪ | ĐÃ SỬA (E2 — view đọc giá vốn từ rules file, xem chú thích đầu `02_vw_orders_std.sql`) | Chưa soát lại sau khi chuyển Postgres (04/11/2026) |
@@ -57,7 +57,7 @@ grep -oE "orders [0-9]+" ~/talpha_reports/daily_$(date +%Y%m%d).log | tail -8
 SELECT shop_label, COUNT(*) n, MIN(SUBSTR(inserted_at,1,10)) don_cu_nhat
 FROM `cty-507710.TALPHA_Dataset.sale_order` GROUP BY 1 ORDER BY 1
 ```
-Postgres (`inserted_at` lưu dạng chuỗi như BigQuery; log vòng chạy: `docker compose logs lich`):
+Postgres (`inserted_at` lưu dạng chuỗi như BigQuery; log vòng chạy: `docker compose logs scheduler`):
 ```sql
 SELECT shop_label, COUNT(*) n, MIN(substr(inserted_at, 1, 10)) don_cu_nhat
 FROM sale_order GROUP BY 1 ORDER BY 1;

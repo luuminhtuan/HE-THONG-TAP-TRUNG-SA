@@ -4,7 +4,7 @@ Dashboard vận hành cho đội ANTALO (Tiểu Alpha): bán trang sức và m�
 chat-sale + COD ở **ba nước — Đài Loan, Singapore, UAE** (từ 15/09/2026), thêm **Nhật Bản**
 (mở 08/10/2026, shop POS nối 09/10/2026; vận đơn Japan Post qua 17TRACK từ 21/10/2026). Mỗi nước một shop
 POS Poscake (`config/talpha_rules.json → markets`); tài khoản quảng cáo Meta TỰ ĐỘNG — mọi TKQC các token
-Meta đọc được (bảng `tkqc`, `/admin` → TKQC), chạy chung cho mọi nước.
+Meta đọc được (bảng `ad_accounts`, `/admin` → TKQC), chạy chung cho mọi nước.
 
 **Đọc `DASHBOARD_MAP.md` trước khi sửa bất cứ thứ gì.** Nó là bản đồ nghiệp vụ: tiền
 đi đường nào, số trên màn hình đến từ đâu, cái gì chạy ở đâu.
@@ -26,8 +26,8 @@ Trên máy Mac **phải** truyền `TALPHA_RULES`: loader Python ưu tiên
 trần là test đọc nhầm luật và báo lỗi giả.
 
 Mở trang → `/admin` → Khoá kết nối: dán token Meta + key POS là việc nền tự kéo số. Chạy dashboard ngoài
-Docker (`cd dashboard-ui && npm run dev`) thì đặt `DATABASE_URL` + `TALPHA_DOC_PASSWORD` trỏ vào Postgres
-của compose. Chi tiết: `docs/POSTGRES.md`.
+Docker (`cd dashboard-ui && npm run dev`) thì đặt `DATABASE_URL` + `TALPHA_READONLY_PASSWORD` (tên cũ
+`TALPHA_DOC_PASSWORD` vẫn nhận) trỏ vào Postgres của compose. Chi tiết: `docs/POSTGRES.md`.
 
 ## Deploy — từ máy Mac
 
@@ -52,16 +52,22 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
 ## Kiến trúc
 
 * **Giao diện + API**: Next.js 16 App Router + React 19 + TailwindCSS, tất cả trong
-  `dashboard-ui/`. Không có backend riêng.
+  `dashboard-ui/`. Không có backend riêng. Route lớn (`order-ledger`, `realtime`, `tracking`, `cod-recon`)
+  chỉ nhận / trả, phần dựng nằm ở `<route>/_lib/*.ts`; tab lớn tách component con vào thư mục cùng tên
+  (`components/talpha/tabs/cod-recon/`…; Ads Command Center ở `app/talpha/ads-command-center/_components/`).
 * **Kho số**: Postgres ở `DATABASE_URL` (04/11/2026 — bỏ hẳn BigQuery, `docs/POSTGRES.md`). Bảng khai bằng
   migration `db/migrations/` (thêm file mới, không sửa file cũ), view ở `db/views/` dựng bằng
   `sync/core/pg_view.py` (luật đúc vào SQL, tự dựng lại khi luật đổi). Dashboard đọc qua `lib/db.ts`
   (`query(sql, { ten })` — tham số `@ten`). Câu SQL dựng ở trình duyệt / AI viết chạy bằng vai CHỈ ĐỌC
-  (`queryChiDoc`, migration 0003) — đừng chạy chúng bằng `query()`.
+  (`queryReadOnly`, vai `talpha_readonly` / `talpha_readonly_market` — migration 0003, tên mới từ 0008) — đừng
+  chạy chúng bằng `query()`. **Bảng / cột / hàm mang tên tiếng Anh từ 16/11/2026** (migration 0008: `ad_accounts`,
+  `fb_ads_all`, `monthly_report_tabs`, `view_fingerprints`, `date_in_tz`…; 0009 đổi giá trị cấu hình đã lưu) —
+  bảng tên cũ ↔ mới ở `docs/POSTGRES.md`.
 * **Nguồn thô**: Meta Marketing API và POS Poscake — vừa đồng bộ theo giờ vào Postgres,
   vừa gọi thẳng cho các màn hình cần số tức thời. Bảng đơn của đối tác 3PL (Google Sheet)
   chép vào bảng `partner_orders` mỗi vòng sync.
-* **Báo cáo số**: `format_all.py` dựng các tab "TỔNG TEAM THÁNG n" và ghi vào bảng `monthly_report_tabs`;
+* **Báo cáo số**: `format_all.py` (điểm chạy `main()`; phần việc ở `report_data` · `report_tables` ·
+  `report_store` · `sheet_writer` cùng thư mục) dựng các tab "TỔNG TEAM THÁNG n" và ghi vào bảng `monthly_report_tabs`;
   tab Tổng quan, P&L, Marketer và bot Zalo đọc bảng đó qua `/api/talpha/sheet-report?from&to`. Có khoá
   Google (`bigquery_key.json`) thì ghi thêm file Google Sheet cho team — tuỳ chọn. Giá vốn + phí ship
   ước tính ở `lib/talpha/order-costs.ts` (dùng chung P&L và P&L theo SP). Các tab báo cáo
@@ -69,16 +75,17 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
 * **Lãi lỗ đủ mọi khoản** (Kế toán → Lãi lỗ, 04/11/2026): `lib/talpha/income-statement.ts` (hàm thuần, có
   test) + `income-statement-sources.ts` (kiện thật từng nước) → `/api/talpha/income-statement`. Đây là nơi trả lời
   "lãi thật bao nhiêu"; tab P&L của mục Báo cáo chỉ là số tạm tính.
-* **Sync**: `sync/talpha/talpha_sync.py` + `sync/core/`. Docker: lịch `ops/docker/scheduler.py` (cùng giờ các
-  systemd timer của VPS).
+* **Sync**: `sync/talpha/talpha_sync.py` (điều phối; đơn POS `order_sync.py`, chi tiêu `ads_sync.py`, ngân sách
+  campaign `campaign_sync.py`, bảng đối tác `partner_orders_sync.py`) + `sync/core/`. Docker: service `scheduler`
+  (`ops/docker/scheduler.py`; trước 16/11/2026 là service `lich`, file `lich.py`) cùng giờ các systemd timer của VPS.
 * **TKQC tự động** (04/11/2026): mỗi vòng sync hỏi Meta mọi token (Khoá kết nối: `TALPHA_META_ACCESS_TOKEN`,
-  `_2`, `_3` — nhiều BM / app) thấy TKQC nào, ghi bảng `tkqc`, kéo chi tiêu của TẤT CẢ vào `fb_ads_all`
+  `_2`, `_3` — nhiều BM / app) thấy TKQC nào, ghi bảng `ad_accounts`, kéo chi tiêu của TẤT CẢ vào `fb_ads_all`
   (`sync/core/ad_accounts.py` ↔ `lib/talpha/ad-accounts.ts`). `fb_ads_data` / `fb_adset_data` / `fb_campaign_data` là VIEW
-  chỉ gồm TKQC loại vao_bao_cao (`talpha_rules.json → tkqc_loai`) — đọc tên cũ là tự đúng. Đổi loại ở
-  `/admin` → TKQC, có tác dụng ngay. **Đừng ghi thẳng vào `fb_ads_data`** — nó là view.
+  chỉ gồm TKQC thuộc loại có `include_in_report` (`talpha_rules.json → ad_account_categories`) — đọc tên cũ là
+  tự đúng. Đổi loại ở `/admin` → TKQC, có tác dụng ngay. **Đừng ghi thẳng vào `fb_ads_data`** — nó là view.
   `talpha.yaml → ad_account_ids` chỉ còn là lịch sử (toàn dòng chú thích). `ops/talpha_reports/ad_accounts.json`
   CHỈ còn bản dòng lệnh đối soát quảng cáo đọc (roster bắt TKQC lạ, `ads_settlement.ad_accounts.roster_file`) —
-  dashboard lấy roster từ bảng `tkqc`.
+  dashboard lấy roster từ bảng `ad_accounts`.
 * **Đăng nhập + phân quyền theo team** (05/10/2026): NextAuth v5 (`lib/auth.ts`); người dùng
   qua `lib/users.ts` (bảng `users`, mỗi người `role` + `teams`). Luật ở
   `talpha_rules.json → access`, đọc qua `lib/talpha/access-rules.ts` (có test). Cửa chặn chung:
@@ -88,7 +95,7 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
 * **Khoá kết nối** (04/11/2026): token Meta, key POS từng shop, token Pancake, key 17TRACK, khoá Gemini (15/11) nhập ở
   `/admin` → Khoá kết nối — máy gọi thử khoá rồi mới lưu. Lưu ở bảng `api_credentials` (15/11/2026),
   MÃ HOÁ bằng pgcrypto với chìa `TALPHA_ENCRYPTION_KEY` (đổi chìa = phải nhập lại mọi khoá), thắng khoá
-  cùng tên trong `.env.local`. Dashboard đọc qua `docKhoa()` (`lib/talpha/credentials.ts`) — **đừng đọc
+  cùng tên trong `.env.local`. Dashboard đọc qua `getCredential()` (`lib/talpha/credentials.ts`) — **đừng đọc
   `process.env` thẳng cho khoá**; Python gọi `load_credentials_to_env()` (`sync/core/credentials.py`) lúc bắt đầu.
   Ngoại lệ có chủ đích (16/11/2026): trang Hỏi AI cho dán khoá Gemini RIÊNG, chỉ lưu localStorage của trình
   duyệt đó, gửi kèm từng câu hỏi (header `x-gemini-key`) và thắng khoá mặc định — máy chủ không lưu, không
@@ -98,15 +105,23 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   (`lib/talpha/market-config.ts`), sync / Sheet / view (`sync/core/market_config.py`) và bot
   (`ops/zalo-alerts/market_config.js`) — ba bản chạy chung `tests/fixtures/market_overrides.json`, sửa
   luật phủ thì sửa cả ba. Shop POS sinh từ `markets` (`talpha.yaml → poscake` không còn ai đọc).
-  Chỉ nước `dang_ban` được kéo đơn / gọi POS; `da_tat` giữ lịch sử. Lưu xong dashboard và bot tự
-  khởi động lại (pm2 / docker); vòng sync đầu giờ tự dựng lại view khi tỷ giá / số chia đổi.
+  Trạng thái nước `active` / `upcoming` / `disabled` (trước 16/11/2026: `dang_ban` / `sap_chay` / `da_tat` —
+  migration 0009 đổi phần đã lưu). Chỉ nước `active` được kéo đơn / gọi POS; `disabled` giữ lịch sử. Lưu xong
+  dashboard và bot tự khởi động lại (pm2; docker nhờ `TALPHA_AUTO_RESTART=1`, tên cũ `TALPHA_TU_KHOI_DONG` vẫn
+  nhận); vòng sync đầu giờ tự dựng lại view khi tỷ giá / số chia đổi.
+* **Nạp lúc khởi động** (16/11/2026): `rules.ts` (luật gốc + phần phủ `market_overrides`) và `getCredential()`
+  đọc ĐỒNG BỘ, nên `src/instrumentation.ts → register()` nạp sẵn hai bảng đó BẤT ĐỒNG BỘ một lần
+  (`primeStartupData()`, `lib/talpha/startup-data.ts`) trước khi server nhận request — thay cho `execFileSync`
+  (`db-sync.ts` + `scripts/sync-query.cjs`, đã xoá) từng chặn event loop. Bot cũng vậy: `bot.js` gọi
+  `primeMarketOverrides()` (`market_config.js`, hỏi dashboard bằng `fetch`) rồi mới nạp `bot_main.js`. Module
+  đọc luật bị nạp TRƯỚC bước này là chạy bằng luật gốc, thiếu nước nhập trên trang.
 * **Dữ liệu người dùng nhập nằm trong Postgres** (15/11/2026, migration 0006, tên bảng tiếng Anh):
   `app_documents` (sao kê COD, việc đối soát, thanh toán QC, vận đơn, chi phí vận hành — đọc/ghi qua
   `lib/talpha/store.ts`), `market_overrides`, `market_monthly_reports` (số nước × người cho bot, bot
   đọc qua `/api/talpha/market-report`), `users`, `api_credentials`. File cũ (`data/*.json`, `users.json`,
   `.env.khoa.local`) được `sync/core/file_import.py` chép vào MỘT lần ở bước migrate (sổ `file_imports`)
   rồi không ai đọc nữa. Vai chỉ đọc (`/api/query`, "CEO hỏi") bị REVOKE khỏi các bảng này —
-  `pg_view.py → BANG_RIENG`; thêm bảng riêng mới thì thêm vào đó. Còn là file: luật gốc
+  `pg_view.py → PRIVATE_TABLES`; thêm bảng riêng mới thì thêm vào đó. Còn là file: luật gốc
   `config/talpha_rules.json` (git) và chìa nội bộ `data/.internal_token`.
 * **Người dùng thấy và tự chạy cập nhật số** (15/11/2026): đèn "Cập nhật lúc…" + nút "Cập nhật ngay" trên
   thanh đầu (`components/talpha/refresh-status.tsx` ↔ `/api/talpha/refresh`). Lịch Docker ghi mỗi lượt vào

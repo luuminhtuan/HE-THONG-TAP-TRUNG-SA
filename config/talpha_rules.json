@@ -1829,7 +1829,7 @@
     }
   },
   "ad_account_categories": {
-    "_note": "04/11/2026 (Postgres): KHÔNG còn khai danh sách TKQC bằng tay ở talpha.yaml. Mỗi vòng sync hỏi Meta token đọc được TKQC nào (/me/adaccounts), kéo chi tiêu của TẤT CẢ vào bảng fb_ads_all, ghi danh bạ vào bảng ad_accounts. Mỗi TKQC một LOẠI: chỉ loại có include_in_report = true mới vào báo cáo (view fb_ads_data → mọi tab, báo cáo tháng, bot). Đổi loại ở /admin → TKQC, có tác dụng ngay. TKQC mới thấy lần đầu nhận loại theo gan_san, không có thì theo tiền tệ: VND → mac_dinh, tiền khác → loai_tien_khac (chi tiêu Meta trả theo tiền của TK; engine coi là VND — TK Canada USD từng ra 110 đồng thay vì 109,77 USD, 20/09/2026).",
+    "_note": "04/11/2026 (Postgres): KHÔNG còn khai danh sách TKQC bằng tay ở talpha.yaml. Mỗi vòng sync hỏi Meta token đọc được TKQC nào (/me/adaccounts), kéo chi tiêu của TẤT CẢ vào bảng fb_ads_all, ghi danh bạ vào bảng ad_accounts. Mỗi TKQC một LOẠI: chỉ loại có include_in_report = true mới vào báo cáo (view fb_ads_data → mọi tab, báo cáo tháng, bot). Đổi loại ở /admin → TKQC, có tác dụng ngay. TKQC mới thấy lần đầu nhận loại theo preassigned, không có thì theo tiền tệ: VND → default, tiền khác → non_vnd (chi tiêu Meta trả theo tiền của TK; engine coi là VND — TK Canada USD từng ra 110 đồng thay vì 109,77 USD, 20/09/2026).",
     "default": "antalo",
     "non_vnd": "other",
     "categories": {

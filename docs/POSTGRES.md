@@ -9,8 +9,11 @@ Cloud, tài khoản máy, dataset hay script dựng view nào nữa.
 Cần Docker Desktop.
 
 ```bash
-docker compose up -d          # Postgres + dashboard + lịch việc nền (lần đầu cài thư viện ~1 phút)
+docker compose up -d --remove-orphans   # Postgres + dashboard + lịch việc nền (lần đầu cài thư viện ~1 phút)
 ```
+
+`--remove-orphans` bắt buộc lần đầu chạy bản sau 16/11/2026: service lịch đổi tên `lich` → `scheduler`, thiếu cờ
+này thì container `talpha-lich-1` cũ vẫn chạy cạnh `scheduler` — hai lịch cùng kéo số mỗi giờ.
 
 1. Mở **http://localhost:3200/admin** → **Khoá kết nối**: dán token Meta, key POS từng nước (Pancake,
    17TRACK nếu có). Máy gọi thử khoá rồi mới lưu. TKQC nằm ở nhiều Business Manager / app thì dán thêm
@@ -18,7 +21,7 @@ docker compose up -d          # Postgres + dashboard + lịch việc nền (lầ
 2. **/admin → TKQC**: bấm "Quét TKQC ngay" — hiện mọi TKQC các token thấy. Chọn loại cho TK nào không
    thuộc ANTALO (vd bán hạt giống trong nước); TK tiền khác VND tự vào loại "Khác".
 3. Xong. Lịch việc nền đọc lại khoá trước mỗi việc — đầu giờ kế tiếp là có số. Muốn có ngay:
-   `docker compose restart lich` — bật lại là chạy ngay một vòng kéo số + dựng báo cáo tháng (tab Tổng
+   `docker compose restart scheduler` — bật lại là chạy ngay một vòng kéo số + dựng báo cáo tháng (tab Tổng
    quan / P&L / Marketer). Vòng báo cáo tự kéo lại cả tháng hiện tại (đơn 30 ngày, chi tiêu từ ngày 1);
    muốn có cả tháng trước: `docker compose run --rm sync python sync/talpha/talpha_sync.py --days 40`.
 
@@ -45,7 +48,7 @@ cổng thì: `PG_PORT=5434 DASHBOARD_PORT=3300 docker compose up -d`.
 | `db` | Postgres 17 |
 | `migrate` | chạy mỗi lần `up`: bảng còn thiếu (`db/migrations/`) + dựng lại view nếu luật đổi |
 | `dashboard` | Next.js (`next dev`) ở cổng 3200 |
-| `lich` | việc nền, giờ Việt Nam (`ops/docker/scheduler.py`) — cùng giờ systemd timer của máy chủ |
+| `scheduler` | việc nền, giờ Việt Nam (`ops/docker/scheduler.py`) — cùng giờ systemd timer của máy chủ (trước 16/11/2026 tên `lich`) |
 | `zalo` (tuỳ chọn) | bot Zalo: `docker compose --profile zalo run --rm zalo node pair.js` để ghép nick, rồi `docker compose --profile zalo up -d zalo` |
 
 Lịch việc nền: :00 mỗi giờ kéo đơn POS + chi tiêu Meta · :20 dựng báo cáo tháng · :40 chụp tồn kho dự
@@ -75,22 +78,43 @@ rồi mới ghi Sheet nếu có khoá. Một lần tính, ba nơi cùng số.
 * **View**: `db/views/` — tỷ giá, số chia, giá vốn, múi giờ TKQC, nhóm marketer, ngưỡng đúc vào câu SQL
   lúc dựng (`sync/core/pg_view.py`, sinh từ `config/talpha_rules.json` + `talpha.yaml`). Đầu mỗi vòng
   sync băm câu SQL đã sinh; khác lần trước là dựng lại trong một transaction.
-* **Vai chỉ đọc** (migration 0003): `/api/query` (4 tab Marketing, Sức khoẻ QC, Khách hàng, Market Intel)
-  và "CEO hỏi" đăng nhập Postgres bằng `talpha_readonly` / `talpha_readonly_market`, transaction READ ONLY, 30 giây.
-  Mật khẩu: `TALPHA_DOC_PASSWORD` (compose đặt sẵn), đặt lúc `migrate`.
+* **Vai chỉ đọc** (migration 0003, tên tiếng Anh từ 0008): `/api/query` (4 tab Marketing, Sức khoẻ QC, Khách
+  hàng, Market Intel) và "CEO hỏi" đăng nhập Postgres bằng `talpha_readonly` / `talpha_readonly_market`
+  (`queryReadOnly` trong `lib/db.ts`), transaction READ ONLY, 30 giây. Mật khẩu: `TALPHA_READONLY_PASSWORD`
+  (compose đặt sẵn; tên cũ `TALPHA_DOC_PASSWORD` vẫn nhận), đặt lúc `migrate`. Vai tên cũ `talpha_doc` /
+  `talpha_doc_nuoc` vẫn còn trên cụm cho bản code cũ nối cùng cụm — code bây giờ không dùng nữa.
 
 | Bảng | Nội dung |
 |:--|:--|
 | `sale_order`, `order_items` (+ `_raw`) | đơn POS + dòng hàng |
 | `fb_ads_all`, `fb_adset_all` (+ `_raw`) | chi tiêu MỌI TKQC theo ad / adset × ngày (đã là VND) |
 | `fb_ads_data`, `fb_adset_data`, `fb_campaign_data` | **VIEW** — chỉ TKQC loại vào báo cáo; đọc, không ghi |
-| `tkqc` | danh bạ TKQC tự động: tên, trạng thái Meta, tiền tệ, múi giờ, token đọc nó, **loại** (đổi ở /admin → TKQC) |
+| `ad_accounts` | danh bạ TKQC tự động: tên, trạng thái Meta, tiền tệ, múi giờ, token đọc nó, **loại** (`category`, đổi ở /admin → TKQC) |
 | `fb_campaign_all`, `ad_dictionary` | ngân sách campaign; ad_id lạ trên đơn |
 | `partner_orders` | bảng đơn đối tác 3PL (cần khoá Google) |
 | `product_catalog` | danh mục SP — nối biến thể POS → mã SKU (giá vốn) |
 | `inventory_snapshot` | ảnh chụp tồn kho, dự phòng tab Kho (giữ 60 ngày) |
 | `sync_health`, `sync_health_accounts` | sức khoẻ vòng chạy, theo từng TKQC / shop |
 | `monthly_report_tabs` | bảng số báo cáo tháng (= nội dung file TỔNG TEAM) |
+| `view_fingerprints` | vân tay SQL của bộ view lần dựng gần nhất (`pg_view.py`) |
+
+**Tên tiếng Anh từ 16/11/2026.** Migration 0008 chỉ ĐỔI TÊN (dữ liệu, chỉ mục, quyền giữ nguyên) — câu SQL cũ,
+ghi chú cũ còn dùng tên cũ thì dịch theo bảng này:
+
+| Tên cũ | Tên mới |
+|:--|:--|
+| `tkqc` (`ten`, `trang_thai`, `tien_te`, `mui_gio`, `loai`, `da_xac_nhan`, `thay_lan_dau`, `thay_lan_cuoi`, `ghi_chu`, `bien_token`) | `ad_accounts` (`name`, `account_status`, `currency`, `timezone_name`, `category`, `is_confirmed`, `first_seen_at`, `last_seen_at`, `note`, `token_env_var`) |
+| `fb_ads_tat_ca` · `fb_adset_tat_ca` (+ `_raw`) · `fb_campaign_tat_ca` | `fb_ads_all` · `fb_adset_all` (+ `_raw`) · `fb_campaign_all` |
+| `bao_cao_tab` (`thang`, `tep`, `thu_tu`, `ten_tab`, `hang`, `ghi_luc`) | `monthly_report_tabs` (`month`, `report_key`, `tab_order`, `tab_name`, `rows`, `written_at`) |
+| `view_van_tay` (`van_tay`, `dung_luc`) | `view_fingerprints` (`fingerprint`, `built_at`) |
+| `schema_migrations` (`ten`, `chay_luc`) | `schema_migrations` (`name`, `applied_at`) — `pg.py` tự đổi trước khi chạy migration |
+| hàm `ngay_theo_mui(s, tz)` | `date_in_tz(s, tz)` — tên cũ còn làm bí danh cho câu SQL cũ |
+| vai `talpha_doc` · `talpha_doc_nuoc` | `talpha_readonly` · `talpha_readonly_market` — vai MỚI tạo cạnh vai cũ, không đổi tên |
+| dòng `app_documents`: `ads_recon_kho` · `chi_phi_van_hanh` | `ads_recon_rows` · `operating_expenses` |
+
+Migration 0009 đổi giá trị cấu hình đã lưu cho khớp `config/talpha_rules.json` cùng đợt: trạng thái nước trong
+`market_overrides` `dang_ban` / `sap_chay` / `da_tat` → `active` / `upcoming` / `disabled`, khoá `nguoi_cam` →
+`owner`; loại TKQC `hat_giong` / `khac` → `seed` / `other`.
 
 ## Viết SQL: BigQuery → Postgres
 
@@ -155,7 +179,7 @@ hai sẽ làm sống lại thứ người dùng đã xoá trên trang. Sau đó 
 
 `TALPHA_ENCRYPTION_KEY` phải giống nhau ở dashboard và các container Python (compose đặt sẵn một chìa
 cho máy thử). Mất / đổi chìa là khoá trong kho không giải mã được nữa — nhập lại ở /admin → Khoá kết
-nối. Hai vai chỉ đọc không được đọc các bảng này (REVOKE ở migration 0006 và `pg_view.py → BANG_RIENG`).
+nối. Hai vai chỉ đọc không được đọc các bảng này (REVOKE ở migration 0006 và `pg_view.py → PRIVATE_TABLES`).
 
 Khi chuyển máy chủ VPS sang Postgres: đặt `TALPHA_ENCRYPTION_KEY` (chìa thật, giữ kín) cho dashboard + các
 service Python, rồi chạy migrate trong `/opt/talpha` — sao kê, vận đơn, `users.json`, `.env.khoa.local`

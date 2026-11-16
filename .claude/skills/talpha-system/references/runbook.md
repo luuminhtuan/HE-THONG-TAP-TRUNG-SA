@@ -30,7 +30,7 @@
 
 Theo đúng `docs/TALPHA_METRIC_RULES.md` §6 — tóm tắt:
 1. Ground truth: spend = Meta API trực tiếp (`level=campaign, time_increment=1`); đơn = POS API live. **KHÔNG so Sheet ↔ kho số.**
-2. So Meta ↔ `fb_ads_data` theo account: lệch >2% → sync ads hỏng → xem log vòng chạy (grep "Read timed out" / "request limit" / "PermissionError"): production `/root/talpha_reports/daily_YYYYMMDD.log` + `journalctl -u talpha-sync`; nhánh `kho-postgres` `docker compose logs lich` + `ops/talpha_reports/daily_YYYYMMDD.log` trong repo. `/api/talpha/sync-health` trả TKQC / shop đọc lỗi của vòng gần nhất.
+2. So Meta ↔ `fb_ads_data` theo account: lệch >2% → sync ads hỏng → xem log vòng chạy (grep "Read timed out" / "request limit" / "PermissionError"): production `/root/talpha_reports/daily_YYYYMMDD.log` + `journalctl -u talpha-sync`; nhánh `kho-postgres` `docker compose logs scheduler` + `ops/talpha_reports/daily_YYYYMMDD.log` trong repo. `/api/talpha/sync-health` trả TKQC / shop đọc lỗi của vòng gần nhất.
 3. So POS live ↔ `sale_order` theo marketer/ngày → sync đơn hỏng (grep "chết ở page").
 4. Dấu hiệu kinh điển: ngày có ĐƠN nhưng 0 SPEND = sync ads mất account/ngày; đơn tụt so với sáng = sync ghi đè bộ thiếu.
 5. Nhớ: GTC hôm nay ≈ 0 là đúng; từng ngày lệch tz là cố hữu (cả tháng mới khớp).
@@ -39,7 +39,7 @@ Theo đúng `docs/TALPHA_METRIC_RULES.md` §6 — tóm tắt:
 
 **Nhánh `kho-postgres`:**
 ```bash
-docker compose restart lich                                                    # chạy ngay một vòng kéo số + dựng báo cáo
+docker compose restart scheduler                                               # chạy ngay một vòng kéo số + dựng báo cáo
 docker compose run --rm sync python sync/talpha/talpha_sync.py --days 40       # kéo lại cả tháng trước
 ```
 Hoặc nút "Cập nhật ngay" trên thanh đầu dashboard (lịch nhặt trong ~15 giây).
