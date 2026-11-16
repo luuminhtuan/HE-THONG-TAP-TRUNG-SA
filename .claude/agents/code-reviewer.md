@@ -15,7 +15,7 @@ trước khi review. Lỗi làm số sai hoặc mất dữ liệu quan trọng h
 - Kho số: Postgres (`DATABASE_URL`), bảng ở `db/migrations/`, view ở `db/views/` dựng bằng `sync/core/pg_view.py`.
 - Sync: `sync/talpha/talpha_sync.py` + `sync/core/`. Báo cáo tháng: `ops/talpha_reports/format_all.py`.
 - Bot Zalo: `ops/zalo-alerts/`. Luật nghiệp vụ: `config/talpha_rules.json`.
-- Máy chủ VPS / nhánh `main` vẫn chạy bản BigQuery — đừng đòi sửa code `main` theo luật Postgres.
+- `main` là bản Postgres từ 16/11/2026, nhưng máy chủ VPS còn chạy bản BigQuery cũ (nhánh `bk_main_26_11_16`) tới khi dựng Postgres trên đó.
 
 ## Checklist
 

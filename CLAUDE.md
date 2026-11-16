@@ -53,9 +53,11 @@ ssh root@139.180.131.21 'bash /opt/talpha/ops/talpha_reports/deploy_runtime.sh -
 
 `from-mac.sh` chép `dashboard-ui/.env.local` của Mac đè lên máy chủ — so hai bản trước khi chạy.
 
-**Máy chủ VPS vẫn chạy bản BigQuery.** Kho số Postgres (nhánh `kho-postgres`, 04/11/2026) cần máy chủ có
-Postgres + `DATABASE_URL` trước — các script `ops/deploy/vps-*-setup.sh` chưa dựng phần đó. Đừng đưa nhánh
-này lên `main` rồi deploy khi máy chủ chưa chuyển.
+**`main` là bản Postgres từ 16/11/2026 (gộp nhánh `refactor/english-standard`), máy chủ VPS VẪN chạy bản BigQuery**
+(commit cũ của nó). Bản này cần máy chủ có Postgres + `DATABASE_URL` trước — các script `ops/deploy/vps-*-setup.sh`
+chưa dựng phần đó. `from-mac.sh` bước **0c** tự DỪNG khi `dashboard-ui/.env.local` chưa có `DATABASE_URL` hoặc máy
+chủ không nối được Postgres đó — đừng tìm cách vượt: deploy bản này lên máy chủ chưa có Postgres là production sập.
+Bản BigQuery cuối cùng: nhánh `bk_main_26_11_16` (= `17def2c`).
 
 ## Kiến trúc
 

@@ -73,6 +73,21 @@ git -C "$REPO_ROOT" merge-base --is-ancestor main "$DEPLOY_REMOTE/main" \
 echo "   máy chủ sẽ chạy $DEPLOY_REMOTE/main: $(git -C "$REPO_ROOT" log --oneline -1 "$DEPLOY_REMOTE/main")"
 
 # ─────────────────────────────────────────────────────────────────────────
+# Từ 16/11/2026 main là bản kho số POSTGRES (bỏ BigQuery). Máy chủ chưa có Postgres mà deploy bản này là dashboard,
+# sync, bot cùng chết — production đang chạy bản BigQuery thì ĐỨNG cho tới khi dựng xong Postgres. Hai điều kiện:
+# dashboard-ui/.env.local (bước 1 chép lên máy chủ) có DATABASE_URL, và TỪ MÁY CHỦ nối được tới Postgres đó.
+# Không in DATABASE_URL (có mật khẩu). Dựng Postgres trên máy chủ: docs/POSTGRES.md.
+say "0c · Máy chủ có Postgres cho bản này chưa"
+DB_URL=$(sed -nE 's/^DATABASE_URL=["'"'"']?([^"'"'"' #]+).*/\1/p' "$REPO_ROOT/dashboard-ui/.env.local" 2>/dev/null | tail -1)
+[ -n "$DB_URL" ] || die "dashboard-ui/.env.local chưa có DATABASE_URL — bản Postgres không chạy được trên máy chủ. DỪNG để production (bản BigQuery) không sập. Dựng Postgres trên máy chủ trước (docs/POSTGRES.md)."
+DB_HOSTPORT=$(printf '%s' "$DB_URL" | sed -E 's#^[a-z]+://([^@/]*@)?([^/:?]+)(:([0-9]+))?.*#\2 \4#')
+case "$DB_HOSTPORT" in *" "*) ;; *) die "Không đọc được máy / cổng trong DATABASE_URL (dashboard-ui/.env.local) — DỪNG." ;; esac
+DB_HOST=${DB_HOSTPORT% *}; DB_PORT=${DB_HOSTPORT#* }; DB_PORT=${DB_PORT:-5432}
+"${SSH[@]}" "timeout 5 bash -c '</dev/tcp/$DB_HOST/$DB_PORT'" >/dev/null 2>&1 \
+    || die "Máy chủ không nối được Postgres ở $DB_HOST:$DB_PORT (DATABASE_URL trong dashboard-ui/.env.local). DỪNG — deploy bản Postgres lên máy chủ chưa có Postgres là production sập. Dựng Postgres trên máy chủ trước (docs/POSTGRES.md)."
+echo "   máy chủ nối được Postgres ở $DB_HOST:$DB_PORT"
+
+# ─────────────────────────────────────────────────────────────────────────
 say "1/5 · Chép cấu hình bí mật (không nằm trong git)"
 [ -f "$REPO_ROOT/dashboard-ui/.env.local" ] || die "Thiếu dashboard-ui/.env.local ở máy Mac"
 

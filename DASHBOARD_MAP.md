@@ -7,8 +7,9 @@ Rule chỉ số (công thức doanh thu, tỷ giá, số chia): `docs/TALPHA_MET
 Cách vận hành máy chủ: `docs/DEPLOY_VPS.md`.
 
 > **Kho số là Postgres từ 04/11/2026** (nhánh `kho-postgres`, bỏ hẳn BigQuery) — bảng ở `db/migrations/`,
-> view ở `db/views/`, chạy cả hệ thống bằng `docker compose up -d`: xem `docs/POSTGRES.md`. Máy chủ VPS
-> chuyển sang Postgres là một bước deploy riêng — tới lúc đó máy chủ vẫn chạy bản BigQuery của `main`.
+> view ở `db/views/`, chạy cả hệ thống bằng `docker compose up -d`: xem `docs/POSTGRES.md`. `main` là bản này từ
+> 16/11/2026; máy chủ VPS chuyển sang Postgres là một bước deploy riêng — tới lúc đó máy chủ vẫn chạy bản BigQuery cũ
+> (nhánh `bk_main_26_11_16`), `from-mac.sh` bước 0c chặn deploy khi máy chủ chưa có Postgres.
 
 ---
 
