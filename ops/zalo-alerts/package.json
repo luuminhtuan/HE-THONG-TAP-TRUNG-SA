@@ -6,7 +6,7 @@
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js",
-    "test": "export TALPHA_MARKET_OVERRIDES_FILE=./_no_market_overrides.json; node schedule.test.js && node zalo_text.test.js && node commands.test.js && node daily_report.test.js && node shipment_alerts.test.js && node market_groups.test.js && node hourly_digest.test.js && node market_config.test.js"
+    "test": "export TALPHA_MARKET_OVERRIDES_FILE=./_no_market_overrides.json; node schedule.test.js && node zalo_text.test.js && node commands.test.js && node daily_report.test.js && node shipment_alerts.test.js && node market_groups.test.js && node hourly_digest.test.js && node market_config.test.js && node bot_control.test.js"
   },
   "engines": {
     "node": ">=18"

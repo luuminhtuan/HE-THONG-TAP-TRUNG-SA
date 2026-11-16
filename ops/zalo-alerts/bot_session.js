@@ -125,6 +125,32 @@ function startListener(a) {
     listener = latest;
 }
 
+// ─── Điều khiển từ trang (bot_control.js, 16/11/2026) ───
+/** Bỏ phiên trong bộ nhớ (ghép nick khác xong, hoặc bỏ ghép): tắt bộ nhận lệnh, lần sau connect() đọc lại phiên. */
+function resetSession() {
+    const previous = listener;
+    listener = null;                     // onClosed của bộ cũ thấy l !== listener → không hẹn đăng nhập lại
+    if (previous) { try { previous.stop(); } catch { /* bộ cũ đã chết */ } }
+    api = null;
+}
+
+/** Bỏ ghép: tắt phiên + xoá file phiên trên máy này. Nhóm đã chọn giữ nguyên (ghép lại là gửi tiếp). */
+function logout() {
+    resetSession();
+    if (!zalo) zalo = require("./zalo");
+    zalo.removeSession();
+}
+
+// Vòng chờ lúc khởi động (bot_main.js) đợi tới 10' mỗi lượt — ghép nick / chọn nhóm trên trang thì đánh thức ngay.
+let wake = null;
+function waitOrWake(ms) {
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => { wake = null; resolve(); }, ms);
+        wake = () => { clearTimeout(timer); wake = null; resolve(); };
+    });
+}
+function wakeUp() { if (wake) wake(); }
+
 async function keepSessionAlive() {
     if (!api) return;
     try { await api.keepAlive(); zalo.saveSession(api); }
@@ -166,4 +192,5 @@ async function autoAssignGroups() {
 module.exports = {
     enableServiceMode, loadZalo, isLoggedIn, getMarketGroups,
     connect, sendOne, enqueue, sendBatch, groupOf, startListener, keepSessionAlive, introduceNewGroups, loadGroups, autoAssignGroups,
+    resetSession, logout, waitOrWake, wakeUp,
 };

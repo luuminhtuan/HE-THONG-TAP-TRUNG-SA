@@ -52,6 +52,65 @@ function saveSession(api, extra = {}) {
     });
 }
 
+const MAX_QR_ATTEMPTS = 5;
+
+/**
+ * Ghép nick phụ bằng mã QR — dùng chung cho `node pair.js` và trang /admin → Khoá kết nối → Zalo (bot_control.js).
+ * onEvent nhận {stage: "qr", qrPng, attempt} · {stage: "expired", final} · {stage: "scanned", name} ·
+ * {stage: "declined"} · {stage: "saved"}. qrPath (tuỳ chọn): ghi thêm mã ra file PNG. Trả {api, name}.
+ * Phiên ghi NGAY khi Zalo trả (GotLoginInfo), chưa đợi đăng nhập xong: bước sau hỏng thì không phải quét lại.
+ */
+async function pairByQr({ qrPath = null, onEvent = async () => {} } = {}) {
+    const { LoginQRCallbackEventType: E } = require("zca-js");
+    let attempts = 0, displayName = "";
+    let api;
+    try {
+        api = await createZalo().loginQR(qrPath ? { qrPath } : {}, async (ev) => {
+            switch (ev.type) {
+                case E.QRCodeGenerated:
+                    attempts++;
+                    if (qrPath) await ev.actions.saveToFile(qrPath);
+                    await onEvent({ stage: "qr", qrPng: ev.data.image, attempt: attempts, maxAttempts: MAX_QR_ATTEMPTS });
+                    break;
+                case E.QRCodeExpired: {
+                    const final = attempts >= MAX_QR_ATTEMPTS;
+                    await onEvent({ stage: "expired", attempt: attempts, final });
+                    if (final) ev.actions.abort(); else ev.actions.retry();
+                    break;
+                }
+                case E.QRCodeScanned:
+                    displayName = (ev.data && ev.data.display_name) || "";
+                    await onEvent({ stage: "scanned", name: displayName });
+                    break;
+                case E.QRCodeDeclined:
+                    await onEvent({ stage: "declined" });
+                    ev.actions.abort();
+                    break;
+                case E.GotLoginInfo:
+                    writePrivateFile(SESSION_FILE, { ...ev.data, language: "vi", name: displayName, savedAt: new Date().toISOString() });
+                    await onEvent({ stage: "saved" });
+                    break;
+            }
+        });
+    } catch (e) {
+        throw new Error(attempts >= MAX_QR_ATTEMPTS ? `mã QR hết hạn ${attempts} lần — chưa ai quét` : `không ghép được (${e.message})`);
+    }
+    saveSession(api, { name: displayName });
+    if (qrPath) { try { fs.unlinkSync(qrPath); } catch { /* chưa có file */ } }
+    return { api, name: displayName };
+}
+
+/** Tên nick đã ghép (ghi lúc ghép) — null nếu chưa ghép. */
+function sessionAccountName() {
+    const s = readJson(SESSION_FILE);
+    return s && s.cookie ? (s.name || null) : null;
+}
+
+/** Bỏ ghép: xoá phiên trên máy này. Lần đăng nhập sau báo "chưa ghép nick". */
+function removeSession() {
+    try { fs.unlinkSync(SESSION_FILE); } catch { /* chưa có phiên */ }
+}
+
 /** Đăng nhập bằng phiên đã ghép. Chưa ghép → lỗi nói rõ phải làm gì. */
 async function login() {
     const s = readJson(SESSION_FILE);
@@ -116,6 +175,7 @@ function startListening(api, { onMessage, onClosed, log }) {
 }
 
 module.exports = {
-    SESSION_FILE, marketGroupFile, ThreadType,
-    createZalo, writePrivateFile, saveSession, login, readMarketGroup, saveMarketGroup, listGroups, sendToGroup, startListening,
+    SESSION_FILE, MAX_QR_ATTEMPTS, marketGroupFile, ThreadType,
+    createZalo, writePrivateFile, saveSession, pairByQr, sessionAccountName, removeSession,
+    login, readMarketGroup, saveMarketGroup, listGroups, sendToGroup, startListening,
 };

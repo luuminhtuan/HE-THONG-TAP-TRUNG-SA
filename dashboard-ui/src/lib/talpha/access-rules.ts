@@ -206,6 +206,8 @@ export const API_RULES: Record<string, ApiRule> = {
     "/api/talpha/credentials": { full: true },
     "/api/talpha/market-config": { full: true },
     "/api/talpha/ad-accounts": { full: true },
+    // Bot Zalo điều khiển từ trang (16/11/2026); nhánh /bot chỉ nhận chìa nội bộ — route tự chặn.
+    "/api/talpha/zalo": { full: true },
     "/api/users": { full: true },
 };
 

@@ -191,6 +191,7 @@ khoá thật: `docker compose down -v && docker compose up -d`.
 | `api_credentials` | `dashboard-ui/.env.khoa.local` — MÃ HOÁ (pgcrypto) bằng `TALPHA_ENCRYPTION_KEY` | `lib/talpha/credentials.ts`, `sync/core/credentials.py` |
 | `file_imports` | — sổ file cũ nào đã chép vào kho | `sync/core/file_import.py` |
 | `job_runs` · `refresh_requests` | — sổ lượt việc nền + yêu cầu "Cập nhật ngay" | `ops/docker/scheduler.py` qua `sync/core/job_log.py`; dashboard đọc ở `/api/talpha/refresh` |
+| `zalo_bot_status` · `zalo_requests` | — (migration 0002) trạng thái bot Zalo + yêu cầu bấm ở /admin → Khoá kết nối → Zalo | bot `ops/zalo-alerts/bot_control.js` qua `/api/talpha/zalo/bot`; trang qua `/api/talpha/zalo` (`lib/talpha/zalo-bot.ts`) |
 
 Bước `migrate` chép mỗi file cũ vào kho MỘT lần (không ghi đè dòng đã có, không xoá file) — chép lần
 hai sẽ làm sống lại thứ người dùng đã xoá trên trang. Sau đó file cũ chỉ còn là bản lưu.

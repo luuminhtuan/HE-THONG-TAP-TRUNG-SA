@@ -135,6 +135,10 @@ này lên `main` rồi deploy khi máy chủ chưa chuyển.
   rồi không ai đọc nữa. Vai chỉ đọc (`/api/query`, "CEO hỏi") bị REVOKE khỏi các bảng này —
   `pg_view.py → PRIVATE_TABLES`; thêm bảng riêng mới thì thêm vào đó. Còn là file: luật gốc
   `config/talpha_rules.json` (git) và chìa nội bộ `data/.internal_token`.
+* **Bot Zalo cấu hình trên trang** (16/11/2026): `/admin` → Khoá kết nối → Zalo — ghép nick phụ bằng mã QR, chọn
+  nhóm từng nước, gửi thử. Trang ghi yêu cầu (`zalo_requests`), bot `ops/zalo-alerts/bot_control.js` nhặt qua
+  `/api/talpha/zalo/bot` (chìa nội bộ) và ghi trạng thái (`zalo_bot_status`); phiên Zalo vẫn là file trên máy chạy bot.
+  Chi tiết: `docs/ZALO_BOT.md` mục 8.
 * **Người dùng thấy và tự chạy cập nhật số** (15/11/2026): đèn "Cập nhật lúc…" + nút "Cập nhật ngay" trên
   thanh đầu (`components/talpha/refresh-status.tsx` ↔ `/api/talpha/refresh`). Lịch Docker ghi mỗi lượt vào
   `job_runs` và nhặt yêu cầu ở `refresh_requests` (`sync/core/job_log.py`). Thêm việc nền mới thì chạy qua

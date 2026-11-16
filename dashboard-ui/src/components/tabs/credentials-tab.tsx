@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { MaskedCredential } from "./key-reveal";
 import { useUrlParam } from "@/components/talpha/url-state";
 import GeminiModelPicker from "./gemini-model-picker";
+import ZaloBotPanel from "./zalo-bot-panel";
 
 // Khoá kết nối (04/11/2026) — giám đốc dán khoá mới khi token Meta, Pancake, key POS chết.
 // Máy chủ gọi thử khoá với dịch vụ thật rồi mới lưu; khoá thật không bao giờ về trình duyệt.
@@ -34,6 +35,7 @@ const CREDENTIAL_GROUPS: { id: string; nhan: string; giai: string }[] = [
     { id: "pancake", nhan: "Pancake", giai: "Đếm tin nhắn ở nước Meta không báo số tin nhắn (Nhật). Token tài khoản Pancake sống khoảng 90 ngày." },
     { id: "track17", nhan: "17TRACK", giai: "Theo dõi hành trình vận đơn Đài, Singapore, Nhật. Nhiều tài khoản thì quota cộng dồn." },
     { id: "gemini", nhan: "Gemini (AI)", giai: "Ô “Hỏi dashboard” ở Báo cáo → Tổng quan, chỉ giám đốc thấy. Câu hỏi và kết quả truy vấn được gửi sang Google để trả lời." },
+    { id: "zalo", nhan: "Zalo (bot)", giai: "Bot gửi báo cáo ads + vận đơn vào nhóm Zalo từng nước bằng một nick PHỤ (đăng nhập kiểu Zalo Web). Ghép nick bằng mã QR, chọn nhóm, gửi thử ngay ở đây — phiên đăng nhập nằm ở máy chạy bot, không lưu trên trang." },
 ];
 
 const SOURCE_LABEL: Record<Credential["nguon"], string> = {
@@ -181,7 +183,7 @@ export default function CredentialsTab() {
                                 tab === n.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
                             )}>
                             {n.nhan}
-                            <span className="text-xs text-muted-foreground">{groupKeys.length}</span>
+                            {n.id !== "zalo" && <span className="text-xs text-muted-foreground">{groupKeys.length}</span>}
                             {(hasFailed || missing) && (
                                 <span className={cn("h-1.5 w-1.5 rounded-full", hasFailed ? "bg-rose-500" : "bg-amber-500")}
                                     title={hasFailed ? "Có khoá gọi thử bị từ chối" : "Còn thiếu khoá"} />
@@ -313,6 +315,7 @@ export default function CredentialsTab() {
                 const g = credentials.find((k) => k.ten === "GEMINI_API_KEY");
                 return <GeminiModelPicker phienKhoa={`${g?.nguon}|${g?.che}|${g?.cap_nhat}`} />;
             })()}
+            {tab === "zalo" && <ZaloBotPanel />}
         </div>
     );
 }

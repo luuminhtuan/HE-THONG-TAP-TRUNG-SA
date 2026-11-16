@@ -15,8 +15,7 @@
 // Ghép lại khi bot đang chạy: xong thì `pm2 restart talpha-zalo-alerts` để bot nạp phiên mới.
 const fs = require("fs");
 const path = require("path");
-const { LoginQRCallbackEventType: E } = require("zca-js");
-const { SESSION_FILE, createZalo, writePrivateFile, saveSession, login, listGroups, saveMarketGroup } = require("./zalo");
+const { pairByQr, login, listGroups, saveMarketGroup } = require("./zalo");
 const CFG = require("./config");
 const { primeMarketOverrides } = require("./market_config");
 // rules.js đọc luật đồng bộ lúc được require — nạp SAU primeMarketOverrides() (cuối file), để nước thêm
@@ -25,7 +24,6 @@ let MARKETS, pickGroupsByName;
 
 const QR_FILE = path.join(__dirname, "qr.png");
 const GROUPS_FILE = path.join(__dirname, "groups.txt");
-const MAX_QR_ATTEMPTS = 5;
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 let MARKET_CODES = [];
 
@@ -35,36 +33,17 @@ function argAfter(flag) {
     return v && !v.startsWith("--") ? v : "";
 }
 
-async function pairByQr() {
-    let attempts = 0, displayName = "";
-    const api = await createZalo().loginQR({ qrPath: QR_FILE }, async (ev) => {
-        switch (ev.type) {
-            case E.QRCodeGenerated:
-                attempts++;
-                await ev.actions.saveToFile(QR_FILE);
-                log(`QR_READY lần ${attempts}/${MAX_QR_ATTEMPTS}: ${QR_FILE} — mở app Zalo của NICK PHỤ → quét mã (còn ~100 giây)`);
-                break;
-            case E.QRCodeExpired:
-                if (attempts >= MAX_QR_ATTEMPTS) { log(`QR hết hạn ${attempts} lần — dừng. Sẵn sàng quét thì chạy lại.`); ev.actions.abort(); }
-                else { log("QR hết hạn — làm mã mới"); ev.actions.retry(); }
-                break;
-            case E.QRCodeScanned:
-                displayName = ev.data.display_name || "";
-                log(`ĐÃ QUÉT bởi "${displayName}" — bấm XÁC NHẬN đăng nhập trên điện thoại`);
-                break;
-            case E.QRCodeDeclined:
-                log("Điện thoại đã TỪ CHỐI đăng nhập — dừng.");
-                ev.actions.abort();
-                break;
-            case E.GotLoginInfo:
-                // Ghi phiên NGAY lúc có, chưa đợi đăng nhập xong: bước sau hỏng thì vẫn không phải quét lại.
-                writePrivateFile(SESSION_FILE, { ...ev.data, language: "vi", name: displayName, savedAt: new Date().toISOString() });
-                log("Đã lưu phiên vào .zalo_session.json (quyền 600).");
-                break;
-        }
+async function pairQrFromTerminal() {
+    const { api } = await pairByQr({
+        qrPath: QR_FILE,
+        onEvent: async (ev) => {
+            if (ev.stage === "qr") log(`QR_READY lần ${ev.attempt}/${ev.maxAttempts}: ${QR_FILE} — mở app Zalo của NICK PHỤ → quét mã (còn ~100 giây)`);
+            else if (ev.stage === "expired") log(ev.final ? `QR hết hạn ${ev.attempt} lần — dừng. Sẵn sàng quét thì chạy lại.` : "QR hết hạn — làm mã mới");
+            else if (ev.stage === "scanned") log(`ĐÃ QUÉT bởi "${ev.name}" — bấm XÁC NHẬN đăng nhập trên điện thoại`);
+            else if (ev.stage === "declined") log("Điện thoại đã TỪ CHỐI đăng nhập — dừng.");
+            else if (ev.stage === "saved") log("Đã lưu phiên vào .zalo_session.json (quyền 600).");
+        },
     });
-    saveSession(api, { name: displayName });
-    try { fs.unlinkSync(QR_FILE); } catch {}
     return api;
 }
 
@@ -111,7 +90,7 @@ async function main() {
         await printGroups(await login());
         return;
     }
-    const api = await pairByQr();
+    const api = await pairQrFromTerminal();
     log("GHÉP XONG.");
     await printGroups(api);
     log("Chọn nhóm từng nước: node pair.js --tu-nhan");

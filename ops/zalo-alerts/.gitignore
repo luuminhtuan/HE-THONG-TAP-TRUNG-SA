@@ -5,6 +5,8 @@ node_modules/
 # Sinh ra trên máy chủ khi ghép và chạy.
 zalo_group.json
 zalo_group_vandon*.json
+# Nhóm nhận tin từng nước — tự nhận / chọn tay / chọn ở /admin → Khoá kết nối → Zalo (16/11/2026).
+zalo_group_nuoc_*.json
 state.json
 qr.png
 groups.txt

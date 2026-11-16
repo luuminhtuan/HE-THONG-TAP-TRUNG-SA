@@ -177,6 +177,20 @@ Lệnh lỗi → bot trả một dòng `⚠️ Chưa lấy được số lúc n�
 
 ## 8. Vận hành
 
+**Cấu hình trên trang** (16/11/2026): `/admin` → Khoá kết nối → tab **Zalo (bot)** — giám đốc làm hết, không gõ lệnh:
+
+1. Bật bot trên máy chủ (Docker: `docker compose --profile zalo up -d zalo`; pm2: `talpha-zalo-alerts`). Trang báo
+   "Bot Zalo đang chạy" khi thấy nhịp tim (30 giây/lần).
+2. **Ghép nick Zalo** → mã QR hiện trên trang → quét bằng app Zalo của NICK PHỤ → bấm xác nhận trên điện thoại.
+   Mã do chính bot xin (phiên sinh ra ở máy chạy bot, ghi `.zalo_session.json` ở đó — không về trang).
+3. **Nhóm nhận tin từng nước**: chọn trong danh sách nhóm nick phụ đang ở (nhóm "ADS + VẬN ĐƠN <nước>" bot vẫn tự
+   nhận). Chọn xong bot gửi một tin hướng dẫn lệnh vào nhóm đó (như nhóm tự nhận).
+4. **Gửi thử** từng nước — một tin "TIN THỬ" vào nhóm đã chọn; kết quả hiện ở "Việc gần đây".
+
+Bên dưới: trang ghi yêu cầu vào bảng `zalo_requests`, bot (`bot_control.js`) nhặt qua `/api/talpha/zalo/bot` (chìa
+nội bộ), làm rồi ghi kết quả + trạng thái vào `zalo_bot_status` (migration 0002). Bot không chạy thì trang không nhận
+yêu cầu (để dồn lại là lúc bot bật lên nó gửi / đổi nhóm bất ngờ). Lệnh `node pair.js …` vẫn dùng được như cũ.
+
 **Phiên Zalo**
 
 * Đăng nhập **lười**: chỉ khi có tin cần gửi. Gửi lỗi → bỏ phiên, đăng nhập lại **một lần** rồi gửi lại.
@@ -222,8 +236,8 @@ hoặc báo cáo chưa có số; gõ `/baocao` mà không thấy dòng `Lệnh "
 * **Danh sách nước của bot đang gõ cứng trong `config.json`**: `nhomNuoc.markets`, `vanDon.markets`,
   `moiGio.markets`, `nhomNuoc.messPancake` (TW, SG, AE, JP). Thêm nước mới ở `/admin` → Thị trường thì bot
   **chưa** gửi gì cho nước đó — phải thêm mã vào các danh sách này (nước `disabled` thì tự lọc).
-* `ops/zalo-alerts/.gitignore` có `.zalo_session.json`, `state.json`, `zalo_group.json`, `zalo_group_vandon*.json`
-  nhưng **chưa có `zalo_group_nuoc_*.json`** (file nhóm kiểu mới từ 08/10/2026) — `git add` cả thư mục là dính.
+* `ops/zalo-alerts/.gitignore` có `.zalo_session.json`, `state.json`, `zalo_group_nuoc_*.json` (thêm 16/11/2026),
+  `qr.png`, `groups.txt` — file sinh ra trên máy chạy bot, không vào git.
 * Hàm dựng tin là hàm thuần, có test: `cd ops/zalo-alerts && npm test` (không gọi mạng, không đăng nhập).
   `require("./bot")` là đăng nhập Zalo luôn — logic cần test thì tách ra file riêng như `schedule.js`.
 * Giờ VN phải dùng `hourCycle: "h23"` — `hour12: false` trả "24" lúc nửa đêm (bot cũ từng bắn tin 8h lúc 0h05).

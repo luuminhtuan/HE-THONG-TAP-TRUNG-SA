@@ -7,13 +7,14 @@ const { dayBefore } = require("./commands");
 const { MARKETS } = require("./rules");
 const { fetchOverridesFingerprint, getLoadedFingerprint } = require("./market_config");
 const {
-    ARGS, DRY, MARKET_CODES, SHIPMENT_MARKETS, HOURLY_MARKETS, sleep, log, argAfter, vnDateStr,
+    ARGS, DRY, MARKET_CODES, SHIPMENT_MARKETS, HOURLY_MARKETS, log, argAfter, vnDateStr,
     DAILY_AT, SHIPMENT_AT, SHIPMENT_EVENING_AT, INTRADAY_SLOTS, slotLabel, slotKind,
 } = require("./bot_config");
 const {
     enableServiceMode, loadZalo, isLoggedIn, getMarketGroups,
-    connect, groupOf, keepSessionAlive, introduceNewGroups, loadGroups, autoAssignGroups,
+    connect, groupOf, keepSessionAlive, introduceNewGroups, loadGroups, autoAssignGroups, waitOrWake,
 } = require("./bot_session");
+const { startControl } = require("./bot_control");
 const { sendReport, sendHourly, sendShipmentDigest, checkCorrections } = require("./bot_reports");
 const { runCommand } = require("./bot_commands");
 const { checkSlots } = require("./bot_slots");
@@ -22,15 +23,18 @@ async function runService() {
     enableServiceMode(runCommand);   // từ đây mỗi lần đăng nhập đều bật lại bộ nhận lệnh
     log(`Dashboard base: ${CFG.dashboardBaseUrl}${process.env.TALPHA_DASHBOARD_URL ? " (env TALPHA_DASHBOARD_URL)" : ""}`);
     loadZalo();
+    // Trang /admin → Khoá kết nối → Zalo điều khiển bot (ghép nick bằng QR, chọn nhóm, gửi thử) — bật NGAY, kể cả
+    // khi chưa ghép: đó chính là lúc cần ghép từ trang (bot_control.js, 16/11/2026).
+    startControl();
     // Đăng nhập hỏng / chưa ghép: KHÔNG thoát — pm2 sẽ khởi động lại liên tục và che mất lỗi
-    // thật. Đứng chờ, 10' thử lại một lần.
+    // thật. Đứng chờ, 10' thử lại một lần — ghép nick / chọn nhóm trên trang thì thử lại ngay.
     for (;;) {
         loadGroups();
         try { await connect(); await autoAssignGroups(); }
         catch (e) { log("Đăng nhập Zalo lỗi:", e.message); }
         if (isLoggedIn() && Object.keys(getMarketGroups()).length) break;
-        if (isLoggedIn()) log("Chưa có nhóm nước nào — thêm nick phụ vào nhóm \"ADS + VẬN ĐƠN <nước>\" rồi đợi, hoặc chạy `node pair.js --tu-nhan`.");
-        await sleep(10 * 60 * 1000);
+        if (isLoggedIn()) log("Chưa có nhóm nước nào — thêm nick phụ vào nhóm \"ADS + VẬN ĐƠN <nước>\", hoặc chọn nhóm ở /admin → Khoá kết nối → Zalo.");
+        await waitOrWake(10 * 60 * 1000);
     }
     for (const m of MARKET_CODES) {
         const g = getMarketGroups()[m];
