@@ -357,7 +357,7 @@
       "leader": {
         "label": "Leader thị trường",
         "desc": "Mọi số của team mình: báo cáo, P&L, đơn, vận đơn, kế toán (lãi lỗ, tiền COD về), quảng cáo, kho, khách",
-        "tabs": ["overview", "pnl", "product-pnl", "order-ledger", "income-statement", "cod-recon", "tracking", "products", "marketing", "ad-spend", "ads-command", "ad-health", "customers", "market-intel", "customer-segments", "competitor-research"]
+        "tabs": ["overview", "pnl", "product-pnl", "order-ledger", "income-statement", "cod-recon", "tracking", "products", "marketing", "ad-spend", "ads-command", "ad-health", "customers", "market-intel", "customer-segments", "competitor-research", "messages"]
       },
       "marketer": {
         "label": "Marketer",
@@ -2026,6 +2026,15 @@
         "tien te"
       ]
     }
+  },
+  "_pancake_inbox_note": "Tab Khách hàng → Tin nhắn (17/11/2026): máy chủ kéo hội thoại + tin nhắn của MỌI page mà các token Pancake (Khoá kết nối: TALPHA_PANCAKE_API_TOKEN, _2, _3) đọc được, mỗi sync_every_minutes phút, vào database (bảng pancake_*) — xem chỉ đọc từ database, không gọi Pancake lúc xem. Lần đầu kéo bù backfill_days ngày; tin cũ hơn retention_days ngày tự xoá. Page gán nước theo tên page trong tên camp (tên camp chứa tên page) hoặc đuôi mã nước; page không gán được nước chỉ giám đốc xem. Chỉ leader (nước của team) + giám đốc thấy tab — tin nhắn có số điện thoại, tên khách. Token phải của tài khoản Pancake CÓ GÓI CƯỚC (không có gói → mã 121, không đọc được hội thoại).",
+  "pancake_inbox": {
+    "sync_every_minutes": 5,
+    "retention_days": 180,
+    "backfill_days": 30,
+    "max_batches_per_page": 40,
+    "max_message_pages_per_conversation": 5,
+    "call_interval_ms": 350
   },
   "report_start_date": "2026-09-15",
   "_report_start_note": "Mốc gốc của mọi báo cáo số (Sỹ Anh chốt 25/09/2026): dữ liệu TRƯỚC ngày này chưa đầy đủ — đội cũ, shop cũ, TKQC cũ — nên các tab Báo cáo · Marketer · Quảng cáo không tính. Bộ chọn ngày mặc định bắt đầu từ đây và không lùi qua được. Tab vận hành (Sổ đơn, Đối soát COD, Theo dõi vận đơn, Kho, Khách hàng) KHÔNG bị chặn: đơn cũ vẫn còn đang chờ thu tiền.",

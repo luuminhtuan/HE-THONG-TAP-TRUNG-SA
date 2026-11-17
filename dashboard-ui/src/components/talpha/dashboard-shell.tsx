@@ -26,6 +26,7 @@ import TALPHACustomerTab from "./tabs/customer-tab";
 import TALPHAMarketIntelTab from "./tabs/market-intel-tab";
 import CustomerSegmentsTab from "./tabs/customer-segments-tab";
 import CompetitorResearchTab from "./tabs/competitor-research-tab";
+import MessagesTab from "./tabs/messages-tab";
 import TALPHAAdHealthTab from "./tabs/ad-health-tab";
 import TALPHAAdSpendTab from "./tabs/ad-spend-tab";
 import TALPHACodReconTab from "./tabs/cod-recon-tab";
@@ -42,9 +43,9 @@ const CARRIED_PARAMS = ["from", "to", "market"];
 /**
  * Tab không theo bộ chọn ngày — hiện bộ chọn chỉ gây hiểu nhầm là lọc được: Ads Command Center
  * và Sức khoẻ quảng cáo đọc cửa sổ thời gian cố định trong view, Thanh toán quảng cáo lấy kỳ từ
- * file sao kê, Tệp khách và Soi đối thủ là số tham chiếu theo từng bản đo / bản soi.
+ * file sao kê, Tệp khách và Soi đối thủ là số tham chiếu theo từng bản đo / bản soi, Tin nhắn xếp theo tin mới nhất.
  */
-const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon", "customer-segments", "competitor-research"]);
+const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon", "customer-segments", "competitor-research", "messages"]);
 
 /**
  * Tab báo cáo số — không tính ngày trước mốc gốc `report_start_date` (talpha_rules.json,
@@ -358,6 +359,7 @@ export default function TALPHADashboardShell() {
                     {isTabShown("market-intel") && <TALPHAMarketIntelTab dateRange={dateRange} projectId="TALPHA" />}
                     {isTabShown("customer-segments") && <CustomerSegmentsTab />}
                     {isTabShown("competitor-research") && <CompetitorResearchTab />}
+                    {isTabShown("messages") && <MessagesTab />}
                     {isTabShown("ask-ai") && <AskAiTab dateRange={dateRange} />}
                     </>}
                 </div>

@@ -18,7 +18,7 @@ Chuyển từ BigQuery sang kho số Postgres, chạy THẲNG trên máy (không
 | Kho số | Postgres **16** có sẵn của máy (dùng chung với `banbot`), database + role `talpha`, đăng nhập bằng mật khẩu qua 127.0.0.1 (dòng riêng trong `pg_hba.conf`). `pgcrypto` từ gói `postgresql-contrib` |
 | Khoá | `dashboard-ui/.env.local` của MÁY CHỦ giữ `DATABASE_URL`, `TALPHA_ENCRYPTION_KEY`, `TALPHA_READONLY_PASSWORD` (sinh trên máy chủ). Bản lưu: `/root/talpha-secrets/`. Mất chìa mã hoá = mọi khoá đã lưu phải nhập lại |
 | Python | `/opt/talpha/.venv` = Python 3.12 + psycopg (venv cũ 3.9 của BigQuery: `.venv-bigquery`) |
-| Việc nền | systemd như cũ; drop-in `talpha-*.service.d/talpha-rules.conf` đặt `TALPHA_RULES` = luật trong repo (đừng để đọc `~/talpha_reports/talpha_rules.json` — bản chép thời BigQuery, khoá cũ); `talpha-report.service.d/postgres.conf` chạy `ops/talpha_reports/daily_guarded.sh` trong repo |
+| Việc nền | systemd như cũ; drop-in `talpha-*.service.d/talpha-rules.conf` đặt `TALPHA_RULES` = luật trong repo (đừng để đọc `~/talpha_reports/talpha_rules.json` — bản chép thời BigQuery, khoá cũ); `talpha-report.service.d/postgres.conf` chạy `ops/talpha_reports/daily_guarded.sh` trong repo; `talpha-pancake.timer` 5 phút/lần kéo hộp thư Pancake (tab Tin nhắn) |
 | Dashboard / bot | pm2 như cũ (`talpha-dashboard`, `talpha-zalo-alerts`). Bot giữ phiên, nhóm, trạng thái trong database |
 
 Dựng lại từ đầu trên máy khác: `bash ops/deploy/vps-postgres-setup.sh prepare` (pgcrypto, pg_hba, role + database, khoá,

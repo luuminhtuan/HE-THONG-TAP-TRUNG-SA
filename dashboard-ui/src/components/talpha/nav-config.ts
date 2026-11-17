@@ -87,6 +87,8 @@ export const NAV_GROUPS: NavGroup[] = [
         ],
     },
     // Hỏi AI (15/11/2026) — trước là một ô nhỏ ở cuối Tổng quan. Chỉ giám đốc (CHI_GIAM_DOC).
+    // Tin nhắn (17/11/2026): hộp thư Pancake kéo về database 5 phút một lần — chỉ đọc; leader + giám đốc.
+    { id: "tin-nhan", emoji: "💬", label: "Tin nhắn", tabs: [{ id: "messages", label: "Tin nhắn", slug: "messages" }] },
     { id: "hoi-ai", emoji: "🤖", label: "Hỏi AI", tabs: [{ id: "ask-ai", label: "Hỏi AI", slug: "ask-ai" }] },
 ];
 

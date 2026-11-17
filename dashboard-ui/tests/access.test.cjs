@@ -46,6 +46,14 @@ t("Lộc chỉ thấy UAE", () => {
     assert.ok(!A.canMarket(loc, "TW") && !A.canMarket(loc, "SG") && !A.canMarket(loc, "Singapore"));
     assert.strictEqual(loc.full, false);
 });
+t("tab Tin nhắn (hộp thư Pancake): chỉ leader + giám đốc — marketer, sale không thấy, không gọi được API", () => {
+    const marketer = A.accessForUser({ id: "5", name: "Thắng", role: "marketer", teams: ["dong_a"] });
+    assert.ok(A.canTab(thai, "messages") && A.canTab(sanh, "messages"));
+    assert.ok(!A.canTab(thuong, "messages") && !A.canTab(marketer, "messages"));
+    assert.ok(A.checkApi(thai, "/api/talpha/messages", new URLSearchParams("list=1")).ok);
+    assert.ok(!A.checkApi(thuong, "/api/talpha/messages", new URLSearchParams("")).ok);
+    assert.ok(!A.checkApi(marketer, "/api/talpha/messages", new URLSearchParams("")).ok);
+});
 t("Thái chỉ thấy Singapore", () => {
     assert.deepStrictEqual(thai.codes, ["SG"]);
     assert.ok(!A.canMarket(thai, "AE") && !A.canMarket(thai, "TW"));

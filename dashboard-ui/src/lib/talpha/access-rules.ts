@@ -18,6 +18,7 @@ export const ALL_TABS = [
     "ad-spend", "ads-command", "ad-health",
     "ads-recon",
     "customers", "market-intel", "customer-segments", "competitor-research",
+    "messages",
     "ask-ai",
 ] as const;
 
@@ -181,6 +182,8 @@ export const API_RULES: Record<string, ApiRule> = {
     "/api/talpha/customer-segments": { tabs: ["customer-segments"] },
     // Kết quả soi nhóm bán khác (config/competitor_research.json) — route tự cắt bản soi theo thị trường của team.
     "/api/talpha/competitor-research": { tabs: ["competitor-research"] },
+    // Hộp thư Pancake đã kéo vào database (17/11/2026) — route tự cắt page theo nước của người xem.
+    "/api/talpha/messages": { tabs: ["messages"] },
     "/api/query": { tabs: ["marketing", "ad-health", "customers", "market-intel"] },
 
     // Sổ đơn / Tiền COD về / vận đơn — mỗi lượt gọi là MỘT nước. cod-actions mở cho Sổ đơn

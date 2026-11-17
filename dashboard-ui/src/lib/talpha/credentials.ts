@@ -26,7 +26,7 @@ import {
 import { DISABLED_MARKETS, MESS_PANCAKE, RULES, SHOP2MKT, SHOP_POS } from "./rules";
 import { maskCredential } from "./credential-utils";
 import { META_TOKEN_VARS } from "./ad-account-rules";
-import { PANCAKE_API, tokenExpiry } from "./pancake";
+import { PANCAKE_API, PANCAKE_TOKEN_VARS, tokenExpiry } from "./pancake";
 import { getQuota, keyId } from "./track17";
 import { TRACK_MARKETS } from "./tracking";
 
@@ -161,11 +161,18 @@ export function listCredentials(): CredentialDef[] {
     const nuoc17 = TRACK_MARKETS.filter((m) => m.provider === "17track" && isActive(SHOP2MKT[m.code]))
         .map((m) => m.label).join(", ");
     out.push({
-        ten: "TALPHA_PANCAKE_API_TOKEN",
+        ten: PANCAKE_TOKEN_VARS[0],
         nhan: "Token Pancake",
-        dung_cho: pancakeMarkets ? `Tin nhắn ${pancakeMarkets} (Meta không báo)` : "Chưa nước nào đếm tin nhắn qua Pancake",
+        dung_cho: (pancakeMarkets ? `Tin nhắn ${pancakeMarkets} (Meta không báo) · ` : "") + "hộp thư tab Tin nhắn",
         loai: "pancake",
     });
+    // Token Pancake phụ (17/11/2026): page nằm ở tài khoản Pancake khác — hộp thư gom page của mọi token.
+    PANCAKE_TOKEN_VARS.slice(1).forEach((credentialName, i) => out.push({
+        ten: credentialName,
+        nhan: `Token Pancake ${i + 2} — tài khoản khác (tuỳ chọn)`,
+        dung_cho: "Chỉ cần khi có page mà token Pancake trên không thấy. Tài khoản phải CÓ GÓI CƯỚC Pancake",
+        loai: "pancake",
+    }));
     out.push({
         ten: "TRACK17_API_KEY",
         nhan: "Key 17TRACK",
@@ -301,7 +308,21 @@ async function verifyPancake(tok: string): Promise<VerifyResult> {
     if (!r.ok || !j || j.success === false) throw new Error(`Pancake từ chối: ${j?.message || `HTTP ${r.status}`}`);
     const c = j.categorized || {};
     const n = (c.activated?.length || 0) + (c.inactivated?.length || 0);
-    return { ok: true, chi_tiet: `Đọc được ${n} page`, het_han: expiryIso };
+    // Đọc được danh sách page CHƯA đủ: tài khoản không có gói cước thì mọi lượt đọc hội thoại trả mã 121 (đo 17/11/2026
+    // — token cũ thấy 47 page mà không đọc được hội thoại nào). Thử một page đang bật.
+    const first = (c.activated || []).find((p: { id?: unknown }) => p && p.id);
+    if (first) {
+        const rc = await fetch(`${PANCAKE_API}/pages/${encodeURIComponent(String(first.id))}/conversations?access_token=${encodeURIComponent(tok)}`,
+            { cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
+        const jc = await rc.json().catch(() => null);
+        if (jc?.success === false) {
+            const noPlan = String(jc.error_code) === "121";
+            throw new Error(noPlan
+                ? `Tài khoản Pancake này không có gói cước (mã 121) — thấy ${n} page nhưng không đọc được tin nhắn. Lấy token của tài khoản có gói.`
+                : `Pancake từ chối đọc hội thoại: ${jc.message || "lỗi"}${jc.error_code ? ` (mã ${jc.error_code})` : ""}`);
+        }
+    }
+    return { ok: true, chi_tiet: `Đọc được ${n} page, đọc được hội thoại`, het_han: expiryIso };
 }
 
 /** Liệt kê model — miễn phí, không tốn lượt hỏi. Khoá đi ở header, không nằm trên địa chỉ (log). */

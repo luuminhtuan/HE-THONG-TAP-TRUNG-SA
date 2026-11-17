@@ -190,7 +190,7 @@ tới chúng.
 
 ---
 
-## 4. Màn hình — 8 nhóm, 18 tab
+## 4. Màn hình — 9 nhóm, 19 tab
 
 Vào `/` → `proxy.ts` kiểm đăng nhập → `/talpha` → `components/talpha/dashboard-shell.tsx` (menu
 chỉ hiện tab tài khoản được xem — `/api/talpha/me`).
@@ -222,6 +222,7 @@ người ta đã gửi nhau hết mở được.**
 | 👥 Khách hàng | Khách hàng · Market Intel | `tabs/customer-tab.tsx` · `market-intel-tab.tsx` | `/api/query` |
 | | Tệp khách (14/11/2026) — `/talpha/customer-segments` | `tabs/customer-segments-tab.tsx` | `/api/talpha/customer-segments` (đọc `config/customer_segments.json` — số tham chiếu, không phải số bán hàng) |
 | | Soi đối thủ (15/11/2026) — `/talpha/competitor-research` | `tabs/competitor-research-tab.tsx` | `/api/talpha/competitor-research` (đọc `config/competitor_research.json` + ảnh `public/competitor-research/` — kết quả soi nhóm bán khác) |
+| 💬 Tin nhắn (17/11/2026, leader + giám đốc) | Tin nhắn — `/talpha/messages` | `tabs/messages-tab.tsx` (+ `tabs/messages/`) | `/api/talpha/messages` — hộp thư Pancake CHỈ ĐỌC từ database (bảng `pancake_*`, migration 0004); việc nền `sync/talpha/pancake_inbox_sync.py` kéo 5 phút/lần mọi page các token Pancake (Khoá kết nối: Token Pancake, 2, 3 — tài khoản phải có gói cước) thấy, giữ 180 ngày (`talpha_rules.json → pancake_inbox`). Leader chỉ thấy page gán nước của team (gán theo tên page trong tên camp / đuôi mã nước); page chưa gán chỉ giám đốc |
 | 🤖 Hỏi AI (15/11/2026, chỉ giám đốc) | Hỏi AI — `/talpha/ask-ai` | `tabs/ask-ai-tab.tsx` | `/api/talpha/ceo-ask` (Gemini viết SQL chỉ đọc; model chọn ở Khoá kết nối → tab Gemini). Nút "Khoá AI" (16/11/2026): khoá Gemini riêng chỉ lưu localStorage của trình duyệt đó, có thì thắng khoá mặc định — `lib/talpha/gemini-key.ts` |
 
 Tab lớn tách component con vào thư mục cùng tên cạnh file tab (`tabs/cod-recon/`, `tabs/order-ledger/`,
@@ -334,6 +335,7 @@ trong chuỗi) bị từ chối; vai `talpha_readonly_market` của họ cũng c
 | `pnl-costs` | Giá vốn + phí ship ước tính của đơn đã chốt, theo ngày và nước; liệt kê mã chưa có giá | Tab P&L · Tổng quan |
 | `income-statement` (trước 16/11/2026: `lai-lo`) | Lãi lỗ đủ mọi khoản theo nước (`lib/talpha/income-statement.ts` hàm thuần + test, nạp kiện ở `income-statement-sources.ts`). Doanh số + ads đọc TỔNG TEAM qua `lib/talpha/team-summary-sheet.ts` (chung với `sheet-report`); kiện Đài qua `lib/talpha/tw-order-ledger.ts` (chung với `order-ledger`). Route tự cắt nước theo team; chi phí chung chia theo doanh số MỌI nước | Tab Lãi lỗ |
 | `income-statement/opex` (trước: `lai-lo/van-hanh`) | POST thêm/sửa · DELETE xoá một khoản chi phí vận hành — chỉ người xem hết (giám đốc) | Tab Lãi lỗ |
+| `messages` | Hộp thư Pancake đã kéo về database (17/11/2026): GET = danh sách page; `?list=1&page_id&market&q&before` = hội thoại (mới nhất trước, 50/lượt); `?page_id&conversation_id` = tin của một hội thoại. Cắt page theo nước của người xem | Tab Tin nhắn |
 | `customer-segments` | Số tham chiếu tệp khách (người Việt / Phi / Indo theo thị trường) từ `config/customer_segments.json`; cắt thị trường theo team, `seen_all` báo người xem có thấy đủ nước không | Tab Tệp khách |
 | `competitor-research` | Kết quả soi nhóm bán khác từ `config/competitor_research.json`; chỉ trả bản soi của thị trường người xem được phép | Tab Soi đối thủ |
 | `product-pnl` | P&L từng sản phẩm: doanh số chia theo số lượng, ads theo mã SP trong tên campaign | Tab P&L theo SP |

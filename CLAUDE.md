@@ -141,6 +141,11 @@ nhánh `bk_main_26_11_16` (= `17def2c`).
   rồi không ai đọc nữa. Vai chỉ đọc (`/api/query`, "CEO hỏi") bị REVOKE khỏi các bảng này —
   `pg_view.py → PRIVATE_TABLES`; thêm bảng riêng mới thì thêm vào đó. Còn là file: luật gốc
   `config/talpha_rules.json` (git) và chìa nội bộ `data/.internal_token`.
+* **Tin nhắn Pancake** (17/11/2026): tab 💬 Tin nhắn CHỈ ĐỌC hộp thư từ database (`pancake_pages` / `_conversations` /
+  `_messages`, migration 0004, bảng riêng); `sync/talpha/pancake_inbox_sync.py` kéo 5 phút/lần (VPS: `talpha-pancake.timer`;
+  Docker: việc `tin_nhan`), giữ 180 ngày — `talpha_rules.json → pancake_inbox`. Token Pancake nhiều tài khoản
+  (`TALPHA_PANCAKE_API_TOKEN`, `_2`, `_3`); tài khoản KHÔNG có gói cước thì Pancake trả mã 121 cho mọi hội thoại — lưu khoá
+  là bị chặn. Chỉ leader (page nước của team) + giám đốc.
 * **Bot Zalo cấu hình trên trang** (16/11/2026): `/admin` → Khoá kết nối → Zalo — ghép nick phụ bằng mã QR, chọn
   nhóm từng nước, gửi thử. Trang ghi yêu cầu (`zalo_requests`), bot `ops/zalo-alerts/bot_control.js` nhặt qua
   `/api/talpha/zalo/bot` (chìa nội bộ) và ghi trạng thái (`zalo_bot_status`). Phiên đăng nhập (mã hoá), nhóm từng nước,

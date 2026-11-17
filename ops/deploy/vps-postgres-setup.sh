@@ -149,9 +149,33 @@ Environment=TALPHA_REPO=$APP_DIR
 ExecStart=
 ExecStart=/bin/bash $APP_DIR/ops/talpha_reports/daily_guarded.sh
 UNIT
+    say "Hộp thư Pancake — talpha-pancake.timer 5 phút một lần (tab Tin nhắn, 17/11/2026)"
+    cat > /etc/systemd/system/talpha-pancake.service <<UNIT
+[Unit]
+Description=TALPHA — kéo hội thoại + tin nhắn Pancake vào Postgres (tab Tin nhắn)
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=$APP_DIR
+EnvironmentFile=$APP_DIR/dashboard-ui/.env.local
+ExecStart=$APP_DIR/.venv/bin/python $APP_DIR/sync/talpha/pancake_inbox_sync.py
+TimeoutStartSec=600
+UNIT
+    cat > /etc/systemd/system/talpha-pancake.timer <<UNIT
+[Unit]
+Description=TALPHA — hộp thư Pancake mỗi 5 phút
+
+[Timer]
+OnCalendar=*:0/5
+RandomizedDelaySec=20
+
+[Install]
+WantedBy=timers.target
+UNIT
     # Loader luật Python (ops/talpha_reports/talpha_rules.py) ưu tiên ~/talpha_reports/talpha_rules.json nếu có — trên
     # máy chủ đó là bản chép của thời BigQuery (khoá cũ: dang_ban…), đọc nhầm là số sai. Chỉ thẳng luật trong repo.
-    for s in talpha-sync talpha-report talpha-tracking talpha-snapshot talpha-catalog; do
+    for s in talpha-sync talpha-report talpha-tracking talpha-snapshot talpha-catalog talpha-pancake; do
         install -d "/etc/systemd/system/$s.service.d"
         printf '# vps-postgres-setup.sh units: luật trong repo, không phải bản chép ~/talpha_reports/talpha_rules.json\n[Service]\nEnvironment=TALPHA_RULES=%s/config/talpha_rules.json\n' \
             "$APP_DIR" > "/etc/systemd/system/$s.service.d/talpha-rules.conf"
@@ -159,7 +183,8 @@ UNIT
     systemctl daemon-reload
     systemctl cat talpha-report.service | grep -E '^ExecStart=/' | tail -1 | sed 's/^/   /'
     systemctl show talpha-sync.service -p Environment --value | tr ' ' '\n' | grep '^TALPHA_RULES=' | sed 's/^/   /'
-    say "XONG — bật lại timer: systemctl start talpha-sync.timer talpha-report.timer talpha-tracking.timer talpha-snapshot.timer talpha-catalog.timer"
+    systemctl enable --now talpha-pancake.timer >/dev/null 2>&1 && echo "   talpha-pancake.timer: bật"
+    say "XONG — bật lại timer: systemctl start talpha-sync.timer talpha-report.timer talpha-tracking.timer talpha-snapshot.timer talpha-catalog.timer talpha-pancake.timer"
 }
 
 case "${1:-}" in

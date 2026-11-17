@@ -24,6 +24,7 @@ import urllib.parse
 import urllib.request
 
 API = "https://pages.fm/api/v1"
+PANCAKE_TOKEN_VARS = ("TALPHA_PANCAKE_API_TOKEN", "TALPHA_PANCAKE_API_TOKEN_2", "TALPHA_PANCAKE_API_TOKEN_3")
 CALL_INTERVAL = 0.4          # giây giữa hai lượt gọi — gọi dồn là 429
 VN = datetime.timedelta(hours=7)
 
@@ -112,19 +113,29 @@ def messages_by_page(camp_page_names, market_code, from_date, to_date, log=print
     ten_trang_camp: tên page lấy từ ô page của các camp nước đó (khớp chính).
     Trả {tên page chuẩn hoá: {"ten": tên trên Pancake, "ngay": {ngày: số}}} hoặc None nếu hỏng.
     """
-    tok = (token or os.environ.get("TALPHA_PANCAKE_API_TOKEN") or "").strip()
-    if not tok:
+    # Nhiều tài khoản Pancake (17/11/2026): TALPHA_PANCAKE_API_TOKEN, _2, _3 — page của mọi token, trùng thì token đầu thắng.
+    toks = [token] if token else [os.environ.get(v, "").strip() for v in PANCAKE_TOKEN_VARS]
+    toks = [t for t in toks if t]
+    if not toks:
         log("CANH BAO: chua khai TALPHA_PANCAKE_API_TOKEN — tin nhan Nhat giu so Meta (0)")
         return None
-    exp = token_expiry(tok)
-    if exp and exp < time.time():
-        log(f"CANH BAO: token Pancake het han {datetime.date.fromtimestamp(exp)} — tin nhan Nhat giu so Meta (0)")
+    alive = [t for t in toks if not (token_expiry(t) and token_expiry(t) < time.time())]
+    if not alive:
+        log(f"CANH BAO: token Pancake het han {datetime.date.fromtimestamp(token_expiry(toks[0]))} — tin nhan Nhat giu so Meta (0)")
         return None
     wanted = {normalize_page_name(t) for t in camp_page_names if t}
     try:
-        j = _call(f"{API}/pages?access_token={urllib.parse.quote(tok)}", log)
-        c = j.get("categorized") or {}
-        pages = [p for p in (c.get("activated") or []) + (c.get("inactivated") or []) if p and p.get("id")]
+        pages, token_of = [], {}
+        for tok in alive:
+            try:
+                c = _call(f"{API}/pages?access_token={urllib.parse.quote(tok)}", log).get("categorized") or {}
+            except RuntimeError as e:
+                log(f"CANH BAO: mot token Pancake khong doc duoc danh sach page ({e})")
+                continue
+            for p in (c.get("activated") or []) + (c.get("inactivated") or []):
+                if p and p.get("id") and p["id"] not in token_of:
+                    token_of[p["id"]] = tok
+                    pages.append(p)
         selected = [p for p in pages if normalize_page_name(p.get("name")) in wanted or is_market_page(p.get("name"), market_code)]
         out = {}
         for p in selected:
@@ -132,7 +143,7 @@ def messages_by_page(camp_page_names, market_code, from_date, to_date, log=print
             try:
                 for _ in range(60):
                     time.sleep(CALL_INTERVAL)
-                    batch = _call(f"{API}/pages/{p['id']}/conversations?access_token={urllib.parse.quote(tok)}&current_count={cc}", log).get("conversations") or []
+                    batch = _call(f"{API}/pages/{p['id']}/conversations?access_token={urllib.parse.quote(token_of[p['id']])}&current_count={cc}", log).get("conversations") or []
                     all_conversations += batch
                     if is_batch_exhausted(batch, from_date):
                         break

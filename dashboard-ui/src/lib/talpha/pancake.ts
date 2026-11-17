@@ -21,6 +21,9 @@
 import { marketTokenIndex, normCampMarketer } from "./rules";
 
 export const PANCAKE_API = "https://pages.fm/api/v1";
+/** Token TÀI KHOẢN Pancake — nhiều tài khoản (17/11/2026): page nằm ở tài khoản khác thì nhập token thứ 2, 3. Trùng
+ *  page thì token đứng trước thắng. Như META_TOKEN_VARS. */
+export const PANCAKE_TOKEN_VARS = ["TALPHA_PANCAKE_API_TOKEN", "TALPHA_PANCAKE_API_TOKEN_2", "TALPHA_PANCAKE_API_TOKEN_3"];
 
 export type Conversation = {
     id: string; type?: string | null; inserted_at?: string | null; updated_at?: string | null;

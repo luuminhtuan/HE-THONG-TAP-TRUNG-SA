@@ -31,13 +31,16 @@ if REPO not in sys.path:
 from sync.core import job_log  # noqa: E402
 VN = ZoneInfo("Asia/Ho_Chi_Minh")
 JOBS = [
-    # (tên, phút, giờ trong ngày — None là mỗi giờ, lệnh)
+    # (tên, phút — một số hoặc tuple nhiều phút, giờ trong ngày — None là mỗi giờ, lệnh)
     ("sync", 0, None, ["python", "sync/talpha/talpha_sync.py"]),
     ("bao_cao", 20, None, ["bash", "ops/talpha_reports/daily_guarded.sh"]),
     ("ton_kho", 40, None, ["bash", "ops/talpha_reports/snapshot_cron.sh", "inventory"]),
     ("danh_muc", 10, [5], ["python", "sync/talpha/sync_product_catalog.py"]),
     ("van_don_sang", 0, [6], ["bash", "ops/deploy/tracking-import.sh"]),
     ("van_don_toi", 30, [21], ["bash", "ops/deploy/tracking-import.sh"]),
+    # Hộp thư Pancake (17/11/2026) — 5 phút một lần (talpha_rules.json → pancake_inbox); lượt trước chưa xong thì
+    # script tự bỏ lượt (advisory lock).
+    ("tin_nhan", tuple(range(0, 60, 5)), None, ["python", "sync/talpha/pancake_inbox_sync.py"]),
 ]
 _running: dict = {}
 
@@ -166,7 +169,8 @@ def main():
         now = datetime.now(VN)
         slot = now.strftime("%Y-%m-%d %H:%M")
         for name, minute, hours, command in JOBS:
-            if now.minute == minute and (hours is None or now.hour in hours) and (name, slot) not in already_run:
+            minutes = minute if isinstance(minute, tuple) else (minute,)
+            if now.minute in minutes and (hours is None or now.hour in hours) and (name, slot) not in already_run:
                 already_run.add((name, slot))
                 start_job(name, command)
         if len(already_run) > 500:

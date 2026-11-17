@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { MARKETS_PUBLIC, EXCHANGE_RATES, posMoneyDivisor, campaignMarket, DISPLAY, normCampMarketer, marketTokenIndex } from "@/lib/talpha/rules";
 import { normalizePageName, pageOfCampaign, countForDay, isMarketPage } from "@/lib/talpha/pancake";
-import { listPages, conversationsSince, sleep, GIAN_MS, tokenPancake } from "@/lib/talpha/pancake-api";
+import { listPagesAll, conversationsSince, sleep, GIAN_MS, tokenPancake } from "@/lib/talpha/pancake-api";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -72,19 +72,19 @@ export async function GET(req: NextRequest) {
     for (const t of extraPages) if (!pageOwners.has(normalizePageName(t))) pageOwners.set(normalizePageName(t), { ten: t, nv: null, camps: new Set(), ngayCuoi: "" });
 
     // ── Pancake: tin nhắn mới theo page ──
-    const { tok, het_han: expired, loi: tokenError } = tokenPancake();
+    const { toks, het_han: expired, loi: tokenError } = tokenPancake();
     const pancake = { ok: false, het_han: expired, loi: tokenError };
     const pages: Result[] = [];
     if (!tokenError) {
         try {
-            const allPages = await listPages(tok);
+            const allPages = await listPagesAll(toks);
             // Khớp theo tên camp là chính; luật đuôi tên CHỈ nhận đúng mã nước (… JP) — "Prime Leather
             // Japan", "GoutEase … Spray Japan" là page SẢN PHẨM bán ở Đài, đuôi "Japan" là tên hàng.
             const marketPages = allPages.filter((p) => pageOwners.has(normalizePageName(p.name)) || isMarketPage(p.name, [market.code]));
             for (const p of marketPages) {
                 const owner = pageOwners.get(normalizePageName(p.name));
                 try {
-                    const counts = countForDay((await conversationsSince(tok, p.id, date)).hts, date);
+                    const counts = countForDay((await conversationsSince(p.tok, p.id, date)).hts, date);
                     pages.push({ page_id: p.id, name: p.name, nv: owner?.nv || null, camps: owner ? [...owner.camps] : [], ...counts });
                 } catch (e: any) {
                     // Page chưa chạy camp nào mà Pancake báo lỗi (chưa có gói cước…) thì bỏ, khỏi làm rối tin.

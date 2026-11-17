@@ -128,6 +128,7 @@ nữa. Mac tắt / ngủ thì không canh.
 | 👤 Marketer | Marketing & Ads | Từng người chạy ra sao |
 | 🎯 Quảng cáo | Chi phí quảng cáo · Ads Command Center · Sức khoẻ quảng cáo | Đang tiêu bao nhiêu, camp nào cần tắt |
 | 👥 Khách hàng | Khách hàng · Market Intel · Tệp khách · Soi đối thủ | Khách mua lại, thị trường, tệp nên chạy, đối thủ bán gì |
+| 💬 Tin nhắn | Tin nhắn (leader + giám đốc) | Khách đang nhắn gì — hộp thư Pancake, chỉ xem, cập nhật 5 phút/lần |
 | 🤖 Hỏi AI | Hỏi AI (chỉ giám đốc) | Hỏi số bằng câu thường |
 
 Ngoài ra `/admin`: người dùng, TKQC, thị trường, khoá kết nối (cả bot Zalo). Mỗi tab một địa chỉ
