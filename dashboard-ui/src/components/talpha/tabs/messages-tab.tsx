@@ -2,21 +2,25 @@
 
 // ═══════════════════════════════════════════════════════════════════
 // Tin nhắn (17/11/2026) — hộp thư Pancake CHỈ ĐỌC + gán người phụ trách / tag nội bộ để tính KPI. Máy chủ kéo hội thoại
-// + tin về database 5 phút một lần (sync/talpha/pancake_inbox_sync.py); tab đọc / ghi qua /api/talpha/messages.
-// Leader thấy page thuộc nước của team, giám đốc thấy hết. Trả lời khách vẫn làm trong Pancake.
+// + tin về database 30 phút một lần — pancake_inbox.sync_every_minutes (sync/talpha/pancake_inbox_sync.py); tab đọc / ghi
+// qua /api/talpha/messages.
+// Nút "Tải tin mới" ghi yêu cầu kéo ngay (lib/talpha/inbox-sync.ts); tab hỏi trạng thái 4 giây một lần tới khi lượt kéo
+// xong rồi đọc lại danh sách + hội thoại đang mở. Leader thấy page thuộc nước của team, giám đốc thấy hết. Trả lời khách
+// vẫn làm trong Pancake.
 // ═══════════════════════════════════════════════════════════════════
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { MessageSquare, Phone, Search, UserRound } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { MessageSquare, Phone, RefreshCw, Search, UserRound } from "lucide-react";
 import TabSkeleton from "@/components/ui/tab-skeleton";
 import SearchableSelect from "@/components/ui/searchable-select";
 import { cn } from "@/lib/utils";
 import type { InboxConversation, InboxLabel, InboxMessage, InboxPage } from "@/lib/talpha/pancake-inbox";
-import { assignableFor, TAG_COLORS, type InboxUser } from "@/lib/talpha/inbox-rules";
+import { assignableFor, inboxSyncNote, TAG_COLORS, type InboxSyncStatus, type InboxUser } from "@/lib/talpha/inbox-rules";
 import ThreadView, { LabelChip, vnTime } from "./messages/thread-view";
 
 const API = "/api/talpha/messages";
 const CARD = "rounded-xl border border-border bg-card shadow-sm";
-const REFRESH_MS = 60_000;          // dữ liệu chỉ đổi 5 phút một lần — đọc lại mỗi phút là đủ
+const REFRESH_MS = 60_000;          // dữ liệu chỉ đổi khi có lượt kéo — đọc lại mỗi phút là đủ
+const SYNC_POLL_MS = 4_000;         // đang "Tải tin mới": hỏi trạng thái lượt kéo
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
     const r = await fetch(url, { cache: "no-store", ...init });
@@ -26,7 +30,7 @@ async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 const postJson = <T,>(body: unknown) => getJson<T>(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
-type Meta = { pages: InboxPage[]; tags: InboxLabel[]; users: InboxUser[] };
+type Meta = { pages: InboxPage[]; tags: InboxLabel[]; users: InboxUser[]; sync: InboxSyncStatus };
 
 export default function MessagesTab() {
     const [meta, setMeta] = useState<Meta | null>(null);
@@ -43,13 +47,40 @@ export default function MessagesTab() {
     const [selected, setSelected] = useState<InboxConversation | null>(null);
     const [thread, setThread] = useState<{ messages: InboxMessage[]; loading: boolean; error: string }>({ messages: [], loading: false, error: "" });
     const [busy, setBusy] = useState(false);
+    const [sync, setSync] = useState<InboxSyncStatus | null>(null);
+    const [syncError, setSyncError] = useState("");
+    const [requesting, setRequesting] = useState(false);
+    const [reloadTick, setReloadTick] = useState(0);     // tăng khi lượt kéo vừa xong → đọc lại danh sách + hội thoại
 
     useEffect(() => { const t = setTimeout(() => setQDebounced(q.trim()), 350); return () => clearTimeout(t); }, [q]);
 
     const loadMeta = useCallback(() => {
-        getJson<Meta>(API).then(setMeta).catch((e) => setError(String(e.message || e)));
+        getJson<Meta>(API).then((m) => { setMeta(m); setSync(m.sync); }).catch((e) => setError(String(e.message || e)));
     }, []);
     useEffect(() => { loadMeta(); const t = setInterval(loadMeta, REFRESH_MS); return () => clearInterval(t); }, [loadMeta]);
+
+    // Đang có yêu cầu / lượt kéo: hỏi trạng thái tới khi xong, xong thì đọc lại mọi thứ.
+    const syncOpen = !!sync?.open;
+    useEffect(() => {
+        if (!syncOpen) return;
+        const t = setInterval(() => {
+            getJson<{ sync: InboxSyncStatus }>(`${API}?sync=1`).then((d) => {
+                setSync(d.sync);
+                if (!d.sync.open) { setReloadTick((k) => k + 1); loadMeta(); }
+            }).catch(() => { /* lượt sau hỏi lại */ });
+        }, SYNC_POLL_MS);
+        return () => clearInterval(t);
+    }, [syncOpen, loadMeta]);
+
+    const syncNow = async () => {
+        setRequesting(true);
+        setSyncError("");
+        try {
+            const d = await postJson<{ sync: InboxSyncStatus }>({ action: "sync_now" });
+            setSync(d.sync);
+        } catch (e) { setSyncError(String((e as Error).message || e)); }
+        finally { setRequesting(false); }
+    };
 
     const listUrl = useCallback((before?: string) => {
         const sp = new URLSearchParams({ list: "1" });
@@ -72,7 +103,7 @@ export default function MessagesTab() {
         load();
         const t = setInterval(load, REFRESH_MS);
         return () => { cancelled = true; clearInterval(t); };
-    }, [listUrl]);
+    }, [listUrl, reloadTick]);
 
     const loadMore = () => {
         const last = rows[rows.length - 1];
@@ -96,13 +127,15 @@ export default function MessagesTab() {
             })
             .catch((e) => setThread((t) => ({ ...t, loading: false, error: String(e.message || e) })));
     }, []);
+    const loadedKey = useRef("");       // hội thoại đang hiện — đọc lại sau lượt kéo thì khỏi xoá trắng khung chat
     useEffect(() => {
         if (!selKey) return;
         const [page_id, conversation_id] = selKey.split("|");
-        loadThread({ page_id, conversation_id }, true);
+        loadThread({ page_id, conversation_id }, loadedKey.current !== selKey);
+        loadedKey.current = selKey;
         const t = setInterval(() => loadThread({ page_id, conversation_id }, false), REFRESH_MS);
         return () => clearInterval(t);
-    }, [selKey, loadThread]);
+    }, [selKey, loadThread, reloadTick]);
 
     // Gán / gắn tag rồi đọc lại hội thoại (cập nhật cả dòng trong danh sách).
     const act = async (body: Record<string, unknown>) => {
@@ -126,12 +159,20 @@ export default function MessagesTab() {
         finally { setBusy(false); }
     };
 
-    const pages = useMemo(() => meta?.pages ?? [], [meta]);
+    const allPages = useMemo(() => meta?.pages ?? [], [meta]);
+    // Page chưa từng đọc được (lỗi + chưa có hội thoại — vd. tài khoản không có gói cước) không đưa vào bộ lọc.
+    const pages = useMemo(() => allPages.filter((p) => !p.last_error || p.conversations > 0), [allPages]);
     const markets = useMemo(() => [...new Set(pages.map((p) => p.market).filter(Boolean) as string[])].sort(), [pages]);
     const pageOptions = useMemo(() => pages.filter((p) => !market || p.market === market)
         .map((p) => ({ value: p.page_id, label: p.name, hint: p.market || "—" })), [pages, market]);
-    const lastSync = useMemo(() => pages.map((p) => p.last_sync_at).filter(Boolean).sort().pop() || null, [pages]);
-    const broken = useMemo(() => pages.filter((p) => p.last_error), [pages]);
+    // Page lỗi gom theo lý do: "47 page: Không tìm thấy gói cước…".
+    const brokenGroups = useMemo(() => {
+        const m = new Map<string, number>();
+        for (const p of allPages) if (p.last_error) m.set(p.last_error, (m.get(p.last_error) || 0) + 1);
+        return [...m.entries()].sort((x, y) => y[1] - x[1]);
+    }, [allPages]);
+    const brokenCount = brokenGroups.reduce((n, [, k]) => n + k, 0);
+    const note = inboxSyncNote(sync, Date.now(), (iso) => vnTime(iso));
 
     if (error && !meta) {
         return <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">Không đọc được hộp thư: {error}</div>;
@@ -141,13 +182,27 @@ export default function MessagesTab() {
     return (
         <div className="space-y-3">
             <div className={cn(CARD, "space-y-3 p-4")}>
-                <div>
-                    <h2 className="flex items-center gap-2 text-base font-semibold text-foreground"><MessageSquare className="h-4 w-4" />Tin nhắn Pancake</h2>
-                    <p className="text-xs text-muted-foreground">
-                        Chỉ xem tin · máy chủ cập nhật 5 phút một lần{lastSync ? ` (lần gần nhất ${vnTime(lastSync)})` : ""} · giữ 6 tháng ·
-                        gán người phụ trách + tag để tính KPI · trả lời khách vẫn trong Pancake
-                    </p>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                        <h2 className="flex items-center gap-2 text-base font-semibold text-foreground"><MessageSquare className="h-4 w-4" />Tin nhắn Pancake</h2>
+                        <p className="text-xs text-muted-foreground">
+                            Chỉ xem tin · máy chủ tự kéo tin {sync?.every_minutes || 30} phút một lần (cần ngay thì bấm “Tải tin mới”) · giữ 6 tháng ·
+                            gán người phụ trách + tag để tính KPI ·
+                            trả lời khách vẫn trong Pancake
+                        </p>
+                    </div>
+                    <button type="button" onClick={syncNow} disabled={note.busy || requesting}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-60">
+                        <RefreshCw className={cn("h-4 w-4", (note.busy || requesting) && "animate-spin")} />
+                        {note.busy ? "Đang tải tin…" : "Tải tin mới"}
+                    </button>
                 </div>
+                {(note.text || syncError) && (
+                    <p className={cn("text-xs", syncError || note.tone === "error" ? "text-rose-600 dark:text-rose-400"
+                        : note.tone === "warn" ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>
+                        {syncError || note.text}
+                    </p>
+                )}
                 <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
                     <SearchableSelect ariaLabel="Nước" placeholder="Mọi nước" value={market}
                         options={[{ value: "", label: "Mọi nước" }, ...markets.map((m) => ({ value: m, label: m }))]}
@@ -168,14 +223,17 @@ export default function MessagesTab() {
                 </div>
                 {!pages.length && (
                     <p className="text-sm text-amber-700 dark:text-amber-300">
-                        Chưa có page nào. Nhập token Pancake của tài khoản CÓ GÓI CƯỚC ở Quản trị → Khoá kết nối (ô Token Pancake 2 / 3);
-                        máy chủ kéo tin ở lượt 5 phút kế tiếp.
+                        Chưa có page nào đọc được. Nhập token Pancake của tài khoản CÓ GÓI CƯỚC ở Quản trị → Khoá kết nối (ô Token
+                        Pancake 2 / 3) rồi bấm “Tải tin mới”.
                     </p>
                 )}
-                {broken.length > 0 && (
-                    <p className="text-xs text-amber-700 dark:text-amber-300">
-                        {broken.length}/{pages.length} page chưa đọc được: {[...new Set(broken.map((p) => p.last_error))].slice(0, 2).join(" · ")}
-                    </p>
+                {brokenCount > 0 && (
+                    <details className="text-xs text-amber-700 dark:text-amber-300">
+                        <summary className="cursor-pointer">{brokenCount}/{allPages.length} page có lỗi ở lượt kéo gần nhất</summary>
+                        <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                            {brokenGroups.slice(0, 5).map(([why, n]) => <li key={why}>{n} page: {why}</li>)}
+                        </ul>
+                    </details>
                 )}
             </div>
 

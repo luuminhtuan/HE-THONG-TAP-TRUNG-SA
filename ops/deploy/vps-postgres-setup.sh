@@ -149,7 +149,9 @@ Environment=TALPHA_REPO=$APP_DIR
 ExecStart=
 ExecStart=/bin/bash $APP_DIR/ops/talpha_reports/daily_guarded.sh
 UNIT
-    say "Hộp thư Pancake — talpha-pancake.timer 5 phút một lần (tab Tin nhắn, 17/11/2026)"
+    # Mỗi PHÚT với --if-due (17/11/2026): script thoát ngay nếu không ai bấm "Tải tin mới" và lượt gần nhất chưa quá
+    # pancake_inbox.sync_every_minutes (30) — bấm nút là có tin trong ~1 phút, không ai bấm thì 30 phút một lượt.
+    say "Hộp thư Pancake — talpha-pancake.timer mỗi phút, kéo thật theo pancake_inbox.sync_every_minutes hoặc khi bấm Tải tin mới"
     cat > /etc/systemd/system/talpha-pancake.service <<UNIT
 [Unit]
 Description=TALPHA — kéo hội thoại + tin nhắn Pancake vào Postgres (tab Tin nhắn)
@@ -159,16 +161,16 @@ After=network-online.target postgresql.service
 Type=oneshot
 WorkingDirectory=$APP_DIR
 EnvironmentFile=$APP_DIR/dashboard-ui/.env.local
-ExecStart=$APP_DIR/.venv/bin/python $APP_DIR/sync/talpha/pancake_inbox_sync.py
+ExecStart=$APP_DIR/.venv/bin/python $APP_DIR/sync/talpha/pancake_inbox_sync.py --if-due
 TimeoutStartSec=600
 UNIT
     cat > /etc/systemd/system/talpha-pancake.timer <<UNIT
 [Unit]
-Description=TALPHA — hộp thư Pancake mỗi 5 phút
+Description=TALPHA — hộp thư Pancake (hỏi mỗi phút: có ai bấm Tải tin mới / tới lượt tự kéo chưa)
 
 [Timer]
-OnCalendar=*:0/5
-RandomizedDelaySec=20
+OnCalendar=*:*:00
+AccuracySec=5s
 
 [Install]
 WantedBy=timers.target

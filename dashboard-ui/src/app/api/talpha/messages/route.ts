@@ -5,18 +5,21 @@ import { assignableFor, parseInboxAction, visibleUsersFor } from "@/lib/talpha/i
 import {
     assignConversation, conversationExists, createTag, inboxUsers, listTags, pageMarket, setConversationTag,
 } from "@/lib/talpha/inbox-meta";
+import { getInboxSyncStatus, requestInboxSync } from "@/lib/talpha/inbox-sync";
 
 export const dynamic = "force-dynamic";
 
 // Tab Tin nhắn (17/11/2026) — hộp thư Pancake đã kéo vào database (đọc) + gán người phụ trách / tag nội bộ (ghi trên
 // dashboard, không đẩy về Pancake). Quyền tab ở access-rules (leader + giám đốc); route tự cắt page theo nước của người
 // xem (lib/talpha/pancake-inbox.ts) và soát người được gán phải xem được nước của hội thoại (inbox-rules.ts).
-//   GET                                   → {pages, tags, users}
+//   GET                                   → {pages, tags, users, sync}
+//   GET ?sync=1                           → {sync}   (trạng thái lượt kéo — tab hỏi lại khi đang "Tải tin mới")
 //   GET ?list=1&page_id&market&q&label&assignee&before → {conversations}   (label / assignee = "none": chưa gắn / chưa gán)
 //   GET ?page_id&conversation_id          → {conversation, messages}
 //   POST {action: "assign", page_id, conversation_id, user_id | null}
 //   POST {action: "tag", page_id, conversation_id, tag_id, on}
 //   POST {action: "create_tag", name, color}
+//   POST {action: "sync_now"}             → ghi yêu cầu kéo tin ngay (lib/talpha/inbox-sync.ts) → {queued, sync}
 const NO_STORE = { "Cache-Control": "no-store" };
 
 export async function GET(req: NextRequest) {
@@ -31,6 +34,7 @@ export async function GET(req: NextRequest) {
             if (!thread) return NextResponse.json({ error: "Không có hội thoại này, hoặc không thuộc nước của bạn" }, { status: 404 });
             return NextResponse.json(thread, { headers: NO_STORE });
         }
+        if (sp.get("sync") === "1") return NextResponse.json({ sync: await getInboxSyncStatus() }, { headers: NO_STORE });
         if (sp.get("list") === "1") {
             const before = sp.get("before") || undefined;
             if (before && Number.isNaN(Date.parse(before))) return NextResponse.json({ error: "before phải là thời điểm" }, { status: 400 });
@@ -40,8 +44,8 @@ export async function GET(req: NextRequest) {
             });
             return NextResponse.json({ conversations }, { headers: NO_STORE });
         }
-        const [pages, tags, users] = await Promise.all([listInboxPages(a), listTags(), inboxUsers()]);
-        return NextResponse.json({ pages, tags, users: visibleUsersFor(a, users), seen_all: a.full }, { headers: NO_STORE });
+        const [pages, tags, users, sync] = await Promise.all([listInboxPages(a), listTags(), inboxUsers(), getInboxSyncStatus()]);
+        return NextResponse.json({ pages, tags, users: visibleUsersFor(a, users), seen_all: a.full, sync }, { headers: NO_STORE });
     } catch (e) {
         return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
     }
@@ -50,11 +54,16 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     const a = await getAccess(req);
     if (!a) return unauthorized();
-    if (a.kind === "internal") return NextResponse.json({ error: "Chỉ người dùng gán / gắn tag được" }, { status: 403 });
+    if (a.kind === "internal") return NextResponse.json({ error: "Chỉ người dùng gán / gắn tag / tải tin được" }, { status: 403 });
     const parsed = parseInboxAction(await req.json().catch(() => null));
     if ("error" in parsed) return NextResponse.json({ error: parsed.error }, { status: 400 });
     const actor = String(a.id || a.name || "");
     try {
+        if (parsed.action === "sync_now") {
+            const { queued } = await requestInboxSync(String(a.name || a.email || actor));
+            if (queued) console.log(`[messages] ${a.email || a.name || actor} bấm Tải tin mới`);
+            return NextResponse.json({ ok: true, queued, sync: await getInboxSyncStatus() });
+        }
         if (parsed.action === "create_tag") {
             return NextResponse.json({ ok: true, tag: await createTag(parsed.name, parsed.color, actor) });
         }

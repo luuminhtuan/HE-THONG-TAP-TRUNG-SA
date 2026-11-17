@@ -1,12 +1,18 @@
 """Hộp thư Pancake — phần THUẦN (không mạng, không kho) của sync/talpha/pancake_inbox_sync.py. Có test.
 
 Pancake (pages.fm/api/v1, token TÀI KHOẢN) trả hội thoại xếp theo updated_at mới nhất trước, lật bằng current_count;
-giờ là UTC không ghi múi. Dạng trả về chưa có tài liệu đầy đủ (17/11/2026 chưa có token có gói cước để đo) nên bộ đọc ở
-đây CHỊU nhiều tên khoá: thiếu trường nào thì để trống, không làm hỏng cả lượt.
+giờ là UTC không ghi múi. Đo trên tài khoản có gói cước (17/11/2026):
+  • hội thoại: from {id = mã Facebook, name}, customers [{id = mã khách PANCAKE, fb_id, name}], recent_phone_numbers;
+  • tin: /pages/{page}/conversations/{id}/messages?customer_id=<mã khách PANCAKE> (thiếu / sai → 400 "Thiếu mã khách
+    hàng"); lô đầu 25 tin mới nhất (cũ → mới), current_count lật lùi về tin cũ hơn, 30 tin một lô;
+  • tin: message là HTML (<div>…), original_message là chữ trơn; ảnh = attachments [{type: photo, url, image_data}];
+    attachments type system_message chỉ có chữ (message), không url.
+Bộ đọc vẫn CHỊU nhiều tên khoá: thiếu trường nào thì để trống, không làm hỏng cả lượt.
 """
 from __future__ import annotations
 
 import datetime as dt
+import html
 import re
 import unicodedata
 
@@ -60,11 +66,14 @@ def normalize_conversation(raw: dict) -> dict:
         cid = cid or cid2
     last = raw.get("last_message") if isinstance(raw.get("last_message"), dict) else {}
     tags = [t.get("text") or t.get("id") if isinstance(t, dict) else t for t in (raw.get("tags") or [])]
+    pancake_cid = next((c.get("id") for c in customers if isinstance(c, dict) and c.get("id")), None)
     return {
         "conversation_id": str(raw.get("id") or ""),
         "type": raw.get("type"),
         "customer_name": name,
         "customer_id": str(cid) if cid is not None else None,
+        # Mã khách của PANCAKE (customers[].id, khác mã Facebook) — API tin nhắn bắt buộc có. Không lưu kho.
+        "pancake_customer_id": str(pancake_cid) if pancake_cid is not None else None,
         "phone_numbers": phones_of(raw),
         "snippet": _first(raw.get("snippet"), last.get("message"), last.get("text")),
         "tags": [t for t in tags if t not in (None, "")],
@@ -73,13 +82,20 @@ def normalize_conversation(raw: dict) -> dict:
     }
 
 
+_BREAK_RE = re.compile(r"<br\s*/?>|</(?:div|p|li)>", re.I)
 _TAG_RE = re.compile(r"<[^>]+>")
+
+
+def html_to_text(s: str) -> str:
+    """Tin dạng HTML của Pancake → chữ: hết khối / <br> là xuống dòng, bỏ thẻ, giải &amp;… , gộp dòng trống."""
+    s = html.unescape(_TAG_RE.sub("", _BREAK_RE.sub("\n", s)))
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(line.rstrip() for line in s.splitlines())).strip()
 
 
 def _attachments(raw: dict) -> list:
     out = []
     for a in raw.get("attachments") or []:
-        if not isinstance(a, dict):
+        if not isinstance(a, dict) or a.get("type") == "system_message":
             continue
         payload = a.get("payload") if isinstance(a.get("payload"), dict) else {}
         image = a.get("image_data") if isinstance(a.get("image_data"), dict) else {}
@@ -94,8 +110,11 @@ def normalize_message(raw: dict, page_id: str) -> dict:
     (hoặc cờ is_page / from_page)."""
     name, fid = _name_id(raw.get("from"))
     from_page = bool(raw.get("is_page") or raw.get("from_page") or (fid is not None and str(fid) == str(page_id)))
-    body = _first(raw.get("message"), raw.get("original_message"), raw.get("text"), raw.get("content"))
-    body = _TAG_RE.sub("", str(body)).strip() if body is not None else None
+    plain = _first(raw.get("original_message"), raw.get("text"), raw.get("content"))
+    body = str(plain).strip() if plain is not None else html_to_text(str(raw.get("message") or ""))
+    if not body:                     # tin hệ thống (đổi người phụ trách, khách bấm nút…): chữ nằm trong attachments
+        body = " · ".join(str(a.get("message")).strip() for a in raw.get("attachments") or []
+                          if isinstance(a, dict) and a.get("type") == "system_message" and a.get("message"))
     return {
         "message_id": str(_first(raw.get("id"), raw.get("message_id")) or ""),
         "from_page": from_page,

@@ -79,7 +79,11 @@ export default function ThreadView({
                     <UserRound className="h-4 w-4 text-muted-foreground" aria-hidden />
                     <SearchableSelect ariaLabel="Người phụ trách" disabled={busy} className="w-48"
                         placeholder="Chưa gán — chọn người" value={conversation.assignee_id || ""}
-                        options={[{ value: "", label: "— Bỏ gán —" }, ...assignable.map((u) => ({ value: u.id, label: u.name, hint: u.full ? "giám đốc" : u.codes.join(" ") }))]}
+                        options={[
+                            // "Bỏ gán" chỉ có khi đang gán — chưa gán thì nút hiện chữ "Chưa gán — chọn người".
+                            ...(conversation.assignee_id ? [{ value: "", label: "— Bỏ gán —" }] : []),
+                            ...assignable.map((u) => ({ value: u.id, label: u.name, hint: u.full ? "giám đốc" : u.codes.join(" ") })),
+                        ]}
                         onChange={(v) => onAssign(v || null)} />
                     <SearchableSelect ariaLabel="Gắn tag" disabled={busy} className="w-36" multiple values={labelIds}
                         placeholder="+ Gắn tag" searchPlaceholder="Tìm hoặc gõ tag mới…"
@@ -93,13 +97,16 @@ export default function ThreadView({
                 {error && <div className="rounded-lg bg-rose-50 p-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">{error}</div>}
                 {loading && !messages.length && <div className="text-xs text-muted-foreground">Đang tải tin…</div>}
                 {!loading && !error && !messages.length && (
-                    <div className="text-xs text-muted-foreground">Chưa kéo được tin của hội thoại này — máy chủ kéo lại ở lượt 5 phút sau.</div>
+                    <div className="text-xs text-muted-foreground">Chưa kéo được tin của hội thoại này — bấm “Tải tin mới” hoặc chờ lượt tự kéo kế tiếp.</div>
                 )}
                 {messages.map((m) => (
                     <div key={m.message_id} className={cn("flex", m.from_page ? "justify-end" : "justify-start")}>
                         <div className={cn("max-w-[85%] rounded-2xl px-3 py-2 text-sm",
-                            m.from_page ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm bg-muted text-foreground")}>
-                            {m.from_page && m.sender_name && <div className="mb-0.5 text-[11px] opacity-75">{m.sender_name}</div>}
+                            // Tin của page: xanh nhạt dịu (màu chủ đạo của dashboard là đỏ tươi — tô cả khung chat nhìn gắt).
+                            m.from_page
+                                ? "rounded-br-sm border border-sky-100 bg-sky-50 text-foreground dark:border-sky-400/15 dark:bg-sky-400/10"
+                                : "rounded-bl-sm bg-muted text-foreground")}>
+                            {m.from_page && m.sender_name && <div className="mb-0.5 text-[11px] text-sky-700/80 dark:text-sky-300/80">{m.sender_name}</div>}
                             {m.body && <div className="whitespace-pre-wrap break-words">{m.body}</div>}
                             {m.attachments.map((a, i) => isImage(a) ? (
                                 <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" className="mt-1 block">
@@ -111,7 +118,7 @@ export default function ThreadView({
                                     <Paperclip className="h-3 w-3" />{a.name || a.type}
                                 </a>
                             ))}
-                            <div className={cn("mt-0.5 text-right text-[10px]", m.from_page ? "opacity-70" : "text-muted-foreground")}>{vnTime(m.sent_at)}</div>
+                            <div className="mt-0.5 text-right text-[10px] text-muted-foreground">{vnTime(m.sent_at)}</div>
                         </div>
                     </div>
                 ))}

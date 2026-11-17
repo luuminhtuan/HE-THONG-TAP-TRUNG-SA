@@ -45,6 +45,30 @@ class TestParse:
         assert k["from_page"] is False and k["body"] == "ok" and k["sent_at"] is None
 
 
+    def test_real_shape_17_11(self):
+        """Dạng đo trên tài khoản có gói cước (17/11/2026): from = mã Facebook, customers[].id = mã khách PANCAKE (API tin
+        bắt buộc); message là HTML, original_message chữ trơn giữ xuống dòng; system_message chỉ có chữ."""
+        c = P.normalize_conversation({"id": "p_1", "type": "INBOX", "from": {"id": "fb9", "name": "Lan"},
+                                      "customers": [{"id": "uuid-9", "fb_id": "fb9", "name": "Lan"}],
+                                      "updated_at": "2026-11-16T03:12:00.000000"})
+        assert (c["customer_id"], c["pancake_customer_id"]) == ("fb9", "uuid-9")
+        assert P.normalize_conversation({"id": "x", "from": {"id": "1", "name": "A"}})["pancake_customer_id"] is None
+        m = P.normalize_message({"id": "m", "message": "<div>Dòng 1</div><div>Dòng 2</div>",
+                                 "original_message": "Dòng 1\nDòng 2",
+                                 "attachments": [{"type": "photo", "url": "https://x/p.jpg", "image_data": {"width": 1}},
+                                                 {"type": "system_message", "message": "đã gán"}]}, page_id="1")
+        assert m["body"] == "Dòng 1\nDòng 2"
+        assert m["attachments"] == [{"type": "photo", "url": "https://x/p.jpg", "name": None}], "system_message không phải tệp"
+        sysm = P.normalize_message({"id": "s", "message": "", "original_message": "",
+                                    "attachments": [{"type": "system_message", "message": "Khách bấm Bắt đầu"}]}, page_id="1")
+        assert sysm["body"] == "Khách bấm Bắt đầu"
+
+    def test_html_to_text(self):
+        assert P.html_to_text("<div>A &amp; B</div><div>C<br>D</div>") == "A & B\nC\nD"
+        assert P.html_to_text("<div></div><div></div><div></div><div>x</div>") == "x"
+        assert P.html_to_text("") == ""
+
+
 class TestPaging:
     def test_stop_when_batch_reaches_floor(self):
         floor = datetime(2026, 11, 16, 8, tzinfo=UTC)

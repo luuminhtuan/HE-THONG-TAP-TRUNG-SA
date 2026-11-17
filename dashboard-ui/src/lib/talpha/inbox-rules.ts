@@ -10,7 +10,8 @@ export const TAG_NAME_MAX = 40;
 export type InboxAction =
     | { action: "assign"; page_id: string; conversation_id: string; user_id: string | null }
     | { action: "tag"; page_id: string; conversation_id: string; tag_id: number; on: boolean }
-    | { action: "create_tag"; name: string; color: TagColor };
+    | { action: "create_tag"; name: string; color: TagColor }
+    | { action: "sync_now" };
 
 /** Người dùng của phần mềm, kèm nước họ xem được — để chọn người phụ trách hội thoại. */
 export type InboxUser = { id: string; name: string; role: string; full: boolean; codes: string[] };
@@ -27,6 +28,7 @@ export function normalizeTagName(s: unknown): string {
 export function parseInboxAction(body: unknown): InboxAction | { error: string } {
     if (!isRecord(body)) return { error: "Thiếu nội dung" };
     const action = String(body.action || "");
+    if (action === "sync_now") return { action };
     if (action === "create_tag") {
         const name = normalizeTagName(body.name);
         if (!name) return { error: "Tên tag trống" };
@@ -59,4 +61,62 @@ export function assignableFor(users: InboxUser[], market: string | null): InboxU
 export function visibleUsersFor(viewer: { full: boolean; codes: string[] }, users: InboxUser[]): InboxUser[] {
     if (viewer.full) return users;
     return users.filter((u) => u.full || u.codes.some((c) => viewer.codes.includes(c)));
+}
+
+// ── Nút "Tải tin mới" (17/11/2026) — dòng trạng thái cạnh nút. Bảng pancake_sync_runs (migration 0007), đọc / ghi ở
+// inbox-sync.ts. Kiểu đặt ở đây (file thuần) để test dựng được không kéo theo kho.
+
+export type InboxSyncRun = {
+    id: number;
+    trigger: "manual" | "schedule";
+    requested_by: string | null;
+    status: "pending" | "running" | "ok" | "failed";
+    requested_at: string;
+    started_at: string | null;
+    finished_at: string | null;
+    summary: string | null;
+};
+
+export type InboxSyncStatus = {
+    /** Yêu cầu / lượt đang chờ hoặc đang chạy (mới nhất) — có thì nút đang quay. */
+    open: InboxSyncRun | null;
+    /** Lượt xong gần nhất (ok / failed). */
+    last: InboxSyncRun | null;
+    /** Lần cuối một lượt kéo BẮT ĐẦU — không có / quá cũ: máy này chưa bật việc nền kéo tin. */
+    runner_seen_at: string | null;
+    /** Tự kéo mấy phút một lần — talpha_rules.json → pancake_inbox.sync_every_minutes. */
+    every_minutes: number;
+};
+
+/** Yêu cầu chờ quá chừng này mà việc nền không chạy lượt nào trong RUNNER_ALIVE_MS → báo máy chưa bật việc nền. */
+export const RUNNER_WAIT_MS = 90_000;
+export const RUNNER_ALIVE_MS = 15 * 60_000;
+
+export type InboxSyncNote = { busy: boolean; tone: "muted" | "warn" | "error"; text: string };
+
+/** Trạng thái lượt kéo → chữ cạnh nút. `fmt` định dạng giờ (vnTime). */
+export function inboxSyncNote(s: InboxSyncStatus | null | undefined, now: number, fmt: (iso: string) => string): InboxSyncNote {
+    if (!s) return { busy: false, tone: "muted", text: "" };
+    const o = s.open;
+    if (o?.status === "running") {
+        return { busy: true, tone: "muted", text: `Đang kéo tin từ Pancake (bắt đầu ${fmt(o.started_at || o.requested_at)})…` };
+    }
+    if (o) {
+        const seen = s.runner_seen_at ? Date.parse(s.runner_seen_at) : 0;
+        if (now - Date.parse(o.requested_at) > RUNNER_WAIT_MS && now - seen > RUNNER_ALIVE_MS) {
+            return {
+                busy: true, tone: "warn",
+                text: `Đã gửi yêu cầu lúc ${fmt(o.requested_at)} nhưng chưa có việc nền nào nhận — máy này chưa bật lịch kéo tin `
+                    + "(Docker: docker compose up -d scheduler; máy chủ: talpha-pancake.timer).",
+            };
+        }
+        return { busy: true, tone: "muted", text: `Đã gửi yêu cầu lúc ${fmt(o.requested_at)} — chờ việc nền nhận lệnh…` };
+    }
+    const l = s.last;
+    if (!l) return { busy: false, tone: "muted", text: "Chưa có lượt kéo tin nào." };
+    const who = l.trigger === "manual" ? `bấm tay${l.requested_by ? ` — ${l.requested_by}` : ""}` : "theo lịch";
+    return {
+        busy: false, tone: l.status === "failed" ? "error" : "muted",
+        text: `Lượt gần nhất ${fmt(l.finished_at || l.requested_at)} (${who}): ${l.summary || (l.status === "ok" ? "xong" : "lỗi")}`,
+    };
 }

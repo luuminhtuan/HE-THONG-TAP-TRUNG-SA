@@ -76,3 +76,13 @@ def finish_refresh_request(ok: bool) -> None:
                       ("ok" if ok else "failed",))
     except Exception as e:  # noqa: BLE001
         _warn("xong_yeu_cau", e)
+
+
+def inbox_request_pending() -> bool:
+    """Có ai bấm "Tải tin mới" ở tab Tin nhắn mà chưa lượt kéo nào nhận (pancake_sync_runs, migration 0007)."""
+    try:
+        with get_connection() as c:
+            return bool(c.execute("SELECT EXISTS (SELECT 1 FROM pancake_sync_runs WHERE status = 'pending')").fetchone()[0])
+    except Exception as e:  # noqa: BLE001
+        _warn("tin_nhan_cho", e)
+        return False

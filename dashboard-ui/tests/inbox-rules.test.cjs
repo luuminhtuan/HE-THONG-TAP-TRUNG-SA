@@ -30,6 +30,29 @@ t("gắn / gỡ tag: tag_id số nguyên dương, on mặc định true", () => 
     assert.ok("error" in R.parseInboxAction({ action: "xoa_het" }));
     assert.ok("error" in R.parseInboxAction(null));
 });
+t("tải tin mới: sync_now không cần hội thoại", () => {
+    assert.deepStrictEqual(R.parseInboxAction({ action: "sync_now" }), { action: "sync_now" });
+});
+t("dòng trạng thái nút Tải tin mới: đang chạy / đang chờ / chờ quá lâu không ai nhận / lượt xong", () => {
+    const fmt = (iso) => iso.slice(11, 16);
+    const now = Date.parse("2026-11-17T07:10:00Z");
+    const run = (o) => ({ id: 1, trigger: "manual", requested_by: "Lộc", status: "pending", requested_at: "2026-11-17T07:09:30Z",
+        started_at: null, finished_at: null, summary: null, ...o });
+    assert.deepStrictEqual(R.inboxSyncNote(null, now, fmt), { busy: false, tone: "muted", text: "" });
+    const running = R.inboxSyncNote({ open: run({ status: "running", started_at: "2026-11-17T07:09:40Z" }), last: null, runner_seen_at: null }, now, fmt);
+    assert.ok(running.busy && running.text.includes("07:09"));
+    const waiting = R.inboxSyncNote({ open: run({}), last: null, runner_seen_at: null }, now, fmt);
+    assert.ok(waiting.busy && waiting.tone === "muted", "mới chờ 30 giây");
+    const stale = { open: run({ requested_at: "2026-11-17T07:05:00Z" }), last: null, runner_seen_at: null };
+    assert.strictEqual(R.inboxSyncNote(stale, now, fmt).tone, "warn", "chờ 5 phút, chưa từng có lượt nào → máy chưa bật việc nền");
+    assert.strictEqual(R.inboxSyncNote({ ...stale, runner_seen_at: "2026-11-17T07:06:00Z" }, now, fmt).tone, "muted",
+        "việc nền vừa chạy lượt khác (đang giữ khoá) → chỉ là chờ");
+    const done = R.inboxSyncNote({ open: null, runner_seen_at: null,
+        last: run({ status: "ok", finished_at: "2026-11-17T07:08:00Z", summary: "3/3 page · 5 tin mới" }) }, now, fmt);
+    assert.deepStrictEqual([done.busy, done.tone], [false, "muted"]);
+    assert.ok(done.text.includes("07:08") && done.text.includes("bấm tay — Lộc") && done.text.includes("5 tin mới"));
+    assert.strictEqual(R.inboxSyncNote({ open: null, runner_seen_at: null, last: run({ trigger: "schedule", status: "failed" }) }, now, fmt).tone, "error");
+});
 const users = [
     { id: "gd", name: "Sỹ Anh", role: "director", full: true, codes: ["TW", "SG", "AE", "JP", "VN"] },
     { id: "loc", name: "Lộc", role: "leader", full: false, codes: ["AE"] },

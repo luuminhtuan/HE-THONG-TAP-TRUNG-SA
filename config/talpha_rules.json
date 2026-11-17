@@ -2027,9 +2027,10 @@
       ]
     }
   },
-  "_pancake_inbox_note": "Tab Khách hàng → Tin nhắn (17/11/2026): máy chủ kéo hội thoại + tin nhắn của MỌI page mà các token Pancake (Khoá kết nối: TALPHA_PANCAKE_API_TOKEN, _2, _3) đọc được, mỗi sync_every_minutes phút, vào database (bảng pancake_*) — xem chỉ đọc từ database, không gọi Pancake lúc xem. Lần đầu kéo bù backfill_days ngày; tin cũ hơn retention_days ngày tự xoá. Page gán nước theo tên page trong tên camp (tên camp chứa tên page) hoặc đuôi mã nước; page không gán được nước chỉ giám đốc xem. Chỉ leader (nước của team) + giám đốc thấy tab — tin nhắn có số điện thoại, tên khách. Token phải của tài khoản Pancake CÓ GÓI CƯỚC (không có gói → mã 121, không đọc được hội thoại).",
+  "_pancake_inbox_note": "Tab 💬 Tin nhắn (17/11/2026): máy chủ kéo hội thoại + tin nhắn của MỌI page mà các token Pancake (Khoá kết nối: TALPHA_PANCAKE_API_TOKEN, _2, _3) đọc được, mỗi sync_every_minutes phút, vào database (bảng pancake_*) — xem chỉ đọc từ database, không gọi Pancake lúc xem. Lần đầu kéo bù backfill_days ngày; tin cũ hơn retention_days ngày tự xoá. Page gán nước theo tên page trong tên camp (tên camp chứa tên page) hoặc đuôi mã nước; page không gán được nước chỉ giám đốc xem. Chỉ leader (nước của team) + giám đốc thấy tab — tin nhắn có số điện thoại, tên khách. Gói cước Pancake tính THEO PAGE: page ngoài gói của mọi token trả mã 121 — bỏ qua, chỉ hỏi lại mỗi no_plan_recheck_minutes phút. Nút \"Tải tin mới\" ở tab: lượt kéo chạy ngay (bảng pancake_sync_runs). 17/11/2026: tự kéo 30 phút/lần (trước 5) — cần sớm hơn thì bấm nút.",
   "pancake_inbox": {
-    "sync_every_minutes": 5,
+    "sync_every_minutes": 30,
+    "no_plan_recheck_minutes": 60,
     "retention_days": 180,
     "backfill_days": 30,
     "max_batches_per_page": 40,

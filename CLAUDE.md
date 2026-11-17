@@ -142,11 +142,14 @@ nhánh `bk_main_26_11_16` (= `17def2c`).
   `pg_view.py → PRIVATE_TABLES`; thêm bảng riêng mới thì thêm vào đó. Còn là file: luật gốc
   `config/talpha_rules.json` (git) và chìa nội bộ `data/.internal_token`.
 * **Tin nhắn Pancake** (17/11/2026): tab 💬 Tin nhắn CHỈ ĐỌC hộp thư từ database (`pancake_pages` / `_conversations` /
-  `_messages`, migration 0004, bảng riêng); `sync/talpha/pancake_inbox_sync.py` kéo 5 phút/lần (VPS: `talpha-pancake.timer`;
-  Docker: việc `tin_nhan`), giữ 180 ngày — `talpha_rules.json → pancake_inbox`. Token Pancake nhiều tài khoản
-  (`TALPHA_PANCAKE_API_TOKEN`, `_2`, `_3`); tài khoản KHÔNG có gói cước thì Pancake trả mã 121 cho mọi hội thoại — lưu khoá
-  là bị chặn. Chỉ leader (page nước của team) + giám đốc. Gán người phụ trách + tag nội bộ trên dashboard (migration 0005,
-  không đẩy về Pancake); mọi lần gán / gắn ghi `inbox_events` — nguồn cho KPI người dùng sau này.
+  `_messages`, migration 0004, bảng riêng); `sync/talpha/pancake_inbox_sync.py` tự kéo 30 phút/lần — `pancake_inbox.sync_every_minutes` (VPS: `talpha-pancake.timer`
+  gọi MỖI PHÚT với `--if-due` — chưa tới lượt, không ai bấm thì thoát ngay; Docker: việc `tin_nhan`), giữ 180 ngày —
+  `talpha_rules.json → pancake_inbox`. Nút "Tải tin mới" ghi yêu cầu vào `pancake_sync_runs` (migration 0007, cũng là sổ
+  lượt kéo); lượt kế tiếp nhận (VPS ≤ 1 phút, Docker ≤ 15 giây). Token Pancake nhiều tài khoản (`TALPHA_PANCAKE_API_TOKEN`,
+  `_2`, `_3`); gói cước tính THEO PAGE — page ngoài gói trả mã 121 (lượt kéo thử token sau, rồi bỏ qua page đó); token
+  không đọc được page nào thì lưu khoá bị chặn. API tin bắt buộc `customer_id` = mã khách PANCAKE (`customers[].id`, không
+  phải mã Facebook); chữ lấy ở `original_message`. Chỉ leader (page nước của team) + giám đốc. Gán người phụ trách + tag nội
+  bộ trên dashboard (migration 0005, không đẩy về Pancake); mọi lần gán / gắn ghi `inbox_events` — nguồn cho KPI người dùng.
 * **Bot Zalo cấu hình trên trang** (16/11/2026): `/admin` → Khoá kết nối → Zalo — ghép nick phụ bằng mã QR, chọn
   nhóm từng nước, gửi thử. Trang ghi yêu cầu (`zalo_requests`), bot `ops/zalo-alerts/bot_control.js` nhặt qua
   `/api/talpha/zalo/bot` (chìa nội bộ) và ghi trạng thái (`zalo_bot_status`). Phiên đăng nhập (mã hoá), nhóm từng nước,

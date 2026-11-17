@@ -14,7 +14,8 @@ thì chạy ngay một vòng kéo số + báo cáo, khỏi chờ tới đầu gi
 
 Mỗi lượt ghi vào bảng job_runs, và mỗi 15 giây nhặt yêu cầu "Cập nhật ngay" (refresh_requests) bấm trên
 dashboard (15/11/2026, sync/core/job_log.py) — người dùng thấy đang cập nhật / cập nhật lúc nào, và tự
-chạy được mà không cần gõ lệnh.
+chạy được mà không cần gõ lệnh. Cũng mỗi 15 giây: nút "Tải tin mới" của tab Tin nhắn (pancake_sync_runs, 17/11/2026)
+→ chạy ngay một lượt kéo hộp thư.
 """
 import os
 import subprocess
@@ -30,6 +31,7 @@ if REPO not in sys.path:
     sys.path.insert(0, REPO)
 from sync.core import job_log  # noqa: E402
 VN = ZoneInfo("Asia/Ho_Chi_Minh")
+INBOX_COMMAND = ["python", "sync/talpha/pancake_inbox_sync.py"]
 JOBS = [
     # (tên, phút — một số hoặc tuple nhiều phút, giờ trong ngày — None là mỗi giờ, lệnh)
     ("sync", 0, None, ["python", "sync/talpha/talpha_sync.py"]),
@@ -38,9 +40,10 @@ JOBS = [
     ("danh_muc", 10, [5], ["python", "sync/talpha/sync_product_catalog.py"]),
     ("van_don_sang", 0, [6], ["bash", "ops/deploy/tracking-import.sh"]),
     ("van_don_toi", 30, [21], ["bash", "ops/deploy/tracking-import.sh"]),
-    # Hộp thư Pancake (17/11/2026) — 5 phút một lần (talpha_rules.json → pancake_inbox); lượt trước chưa xong thì
+    # Hộp thư Pancake (17/11/2026) — hỏi 5 phút một lần với --if-due: script tự kéo khi đã quá
+    # talpha_rules.json → pancake_inbox.sync_every_minutes (30) kể từ lượt trước; lượt trước chưa xong thì
     # script tự bỏ lượt (advisory lock).
-    ("tin_nhan", tuple(range(0, 60, 5)), None, ["python", "sync/talpha/pancake_inbox_sync.py"]),
+    ("tin_nhan", tuple(range(0, 60, 5)), None, INBOX_COMMAND + ["--if-due"]),
 ]
 _running: dict = {}
 
@@ -99,19 +102,26 @@ def run_and_log(name: str, command: list, triggered_by: str = "lịch", env: dic
     return rc
 
 
-def start_job(name: str, command: list):
+def start_job(name: str, command: list, triggered_by: str = "lịch"):
     if _running.get(name):
         print(f"{datetime.now(VN):%F %T} [{name}] lượt trước còn chạy — bỏ lượt", flush=True)
         return
+    _running[name] = True             # đặt trước khi mở luồng — vòng 15 giây sau không mở lượt thứ hai
 
     def _worker():
-        _running[name] = True
         try:
-            run_and_log(name, command)
+            run_and_log(name, command, triggered_by)
         finally:
             _running[name] = False
 
     threading.Thread(target=_worker, daemon=True).start()
+
+
+def handle_inbox_request():
+    """Nút "Tải tin mới" (tab Tin nhắn): có yêu cầu đang chờ mà lượt kéo hộp thư không chạy → chạy ngay. Script tự nhận
+    yêu cầu (pancake_sync_runs) và ghi kết quả; đang có lượt thì yêu cầu chờ lượt sau."""
+    if not _running.get("tin_nhan") and job_log.inbox_request_pending():
+        start_job("tin_nhan", INBOX_COMMAND, "bấm tay")
 
 
 def clear_report_marker():
@@ -176,6 +186,7 @@ def main():
         if len(already_run) > 500:
             already_run = {x for x in already_run if x[1] == slot}
         handle_refresh_request()
+        handle_inbox_request()
         time.sleep(15)
 
 

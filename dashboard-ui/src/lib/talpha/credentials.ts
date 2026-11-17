@@ -298,6 +298,9 @@ async function verifyPos(d: CredentialDef, key: string): Promise<VerifyResult> {
     return { ok: true, chi_tiet: `Shop ${s.shop_id} gọi được, ${Number(j.total_entries ?? 0).toLocaleString("vi-VN")} đơn` };
 }
 
+/** Lưu token Pancake: thử đọc hội thoại ở tối đa chừng này page đang bật (dừng ở page đầu đọc được). */
+const PANCAKE_VERIFY_PAGES = 8;
+
 async function verifyPancake(tok: string): Promise<VerifyResult> {
     const expiry = tokenExpiry(tok);
     const expiryIso = expiry ? new Date(expiry).toISOString() : null;
@@ -308,21 +311,27 @@ async function verifyPancake(tok: string): Promise<VerifyResult> {
     if (!r.ok || !j || j.success === false) throw new Error(`Pancake từ chối: ${j?.message || `HTTP ${r.status}`}`);
     const c = j.categorized || {};
     const n = (c.activated?.length || 0) + (c.inactivated?.length || 0);
-    // Đọc được danh sách page CHƯA đủ: tài khoản không có gói cước thì mọi lượt đọc hội thoại trả mã 121 (đo 17/11/2026
-    // — token cũ thấy 47 page mà không đọc được hội thoại nào). Thử một page đang bật.
-    const first = (c.activated || []).find((p: { id?: unknown }) => p && p.id);
-    if (first) {
-        const rc = await fetch(`${PANCAKE_API}/pages/${encodeURIComponent(String(first.id))}/conversations?access_token=${encodeURIComponent(tok)}`,
+    // Đọc được danh sách page CHƯA đủ: page không nằm trong gói cước của tài khoản thì đọc hội thoại trả mã 121. Gói
+    // cước tính THEO PAGE (đo 17/11/2026: token cũ 47/47 page mã 121; token mới đọc được một phần, phần còn lại 121) —
+    // thử lần lượt vài page đang bật, một page đọc được là cho lưu; page 121 lượt kéo tin tự bỏ qua.
+    const active = (c.activated || []).filter((p: { id?: unknown }) => p && p.id).slice(0, PANCAKE_VERIFY_PAGES);
+    let noPlan = 0, other = "";
+    for (const p of active) {
+        const rc = await fetch(`${PANCAKE_API}/pages/${encodeURIComponent(String(p.id))}/conversations?access_token=${encodeURIComponent(tok)}`,
             { cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
         const jc = await rc.json().catch(() => null);
-        if (jc?.success === false) {
-            const noPlan = String(jc.error_code) === "121";
-            throw new Error(noPlan
-                ? `Tài khoản Pancake này không có gói cước (mã 121) — thấy ${n} page nhưng không đọc được tin nhắn. Lấy token của tài khoản có gói.`
-                : `Pancake từ chối đọc hội thoại: ${jc.message || "lỗi"}${jc.error_code ? ` (mã ${jc.error_code})` : ""}`);
+        if (rc.ok && jc && jc.success !== false) {
+            const skipped = noPlan ? ` (${noPlan} page thử trước không có trong gói cước — lượt kéo tin bỏ qua các page đó)` : "";
+            return { ok: true, chi_tiet: `Đọc được ${n} page, đọc được hội thoại${skipped}`, het_han: expiryIso };
         }
+        if (String(jc?.error_code) === "121") noPlan++;
+        else other ||= `${jc?.message || `HTTP ${rc.status}`}${jc?.error_code ? ` (mã ${jc.error_code})` : ""}`;
     }
-    return { ok: true, chi_tiet: `Đọc được ${n} page, đọc được hội thoại`, het_han: expiryIso };
+    if (active.length && noPlan === active.length) {
+        throw new Error(`Tài khoản Pancake này không có gói cước cho page nào (mã 121 ở ${noPlan} page thử) — thấy ${n} page nhưng không đọc được tin nhắn. Lấy token của tài khoản có gói.`);
+    }
+    if (active.length) throw new Error(`Pancake từ chối đọc hội thoại: ${other || "lỗi"}`);
+    return { ok: true, chi_tiet: `Đọc được ${n} page (chưa page nào bật để thử đọc hội thoại)`, het_han: expiryIso };
 }
 
 /** Liệt kê model — miễn phí, không tốn lượt hỏi. Khoá đi ở header, không nằm trên địa chỉ (log). */
