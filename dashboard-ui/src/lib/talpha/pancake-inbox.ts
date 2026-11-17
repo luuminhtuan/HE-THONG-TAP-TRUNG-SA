@@ -12,9 +12,14 @@ export type InboxPage = {
     page_id: string; name: string; market: string | null; last_sync_at: string | null; last_error: string | null;
     conversations: number;
 };
+export type InboxLabel = { id: number; name: string; color: string };
 export type InboxConversation = {
     page_id: string; conversation_id: string; page_name: string; market: string | null; type: string | null;
-    customer_name: string | null; phone_numbers: string[]; snippet: string | null; tags: string[]; updated_at: string | null;
+    customer_name: string | null; phone_numbers: string[]; snippet: string | null;
+    tags: string[];                 // tag của Pancake (chỉ đọc)
+    labels: InboxLabel[];           // tag nội bộ gắn trên dashboard (migration 0005)
+    assignee_id: string | null; assignee_name: string | null;
+    updated_at: string | null;
 };
 export type InboxMessage = {
     message_id: string; from_page: boolean; sender_name: string | null; body: string | null;
@@ -37,8 +42,22 @@ export async function listInboxPages(a: Access): Promise<InboxPage[]> {
 
 export const CONVERSATIONS_PER_PAGE = 50;
 
-/** Hội thoại mới nhất trước. `before` = updated_at của dòng cuối lượt trước (tải thêm). `q` tìm tên / số điện thoại / tin cuối. */
-export async function listInboxConversations(a: Access, opts: { pageId?: string; market?: string; q?: string; before?: string }):
+const CONVERSATION_SELECT = `
+    SELECT c.page_id, c.conversation_id, p.name AS page_name, p.market, c.type, c.customer_name, c.phone_numbers,
+           c.snippet, c.tags, c.updated_at, a.user_id AS assignee_id, u.name AS assignee_name,
+           COALESCE((SELECT json_agg(json_build_object('id', t.id, 'name', t.name, 'color', t.color) ORDER BY lower(t.name))
+                       FROM inbox_conversation_tags ct JOIN inbox_tags t ON t.id = ct.tag_id
+                      WHERE ct.page_id = c.page_id AND ct.conversation_id = c.conversation_id), '[]'::json) AS labels
+      FROM pancake_conversations c
+      JOIN pancake_pages p ON p.page_id = c.page_id
+      LEFT JOIN inbox_assignments a ON a.page_id = c.page_id AND a.conversation_id = c.conversation_id
+      LEFT JOIN users u ON u.id = a.user_id`;
+
+/** Hội thoại mới nhất trước. `before` = updated_at của dòng cuối lượt trước (tải thêm). `q` tìm tên / số điện thoại / tin cuối.
+ *  `label` = id tag nội bộ, "none" = chưa gắn tag nào; `assignee` = id người dùng, "none" = chưa gán. */
+export async function listInboxConversations(a: Access, opts: {
+    pageId?: string; market?: string; q?: string; before?: string; label?: string; assignee?: string;
+}):
     Promise<InboxConversation[]> {
     const [where, params] = pageScope(a);
     const conds = [where];
@@ -46,17 +65,21 @@ export async function listInboxConversations(a: Access, opts: { pageId?: string;
     if (opts.pageId) { conds.push("c.page_id = @pageId"); p.pageId = opts.pageId; }
     if (opts.market) { conds.push("p.market = @market"); p.market = opts.market; }
     if (opts.before) { conds.push("c.updated_at < @before::timestamptz"); p.before = opts.before; }
+    const tagged = "EXISTS (SELECT 1 FROM inbox_conversation_tags ct WHERE ct.page_id = c.page_id AND ct.conversation_id = c.conversation_id";
+    if (opts.label === "none") conds.push(`NOT ${tagged})`);
+    else if (opts.label && /^\d+$/.test(opts.label)) { conds.push(`${tagged} AND ct.tag_id = @label::bigint)`); p.label = opts.label; }
+    if (opts.assignee === "none") conds.push("a.user_id IS NULL");
+    else if (opts.assignee) { conds.push("a.user_id = @assignee"); p.assignee = opts.assignee; }
     const q = (opts.q || "").trim();
     if (q) {
         const digits = q.replace(/\D/g, "");
-        conds.push(`(c.customer_name ILIKE @like OR c.snippet ILIKE @like${digits.length >= 3 ? " OR c.phone_numbers::text LIKE @digits" : ""})`);
+        // Không dấu (unaccent, migration 0006): "thu" ra cả "Thư"; "dang" ra "Đặng".
+        conds.push(`(public.unaccent(coalesce(c.customer_name, '')) ILIKE public.unaccent(@like)
+                     OR public.unaccent(coalesce(c.snippet, '')) ILIKE public.unaccent(@like)${digits.length >= 3 ? " OR c.phone_numbers::text LIKE @digits" : ""})`);
         p.like = `%${q.replace(/[\\%_]/g, (m) => "\\" + m)}%`;
         if (digits.length >= 3) p.digits = `%${digits}%`;
     }
-    return query<InboxConversation>(
-        `SELECT c.page_id, c.conversation_id, p.name AS page_name, p.market, c.type, c.customer_name, c.phone_numbers,
-                c.snippet, c.tags, c.updated_at
-           FROM pancake_conversations c JOIN pancake_pages p ON p.page_id = c.page_id
+    return query<InboxConversation>(`${CONVERSATION_SELECT}
           WHERE ${conds.join(" AND ")}
           ORDER BY c.updated_at DESC NULLS LAST LIMIT @limit`, p);
 }
@@ -65,10 +88,7 @@ export async function listInboxConversations(a: Access, opts: { pageId?: string;
 export async function getInboxThread(a: Access, pageId: string, conversationId: string):
     Promise<{ conversation: InboxConversation; messages: InboxMessage[] } | null> {
     const [where, params] = pageScope(a);
-    const [conversation] = await query<InboxConversation>(
-        `SELECT c.page_id, c.conversation_id, p.name AS page_name, p.market, c.type, c.customer_name, c.phone_numbers,
-                c.snippet, c.tags, c.updated_at
-           FROM pancake_conversations c JOIN pancake_pages p ON p.page_id = c.page_id
+    const [conversation] = await query<InboxConversation>(`${CONVERSATION_SELECT}
           WHERE ${where} AND c.page_id = @pageId AND c.conversation_id = @conversationId`, { ...params, pageId, conversationId });
     if (!conversation) return null;
     const messages = await query<InboxMessage>(

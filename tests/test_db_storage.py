@@ -180,7 +180,8 @@ class TestReadOnlyRole:
         schema = pg.execute("SELECT current_schema()").fetchone()[0]
         for table in ("api_credentials", "users", "app_documents", "market_overrides", "market_monthly_reports",
                       "zalo_bot_status", "zalo_requests", "zalo_session", "zalo_market_groups", "zalo_bot_state",
-                      "pancake_pages", "pancake_conversations", "pancake_messages"):
+                      "pancake_pages", "pancake_conversations", "pancake_messages",
+                      "inbox_tags", "inbox_assignments", "inbox_conversation_tags", "inbox_events"):
             for role in ("talpha_readonly", "talpha_readonly_market"):
                 assert pg.execute("SELECT has_table_privilege(%s, %s, 'SELECT')",
                                   (role, f"{schema}.{table}")).fetchone()[0] is False, (role, table)

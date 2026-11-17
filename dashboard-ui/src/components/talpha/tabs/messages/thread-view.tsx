@@ -1,9 +1,12 @@
 "use client";
 
-// Một cuộc chat của tab Tin nhắn — chỉ đọc. Tin khách bên trái, tin page (nhân viên / bot) bên phải.
-import { ArrowLeft, Paperclip, Phone } from "lucide-react";
+// Một cuộc chat của tab Tin nhắn. Tin khách bên trái, tin page (nhân viên / bot) bên phải — chỉ đọc. Đầu khung: người
+// phụ trách + tag nội bộ (gán / gắn trên dashboard, ghi nhật ký cho KPI — không đẩy về Pancake).
+import { ArrowLeft, Paperclip, Phone, UserRound, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { InboxConversation, InboxMessage } from "@/lib/talpha/pancake-inbox";
+import SearchableSelect from "@/components/ui/searchable-select";
+import type { InboxConversation, InboxLabel, InboxMessage } from "@/lib/talpha/pancake-inbox";
+import type { InboxUser } from "@/lib/talpha/inbox-rules";
 
 export const vnTime = (iso: string | null, withDate = true) => (iso
     ? new Date(iso).toLocaleString("vi-VN", {
@@ -11,35 +14,79 @@ export const vnTime = (iso: string | null, withDate = true) => (iso
     })
     : "");
 
+const LABEL_CLASS: Record<string, string> = {
+    slate: "bg-slate-100 text-slate-700 dark:bg-slate-500/15 dark:text-slate-300",
+    red: "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300",
+    amber: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
+    emerald: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
+    sky: "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300",
+    violet: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+    pink: "bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300",
+};
+
+export function LabelChip({ label, onRemove }: { label: InboxLabel; onRemove?: () => void }) {
+    return (
+        <span className={cn("inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[11px] font-medium", LABEL_CLASS[label.color] || LABEL_CLASS.slate)}>
+            {label.name}
+            {onRemove && (
+                <button type="button" onClick={onRemove} aria-label={`Gỡ tag ${label.name}`} className="opacity-60 hover:opacity-100"><X className="h-3 w-3" /></button>
+            )}
+        </span>
+    );
+}
+
 const isImage = (a: { type: string; url: string }) => /image|photo|sticker/i.test(a.type) || /\.(jpe?g|png|gif|webp)(\?|$)/i.test(a.url);
 
-export default function ThreadView({ conversation, messages, loading, error, onBack }: {
+type Props = {
     conversation: InboxConversation | null; messages: InboxMessage[]; loading: boolean; error: string; onBack: () => void;
-}) {
+    tags: InboxLabel[]; assignable: InboxUser[]; busy: boolean;
+    onAssign: (userId: string | null) => void; onToggleTag: (tagId: number, on: boolean) => void; onCreateTag: (name: string) => void;
+};
+
+export default function ThreadView({
+    conversation, messages, loading, error, onBack, tags, assignable, busy, onAssign, onToggleTag, onCreateTag,
+}: Props) {
     if (!conversation) {
         return <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">Chọn một hội thoại bên trái để xem.</div>;
     }
+    const labelIds = conversation.labels.map((l) => String(l.id));
     return (
         <div className="flex h-full min-h-0 flex-col">
-            <div className="flex items-start gap-2 border-b border-border p-3">
-                <button type="button" onClick={onBack} className="rounded-md p-1 text-muted-foreground hover:bg-muted md:hidden" aria-label="Về danh sách">
-                    <ArrowLeft className="h-4 w-4" />
-                </button>
-                <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold text-foreground">{conversation.customer_name || "(khách không tên)"}</div>
-                    <div className="truncate text-xs text-muted-foreground">
-                        {conversation.page_name}{conversation.market ? ` · ${conversation.market}` : ""}
-                        {conversation.type === "COMMENT" ? " · bình luận" : ""}
-                    </div>
-                    {conversation.phone_numbers.length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-2">
-                            {conversation.phone_numbers.map((p) => (
-                                <a key={p} href={`tel:${p}`} className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-                                    <Phone className="h-3 w-3" />{p}
-                                </a>
-                            ))}
+            <div className="space-y-2 border-b border-border p-3">
+                <div className="flex items-start gap-2">
+                    <button type="button" onClick={onBack} className="rounded-md p-1 text-muted-foreground hover:bg-muted md:hidden" aria-label="Về danh sách">
+                        <ArrowLeft className="h-4 w-4" />
+                    </button>
+                    <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold text-foreground">{conversation.customer_name || "(khách không tên)"}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                            {conversation.page_name}{conversation.market ? ` · ${conversation.market}` : ""}
+                            {conversation.type === "COMMENT" ? " · bình luận" : ""}
+                            {conversation.tags.length > 0 && ` · Pancake: ${conversation.tags.join(", ")}`}
                         </div>
-                    )}
+                        {conversation.phone_numbers.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-2">
+                                {conversation.phone_numbers.map((p) => (
+                                    <a key={p} href={`tel:${p}`} className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                        <Phone className="h-3 w-3" />{p}
+                                    </a>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <UserRound className="h-4 w-4 text-muted-foreground" aria-hidden />
+                    <SearchableSelect ariaLabel="Người phụ trách" disabled={busy} className="w-48"
+                        placeholder="Chưa gán — chọn người" value={conversation.assignee_id || ""}
+                        options={[{ value: "", label: "— Bỏ gán —" }, ...assignable.map((u) => ({ value: u.id, label: u.name, hint: u.full ? "giám đốc" : u.codes.join(" ") }))]}
+                        onChange={(v) => onAssign(v || null)} />
+                    <SearchableSelect ariaLabel="Gắn tag" disabled={busy} className="w-36" multiple values={labelIds}
+                        placeholder="+ Gắn tag" searchPlaceholder="Tìm hoặc gõ tag mới…"
+                        options={tags.map((t) => ({ value: String(t.id), label: t.name }))}
+                        renderOption={(o) => <LabelChip label={tags.find((t) => String(t.id) === o.value) || { id: 0, name: o.label, color: "slate" }} />}
+                        onChange={(v) => onToggleTag(Number(v), !labelIds.includes(v))} onCreate={onCreateTag} />
+                    {conversation.labels.map((l) => <LabelChip key={l.id} label={l} onRemove={busy ? undefined : () => onToggleTag(l.id, false)} />)}
                 </div>
             </div>
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
