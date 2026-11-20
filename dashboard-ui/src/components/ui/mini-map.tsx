@@ -11,6 +11,9 @@ export type MapCircle = { lat: number; lng: number; radius_m: number; color?: st
 export type MapPoint = { lat: number; lng: number; accuracy_m?: number | null; color?: string };
 
 const TILE = 256;
+// Ô ảnh lấy QUA máy chủ dashboard (route /api/talpha/attendance/tile), không gọi thẳng tile.openstreetmap.org: máy người
+// xem có thể không tới được OSM (DNS máy dev, mạng công ty chặn) — trên máy chủ thật từng ra toàn ô vỡ (20/11/2026).
+const tileUrl = (z: number, x: number, y: number) => `/api/talpha/attendance/tile/${z}/${x}/${y}`;
 const MIN_Z = 3;
 const MAX_Z = 19;
 const DEFAULT_CENTER = { lat: 16.0, lng: 106.0 };   // giữa Việt Nam khi chưa có điểm nào
@@ -95,15 +98,17 @@ export default function MiniMap({ circles = [], points = [], onPick, height = 22
             if (ty < 0 || ty >= n) continue;
             for (let tx = Math.floor(left / TILE); tx <= Math.floor((left + width) / TILE); tx++) {
                 const wx = ((tx % n) + n) % n;
-                tiles.push({ key: `${v.z}/${tx}/${ty}`, src: `https://tile.openstreetmap.org/${v.z}/${wx}/${ty}.png`, x: tx * TILE - left, y: ty * TILE - top });
+                tiles.push({ key: `${v.z}/${tx}/${ty}`, src: tileUrl(v.z, wx, ty), x: tx * TILE - left, y: ty * TILE - top });
             }
         }
         const at = (lat: number, lng: number) => { const p = project(lat, lng, v.z); return { x: p.x - left, y: p.y - top }; };
         content = (
             <>
                 {tiles.map((t) => (
+                    // Ô lỗi thì ẩn (khỏi hiện biểu tượng ảnh vỡ) — vòng bán kính + chấm vị trí vẫn vẽ trên nền trơn.
                     // eslint-disable-next-line @next/next/no-img-element
                     <img key={t.key} src={t.src} alt="" draggable={false} loading="lazy"
+                        onError={(e) => { e.currentTarget.style.visibility = "hidden"; }}
                         className="pointer-events-none absolute max-w-none select-none"
                         style={{ left: t.x, top: t.y, width: TILE, height: TILE }} />
                 ))}

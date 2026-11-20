@@ -84,6 +84,8 @@ t("Chấm công: mọi tài khoản gọi được /attendance, chỉ giám đ�
         assert.ok(A.canTab(a, "attendance"), a.name);
         assert.ok(A.checkApi(a, "/api/talpha/attendance", q("month=2026-11")).ok, a.name);
         assert.ok(!A.checkApi(a, "/api/talpha/attendance/settings", q("")).ok, a.name);
+        // Ô bản đồ đi qua máy chủ (mini-map) — cùng luật tab Chấm công.
+        assert.ok(A.checkApi(a, "/api/talpha/attendance/tile/16/52066/29143", q("")).ok, a.name);
     }
     assert.ok(A.canTab(sanh, "attendance") && A.checkApi(sanh, "/api/talpha/attendance/settings", q("")).ok);
     assert.ok(A.PERSONAL_TABS.every((t) => A.ALL_TABS.includes(t)));
