@@ -9,6 +9,7 @@
 // dùng chung MỘT cách hiểu. Hai nơi tự hiểu luật là sớm muộn một nơi hở.
 // ═══════════════════════════════════════════════════════════════════
 import { RULES, PRIMARY_MARKET, CAMP_MARKETS, CAMP_MARKETS_FIRST_SEGMENT } from "./rules";
+import { PERSONAL_TABS } from "./personal-tabs";
 
 /** Mọi tab của dashboard-shell.tsx. Thêm tab mới thì thêm ở đây và ở access.roles. */
 export const ALL_TABS = [
@@ -20,7 +21,11 @@ export const ALL_TABS = [
     "customers", "market-intel", "customer-segments", "competitor-research",
     "messages",
     "ask-ai",
+    "attendance",
 ] as const;
+
+/** Tab của riêng người dùng (Chấm công) — ai đăng nhập cũng thấy. Khai ở personal-tabs.ts (trình duyệt cũng đọc). */
+export { PERSONAL_TABS };
 
 /**
  * Tab mà route phía sau CHƯA lọc theo nước — người chỉ được xem một phần số
@@ -108,8 +113,10 @@ export function accessForUser(u: UserLike): Access {
     const teamKeys = ds.includes("*") ? Object.keys(TEAMS) : ds.filter((k) => TEAMS[k]);
     const markets = [...new Set(teamKeys.flatMap((k) => TEAMS[k].markets))].filter((m) => MARKET_CODE[m]);
     const hasAllMarkets = ALL_MARKET_KEYS.length > 0 && ALL_MARKET_KEYS.every((m) => markets.includes(m));
-    const tabs = markets.length === 0 ? [] : (rc?.tabs || []).filter((t) =>
-        (ALL_TABS as readonly string[]).includes(t) && !DIRECTOR_ONLY_TABS.has(t) && (hasAllMarkets || !TABS_NOT_MARKET_FILTERED.has(t)));
+    const dataTabs = markets.length === 0 ? [] : (rc?.tabs || []).filter((t) =>
+        (ALL_TABS as readonly string[]).includes(t) && !DIRECTOR_ONLY_TABS.has(t) && !PERSONAL_TABS.includes(t)
+        && (hasAllMarkets || !TABS_NOT_MARKET_FILTERED.has(t)));
+    const tabs = [...dataTabs, ...PERSONAL_TABS];
     return {
         ...base, role, roleLabel: rc?.label || role,
         full: false,
@@ -184,6 +191,10 @@ export const API_RULES: Record<string, ApiRule> = {
     "/api/talpha/competitor-research": { tabs: ["competitor-research"] },
     // Hộp thư Pancake đã kéo vào database (17/11/2026) — route tự cắt page theo nước của người xem.
     "/api/talpha/messages": { tabs: ["messages"] },
+    // Chấm công (20/11/2026) — ai đăng nhập cũng tự chấm / xem lịch của mình; xem người khác, chấm bù, huỷ: route tự
+    // chặn chỉ giám đốc. Cấu hình nơi chấm (IP, vị trí): chỉ giám đốc.
+    "/api/talpha/attendance": { tabs: ["attendance"] },
+    "/api/talpha/attendance/settings": { full: true },
     "/api/query": { tabs: ["marketing", "ad-health", "customers", "market-intel"] },
 
     // Sổ đơn / Tiền COD về / vận đơn — mỗi lượt gọi là MỘT nước. cod-actions mở cho Sổ đơn

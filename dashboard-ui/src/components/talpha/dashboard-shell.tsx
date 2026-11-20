@@ -36,6 +36,8 @@ import TALPHATrackingTab from "./tabs/tracking-tab";
 import TALPHAAdsReconTab from "./tabs/ads-recon-tab";
 import IncomeStatementTab from "./tabs/income-statement-tab";
 import AskAiTab from "./tabs/ask-ai-tab";
+import AttendanceTab from "./tabs/attendance-tab";
+import { PERSONAL_TABS } from "@/lib/talpha/personal-tabs";
 
 /** Tham số mang theo khi chuyển tab: khoảng ngày đang chọn (from, to), nước đang chọn (market). */
 const CARRIED_PARAMS = ["from", "to", "market"];
@@ -43,9 +45,10 @@ const CARRIED_PARAMS = ["from", "to", "market"];
 /**
  * Tab không theo bộ chọn ngày — hiện bộ chọn chỉ gây hiểu nhầm là lọc được: Ads Command Center
  * và Sức khoẻ quảng cáo đọc cửa sổ thời gian cố định trong view, Thanh toán quảng cáo lấy kỳ từ
- * file sao kê, Tệp khách và Soi đối thủ là số tham chiếu theo từng bản đo / bản soi, Tin nhắn xếp theo tin mới nhất.
+ * file sao kê, Tệp khách và Soi đối thủ là số tham chiếu theo từng bản đo / bản soi, Tin nhắn xếp theo tin mới nhất,
+ * Chấm công có ô chọn tháng riêng.
  */
-const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon", "customer-segments", "competitor-research", "messages"]);
+const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon", "customer-segments", "competitor-research", "messages", "attendance"]);
 
 /**
  * Tab báo cáo số — không tính ngày trước mốc gốc `report_start_date` (talpha_rules.json,
@@ -334,7 +337,7 @@ export default function TALPHADashboardShell() {
                             Không đọc được quyền của tài khoản: {meError}. Tải lại trang, hoặc đăng xuất rồi đăng nhập lại.
                         </div>
                     )}
-                    {me && me.tabs.length === 0 && (
+                    {me && !me.full && me.tabs.every(t => PERSONAL_TABS.includes(t)) && (
                         <div className="rounded-xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
                             <p className="font-semibold">Tài khoản chưa được giao team nào.</p>
                             <p className="mt-1">Nhờ giám đốc vào <strong>Quản trị → Quản lý User</strong> chọn team (Trung Đông, Đông Nam Á, Đông Á) cho tài khoản này.</p>
@@ -361,6 +364,7 @@ export default function TALPHADashboardShell() {
                     {isTabShown("competitor-research") && <CompetitorResearchTab />}
                     {isTabShown("messages") && <MessagesTab />}
                     {isTabShown("ask-ai") && <AskAiTab dateRange={dateRange} />}
+                    {isTabShown("attendance") && <AttendanceTab />}
                     </>}
                 </div>
             </main>

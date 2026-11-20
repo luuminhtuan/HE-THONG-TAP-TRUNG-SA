@@ -6,6 +6,8 @@ export const ADMIN_SECTIONS = [
     { id: "users", slug: "users", label: "Quản lý User" },
     { id: "markets", slug: "markets", label: "Thị trường" },
     { id: "credentials", slug: "credentials", label: "Khoá kết nối" },
+    // Chấm công (20/11/2026): nơi được chấm (IP mạng văn phòng, điểm văn phòng + bán kính) và giờ làm.
+    { id: "attendance", slug: "attendance", label: "Chấm công" },
 ] as const;
 
 export type AdminSectionId = (typeof ADMIN_SECTIONS)[number]["id"];

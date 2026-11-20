@@ -90,6 +90,8 @@ export const NAV_GROUPS: NavGroup[] = [
     // Tin nhắn (17/11/2026): hộp thư Pancake kéo về database 5 phút một lần — chỉ đọc; leader + giám đốc.
     { id: "tin-nhan", emoji: "💬", label: "Tin nhắn", tabs: [{ id: "messages", label: "Tin nhắn", slug: "messages" }] },
     { id: "hoi-ai", emoji: "🤖", label: "Hỏi AI", tabs: [{ id: "ask-ai", label: "Hỏi AI", slug: "ask-ai" }] },
+    // Chấm công (20/11/2026): ai đăng nhập cũng thấy (PERSONAL_TABS) — tự chấm vào / ra, lịch tháng; giám đốc xem cả công ty.
+    { id: "cham-cong", emoji: "🕒", label: "Chấm công", tabs: [{ id: "attendance", label: "Chấm công", slug: "attendance" }] },
 ];
 
 /** Đường dẫn → tab, tab → (nhãn, đường dẫn, mục). */

@@ -2037,6 +2037,17 @@
     "max_message_pages_per_conversation": 5,
     "call_interval_ms": 350
   },
+  "_attendance_note": "Chấm công online (20/11/2026): mỗi người đăng nhập tự chấm vào / chấm ra ở tab 🕒 Chấm công. Giới hạn chấm theo IP mạng văn phòng và/hoặc vị trí GPS (bán kính quanh điểm văn phòng) khai ở /admin → Chấm công (bảng attendance_settings) — mục này chỉ là GIÁ TRỊ MẶC ĐỊNH khi trang chưa lưu cấu hình. timezone quyết định ngày công và giờ vào / ra (nhân viên ở Việt Nam). max_accuracy_m: GPS báo sai số lớn hơn mức này thì không tính là đúng vị trí. workdays theo ISO: 1 = thứ Hai … 7 = Chủ nhật. Một ngày chấm được nhiều ca: vào → ra → vào → ra… (xen kẽ), giờ làm = tổng các ca. schedule_enabled = false (20/11/2026, tạm bỏ cấu hình giờ làm): không tính đi muộn / về sớm / vắng / ngày nghỉ, trang Quản trị ẩn khung Giờ làm — đổi true là bật lại (shift_start, shift_end, grace_minutes, workdays và giờ đã lưu trên trang vẫn giữ).",
+  "attendance": {
+    "timezone": "Asia/Ho_Chi_Minh",
+    "schedule_enabled": false,
+    "shift_start": "08:30",
+    "shift_end": "17:30",
+    "grace_minutes": 5,
+    "workdays": [1, 2, 3, 4, 5, 6],
+    "default_radius_m": 150,
+    "max_accuracy_m": 200
+  },
   "report_start_date": "2026-09-15",
   "_report_start_note": "Mốc gốc của mọi báo cáo số (Sỹ Anh chốt 25/09/2026): dữ liệu TRƯỚC ngày này chưa đầy đủ — đội cũ, shop cũ, TKQC cũ — nên các tab Báo cáo · Marketer · Quảng cáo không tính. Bộ chọn ngày mặc định bắt đầu từ đây và không lùi qua được. Tab vận hành (Sổ đơn, Đối soát COD, Theo dõi vận đơn, Kho, Khách hàng) KHÔNG bị chặn: đơn cũ vẫn còn đang chờ thu tiền.",
   "report_sheets": {

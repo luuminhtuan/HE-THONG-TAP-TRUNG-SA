@@ -156,6 +156,13 @@ nhánh `bk_main_26_11_16` (= `17def2c`).
   trạng thái bot nằm trong database (`zalo_session`, `zalo_market_groups`, `zalo_bot_state` — migration 0003), bot đọc /
   ghi qua `ops/zalo-alerts/bot_store.js`; file cũ trên máy bot tự chép vào kho lần đầu rồi xoá.
   Chi tiết: `docs/ZALO_BOT.md` mục 8.
+* **Chấm công online** (20/11/2026): tab 🕒 Chấm công — MỌI người đăng nhập (kể cả chưa có team: `PERSONAL_TABS`,
+  `lib/talpha/personal-tabs.ts`) tự chấm vào / ra (xen kẽ, một ngày nhiều ca), xem lịch tháng; giám đốc xem cả công ty,
+  chấm bù, huỷ lần chấm sai. Tính giờ làm (muộn / sớm / vắng) đang TẠM TẮT: `talpha_rules.json → attendance.schedule_enabled`.
+  Nơi được chấm (IP mạng văn phòng / điểm văn phòng + bán kính GPS, "một trong hai" hay "cả hai") khai ở
+  `/admin` → Chấm công, có nút lấy IP / vị trí hiện tại và "Kiểm tra ngay" cấu hình chưa lưu. Bảng `attendance_settings`
+  · `attendance_punches` (migration 0008, sổ chỉ thêm — huỷ chứ không xoá). Phần thuần + test: `attendance-rules.ts`.
+  IP đọc từ `X-Real-IP` nginx ghi đè — ai gọi thẳng cổng 3000 tự khai được header này; toạ độ GPS do trình duyệt gửi.
 * **Người dùng thấy và tự chạy cập nhật số** (15/11/2026): đèn "Cập nhật lúc…" + nút "Cập nhật ngay" trên
   thanh đầu (`components/talpha/refresh-status.tsx` ↔ `/api/talpha/refresh`). Lịch Docker ghi mỗi lượt vào
   `job_runs` và nhặt yêu cầu ở `refresh_requests` (`sync/core/job_log.py`). Thêm việc nền mới thì chạy qua

@@ -223,12 +223,13 @@ người ta đã gửi nhau hết mở được.**
 | | Tệp khách (14/11/2026) — `/talpha/customer-segments` | `tabs/customer-segments-tab.tsx` | `/api/talpha/customer-segments` (đọc `config/customer_segments.json` — số tham chiếu, không phải số bán hàng) |
 | | Soi đối thủ (15/11/2026) — `/talpha/competitor-research` | `tabs/competitor-research-tab.tsx` | `/api/talpha/competitor-research` (đọc `config/competitor_research.json` + ảnh `public/competitor-research/` — kết quả soi nhóm bán khác) |
 | 💬 Tin nhắn (17/11/2026, leader + giám đốc) | Tin nhắn — `/talpha/messages` | `tabs/messages-tab.tsx` (+ `tabs/messages/`) | `/api/talpha/messages` — hộp thư Pancake CHỈ ĐỌC từ database (bảng `pancake_*`, migration 0004); việc nền `sync/talpha/pancake_inbox_sync.py` tự kéo 30 phút/lần (`sync_every_minutes`) mọi page các token Pancake (Khoá kết nối: Token Pancake, 2, 3 — gói cước tính theo page, page ngoài gói báo mã 121 và bị bỏ qua) thấy, giữ 180 ngày (`talpha_rules.json → pancake_inbox`). Nút "Tải tin mới" → `pancake_sync_runs` (migration 0007, `lib/talpha/inbox-sync.ts`): lượt kéo kế tiếp nhận yêu cầu (VPS timer mỗi phút `--if-due`, Docker nhặt mỗi 15 giây), tab hỏi trạng thái tới khi xong rồi đọc lại. Leader chỉ thấy page gán nước của team (gán theo tên page trong tên camp / đuôi mã nước); page chưa gán chỉ giám đốc. Gán NGƯỜI PHỤ TRÁCH + TAG NỘI BỘ cho hội thoại (migration 0005, `lib/talpha/inbox-meta.ts` · `inbox-rules.ts`) — chỉ gán cho người xem được nước của hội thoại; mọi lần gán / gắn ghi `inbox_events` để tính KPI (hội thoại hết hạn giữ thì xoá, nhật ký giữ). Bộ lọc nước · page · tag · người là ô chọn gõ-để-tìm (`components/ui/searchable-select.tsx`); tìm không dấu (unaccent, migration 0006). Dữ liệu thử máy dev: `ops/dev/seed_inbox_demo.py` |
+| 🕒 Chấm công (20/11/2026, MỌI người đăng nhập) | Chấm công — `/talpha/attendance` | `tabs/attendance-tab.tsx` (+ `tabs/attendance/`) | `/api/talpha/attendance` — bảng `attendance_punches` (migration 0008, sổ CHỈ THÊM). Mỗi người tự bấm "Chấm vào" / "Chấm ra" cho CHÍNH MÌNH: máy chủ soát IP (nginx ghi đè `X-Real-IP`) thuộc mạng văn phòng và / hoặc toạ độ GPS trình duyệt gửi nằm trong bán kính điểm văn phòng — cách soát khai ở `/admin/attendance` (bảng `attendance_settings`). Vào / ra XEN KẼ, một ngày nhiều ca (vào → ra → vào → ra…; giờ làm = tổng các ca, `punchAllowed` / `buildSessions`). **Giờ làm TẠM TẮT** (20/11/2026, `talpha_rules.json → attendance.schedule_enabled = false`): lịch chỉ còn đủ vào – ra / đang làm / thiếu chấm + tổng giờ, Quản trị ẩn khung Giờ làm; bật `true` là có lại đúng giờ / muộn / về sớm / vắng (tính từ lần chấm đầu tiên của từng người, ngày trước đó không tính vắng) và khung Giờ làm — giờ đã lưu vẫn giữ. Lịch tháng màu theo trạng thái; bấm ngày xem từng lần chấm (IP, vị trí, khoảng cách). Giám đốc: chọn người xem lịch, bảng cả công ty, CHẤM BÙ (bắt buộc lý do) và HUỶ lần chấm sai (giữ dòng, ghi ai huỷ + lý do). Tab riêng của người dùng (`PERSONAL_TABS`, `lib/talpha/personal-tabs.ts`): người chưa có team / vai lạ vẫn thấy. Phần thuần + test: `lib/talpha/attendance-rules.ts` · `tests/attendance.test.cjs`; đụng kho: `attendance.ts`; bản đồ: `components/ui/mini-map.tsx` (ô ảnh OpenStreetMap, không thư viện). Tháng + người trên địa chỉ: `?month=2026-11&user=<id>` |
 | 🤖 Hỏi AI (15/11/2026, chỉ giám đốc) | Hỏi AI — `/talpha/ask-ai` | `tabs/ask-ai-tab.tsx` | `/api/talpha/ceo-ask` (Gemini viết SQL chỉ đọc; model chọn ở Khoá kết nối → tab Gemini). Nút "Khoá AI" (16/11/2026): khoá Gemini riêng chỉ lưu localStorage của trình duyệt đó, có thì thắng khoá mặc định — `lib/talpha/gemini-key.ts` |
 
 Tab lớn tách component con vào thư mục cùng tên cạnh file tab (`tabs/cod-recon/`, `tabs/order-ledger/`,
 `tabs/tracking/`, `tabs/income-statement/`, `tabs/ads-recon/`, `tabs/products/`) — file `*-tab.tsx` vẫn là cửa vào.
 
-Ngoài shell còn `/login` và `/admin` (người dùng, TKQC, thị trường, khoá kết nối). **TKQC tự động** (04/11/2026):
+Ngoài shell còn `/login` và `/admin` (người dùng, TKQC, thị trường, khoá kết nối, chấm công). **TKQC tự động** (04/11/2026):
 mọi TKQC các token Meta đọc được; chỉ loại "vào báo cáo" cộng vào số — `fb_ads_data` là view lọc theo loại,
 chi tiêu đủ mọi TK ở `fb_ads_all`. Xem `sync/core/ad_accounts.py`.
 
@@ -243,9 +244,10 @@ luật riêng (doanh thu chỉ đơn đã giao, tên marketer là tên tài kho�
 lệch Sheet cả trăm triệu. Muốn đổi cách tính thì sửa `format_all.py` — Sheet, bot Zalo và
 tab đổi theo cùng lúc.
 
-Năm tab **bỏ qua bộ chọn ngày** (`IGNORES_DATE_RANGE`): Ads Command Center và Sức khoẻ
+Các tab **bỏ qua bộ chọn ngày** (`IGNORES_DATE_RANGE`): Ads Command Center và Sức khoẻ
 quảng cáo có cửa sổ thời gian cố định trong view; Thanh toán quảng cáo lấy kỳ từ chính
-file sao kê; Tệp khách và Soi đối thủ là số tham chiếu theo từng bản đo / bản soi.
+file sao kê; Tệp khách và Soi đối thủ là số tham chiếu theo từng bản đo / bản soi; Tin nhắn xếp theo tin
+mới nhất; Chấm công có ô chọn tháng riêng.
 
 **Tệp khách (Sỹ Anh yêu cầu lưu 14/11/2026)** — nghiên cứu thị trường để tham chiếu khi chọn
 tệp chạy quảng cáo: người Việt / Phi / Indo ở Đài Loan, Nhật Bản, Singapore. Mỗi tệp có số
@@ -336,6 +338,8 @@ trong chuỗi) bị từ chối; vai `talpha_readonly_market` của họ cũng c
 | `income-statement` (trước 16/11/2026: `lai-lo`) | Lãi lỗ đủ mọi khoản theo nước (`lib/talpha/income-statement.ts` hàm thuần + test, nạp kiện ở `income-statement-sources.ts`). Doanh số + ads đọc TỔNG TEAM qua `lib/talpha/team-summary-sheet.ts` (chung với `sheet-report`); kiện Đài qua `lib/talpha/tw-order-ledger.ts` (chung với `order-ledger`). Route tự cắt nước theo team; chi phí chung chia theo doanh số MỌI nước | Tab Lãi lỗ |
 | `income-statement/opex` (trước: `lai-lo/van-hanh`) | POST thêm/sửa · DELETE xoá một khoản chi phí vận hành — chỉ người xem hết (giám đốc) | Tab Lãi lỗ |
 | `messages` | Hộp thư Pancake đã kéo về database (17/11/2026): GET = page + tag + người; `?list=1&page_id&market&q&label&assignee&before` = hội thoại (mới nhất trước, 50/lượt; label / assignee `none` = chưa gắn / chưa gán); `?page_id&conversation_id` = tin của một hội thoại. POST `assign` · `tag` · `create_tag` (người dùng đăng nhập, không nhận chìa nội bộ). Cắt page theo nước của người xem | Tab Tin nhắn |
+| `attendance` | Chấm công (20/11/2026): GET `?month&user_id` = lịch tháng (ngày công + từng lần chấm) + hôm nay của tôi; giám đốc thêm `users` + `team` (tổng tháng + hôm nay từng người), người khác chỉ xem được mình. POST `check` (soát IP + vị trí, không ghi) · `punch` in/out (chỉ người đăng nhập — chìa nội bộ / chế độ mở không chấm được) · `manual` chấm bù · `void` huỷ (hai cái sau chỉ giám đốc). Phần cấu hình trả cho người chấm KHÔNG có danh sách IP văn phòng (`publicSettings`) | Tab Chấm công |
+| `attendance/settings` | GET cấu hình + IP máy chủ đang thấy của người mở trang; PUT lưu (sai → 400 + từng lỗi, không lưu gì). Chỉ giám đốc | `/admin` → Chấm công |
 | `customer-segments` | Số tham chiếu tệp khách (người Việt / Phi / Indo theo thị trường) từ `config/customer_segments.json`; cắt thị trường theo team, `seen_all` báo người xem có thấy đủ nước không | Tab Tệp khách |
 | `competitor-research` | Kết quả soi nhóm bán khác từ `config/competitor_research.json`; chỉ trả bản soi của thị trường người xem được phép | Tab Soi đối thủ |
 | `product-pnl` | P&L từng sản phẩm: doanh số chia theo số lượng, ads theo mã SP trong tên campaign | Tab P&L theo SP |
@@ -369,6 +373,11 @@ từ luật (tỷ giá, số chia, giá vốn, múi giờ TKQC…) đổi. Bản
 
 Bảng thô dashboard đọc thẳng: `sale_order`, `order_items`, `fb_ads_data`,
 `fb_adset_data`, `inventory_snapshot`, `sync_health`, `monthly_report_tabs` (số báo cáo tháng).
+
+`attendance_settings` (một dòng) · `attendance_punches` — chấm công (migration 0008, 20/11/2026): bảng riêng,
+vai chỉ đọc không thấy (`PRIVATE_TABLES`). Sổ chấm chỉ thêm: chấm bù là dòng `source = 'manual'`, chấm sai thì
+huỷ (`voided_at`), không xoá dòng. Ngày công (`work_date`) tính theo `talpha_rules.json → attendance.timezone`
+lúc ghi.
 
 `partner_orders` — bảng đơn của đối tác 3PL (Google Sheet) chép vào bảng này mỗi vòng
 talpha-sync (cần khoá Google): mã vận đơn, ngày xuất kho, trạng thái giao, COD đối tác thu (đơn vị gốc, cột

@@ -67,15 +67,26 @@ t("giám đốc thấy hết, kể cả team rỗng", () => {
     assert.ok(sanh.full && A.seesAllMarkets(sanh));
     assert.ok(A.canTab(sanh, "ads-recon"));
 });
-t("mặc định ĐÓNG: vai lạ / team lạ / thiếu team → không thấy gì", () => {
+t("mặc định ĐÓNG: vai lạ / team lạ / thiếu team → không thấy tab số liệu nào (chỉ còn Chấm công của chính mình)", () => {
     for (const u of [
         { role: "leader" }, { role: "leader", teams: [] }, { role: "leader", teams: ["khong_co"] },
         { role: "giam_doc_gia", teams: ["*"] }, { role: "", teams: ["*"] },
     ]) {
         const a = A.accessForUser(u);
         assert.strictEqual(a.full, false);
-        assert.deepStrictEqual(a.tabs, [], JSON.stringify(u));
+        assert.deepStrictEqual(a.tabs, ["attendance"], JSON.stringify(u));
     }
+});
+// Chấm công (20/11/2026): ai đăng nhập cũng tự chấm, kể cả người chưa có team; cấu hình nơi chấm chỉ giám đốc.
+t("Chấm công: mọi tài khoản gọi được /attendance, chỉ giám đốc gọi được /attendance/settings", () => {
+    const noTeam = A.accessForUser({ id: "9", name: "Mới", role: "sale", teams: [] });
+    for (const a of [loc, thai, thuong, noTeam]) {
+        assert.ok(A.canTab(a, "attendance"), a.name);
+        assert.ok(A.checkApi(a, "/api/talpha/attendance", q("month=2026-11")).ok, a.name);
+        assert.ok(!A.checkApi(a, "/api/talpha/attendance/settings", q("")).ok, a.name);
+    }
+    assert.ok(A.canTab(sanh, "attendance") && A.checkApi(sanh, "/api/talpha/attendance/settings", q("")).ok);
+    assert.ok(A.PERSONAL_TABS.every((t) => A.ALL_TABS.includes(t)));
 });
 
 console.log("── Ai thấy tab nào ──");
@@ -94,7 +105,7 @@ t("leader thấy Chi phí quảng cáo + Ads Command Center (route đã tự l�
 });
 // 04/11/2026 Sỹ Anh chốt tab Lãi lỗ (Kế toán) "tất cả" cùng xem — sale vẫn không vào Tiền COD về.
 t("Thương thấy đơn, vận đơn, kho, khách + Lãi lỗ — không báo cáo, không quảng cáo, không Tiền COD về", () => {
-    assert.deepStrictEqual([...thuong.tabs].sort(), ["customers", "income-statement", "order-ledger", "products", "tracking"]);
+    assert.deepStrictEqual([...thuong.tabs].sort(), ["attendance", "customers", "income-statement", "order-ledger", "products", "tracking"]);
 });
 // Mục Kế toán (Sỹ Anh chốt 07/10/2026): Tiền COD về do leader nước đó + giám đốc kiểm soát chung.
 t("Kế toán: leader thấy Tiền COD về của nước mình, không thấy Thanh toán quảng cáo", () => {

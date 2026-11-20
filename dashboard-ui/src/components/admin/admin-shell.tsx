@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, Settings, Megaphone, UsersRound, KeyRound, Globe2, LogOut } from "lucide-react";
+import { ArrowLeft, Settings, Megaphone, UsersRound, KeyRound, Globe2, LogOut, Clock } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -12,11 +12,12 @@ import AdAccountsTab from "@/components/tabs/ad-accounts-tab";
 import UserManagementTab from "@/components/tabs/user-management-tab";
 import CredentialsTab from "@/components/tabs/credentials-tab";
 import MarketsTab from "@/components/tabs/markets-tab";
+import AttendanceSettingsTab from "@/components/tabs/attendance-settings-tab";
 
 // Mỗi mục một đường dẫn (15/11/2026): /admin/<slug> — tải lại hay gửi link là mở đúng mục.
 // Danh sách mục ở admin-sections.ts (route phía máy chủ cũng đọc để đặt tên thẻ trình duyệt).
 const ICON: Record<AdminSectionId, typeof Megaphone> = {
-  "ad-accounts": Megaphone, users: UsersRound, markets: Globe2, credentials: KeyRound,
+  "ad-accounts": Megaphone, users: UsersRound, markets: Globe2, credentials: KeyRound, attendance: Clock,
 };
 const ADMIN_TABS = ADMIN_SECTIONS.map((m) => ({ ...m, icon: ICON[m.id] }));
 
@@ -99,6 +100,7 @@ export default function AdminShell() {
           {activeTab === "users" && <UserManagementTab />}
           {activeTab === "markets" && <MarketsTab />}
           {activeTab === "credentials" && <CredentialsTab />}
+          {activeTab === "attendance" && <AttendanceSettingsTab />}
         </div>
       </main>
     </div>
