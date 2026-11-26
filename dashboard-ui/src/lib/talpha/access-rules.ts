@@ -22,6 +22,8 @@ export const ALL_TABS = [
     "messages",
     "ask-ai",
     "attendance",
+    // AI Chatbot (25/11/2026, docs/ai-chatbot/) — mặc định chỉ giám đốc (vai khác thêm id tab vào access.roles.*.tabs).
+    "ai-overview", "ai-knowledge", "ai-learning", "ai-logs", "ai-settings",
 ] as const;
 
 /** Tab của riêng người dùng (Chấm công) — ai đăng nhập cũng thấy. Khai ở personal-tabs.ts (trình duyệt cũng đọc). */
@@ -37,7 +39,7 @@ export const TABS_NOT_MARKET_FILTERED = new Set<string>();
 
 /** Tab chỉ giám đốc: soát tiền ra của thẻ trả TKQC chung cả công ty; Hỏi AI (15/11/2026) — AI truy vấn
  *  số MỌI nước, route /api/talpha/ceo-ask chưa lọc theo team. */
-export const DIRECTOR_ONLY_TABS = new Set(["ads-recon", "ask-ai"]);
+export const DIRECTOR_ONLY_TABS = new Set(["ads-recon", "ask-ai", "ai-settings"]);
 
 type TeamCfg = { name: string; markets: string[]; leader?: string };
 type RoleCfg = { label: string; desc?: string; full?: boolean; tabs?: string[] };
@@ -195,6 +197,17 @@ export const API_RULES: Record<string, ApiRule> = {
     // chặn chỉ giám đốc. Cấu hình nơi chấm (IP, vị trí): chỉ giám đốc.
     "/api/talpha/attendance": { tabs: ["attendance"] },
     "/api/talpha/attendance/settings": { full: true },
+    // AI Chatbot (25/11/2026) — route tự cắt page / kiến thức / nhật ký theo nước của người xem. Mỗi route đúng tab của nó
+    // (có tab Tổng quan không có nghĩa là sửa được Kiến thức). Tiền tố trần + cài đặt + worker: giám đốc.
+    "/api/talpha/ai-chatbot": { full: true },
+    "/api/talpha/ai-chatbot/stats": { tabs: ["ai-overview"] },
+    "/api/talpha/ai-chatbot/logs": { tabs: ["ai-logs"] },
+    "/api/talpha/ai-chatbot/knowledge": { tabs: ["ai-knowledge"] },
+    "/api/talpha/ai-chatbot/learning": { tabs: ["ai-learning"] },
+    "/api/talpha/ai-chatbot/sandbox": { tabs: ["ai-knowledge", "ai-learning"] },
+    "/api/talpha/ai-chatbot/conversation": { tabs: ["ai-logs", "messages"] },
+    "/api/talpha/ai-chatbot/settings": { full: true },
+    "/api/talpha/ai-chatbot/worker": { full: true },
     "/api/query": { tabs: ["marketing", "ad-health", "customers", "market-intel"] },
 
     // Sổ đơn / Tiền COD về / vận đơn — mỗi lượt gọi là MỘT nước. cod-actions mở cho Sổ đơn

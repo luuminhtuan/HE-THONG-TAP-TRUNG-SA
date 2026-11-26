@@ -163,6 +163,12 @@ nhánh `bk_main_26_11_16` (= `17def2c`).
   `/admin` → Chấm công, có nút lấy IP / vị trí hiện tại và "Kiểm tra ngay" cấu hình chưa lưu. Bảng `attendance_settings`
   · `attendance_punches` (migration 0008, sổ chỉ thêm — huỷ chứ không xoá). Phần thuần + test: `attendance-rules.ts`.
   IP đọc từ `X-Real-IP` nginx ghi đè — ai gọi thẳng cổng 3000 tự khai được header này; toạ độ GPS do trình duyệt gửi.
+* **AI Chatbot** (25/11/2026, `docs/ai-chatbot/` — đọc ARCHITECTURE.md trước khi sửa): AI trả lời tin nhắn Pancake mà luật
+  POS không xử lý, chỉ khi có dữ liệu (Knowledge Base). Code `dashboard-ui/src/lib/ai-chatbot/` (`router.ts` thuần, test
+  `tests/ai-chatbot-*.test.cjs`; `npm run test:ai-pg` cần Postgres), bảng `ai_*` (migration 0009, `PRIVATE_TABLES`), luật
+  `talpha_rules.json → ai_chatbot`, worker chạy TRONG tiến trình dashboard (`instrumentation.ts`, tắt: `TALPHA_AI_WORKER=0`).
+  Chỉ Public API chính thức của Pancake + token PAGE đọc có sẵn — **không gọi `generate_page_access_token`** (giết token bot
+  AI Sale cũ đang gửi thật trên VPS). Mặc định tắt + shadow; đừng bật cùng page với bot AI Sale cũ.
 * **Người dùng thấy và tự chạy cập nhật số** (15/11/2026): đèn "Cập nhật lúc…" + nút "Cập nhật ngay" trên
   thanh đầu (`components/talpha/refresh-status.tsx` ↔ `/api/talpha/refresh`). Lịch Docker ghi mỗi lượt vào
   `job_runs` và nhặt yêu cầu ở `refresh_requests` (`sync/core/job_log.py`). Thêm việc nền mới thì chạy qua

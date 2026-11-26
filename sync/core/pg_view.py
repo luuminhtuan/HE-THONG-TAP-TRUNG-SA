@@ -28,7 +28,12 @@ PRIVATE_TABLES = ("app_documents", "market_overrides", "market_monthly_reports",
               "zalo_session", "zalo_market_groups", "zalo_bot_state",
               "pancake_pages", "pancake_conversations", "pancake_messages", "pancake_sync_runs",
               "inbox_tags", "inbox_assignments", "inbox_conversation_tags", "inbox_events",
-              "attendance_settings", "attendance_punches")
+              "attendance_settings", "attendance_punches",
+              # AI Chatbot (migration 0009, 25/11/2026) — nội dung chat, câu trả lời, cài đặt, hàng đợi.
+              "ai_bot_settings", "ai_bot_pages", "ai_kb_entries", "ai_kb_revisions", "ai_bot_pos_rules", "ai_bot_jobs",
+              "ai_bot_locks", "ai_bot_conversation_state", "ai_bot_runs", "ai_bot_provider_calls", "ai_bot_outbox",
+              "ai_bot_notifications", "ai_bot_webhook_log", "ai_learning_questions", "ai_learning_occurrences",
+              "ai_learning_history")
 
 
 def _rules() -> dict:

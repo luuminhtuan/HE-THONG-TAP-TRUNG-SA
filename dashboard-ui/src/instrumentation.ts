@@ -51,5 +51,14 @@ export async function register() {
         } catch (e) {
             console.error("[TALPHA] Không nạp được số khởi động (luật thị trường, khoá kết nối):", e);
         }
+
+        // AI Chatbot (25/11/2026): worker chạy nền trong tiến trình này — AI tắt (mặc định) thì chỉ đọc cài đặt mỗi 15 giây,
+        // không gọi Pancake / AI. Tắt hẳn: TALPHA_AI_WORKER=0. Lỗi ở đây không được làm dashboard không mở cửa.
+        try {
+            const { startAiChatbotWorker } = await import("@/lib/ai-chatbot/worker");
+            startAiChatbotWorker();
+        } catch (e) {
+            console.error("[TALPHA] Không khởi động được worker AI Chatbot:", e);
+        }
     }
 }

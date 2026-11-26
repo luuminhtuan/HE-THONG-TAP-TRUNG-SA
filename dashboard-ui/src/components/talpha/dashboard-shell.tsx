@@ -37,6 +37,11 @@ import TALPHAAdsReconTab from "./tabs/ads-recon-tab";
 import IncomeStatementTab from "./tabs/income-statement-tab";
 import AskAiTab from "./tabs/ask-ai-tab";
 import AttendanceTab from "./tabs/attendance-tab";
+import AiOverviewTab from "./tabs/ai-chatbot/ai-overview-tab";
+import AiKnowledgeTab from "./tabs/ai-chatbot/ai-knowledge-tab";
+import AiLearningTab from "./tabs/ai-chatbot/ai-learning-tab";
+import AiLogsTab from "./tabs/ai-chatbot/ai-logs-tab";
+import AiSettingsTab from "./tabs/ai-chatbot/ai-settings-tab";
 import { PERSONAL_TABS } from "@/lib/talpha/personal-tabs";
 
 /** Tham số mang theo khi chuyển tab: khoảng ngày đang chọn (from, to), nước đang chọn (market). */
@@ -48,7 +53,8 @@ const CARRIED_PARAMS = ["from", "to", "market"];
  * file sao kê, Tệp khách và Soi đối thủ là số tham chiếu theo từng bản đo / bản soi, Tin nhắn xếp theo tin mới nhất,
  * Chấm công có ô chọn tháng riêng.
  */
-const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon", "customer-segments", "competitor-research", "messages", "attendance"]);
+const IGNORES_DATE_RANGE = new Set(["ads-command", "ad-health", "ads-recon", "customer-segments", "competitor-research", "messages", "attendance",
+    "ai-knowledge", "ai-learning", "ai-settings"]);
 
 /**
  * Tab báo cáo số — không tính ngày trước mốc gốc `report_start_date` (talpha_rules.json,
@@ -365,6 +371,11 @@ export default function TALPHADashboardShell() {
                     {isTabShown("messages") && <MessagesTab />}
                     {isTabShown("ask-ai") && <AskAiTab dateRange={dateRange} />}
                     {isTabShown("attendance") && <AttendanceTab />}
+                    {isTabShown("ai-overview") && <AiOverviewTab dateRange={dateRange} />}
+                    {isTabShown("ai-knowledge") && <AiKnowledgeTab />}
+                    {isTabShown("ai-learning") && <AiLearningTab />}
+                    {isTabShown("ai-logs") && <AiLogsTab dateRange={dateRange} />}
+                    {isTabShown("ai-settings") && <AiSettingsTab />}
                     </>}
                 </div>
             </main>

@@ -90,6 +90,18 @@ export const NAV_GROUPS: NavGroup[] = [
     // Tin nhắn (17/11/2026): hộp thư Pancake kéo về database 5 phút một lần — chỉ đọc; leader + giám đốc.
     { id: "tin-nhan", emoji: "💬", label: "Tin nhắn", tabs: [{ id: "messages", label: "Tin nhắn", slug: "messages" }] },
     { id: "hoi-ai", emoji: "🤖", label: "Hỏi AI", tabs: [{ id: "ask-ai", label: "Hỏi AI", slug: "ask-ai" }] },
+    // AI Chatbot (25/11/2026, docs/ai-chatbot/): AI trả lời tin nhắn Pancake mà luật POS không xử lý — chỉ khi có dữ liệu.
+    // Mặc định chỉ giám đốc (vai khác: thêm id tab vào talpha_rules.json → access.roles.*.tabs). Cài đặt AI: chỉ giám đốc.
+    {
+        id: "ai-chatbot", emoji: "🧠", label: "AI Chatbot",
+        tabs: [
+            { id: "ai-overview", label: "Tổng quan AI", slug: "ai-overview" },
+            { id: "ai-knowledge", label: "Kiến thức", slug: "ai-knowledge" },
+            { id: "ai-learning", label: "AI Learning", slug: "ai-learning" },
+            { id: "ai-logs", label: "Nhật ký AI", slug: "ai-logs" },
+            { id: "ai-settings", label: "Cài đặt AI", slug: "ai-settings" },
+        ],
+    },
     // Chấm công (20/11/2026): ai đăng nhập cũng thấy (PERSONAL_TABS) — tự chấm vào / ra, lịch tháng; giám đốc xem cả công ty.
     { id: "cham-cong", emoji: "🕒", label: "Chấm công", tabs: [{ id: "attendance", label: "Chấm công", slug: "attendance" }] },
 ];

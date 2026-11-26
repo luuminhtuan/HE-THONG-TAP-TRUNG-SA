@@ -54,6 +54,9 @@ export default auth(async (req) => {
 
     if (pathname.startsWith("/api/")) {
         if (pathname.startsWith("/api/auth/")) return NextResponse.next();
+        // Webhook từ dịch vụ ngoài (Pancake → AI Chatbot, 25/11/2026): không có phiên đăng nhập — route TỰ xác thực
+        // (chìa bí mật + IP nguồn, app/api/webhooks/pancake/route.ts). Chỉ đúng tiền tố này được thả.
+        if (pathname.startsWith("/api/webhooks/")) return NextResponse.next();
         const a = await getAccess(req, req.auth);
         if (!a) return json(401, "Chưa đăng nhập");
         const ok = checkApi(a, pathname, searchParams, (m) => trackMarket(m).code);
